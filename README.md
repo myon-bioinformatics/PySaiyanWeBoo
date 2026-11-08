@@ -77,7 +77,7 @@ world `avatars` (pick an emoji, a short text or both first) and walking by tap, 
 `land` floors (`land_floor()`, `EXAMPLES["overworld"]`; themes meadow, forest, mountain, desert, coast, castle) make a Dragon Quest-style map of several lands from the same grid by swapping prop kinds (`WORLD_PROPS`, `WORLD_GROUND`, `WORLD_LOOK`). `place` floors (`place_floor()`, `EXAMPLES["cities"]`: Parallel Tokyo, Reverse London, Fake Paris) lay latitude/longitude points on the same grid with roads, a river and its bridges, using the coordinates tool's projection; a spot can `flip` to a second face when pressed or be a `sign` (an electronic or wooden board: a bold dot at a tile corner until touched) ([Places](docs/world-classroom.md#places-real-space-in-miniature)). `"real": true` floors let a visitor put a photo or the camera behind the props (🖼️📷, shown in the page only: not stored, not sent), through the same `ask()` dialog the page exposes. 🌐 speaks the 11 languages of flutter_navigation_basic; the starred places and the language are a light `localStorage` cache (`ui-world:<id>`), nothing else is stored.
 From another repository: `echo '{"schema":"web-ui-world/1","floors":[{"classroom":{}}]}' | python -S web_ui.py --world - > school.html` (`--world -` reads stdin; Node: `node vendor/py_launch.cjs -- web_ui.py --world -`).
 
-Demos, recorded from real Chrome by `python tool/record_demo.py docs/demo --force` ([what each shows](docs/world-classroom.md#demos)):
+Demos, recorded from real Chrome by `python tool/record_demo.py docs/demo --force` ([what each shows, and `--number`/`--prefix`/`--suffix` for repeated runs](docs/world-classroom.md#demos)):
 
 | Pick a character | Type your own | Arrow keys / WASD |
 |---|---|---|
@@ -672,6 +672,8 @@ sources are relative paths or http(s) addresses. `python -S web_ui.py --componen
 <img src="docs/demo/component-table.gif" width="320" alt="A browser matrix table on a phone: the themes change its colors, then it scrolls sideways inside its box while the page stays still">
 
 The GIF comes from the browser test (`WEB_UI_GIFS=docs/demo python -m pytest tests/integration/controls_browser.py -k TableBrowserTests`).
+`WEB_UI_GIFS` takes the recorder's output options too, parsed by the same argparse definitions: `WEB_UI_GIFS="runs --number --prefix run- --suffix=-chromium"`
+writes `runs/run-component-table-chromium-001.gif`, and the next run `-002`, so repeated runs keep every file without `--force`.
 
 ## Focused test discovery
 

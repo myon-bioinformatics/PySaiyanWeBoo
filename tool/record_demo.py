@@ -1,11 +1,16 @@
 """Record the school world's (and the overworld's) operations as demo GIFs (for the README).
 
     python tool/record_demo.py docs/demo [--only pick keys ...] [--chrome PATH] [--width 480] [--force]
+    python tool/record_demo.py runs --number [--prefix run-] [--suffix=-chrome]       # runs/run-school-pick-chrome-001.gif, next run -002
 
 Playwright drives a real Chrome through each scene. The ``Camera`` keeps a screenshot with its real timestamp whenever a scene waits,
 so a GIF plays at the speed the page really moved. Encoding follows Ironmate's ``png_zoom_gif.py``: one shared palette (no dither,
 so frames never flicker), delays in 10 ms units (never below 20 ms, which browsers stretch), the animation loops, and an existing
-output is refused unless ``--force``. Unlike that zoom (every pixel changes), a walking player changes few pixels, so frames are
+output is refused unless ``--force``. File names are ``<prefix><world>-<scene><suffix>[-NNN].gif``: ``--prefix`` and ``--suffix`` are
+optional name parts, ``--number`` (alone: the next number after the highest ``-NNN.gif`` of that prefix and suffix in the folder;
+``--number 7``: that number) lets repeated runs, by hand or by an agent, keep every GIF without ``--force``. ``add_gif_arguments``,
+``gif_targets`` and ``gif_targets_from`` are those rules as functions, so the browser tests name their GIFs the same way from
+``WEB_UI_GIFS="DIR [--number] [--prefix P] [--suffix S] [--force]"``. Unlike that zoom (every pixel changes), a walking player changes few pixels, so frames are
 written as deltas (``optimize=True``): about a third of the size, decoding to exactly the same pictures. The zoom step
 (``cam.zoom``) is Ironmate's smooth zoom-in, kept to what the demos need and run through this same encoder, not a second copy of
 that tool; this repository is the canonical home of both. Needs Playwright and Pillow, like the browser tests. Scenes are ordinary functions, so a new
@@ -18,6 +23,8 @@ import contextlib
 import io
 import os
 from pathlib import Path
+import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -474,8 +481,82 @@ def launch(pw, chrome=None, extra=()):
     return pw.chromium.launch(executable_path=chrome, args=args) if chrome else pw.chromium.launch(args=args)
 
 
-def record(out, names=None, *, chrome=None, width=None, force=False, browser=None):
-    """Record the named scenes (all by default) into out/<world>-<name>.gif (school-keys.gif, overworld-lands.gif); returns the written paths.
+NAME_PART = re.compile(r"[\w.-]{0,64}")
+_NUMBERED = r"-(\d{3,})\.gif"
+
+
+def name_part(value):
+    """argparse type for ``--prefix`` / ``--suffix``: letters, digits, ``_``, ``.`` and ``-`` only (up to 64), so the name stays one file name."""
+    if not NAME_PART.fullmatch(value):
+        raise argparse.ArgumentTypeError(f"{value!r}: letters, digits, _ . - only, up to 64 characters")
+    return value
+
+
+def run_number(value):
+    """argparse type for ``--number``: ``auto`` or a whole number from 1."""
+    if value == "auto":
+        return value
+    if not re.fullmatch(r"[1-9][0-9]*", value):
+        raise argparse.ArgumentTypeError(f"{value!r}: 'auto' or a whole number from 1")
+    return int(value)
+
+
+def add_gif_arguments(parser):
+    """The output arguments shared by the CLI and ``WEB_UI_GIFS``: ``out``, ``--prefix``, ``--suffix``, ``--number``, ``--force``."""
+    parser.add_argument("out", type=Path, help="directory for <prefix><world>-<scene><suffix>[-NNN].gif")
+    parser.add_argument("--prefix", type=name_part, default="", metavar="TEXT", help="put TEXT before every file name")
+    parser.add_argument("--suffix", type=name_part, default="", metavar="TEXT", help="put TEXT after every file name, before the number (write --suffix=-x when TEXT starts with -)")
+    parser.add_argument("--number", type=run_number, nargs="?", const="auto", default=None, metavar="N|auto",
+                        help="append -NNN: alone, the next number after the highest in the folder (for this prefix and suffix); N, that number")
+    parser.add_argument("--force", action="store_true", help="replace existing GIFs")
+    return parser
+
+
+def next_run_number(directory, *, prefix="", suffix=""):
+    """1 + the highest ``<prefix>*<suffix>-NNN.gif`` in ``directory`` (1 when there is none or no directory yet)."""
+    pattern = re.compile("^" + re.escape(prefix) + ".*" + re.escape(suffix) + _NUMBERED + "$")
+    found = [int(m.group(1)) for p in Path(directory).glob("*.gif") if (m := pattern.match(p.name))] if Path(directory).is_dir() else []
+    return max(found, default=0) + 1
+
+
+def gif_targets(directory, stems, *, prefix="", suffix="", number=None, force=False):
+    """``{stem: directory/<prefix><stem><suffix>[-NNN].gif}``, one run number for the whole batch; creates the directory.
+
+    ``number`` is ``None`` (no number), ``"auto"`` (``next_run_number``) or an int. Without ``force`` an existing target raises
+    FileExistsError before anything is written; ``"auto"`` never meets one.
+    """
+    directory = Path(directory)
+    stems = list(stems)
+    if len(set(stems)) != len(stems) or not all(NAME_PART.fullmatch(s) and s for s in stems):
+        raise ValueError("stems are distinct file-name parts (letters, digits, _ . -)")
+    name_part(prefix), name_part(suffix)
+    if number == "auto":
+        number = next_run_number(directory, prefix=prefix, suffix=suffix)
+    elif number is not None and (type(number) is not int or number < 1):
+        raise ValueError("number is None, 'auto' or a whole number from 1")
+    tail = f"-{number:03d}" if number else ""
+    targets = {stem: directory / f"{prefix}{stem}{suffix}{tail}.gif" for stem in stems}
+    if not force and any(p.exists() for p in targets.values()):
+        raise FileExistsError("refusing to overwrite " + ", ".join(str(p) for p in targets.values() if p.exists())
+                              + " (add --force to replace it, or --number for a new numbered file)")
+    directory.mkdir(parents=True, exist_ok=True)
+    return targets
+
+
+def gif_targets_from(spec, stems):
+    """``gif_targets`` from one setting string, ``"DIR [--number [N]] [--prefix P] [--suffix S] [--force]"`` (``WEB_UI_GIFS`` in the browser tests).
+
+    The words are split like a shell command line and parsed by the same argparse definitions as the CLI, so a bad option raises
+    argparse.ArgumentError here instead of exiting.
+    """
+    parser = add_gif_arguments(argparse.ArgumentParser(prog="WEB_UI_GIFS", add_help=False, allow_abbrev=False, exit_on_error=False))
+    args = parser.parse_args(shlex.split(spec))
+    return gif_targets(args.out, stems, prefix=args.prefix, suffix=args.suffix, number=args.number, force=args.force)
+
+
+def record(out, names=None, *, chrome=None, width=None, force=False, browser=None, prefix="", suffix="", number=None):
+    """Record the named scenes (all by default) into out/<prefix><world>-<name><suffix>[-NNN].gif (school-keys.gif, overworld-lands.gif);
+    returns the written paths. ``prefix``, ``suffix`` and ``number`` (None, "auto" or an int) are ``gif_targets``' name parts.
 
     ``browser`` is an already running Playwright Chromium (the browser tests share theirs); otherwise one is launched and closed here.
     """
@@ -484,10 +565,9 @@ def record(out, names=None, *, chrome=None, width=None, force=False, browser=Non
     if unknown:
         raise ValueError("unknown scene: " + ", ".join(unknown) + " (have " + ", ".join(SCENES) + ")")
     out = Path(out)
-    targets = {n: out / f"{SCENES[n].world}-{n}.gif" for n in names}
-    if not force and any(p.exists() for p in targets.values()):
-        raise FileExistsError("refusing to overwrite " + ", ".join(str(p) for p in targets.values() if p.exists()) + " (use --force)")
-    out.mkdir(parents=True, exist_ok=True)
+    stems = {n: f"{SCENES[n].world}-{n}" for n in names}
+    paths = gif_targets(out, stems.values(), prefix=prefix, suffix=suffix, number=number, force=force)
+    targets = {n: paths[stems[n]] for n in names}
     with tempfile.TemporaryDirectory() as tmp_name, contextlib.ExitStack() as stack:
         tmp = Path(tmp_name)
         for world in {SCENES[n].world for n in names}:
@@ -511,15 +591,14 @@ def record(out, names=None, *, chrome=None, width=None, force=False, browser=Non
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("out", type=Path, help="directory for <world>-<scene>.gif")
-    parser.add_argument("--only", nargs="+", metavar="SCENE", help="scenes to record: " + ", ".join(SCENES))
+    parser = add_gif_arguments(argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False))
+    parser.add_argument("--only", nargs="+", metavar="SCENE", choices=tuple(SCENES), help="scenes to record: " + ", ".join(SCENES))
     parser.add_argument("--chrome", help="Chrome/Chromium executable (default: WEB_UI_CHROME or Playwright's)")
     parser.add_argument("--width", type=int, help="shrink every GIF to this width in pixels")
-    parser.add_argument("--force", action="store_true", help="replace existing GIFs")
     args = parser.parse_args(argv)
     try:
-        for path in record(args.out, args.only, chrome=args.chrome, width=args.width, force=args.force):
+        for path in record(args.out, args.only, chrome=args.chrome, width=args.width, force=args.force,
+                           prefix=args.prefix, suffix=args.suffix, number=args.number):
             print(f"🎞️ {path}  📦 {path.stat().st_size // 1024} KiB")
     except (ValueError, OSError, ImportError, TimeoutError) as exc:
         parser.exit(1, f"⛔ {exc}\n")
