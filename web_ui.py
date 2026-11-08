@@ -63,6 +63,27 @@ export function observeLit(targets,{threshold=0.4,root=null}={}){const nodes=typ
 /** Click-to-enlarge for <a href="full.png"><img alt="..."></a> items inside [data-ui-lightbox]: one <dialog>; Esc, the backdrop and the close button shut it, arrows, buttons and a 48px swipe step through. Returns {open, close, dialog}, or null without items or <dialog>. */
 export function bindLightbox(root=document){const items=[...root.querySelectorAll("[data-ui-lightbox] a[href]")];if(!items.length||typeof HTMLDialogElement==="undefined")return null;const dialog=document.createElement("dialog");dialog.className="ui-lightbox";dialog.setAttribute("aria-label","Image viewer");dialog.innerHTML='<img alt=""><p class="ui-muted"></p><div class="ui-lightbox-bar"><button class="ui-button" type="button" data-step="-1" aria-label="Previous">\u2190</button><button class="ui-button" type="button" data-step="1" aria-label="Next">\u2192</button><button class="ui-button" type="button" data-step="0" aria-label="Close">\u00d7</button></div>';const img=dialog.querySelector("img"),note=dialog.querySelector("p");let at=0,x=null;const show=i=>{at=(i+items.length)%items.length;const a=items[at],t=a.querySelector("img");img.src=a.href;img.alt=note.textContent=t?t.alt:""};const open=i=>{show(i);if(!dialog.open)dialog.showModal()};items.forEach((a,i)=>a.addEventListener("click",e=>{e.preventDefault();open(i)}));dialog.addEventListener("click",e=>{const b=e.target.closest("[data-step]");if(b){const s=Number(b.dataset.step);if(s)show(at+s);else dialog.close()}else if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close()}});dialog.addEventListener("keydown",e=>{if(e.key==="ArrowLeft")show(at-1);if(e.key==="ArrowRight")show(at+1)});dialog.addEventListener("pointerdown",e=>{x=e.clientX});dialog.addEventListener("pointerup",e=>{if(x!==null&&Math.abs(e.clientX-x)>=48)show(at+(e.clientX<x?1:-1));x=null});document.body.append(dialog);return{open,close:()=>dialog.close(),dialog}}
 """,
+    "records.js": r"""/** Record boards: a text filter over table rows, per-field drafts kept in localStorage (best effort), and JSON export/import of those drafts. No fetch; values are text, never HTML. */
+const KEY=/^[A-Za-z0-9_.:/#@-]{1,200}$/;
+function storage(){try{const s=globalThis.localStorage;s.getItem("");return s}catch{return null}}
+function value(field){return field.type==="checkbox"?(field.checked?"1":""):field.value}
+function assign(field,text){if(field.type==="checkbox")field.checked=text==="1";else field.value=text;field.dispatchEvent(new Event("input",{bubbles:true}))}
+/** Hide rows whose text does not contain the query (case-insensitive); returns the number still shown. */
+export function filterRows(table,query){const q=String(query||"").trim().toLowerCase();let shown=0;for(const body of table.tBodies)for(const row of body.rows){const hit=!q||row.textContent.toLowerCase().includes(q);row.hidden=!hit;if(hit)shown++}return shown}
+/** input[data-ui-filter="#table"] filters that table as you type; data-ui-filter-count="#out" receives the shown count. */
+export function bindFilter(root=document){return[...root.querySelectorAll("input[data-ui-filter]")].map(input=>{const table=root.querySelector(input.dataset.uiFilter);if(!table)return null;const out=input.dataset.uiFilterCount?root.querySelector(input.dataset.uiFilterCount):null;const run=()=>{const n=filterRows(table,input.value);if(out)out.textContent=String(n)};input.addEventListener("input",run);run();return run}).filter(Boolean)}
+/** Fields with data-ui-draft="key" restore from and save to localStorage under scope:key. Returns the bound fields. */
+export function bindDrafts(root=document,{scope="web-ui-drafts"}={}){const store=storage();const fields=[...root.querySelectorAll("[data-ui-draft]")].filter(f=>KEY.test(f.dataset.uiDraft));for(const field of fields){const key=scope+":"+field.dataset.uiDraft;const saved=store?store.getItem(key):null;if(saved!==null)assign(field,saved);field.addEventListener("input",()=>{try{if(store)store.setItem(key,value(field))}catch{}})}return fields}
+/** Non-empty draft values keyed by their data-ui-draft name. */
+export function collectDrafts(root=document){const out={};for(const field of root.querySelectorAll("[data-ui-draft]")){const text=value(field);if(text!=="")out[field.dataset.uiDraft]=text}return out}
+/** Apply {key: text} to the matching draft fields; unknown keys are ignored. Returns the number applied. */
+export function applyDrafts(root,drafts){let n=0;if(!drafts||typeof drafts!=="object")return 0;for(const field of root.querySelectorAll("[data-ui-draft]")){const text=drafts[field.dataset.uiDraft];if(typeof text==="string"){assign(field,text);n++}}return n}
+/** [data-ui-export] downloads the drafts as JSON; input[type=file][data-ui-import] reads such a file back. */
+export function bindRecordsIO(root=document,{filename="records.json"}={}){for(const button of root.querySelectorAll("[data-ui-export]"))button.addEventListener("click",()=>{const blob=new Blob([JSON.stringify({schema:"web-ui-drafts/1",exported:new Date().toISOString(),drafts:collectDrafts(root)},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=button.dataset.uiExport||filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)});for(const input of root.querySelectorAll("input[type=file][data-ui-import]"))input.addEventListener("change",async()=>{const file=input.files&&input.files[0];if(!file)return;try{const data=JSON.parse(await file.text());applyDrafts(root,data&&data.drafts?data.drafts:data)}catch{}input.value=""})}
+/** Bind everything inside root; pages mark the board with data-ui-records so loading the module is enough. */
+export function mount(root=document,options={}){bindFilter(root);bindDrafts(root,options);bindRecordsIO(root,options);return root}
+if(typeof document!=="undefined"&&document.querySelector("[data-ui-records]")){const start=()=>mount(document);if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start,{once:true});else start()}
+""",
     "stub.js": r"""import{setText,prettyJson}from"./ui.js";
 /**
  * Bind one text input to an async or sync consumer handler.
@@ -358,7 +379,7 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
 }
 EMBEDDED_UI_JS = _JS["ui.js"]
 
-SHARED_SCRIPT_NAMES = ("ui.js", "stub.js", "repository-diagnostics.js", "navigation.js", "controls.js")
+SHARED_SCRIPT_NAMES = ("ui.js", "stub.js", "repository-diagnostics.js", "navigation.js", "controls.js", "records.js")
 # Pinned browser bundle for PptxGenJS 4.0.1, including its JSZip dependency.
 # sha384 covers the exact bytes of that jsDelivr URL (immutable npm version).
 _PPTXGENJS_URL = "https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js"
@@ -502,6 +523,12 @@ body[data-ui-theme="github-like"] .ui-tag{
 """,
     "themes/modern.css": r"""@layer theme{body[data-ui-theme="modern"]{color-scheme:dark}body[data-ui-theme="modern"] .ui-title::before,body[data-ui-theme="modern"] .ui-card>h2::before{content:"> ";color:var(--ui-accent)}body[data-ui-theme="modern"] .ui-panel,body[data-ui-theme="modern"] .ui-card{background:var(--ui-panel);box-shadow:4px 4px 0 rgba(88,166,255,.16)}body[data-ui-theme="modern"] .ui-tag::before{content:"#";color:var(--ui-accent)}}""",
 }
+_CSS["records.css"] = ("@layer components{.ui-records table.ui-table{border-collapse:collapse;width:100%;margin:8px 0}.ui-records .ui-table th,.ui-records .ui-table td{border:thin solid var(--ui-border);padding:8px;text-align:left;vertical-align:top;overflow-wrap:anywhere}"
+                       ".ui-records .ui-table caption{text-align:left;font-weight:600;padding:8px 0}.ui-records .ui-table tr[hidden]{display:none}.ui-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin:8px 0}"
+                       ".ui-stat .ui-stat-value{display:block;font-size:32px;line-height:40px}.ui-stat .ui-stat-label{display:block;color:var(--ui-muted)}.ui-stat .ui-stat-hint{display:block;font-size:.75rem;color:var(--ui-muted)}"
+                       ".ui-records-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}.ui-records-bar .ui-input{flex:1 1 240px}.ui-records-io{display:inline-flex;gap:8px}.ui-records [data-ui-draft]{width:100%;box-sizing:border-box}}")
+
+
 _CSS_CORE = ("tokens.css", "base.css", "components.css")
 
 
@@ -1000,6 +1027,88 @@ def details(summary: str, text: str = "", *, open: bool = False, trusted_html: s
     """Native disclosure, without JS. Pass renderer output via trusted_html explicitly."""
     body = f'<pre class="ui-output">{escape(text)}</pre>' if trusted_html is None else trusted_html
     return f'<details class="ui-panel"{" open" if open else ""}><summary>{escape(summary)}</summary>{body}</details>'
+
+
+def stat_tiles(items: tuple[tuple[str, object], ...] | tuple[tuple[str, object, str], ...]) -> str:
+    """Escaped grid of (label, value[, hint]) tiles using .ui-card; values are shown as text."""
+    tiles = []
+    for item in items:
+        if len(item) not in (2, 3):
+            raise ValueError("a stat tile is (label, value) or (label, value, hint)")
+        label, value, *rest = item
+        hint = f'<span class="ui-stat-hint">{escape(rest[0])}</span>' if rest else ""
+        tiles.append(f'<article class="ui-card ui-stat"><b class="ui-stat-value">{escape(str(value))}</b>'
+                     f'<span class="ui-stat-label">{escape(label)}</span>{hint}</article>')
+    return f'<div class="ui-grid ui-stats">{"".join(tiles)}</div>'
+
+
+def data_table(columns: tuple[str, ...], rows, *, id: str, caption: str | None = None,
+               trusted_cells: bool = False, row_ids: tuple[str, ...] | None = None) -> str:
+    """Escaped table (.ui-table) for records.js filtering; every row needs one cell per column.
+
+    ``trusted_cells`` inserts cell strings verbatim (caller-audited HTML such as ``badge()`` output).
+    ``row_ids`` sets ``data-ui-row`` on each body row so scripts can address one record.
+    """
+    identity = _element_id(id)
+    if not columns:
+        raise ValueError("columns must not be empty")
+    rows = [tuple(row) for row in rows]
+    if any(len(row) != len(columns) for row in rows):
+        raise ValueError("every row needs one cell per column")
+    if row_ids is not None and len(row_ids) != len(rows):
+        raise ValueError("row_ids must match rows")
+    cell = (lambda text: str(text)) if trusted_cells else (lambda text: escape(str(text)))
+    head = "".join(f"<th scope=\"col\">{escape(column)}</th>" for column in columns)
+    body = []
+    for index, row in enumerate(rows):
+        marker = f' data-ui-row="{escape(row_ids[index], quote=True)}"' if row_ids is not None else ""
+        body.append(f"<tr{marker}>" + "".join(f"<td>{cell(text)}</td>" for text in row) + "</tr>")
+    title = f"<caption>{escape(caption)}</caption>" if caption else ""
+    return (f'<table class="ui-table" id="{identity}">{title}<thead><tr>{head}</tr></thead>'
+            f'<tbody>{"".join(body)}</tbody></table>')
+
+
+def filter_input(table_id: str, *, id: str = "filter", label: str = "絞り込み",
+                 count_id: str | None = None) -> str:
+    """Search box that records.js binds to ``#table_id``; ``count_id`` names an element that shows the row count."""
+    target = _element_id(table_id)
+    identity = _element_id(id)
+    count = f' data-ui-filter-count="#{_element_id(count_id)}"' if count_id else ""
+    return (f'<label for="{identity}">{escape(label)}</label> '
+            f'<input class="ui-input" id="{identity}" name="{identity}" type="search" data-ui-filter="#{target}"{count}>')
+
+
+def _draft_key(key: str) -> str:
+    if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_.:/#@-]{1,200}", key):
+        raise ValueError("draft key must be a short ASCII identifier")
+    return key
+
+
+def draft_textarea(*, key: str, id: str, label: str, value: str = "", rows: int = 3) -> str:
+    """textarea() whose value records.js keeps as a browser-local draft under ``key``."""
+    return textarea(id=id, label=label, value=value, rows=rows).replace(
+        "<textarea ", f'<textarea data-ui-draft="{_draft_key(key)}" ', 1)
+
+
+def draft_select(options: tuple[tuple[str, str], ...], *, key: str, id: str, label: str,
+                 selected: str | None = None) -> str:
+    """select() whose choice records.js keeps as a browser-local draft under ``key``."""
+    return select(options, id=id, label=label, selected=selected).replace(
+        "<select ", f'<select data-ui-draft="{_draft_key(key)}" ', 1)
+
+
+def records_io(*, export_label: str = "↓ JSON", import_label: str = "↑ JSON", filename: str = "records.json") -> str:
+    """Export/import controls for the drafts on a records board (records.js)."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+\.json", filename):
+        raise ValueError("filename must be a plain .json name")
+    return (f'<span class="ui-records-io"><button class="ui-button" type="button" data-ui-export="{escape(filename, quote=True)}">'
+            f'{escape(export_label)}</button><label class="ui-button">{escape(import_label)}'
+            f'<input type="file" accept="application/json" data-ui-import hidden></label></span>')
+
+
+def records_board(trusted_html: str, *, id: str = "records") -> str:
+    """Section marked data-ui-records so that loading records.js binds its filters, drafts and JSON controls."""
+    return f'<section class="ui-records" id="{_element_id(id)}" data-ui-records>{trusted_html}</section>'
 
 
 def plotly_figure(

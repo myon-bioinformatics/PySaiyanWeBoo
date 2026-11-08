@@ -630,6 +630,22 @@ explicitly loaded `controls.js` binds section selection to text output; native
 controls and disclosure work without JS. See [one-liners and the Markdown
 boundary](docs/python-controls.md).
 
+### Records boards from Python
+
+`stat_tiles`, `data_table`, `filter_input`, `draft_textarea`, `draft_select`, `records_io` and
+`records_board` build a read-only record board (PR / Issue queues, audit tables) from Python
+data; the optional `records.js` module adds a text filter, browser-local drafts
+(`data-ui-draft`, localStorage, best effort) and JSON export/import of those drafts. No fetch
+and no HTML from data: GitHub or other observations are gathered by the Python producer.
+
+```bash
+python -S -c 'import web_ui as ui
+rows=[("Aoi", "#1", ui.badge("失敗")), ("markdown", "#2", ui.badge("成功"))]
+body=ui.stat_tiles((("PR", len(rows)), ("CI失敗", 1)))+ui.filter_input("prs", count_id="n")+"<span id=n></span>"+ui.data_table(("repo","PR","CI"), rows, id="prs", trusted_cells=True, row_ids=("Aoi#1","markdown#2"))+ui.draft_textarea(key="Aoi#1:notes", id="notes", label="メモ")+ui.records_io()
+print(ui.render_document(trusted_html=ui.records_board(body), css=ui.bundled_css(), scripts=ui.shared_scripts(".", names=("records.js",))))' > board.html
+python -S web_ui.py --site .   # writes js/records.js next to it
+```
+
 ## Focused test discovery
 
 See [standard-library discovery commands](docs/unittest-discovery.md) for
