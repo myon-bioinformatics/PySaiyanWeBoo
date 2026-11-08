@@ -1067,7 +1067,7 @@ def table_spec():
 
 class TableBrowserTests(unittest.TestCase):
     """component_document("table", spec): an escaped table in its own scroller, styled by shell.css under every theme, no script.
-    The GIF walks the themes and scrolls the table sideways on a phone; ``WEB_UI_GIFS="DIR [--timestamp] [--commit] [--prefix P] [--suffix S] [--force]"``
+    The GIF walks the themes and scrolls the table sideways on a phone; ``WEB_UI_GIFS="DIR [--timestamp] [--git-commit] [--prefix P] [--suffix S] [--force]"``
     keeps it as DIR/<P>component-table<S>[-<timestamp>][-<commit>].gif through record_demo.gif_targets_from (the recorder's own naming rules)."""
 
     def test_the_table_scrolls_inside_its_box_on_a_phone_and_follows_every_theme(self):

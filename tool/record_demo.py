@@ -1,17 +1,17 @@
 """Record the school world's (and the overworld's) operations as demo GIFs (for the README).
 
     python tool/record_demo.py docs/demo [--only pick keys ...] [--chrome PATH] [--width 480] [--force]
-    python tool/record_demo.py runs --timestamp --commit [--prefix ci-] [--suffix=-chrome]   # runs/ci-school-pick-chrome-20261108T113412Z-288cbed.gif
+    python tool/record_demo.py runs --timestamp --git-commit [--prefix ci-] [--suffix=-chrome]   # runs/ci-school-pick-20261108T113412Z-288cbed-chrome.gif
 
 Playwright drives a real Chrome through each scene. The ``Camera`` keeps a screenshot with its real timestamp whenever a scene waits,
 so a GIF plays at the speed the page really moved. Encoding follows Ironmate's ``png_zoom_gif.py``: one shared palette (no dither,
 so frames never flicker), delays in 10 ms units (never below 20 ms, which browsers stretch), the animation loops, and an existing
-output is refused unless ``--force``. File names are ``<prefix><world>-<scene><suffix>[-<timestamp>][-<commit>].gif``: ``--prefix`` and
-``--suffix`` are optional name parts, ``--timestamp`` appends when the run started (UTC, ISO 8601 basic: ``20261108T113412Z``) and
-``--commit`` the git commit the pages came from (``288cbed``, ``-dirty`` with uncommitted changes), so repeated runs, by hand or by an
+output is refused unless ``--force``. File names are ``<prefix><world>-<scene>[-<timestamp>][-<git-commit>]<suffix>.gif``: ``--prefix`` and
+``--suffix`` are optional name parts (the suffix ends the name), ``--timestamp`` adds when the run started (UTC, ISO 8601 basic: ``20261108T113412Z``) and
+``--git-commit`` the git commit the pages came from (``288cbed``, ``-dirty`` with uncommitted changes), so repeated runs, by hand or by an
 agent, keep every GIF without ``--force`` and each name says when and from which code it was recorded. ``add_gif_arguments``,
 ``gif_targets`` and ``gif_targets_from`` are those rules as functions, so the browser tests name their GIFs the same way from
-``WEB_UI_GIFS="DIR [--timestamp] [--commit] [--prefix P] [--suffix S] [--force]"``. Unlike that zoom (every pixel changes), a walking player changes few pixels, so frames are
+``WEB_UI_GIFS="DIR [--timestamp] [--git-commit] [--prefix P] [--suffix S] [--force]"``. Unlike that zoom (every pixel changes), a walking player changes few pixels, so frames are
 written as deltas (``optimize=True``): about a third of the size, decoding to exactly the same pictures. The zoom step
 (``cam.zoom``) is Ironmate's smooth zoom-in, kept to what the demos need and run through this same encoder, not a second copy of
 that tool; this repository is the canonical home of both. Needs Playwright and Pillow, like the browser tests. Scenes are ordinary functions, so a new
@@ -494,15 +494,15 @@ def name_part(value):
 
 
 def add_gif_arguments(parser):
-    """The output arguments shared by the CLI and ``WEB_UI_GIFS``: ``out``, ``--prefix``, ``--suffix``, ``--timestamp``, ``--commit``, ``--force``."""
-    parser.add_argument("out", type=Path, help="directory for <prefix><world>-<scene><suffix>[-<timestamp>][-<commit>].gif")
+    """The output arguments shared by the CLI and ``WEB_UI_GIFS``: ``out``, ``--prefix``, ``--suffix``, ``--timestamp``, ``--git-commit``, ``--force``."""
+    parser.add_argument("out", type=Path, help="directory for <prefix><world>-<scene>[-<timestamp>][-<git-commit>]<suffix>.gif")
     parser.add_argument("--prefix", type=name_part, default="", metavar="TEXT", help="put TEXT before every file name")
     parser.add_argument("--suffix", type=name_part, default="", metavar="TEXT",
-                        help="put TEXT after the scene name (write --suffix=-x when TEXT starts with -)")
+                        help="end every file name with TEXT, after the timestamp and commit (write --suffix=-x when TEXT starts with -)")
     parser.add_argument("--timestamp", action="store_true",
-                        help="append when this run started, in UTC as ISO 8601 basic format (-20261108T113412Z), so every run keeps its own file")
-    parser.add_argument("--commit", action="store_true",
-                        help="append the git commit the pages were built from (-288cbed, or -288cbed-dirty with uncommitted changes)")
+                        help="add when this run started, in UTC as ISO 8601 basic format (-20261108T113412Z), so every run keeps its own file")
+    parser.add_argument("--git-commit", action="store_true",
+                        help="add the git commit the pages were built from (-288cbed, or -288cbed-dirty with uncommitted changes); records nothing in git")
     parser.add_argument("--force", action="store_true", help="replace existing GIFs")
     return parser
 
@@ -521,14 +521,14 @@ def source_commit(root=ROOT):
         head = subprocess.run(["git", "-C", str(root), "rev-parse", "--short=7", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
         dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True, check=True).stdout.strip()
     except (OSError, subprocess.CalledProcessError) as exc:
-        raise ValueError(f"--commit needs a git checkout at {root}") from exc
+        raise ValueError(f"--git-commit needs a git checkout at {root}") from exc
     return head + ("-dirty" if dirty else "")
 
 
-def gif_targets(directory, stems, *, prefix="", suffix="", timestamp=False, commit=False, force=False, now=None, revision=None):
-    """``{stem: directory/<prefix><stem><suffix>[-<timestamp>][-<commit>].gif}``, one timestamp and commit for the whole batch; creates the directory.
+def gif_targets(directory, stems, *, prefix="", suffix="", timestamp=False, git_commit=False, force=False, now=None, revision=None):
+    """``{stem: directory/<prefix><stem>[-<timestamp>][-<git-commit>]<suffix>.gif}``, one timestamp and commit for the whole batch; creates the directory.
 
-    ``timestamp`` appends ``run_timestamp(now)`` and ``commit`` appends ``revision`` (default ``source_commit()``), so repeated runs get files
+    ``timestamp`` adds ``run_timestamp(now)`` and ``git_commit`` adds ``revision`` (default ``source_commit()``), so repeated runs get files
     that say when and from which code they were recorded. Without ``force`` an existing target raises FileExistsError before anything is written.
     """
     directory = Path(directory)
@@ -536,8 +536,8 @@ def gif_targets(directory, stems, *, prefix="", suffix="", timestamp=False, comm
     if len(set(stems)) != len(stems) or not all(NAME_PART.fullmatch(s) and s for s in stems):
         raise ValueError("stems are distinct file-name parts (letters, digits, _ . -)")
     name_part(prefix), name_part(suffix)
-    tail = (f"-{run_timestamp(now)}" if timestamp else "") + (f"-{revision or source_commit()}" if commit else "")
-    targets = {stem: directory / f"{prefix}{stem}{suffix}{tail}.gif" for stem in stems}
+    labels = (f"-{run_timestamp(now)}" if timestamp else "") + (f"-{revision or source_commit()}" if git_commit else "")
+    targets = {stem: directory / f"{prefix}{stem}{labels}{suffix}.gif" for stem in stems}
     if not force and any(p.exists() for p in targets.values()):
         raise FileExistsError("refusing to overwrite " + ", ".join(str(p) for p in targets.values() if p.exists())
                               + " (add --force to replace it, or --timestamp to keep each run)")
@@ -546,20 +546,20 @@ def gif_targets(directory, stems, *, prefix="", suffix="", timestamp=False, comm
 
 
 def gif_targets_from(spec, stems, *, now=None, revision=None):
-    """``gif_targets`` from one setting string, ``"DIR [--timestamp] [--commit] [--prefix P] [--suffix S] [--force]"`` (``WEB_UI_GIFS`` in the browser tests).
+    """``gif_targets`` from one setting string, ``"DIR [--timestamp] [--git-commit] [--prefix P] [--suffix S] [--force]"`` (``WEB_UI_GIFS`` in the browser tests).
 
     The words are split like a shell command line and parsed by the same argparse definitions as the CLI, so a bad option raises
     argparse.ArgumentError here instead of exiting.
     """
     parser = add_gif_arguments(argparse.ArgumentParser(prog="WEB_UI_GIFS", add_help=False, allow_abbrev=False, exit_on_error=False))
     args = parser.parse_args(shlex.split(spec))
-    return gif_targets(args.out, stems, prefix=args.prefix, suffix=args.suffix, timestamp=args.timestamp, commit=args.commit,
+    return gif_targets(args.out, stems, prefix=args.prefix, suffix=args.suffix, timestamp=args.timestamp, git_commit=args.git_commit,
                        force=args.force, now=now, revision=revision)
 
 
-def record(out, names=None, *, chrome=None, width=None, force=False, browser=None, prefix="", suffix="", timestamp=False, commit=False):
-    """Record the named scenes (all by default) into out/<prefix><world>-<name><suffix>[-<timestamp>][-<commit>].gif (school-keys.gif,
-    overworld-lands.gif); returns the written paths. ``prefix``, ``suffix``, ``timestamp`` and ``commit`` are ``gif_targets``' name parts.
+def record(out, names=None, *, chrome=None, width=None, force=False, browser=None, prefix="", suffix="", timestamp=False, git_commit=False):
+    """Record the named scenes (all by default) into out/<prefix><world>-<name>[-<timestamp>][-<git-commit>]<suffix>.gif (school-keys.gif,
+    overworld-lands.gif); returns the written paths. ``prefix``, ``suffix``, ``timestamp`` and ``git_commit`` are ``gif_targets``' name parts.
 
     ``browser`` is an already running Playwright Chromium (the browser tests share theirs); otherwise one is launched and closed here.
     """
@@ -569,7 +569,7 @@ def record(out, names=None, *, chrome=None, width=None, force=False, browser=Non
         raise ValueError("unknown scene: " + ", ".join(unknown) + " (have " + ", ".join(SCENES) + ")")
     out = Path(out)
     stems = {n: f"{SCENES[n].world}-{n}" for n in names}
-    paths = gif_targets(out, stems.values(), prefix=prefix, suffix=suffix, timestamp=timestamp, commit=commit, force=force)
+    paths = gif_targets(out, stems.values(), prefix=prefix, suffix=suffix, timestamp=timestamp, git_commit=git_commit, force=force)
     targets = {n: paths[stems[n]] for n in names}
     with tempfile.TemporaryDirectory() as tmp_name, contextlib.ExitStack() as stack:
         tmp = Path(tmp_name)
@@ -601,7 +601,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         for path in record(args.out, args.only, chrome=args.chrome, width=args.width, force=args.force,
-                           prefix=args.prefix, suffix=args.suffix, timestamp=args.timestamp, commit=args.commit):
+                           prefix=args.prefix, suffix=args.suffix, timestamp=args.timestamp, git_commit=args.git_commit):
             print(f"🎞️ {path}  📦 {path.stat().st_size // 1024} KiB")
     except (ValueError, OSError, ImportError, TimeoutError) as exc:
         parser.exit(1, f"⛔ {exc}\n")
