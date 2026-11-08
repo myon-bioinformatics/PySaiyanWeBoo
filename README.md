@@ -579,7 +579,9 @@ Existing `ui.js` text/clipboard helpers, `stub.js` form binding, and
 
 📋 `web_ui.table(headers, rows, caption=…, row_classes=…)` renders a `.ui-table` (escaped cells; `trusted_html=True` for
 cells that are already HTML). Consumers' report pages (BrowserTestKit's platform matrix and app digest, markdown's
-real-world report, ascii_artist's captures) build on `render_document` + `bundled_css()` + this instead of their own CSS.
+real-world report, ascii_artist's captures) build on `render_document` + `core_css()` + this instead of their own CSS.
+`core_css(theme="modern")` is the ~4 KB bundle (tokens, base, components, one theme) for such pages; `bundled_css()` is every
+stylesheet. The status classes `ui-pass` / `ui-fail` / `ui-changed` style any element, including a `.ui-tag` badge.
 
 🩺 The repository-diagnostics page itself is one function: `web_ui.repository_diagnostics_page("owner/repo")`
 returns the self-contained HTML (bundled CSS and `repository-diagnostics.js` embedded, nothing from a CDN) that

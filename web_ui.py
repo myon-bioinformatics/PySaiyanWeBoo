@@ -564,6 +564,21 @@ def bundled_css() -> str:
     return "".join(parts)
 
 
+def core_css(theme: str = "modern") -> str:
+    """The small bundle for a consumer's report page: tokens, base, components and one theme (about 4 KB),
+    against ``bundled_css()``'s every stylesheet (tens of KB). ``theme`` is a ``themes/<name>.css`` source or a
+    ``CANDIDATE_THEMES`` palette (those live in tokens.css already); ``render_document(theme=...)`` must name
+    the same theme for it to apply."""
+    source = f"themes/{theme}.css"
+    if source not in _CSS and theme not in CANDIDATE_THEMES:
+        raise ValueError(f"unknown theme: {theme!r}")
+    order = [*_CSS_CORE, *([source] if source in _CSS else [])]
+    parts = ["@layer base,components,theme;\n"]
+    for name in order:
+        parts.append(f"/* css/{name} */\n{css_source(name).replace(chr(13) + chr(10), chr(10)).strip(chr(10))}\n")
+    return "".join(parts)
+
+
 def _require_local_script_path(value: str, *, label: str) -> None:
     # Check before urlsplit, which strips some whitespace/control characters.
     # Browsers also treat backslashes as slashes in HTTP(S) URL references.

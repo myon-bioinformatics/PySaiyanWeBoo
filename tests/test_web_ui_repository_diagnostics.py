@@ -85,3 +85,15 @@ def test_terminal_is_a_token_only_theme():
     assert 'body[data-ui-theme="terminal"]{--ui-bg:#0a0e10;' in tokens and "--ui-font:var(--ui-font-mono)" in tokens
     assert "color-scheme:dark" in tokens.split('body[data-ui-theme="terminal"]')[1].split("}")[0]
     assert '<body data-ui-theme="terminal">' in web_ui.render_document("x", theme="terminal")
+
+
+def test_core_css_is_the_small_bundle():
+    import pytest
+    core = web_ui.core_css()
+    assert core.startswith("@layer base,components,theme;") and "/* css/themes/modern.css */" in core
+    assert ".ui-table{" in core and ".ui-pass{" in core and "/* css/shell.css */" not in core
+    assert len(core) < 6000 < len(web_ui.bundled_css())
+    assert 'body[data-ui-theme="terminal"]' in web_ui.core_css("terminal") and "themes/" not in web_ui.core_css("terminal")
+    with pytest.raises(ValueError):
+        web_ui.core_css("nope")
+    assert ".ui-tag.ui-pass{" in web_ui.css_source("components.css")
