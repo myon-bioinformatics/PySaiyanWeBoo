@@ -543,7 +543,7 @@ class WorldTests(unittest.TestCase):
         for word in ("canvas", "drawImage", "FileReader", "ImageCapture", "MediaRecorder", "toDataURL", "toBlob", "createImageBitmap", "arrayBuffer", "readAsDataURL"):
             self.assertTrue(word not in web_ui.WORLD_JS, word)
         self.assertEqual(sorted(re.findall(r"localStorage\.(\w+)", web_ui.WORLD_JS)), ["getItem", "setItem"])
-        self.assertEqual(re.findall(r"save\(\{(\w+)", web_ui.WORLD_JS), ["lang", "fav", "names"])  # only these three preferences are written
+        self.assertEqual(re.findall(r"save\(\{(\w+)", web_ui.WORLD_JS), ["alpha", "lang", "fav", "names"])  # only these four preferences are written
         self.assertIn("'ui-world:'+el.id", web_ui.WORLD_JS)
         self.assertEqual(web_ui.WORLD_JS.count("fetch("), 1)
         for needle in ('method:"GET"', 'credentials:"omit"', 'cache:"no-store"', 'referrerPolicy:"no-referrer"'):

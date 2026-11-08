@@ -123,3 +123,27 @@ def test_the_curl_panel_and_theme_switch_are_builders_with_the_hooks_their_modul
             ui.curl_panel_html(bad)
     switch = ui.theme_switch_html()
     assert switch.count('name="ui-theme"') == 2 + len(ui.CANDIDATE_THEMES) and switch.count(" checked>") == 1 and 'value="modern" checked' in switch
+
+
+def test_dial_html_is_a_range_the_dial_draws_and_validates_its_numbers():
+    """dial_html(): a rotary dial (DIAL_CSS, bindDial from dial.js) over a plain range input that keeps the value, keys, form and aria-label."""
+    html = ui.dial_html("zoom", minimum=0.1, maximum=4, step=0.05, value=1, label="Zoom", attrs='data-t="zoom"')
+    assert html == '<span class="ui-dial" data-ui-dial><input type="range" name="zoom" min="0.1" max="4" step="0.05" value="1" aria-label="Zoom" data-t="zoom"></span>'
+    assert ".ui-dial::after{" in ui.DIAL_CSS and "rotate(var(--ui-dial-angle,-135deg))" in ui.DIAL_CSS
+    assert ui.js_source("dial.js") == ui.DIAL_JS and "export function bindDial" in ui.DIAL_JS
+    for bad in ({"name": "a b"}, {"minimum": 5, "maximum": 5}, {"step": 0}, {"value": 200}):
+        with pytest.raises(ValueError):
+            ui.dial_html(**{"name": "ok", **bad})
+
+
+@pytest.mark.skipif(not node26(), reason="Node 26+ not available")
+def test_dial_angle_and_value_round_trip_in_node(tmp_path):
+    """dialAngle maps a value onto -135..135 degrees; dialValue maps an angle back, snapped to the step and clamped."""
+    (tmp_path / "dial.mjs").write_text(ui.js_source("dial.js"), encoding="utf-8")
+    (tmp_path / "run.mjs").write_text(
+        'import {dialAngle, dialValue} from "./dial.mjs";\n'
+        "console.log(JSON.stringify([dialAngle(0, 0, 100), dialAngle(50, 0, 100), dialAngle(100, 0, 100), dialAngle(7, 7, 7), dialAngle(500, 0, 100),"
+        " dialValue(-135, 0, 100, 1), dialValue(0, 0, 100, 1), dialValue(135, 0, 100, 1), dialValue(200, 0, 100, 1), dialValue(0, 0.1, 4, 0.05), dialValue(1, 0, 1, 0.3)]));\n",
+        encoding="utf-8")
+    done = subprocess.run([node26(), str(tmp_path / "run.mjs")], capture_output=True, text=True, timeout=60, check=True)
+    assert json.loads(done.stdout) == [-135, 0, 135, -135, 135, 0, 50, 100, 100, 2.05, 0.6]

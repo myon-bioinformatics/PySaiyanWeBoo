@@ -69,12 +69,12 @@ through `:target`. `random_theme(seed)` and `--theme-wall N` show seeded random 
 
 Seed dial: `theme.js` is Python's own generator written out for the page (CPython's Mersenne Twister seeded as `random.Random(int)` seeds it, the same steps), so
 `randomTheme(seed)` gives exactly the tokens `random_theme(seed)` gives (checked on thousands of seeds, negative and 2^53 ones included) and `bindSeed()` wears any seed
-live with no reload: `seed_dial_html()` (a dial), `seed_roll_html()` (🎲), a tap on any `[data-seed]` cell of the wall, ✖️ or a named theme (`theme_switch_html()`) to go back.
+live with no reload: `seed_dial_html()` (a slider), `seed_roll_html()` (🎲), a tap on any `[data-seed]` cell of the wall, ✖️ or a named theme (`theme_switch_html()`) to go back.
 The seed is remembered in this browser. Python stays the reference; the page never invents a palette of its own.
 
 Front page layout: `front_document(main, rooms, title=...)` is one view that fills the viewport under a 48px bar, and a 🚪 menu of rooms that open over it through `:target`
 (no script; ✖️ closes). A room is `{"id", "emoji", "title", "text", "html"}`: add one to put something on the page, improve a builder to improve the page.
-`index.html` is exactly that call over the library's builders (`world_html`, `stub_html`, `curl_panel_html`, `theme_switch_html`, `seed_dial_html`, `theme_wall`), and a test
+`index.html` is exactly that call over the library's builders (`world_html`, `stub_html`, `curl_panel_html`, `theme_switch_html`, `seed_dial_html`, `theme_wall`; `dial_html` + `dial.js` is the rotary dial the map's 🔍 uses), and a test
 requires every one of their outputs to be in it. `render_document` takes optional `favicon` / `touch_icon` PNG links for such pages.
 [Motion and clock ownership](docs/world-motion.md) explains Python-generated plans, the browser
 projection, keyboard/reduced-motion controls, and daily countdown/timezone semantics.
