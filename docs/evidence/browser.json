@@ -1,16 +1,16 @@
 {
   "schema": "btk-evidence-gif/1",
   "gif": "browser.gif",
-  "bytes": 580624,
-  "sha256": "ba42394dd4a48f4120b5472ebeedb2cbe9a782f8587cb1c616d627f779672fe7",
-  "frames": 24,
+  "bytes": 683593,
+  "sha256": "8afcd3b7cdd9ac91dcec7fde1d013067699e2213bbd2aa40d97f09a73bedc135",
+  "frames": 27,
   "canvas": "720x512",
   "browser": "chromium 153.0.8010.12",
   "recorded": "2026-11-08",
-  "commit": "3c6951a7ca6b01f6620934133beac53447cc08ee",
+  "commit": null,
   "mapped": [],
   "summary": {
-    "pass": 24,
+    "pass": 26,
     "fail": 0
   },
   "shots": [
@@ -22,7 +22,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🏠 examples",
@@ -32,7 +33,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "📜 example",
@@ -42,7 +44,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🐙 github-like",
@@ -52,7 +55,32 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+    },
+    {
+      "label": "🧩 parts × themes",
+      "url": "/examples/parts.html",
+      "viewport": "1280x800",
+      "steps": [
+        "click text=terminal"
+      ],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+    },
+    {
+      "label": "📱 parts × themes",
+      "url": "/examples/parts.html",
+      "viewport": "392x848",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🧩 showcase",
@@ -62,7 +90,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🧱 patterns",
@@ -72,7 +101,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🛝 playground",
@@ -82,7 +112,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🖥️ screens",
@@ -92,7 +123,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🚪 door",
@@ -102,7 +134,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "📐 coordinates",
@@ -112,7 +145,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🕒 timeline",
@@ -122,7 +156,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🖼️ image-studio",
@@ -132,7 +167,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "📷 photo-studio",
@@ -142,7 +178,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🎛️ composition-studio",
@@ -152,7 +189,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🎵 play-studio",
@@ -162,7 +200,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "📋 clipboard-shelf",
@@ -172,7 +211,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🧪 mcp-lab",
@@ -182,7 +222,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🔌 mcp-stub",
@@ -192,7 +233,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🔗 api-stub",
@@ -202,7 +244,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "🧾 test-report",
@@ -212,7 +255,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "📱 top",
@@ -222,7 +266,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "📱 examples",
@@ -232,7 +277,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "📱 door",
@@ -242,7 +288,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     },
     {
       "label": "📱 screens",
@@ -252,7 +299,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
     }
   ],
   "plan": [
@@ -275,6 +323,21 @@
       "label": "🐙 github-like",
       "url": "/examples/github-like.html",
       "viewport": "1280x800"
+    },
+    {
+      "label": "🧩 parts × themes",
+      "url": "/examples/parts.html",
+      "viewport": "1280x800",
+      "steps": [
+        {
+          "click": "text=terminal"
+        }
+      ]
+    },
+    {
+      "label": "📱 parts × themes",
+      "url": "/examples/parts.html",
+      "viewport": "392x848"
     },
     {
       "label": "🧩 showcase",

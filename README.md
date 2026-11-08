@@ -609,6 +609,10 @@ every string escaped and every link relative or HTTPS, with a brand theme (`them
 (`layouts=`). `python -S web_ui.py --example page` prints a spec; `--page spec.json [--brand brand.json --layouts
 page-layouts.json]` renders it from the shell or Node, so a report script owns only its data.
 
+🧩 `parts_document()` (`examples/parts.html`, `--parts`) is the regression baseline: every block of the `page` example under every
+theme (`PARTS_THEMES`, plus a `--brand`), each in its own sandboxed frame with the layout radios inside. BrowserTestKit
+records it in this repository's GIF evidence; a consumer compares its own page against the frame that uses its theme.
+
 The core also carries `@media print` (white page, `.ui-no-print` / `.ui-print-only`), `prefers-reduced-motion` (animations and
 transitions off) and `theme="auto"` (the dark modern palette, or github-like when the browser prefers light).
 

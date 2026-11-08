@@ -1222,6 +1222,34 @@ def page_document(spec: Any, *, layouts: Any = None) -> str:
                            touch_icon=_spec_href(spec["icon"]) if "icon" in spec else None)
 
 
+PARTS_THEMES = (*THEMES, *CANDIDATE_THEMES, AUTO_THEME)
+
+
+def parts_document(*, spec: Any = None, layouts: Any = None, themes: Sequence[str] = PARTS_THEMES) -> str:
+    """The visual-regression baseline: one page showing every block of a ``web-ui-page/1`` spec (default: the ``page``
+    example, which uses every block kind) under every theme, each in its own sandboxed ``srcdoc`` frame with the
+    layout presets (default: ``page-layouts``) switchable inside. BrowserTestKit screenshots it per commit and a
+    consumer compares its own page against the frame that uses its theme. No network, no scripts."""
+    spec = EXAMPLES["page"] if spec is None else spec
+    layouts = EXAMPLES["page-layouts"] if layouts is None else layouts
+    frames = []
+    for theme in themes:
+        if theme not in PARTS_THEMES and theme not in REGISTERED_THEMES:
+            raise ValueError(f"unknown theme: {theme!r}")
+        inner = page_document({**spec, "theme": theme}, layouts=layouts)
+        frames.append(f'<section class="ui-parts-frame" id="theme-{theme}"><h2>{escape(theme)}</h2>'
+                      f'<iframe title="{escape(theme, quote=True)}" sandbox="allow-same-origin" loading="lazy" '
+                      f'srcdoc="{escape(inner, quote=True)}"></iframe></section>')
+    nav = " · ".join(f'<a href="#theme-{escape(theme, quote=True)}">{escape(theme)}</a>' for theme in themes)
+    body = ('<main class="ui-page ui-parts"><h1 class="ui-title">Parts × themes × layouts</h1>'
+            f'<p class="ui-muted">Every block of <code>web-ui-page/1</code> under every theme; the layout radios inside each frame '
+            f'switch its presets. Screenshot this page to see a change before it reaches a consumer.</p><p>{nav}</p>'
+            + "".join(frames) + "</main>")
+    css = (core_css() + ".ui-parts{--ui-max:1280px}.ui-parts-frame{margin:var(--ui-space) 0}.ui-parts-frame h2{margin:0 0 .25rem}"
+           ".ui-parts-frame iframe{width:100%;height:720px;border:1px solid var(--ui-border);background:#fff}")
+    return render_document(trusted_html=body, title="PySaiyanWeBoo parts", css=css)
+
+
 def catalog_document(spec: Any, *, theme: str = "modern") -> str:
     """Build a self-contained, script-free catalog from consumer-owned data.
 
@@ -17346,7 +17374,7 @@ def _example_cards() -> str:
     return ('<section class="ui-grid"><article class="ui-card"><h2>Components</h2><p>Tokens, panels, cards, tags, controls and output surfaces.</p>'
             '<span class="ui-tag">modern</span> <span class="ui-tag">static</span></article>'
             '<article class="ui-card"><h2>Stub examples</h2><p><a href="./mcp-stub.html">MCP Stub</a> · <a href="./api-stub.html">API Stub</a></p></article>'
-            '<article class="ui-card"><h2>Themes</h2><p><a href="./github-like.html">GitHub-like theme</a></p></article>'
+            '<article class="ui-card"><h2>Themes</h2><p><a href="./github-like.html">GitHub-like theme</a> · <a href="./parts.html">Parts × themes × layouts</a>: every block under every theme, the regression baseline.</p></article>'
             '<article class="ui-card"><h2>App shell</h2><p><a href="./showcase.html">Showcase</a>: header, rail or bottom bar, sections.</p></article>'
             '<article class="ui-card"><h2>Clipboard shelf</h2><p><a href="./clipboard-shelf.html">Shelf and prompt workbench</a>: paste, filter, copy a bundle.</p></article>'
             '<article class="ui-card"><h2>Door-to-Door</h2><p><a href="./door.html">Pull-down and emoji transitions</a>: A → B, A ↔ B.</p></article>'
@@ -17402,6 +17430,7 @@ def example_pages() -> dict[str, str]:
         "examples/patterns.html": patterns_document(),
         "examples/screens.html": screens_document(),
         "examples/image-studio.html": imagestudio_document(),
+        "examples/parts.html": parts_document(),
         "contract/v1/example.html": page(contract, "web-ui HTML contract v1 fixture"),
         "index.html": _index_page(),
     }
@@ -18174,6 +18203,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--css", type=Path, help="trusted CSS file to embed")
     parser.add_argument("--catalog", type=Path, metavar="FILE",
                         help="print a script-free page for a web-ui-catalog/1 JSON spec and exit")
+    parser.add_argument("--parts", action="store_true", help="print the parts × themes × layouts page (see parts_document; --brand adds a registered theme) and exit")
     parser.add_argument("--page", type=Path, metavar="FILE",
                         help="print a self-contained page for a web-ui-page/1 JSON spec (see page_document; --brand registers its theme, --layouts adds presets) and exit")
     parser.add_argument("--world", type=Path, metavar="FILE",
@@ -18258,6 +18288,17 @@ def main(argv: list[str] | None = None) -> int:
         return _reports_main(parser, args)
     if args.command:
         parser.error("unexpected arguments: " + " ".join(args.command))
+    if args.parts:
+        try:
+            themes = list(PARTS_THEMES)
+            if args.brand:
+                brand = json.loads(args.brand.read_text(encoding="utf-8"))
+                theme_css(str(brand["name"]), dict(brand["tokens"]))
+                themes.append(str(brand["name"]))
+            sys.stdout.write(parts_document(themes=themes))
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            parser.error(str(exc))
+        return 0
     if args.page:
         try:
             spec = json.loads(args.page.read_text(encoding="utf-8"))
