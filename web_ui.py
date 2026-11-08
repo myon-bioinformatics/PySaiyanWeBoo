@@ -3314,6 +3314,13 @@ def _world_emoji(value: Any) -> str:
     return value
 
 
+def _world_mark(value: Any) -> str:
+    """A spot's mark: the emoji (or 1..2 characters) drawn instead of the dot, and before the name when the name shows."""
+    if not isinstance(value, str) or not 1 <= len(value) <= 8 or len(value.strip()) != len(value) or any(unicodedata.category(c) in ("Cc", "Cs", "Zl", "Zp", "Zs") or c in "\\\"'" for c in value):
+        raise ValueError("a mark is one emoji or 1..2 characters, without spaces, quotes or control characters")
+    return value
+
+
 def _world_avatar(value: Any) -> str:
     """A visitor's character: an emoji, a short text (an initial, a name), or both, 1..16 characters. One label, never markup (the page sets
     it as text): control and line-separator characters, bidirectional overrides and spaces at either end are refused."""
@@ -3377,8 +3384,11 @@ def world_validate(spec: Any) -> dict[str, Any]:
     """Checked copy of a ``web-ui-world/1`` spec: optional ``shots`` (scroll scenes) and ``floors`` (maps with spots)."""
     if not isinstance(spec, dict) or spec.get("schema") != WORLD_SCHEMA:
         raise ValueError(f"expected schema {WORLD_SCHEMA}")
-    if set(spec) - {"schema", "id", "title", "shots", "floors", "zoom_max", "board", "avatars", "shell", "tools", "names"}:
-        raise ValueError("a world has schema, id, title, shots, floors, zoom_max, board, avatars, shell, tools and names")
+    if set(spec) - {"schema", "id", "title", "shots", "floors", "zoom_max", "board", "avatars", "shell", "tools", "names", "mark_scale"}:
+        raise ValueError("a world has schema, id, title, shots, floors, zoom_max, board, avatars, shell, tools, names and mark_scale")
+    mark_scale = spec.get("mark_scale", [1, 1])
+    if not isinstance(mark_scale, list) or len(mark_scale) != 2 or any(type(v) not in (int, float) or not .5 <= v <= 4 for v in mark_scale):
+        raise ValueError("mark_scale is [x, y], each from 0.5 to 4: the width and height factor of every mark (dot or emoji)")
     names = spec.get("names", "names")
     if names not in WORLD_NAMES:
         raise ValueError("names is names (every spot shows its name), dots (a dot; the name beside the player, under the pointer or focused) or off (dots only)")
@@ -3438,8 +3448,8 @@ def world_validate(spec: Any) -> dict[str, Any]:
             raise ValueError("a floor lists 1..64 spots")
         spots = []
         for spot in spots_in:
-            if not isinstance(spot, dict) or set(spot) - {"id", "x", "y", "label", "category", "body", "flip", "sign"}:
-                raise ValueError("a spot has id, x, y, label, category, body, flip and sign")
+            if not isinstance(spot, dict) or set(spot) - {"id", "x", "y", "label", "category", "body", "flip", "sign", "mark"}:
+                raise ValueError("a spot has id, x, y, label, category, body, flip, sign and mark")
             if "sign" in spot and spot["sign"] not in WORLD_SIGNS:
                 raise ValueError(f"sign is one of {', '.join(WORLD_SIGNS)}")
             category = spot.get("category", "")
@@ -3449,7 +3459,8 @@ def world_validate(spec: Any) -> dict[str, Any]:
                           "y": _bounded_int(spot.get("y"), "y", 0, height), "label": _world_text(spot.get("label"), "label", 40),
                           "category": category, "body": _world_text(spot.get("body", ""), "body", 400, required=False),
                           **({"flip": _world_text(spot["flip"], "flip", 16)} if "flip" in spot else {}),
-                          **({"sign": spot["sign"]} if "sign" in spot else {})})
+                          **({"sign": spot["sign"]} if "sign" in spot else {}),
+                          **({"mark": _world_mark(spot["mark"])} if "mark" in spot else {})})
         actors = []
         actors_in = floor.get("actors", [])
         if not isinstance(actors_in, list) or len(actors_in) > 16:
@@ -3553,7 +3564,7 @@ def world_validate(spec: Any) -> dict[str, Any]:
             built["body"] = _world_text(tool["body"], "body", 400)
         tools[emoji] = built
     return {"schema": WORLD_SCHEMA, "id": world_id, "title": _world_text(spec.get("title", "World"), "title", 80),
-            "shots": shots, "floors": floors, "zoom_max": zoom_max, "board": board, "names": names, **({"avatars": avatars} if avatars else {}),
+            "shots": shots, "floors": floors, "zoom_max": zoom_max, "board": board, "names": names, "mark_scale": [float(v) for v in mark_scale], **({"avatars": avatars} if avatars else {}),
             **({"shell": True} if shell else {}), **({"tools": tools} if tools else {})}
 
 
@@ -3708,14 +3719,14 @@ def land_floor(theme: str = "meadow", cols: int = 24, rows: int = 16, *, seed: i
 # A real place in miniature: points with a latitude and longitude laid on the tile grid (``meters`` of ground per tile), roads between linked
 # points, and rivers as bands of water that roads cross as bridges. The projection and the box come from the coordinate tools below (the same
 # Earth radius and ``tolerance_area``), so a place is only data: a list of points, nothing drawn by hand.
-_PLACE_KEYS = {"points", "meters", "tile", "links", "rivers", "area", "start", "scatter"}
-_PLACE_POINT_KEYS = {"id", "label", "lat", "lon", "maps", "category", "body", "flip", "sign"}
+_PLACE_KEYS = {"points", "meters", "tile", "links", "rivers", "area", "start", "scatter", "marks"}
+_PLACE_POINT_KEYS = {"id", "label", "lat", "lon", "maps", "category", "body", "flip", "sign", "mark"}
 
 
 def _place_point(point: Any, seen: set[str]) -> dict[str, Any]:
     if not isinstance(point, dict) or set(point) - _PLACE_POINT_KEYS or ("maps" in point) == ("lat" in point or "lon" in point) \
             or ("lat" in point) != ("lon" in point):
-        raise ValueError("a point has id, label, category, body, flip, sign and either lat and lon or maps (a Maps URL)")
+        raise ValueError("a point has id, label, category, body, flip, sign, mark and either lat and lon or maps (a Maps URL)")
     if "maps" in point:
         found = try_parse_maps_url(point["maps"]) if isinstance(point["maps"], str) else None
         if found is None:
@@ -3731,7 +3742,7 @@ def _place_point(point: Any, seen: set[str]) -> dict[str, Any]:
     return {"id": _world_id(point.get("id"), "point id", seen), "label": _world_text(point.get("label"), "label", 40), "lat": lat, "lon": lon,
             "category": category, "body": _world_text(point.get("body", ""), "body", 400, required=False),
             **({"flip": _world_text(point["flip"], "flip", 16)} if "flip" in point else {}),
-            **({"sign": point["sign"]} if "sign" in point else {})}
+            **({"sign": point["sign"]} if "sign" in point else {}), **({"mark": _world_mark(point["mark"])} if "mark" in point else {})}
 
 
 def _place_meters(lat: float, lon: float, north: float, west: float, mid: float) -> tuple[float, float]:
@@ -3765,7 +3776,7 @@ def _place_rects(cells: set[tuple[int, int]]) -> list[tuple[int, int, int, int]]
 
 
 def place_floor(points: list[dict[str, Any]], *, meters: int = 64, tile: int = 32, links: Any = (), rivers: Any = (), area: Any = None,
-                start: str | None = None, scatter: Any = None, id: str = "place", label: str = "場所") -> dict[str, Any]:
+                start: str | None = None, scatter: Any = None, marks: Any = None, id: str = "place", label: str = "場所") -> dict[str, Any]:
     """A real place as a floor: each point (``id``, ``label``, ``lat`` and ``lon``, or ``maps`` with a Maps URL; optional ``category`` and ``body``) becomes a
     spot on the tile its position falls on, ``meters`` of ground per tile.
 
@@ -3777,6 +3788,9 @@ def place_floor(points: list[dict[str, Any]], *, meters: int = 64, tile: int = 3
 
     A point with a ``sign`` (``led`` or ``wood``) is a small board on a bold dot at the nearest **tile corner** instead of the middle of a tile, so
     it takes no tile and sits between the stations; two signs on one corner go to the nearest free corner, and it must touch a tile that can be walked on.
+
+    ``marks`` is ``{category: emoji}``: a point without its own ``mark`` gets its category's emoji as the mark drawn instead of the dot
+    (``mark_scale`` on the world sets the marks' width and height factors).
 
     ``scatter`` is ``{"kind": "fire", "every": 8, "seed": 1}``: the map is cut into blocks of ``every`` tiles and one free tile in each gets the kind
     (a decoration such as ``fire``: not ground, not solid), chosen by a small seeded generator, so the same arguments give the same places.
@@ -3897,10 +3911,14 @@ def place_floor(points: list[dict[str, Any]], *, meters: int = 64, tile: int = 3
     lost = [p["id"] for p in pts if p["cell"] not in reach] + [p["id"] for p in signs if not any(t in reach for t in touching(p["corner"]))]
     if lost:
         raise ValueError(f"cut off by water from {first['id']}: {', '.join(lost)} (add a link across the river)")
+    if marks is not None and not (isinstance(marks, dict) and all(isinstance(k, str) and _WORLD_TOKEN.fullmatch(k) for k in marks)):
+        raise ValueError("marks is {category: emoji}")
+    marks = {k: _world_mark(v) for k, v in (marks or {}).items()}
+    mark = lambda p: {"mark": p["mark"]} if "mark" in p else {"mark": marks[p["category"]]} if p["category"] in marks else {}   # noqa: E731
     spots = [{"id": f"{id}-{p['id']}", "x": int((p["cell"][0] + .5) * tile), "y": int((p["cell"][1] + .5) * tile), "label": p["label"],
-              "category": p["category"], "body": p["body"], **({"flip": p["flip"]} if "flip" in p else {})} for p in pts]
+              "category": p["category"], "body": p["body"], **({"flip": p["flip"]} if "flip" in p else {}), **mark(p)} for p in pts]
     spots += [{"id": f"{id}-{p['id']}", "x": p["corner"][0] * tile, "y": p["corner"][1] * tile, "label": p["label"], "category": p["category"],
-               "body": p["body"], "sign": p["sign"], **({"flip": p["flip"]} if "flip" in p else {})} for p in signs]
+               "body": p["body"], "sign": p["sign"], **({"flip": p["flip"]} if "flip" in p else {}), **mark(p)} for p in signs]
     return {"id": id, "label": label, "width": cols * tile, "height": rows * tile, "tile": tile, "props": props, "actors": [], "spots": spots,
             "player": {"emoji": "🙂", "x": int((first["cell"][0] + .5) * tile), "y": int((first["cell"][1] + .5) * tile), "speed": 96}}
 
@@ -4049,9 +4067,10 @@ def _world_playable(world: dict[str, Any]) -> bool:
 def _floor_html(wid: str, f: dict[str, Any], close: str) -> tuple[str, list[str]]:
     """One floor's stage (props, spots, actors, player) and the info sheet articles of its spots and actors (``close`` is their closing link)."""
     flip = lambda s: (f' data-flip="{escape(s["flip"], quote=True)}"' if s.get("flip") else "") + (f' data-sign="{s["sign"]}"' if s.get("sign") else "")   # noqa: E731
+    mark = lambda s: f';--mark:\'{escape(s["mark"], quote=True)}\'' if s.get("mark") else ""   # noqa: E731  (the dot's replacement, read by CSS content)
     spots = "".join(
         f'<a class="ui-spot" href="#{wid}-spot-{s["id"]}" data-x="{s["x"]}" data-y="{s["y"]}" data-category="{s["category"]}" '
-        f'style="left:{s["x"]}px;top:{s["y"]}px"{flip(s)}>{escape(s["label"])}</a>' for s in f["spots"])
+        f'style="left:{s["x"]}px;top:{s["y"]}px{mark(s)}"{flip(s)}>{escape(s["label"])}</a>' for s in f["spots"])
     actors = "".join(
         f'<a class="ui-actor" id="{wid}-actor-{a["id"]}" href="#{wid}-spot-{a["id"]}" aria-label="{escape(a["label"], quote=True)}">'
         f'<span>{escape(a["emoji"])}</span></a>' for a in f["actors"])
@@ -4168,7 +4187,8 @@ def _map_html(world: dict[str, Any]) -> str:
         labels += "".join(f'<label for="{wid}-cat-{"value-" + c if c else "all"}" data-cat="{c}">{escape(c or "all")}</label>' for c in cat_ids)
     close = f'<a class="ui-sheet-close" href="#{wid}-map"' + (f' {_wt("close")}>✖️</a>' if shell else ">Close</a>")          # an icon in a shell world
     built = [_floor_html(wid, f, close) for f in floors]
-    head = (f'<section class="ui-world ui-world-map" id="{wid}-map" data-ui-world="map" data-zoom-max="{world["zoom_max"]}" data-names="{world["names"]}"'
+    scale = "" if world["mark_scale"] == [1, 1] else f' style="--mark-x:{world["mark_scale"][0]:g};--mark-y:{world["mark_scale"][1]:g}"'
+    head = (f'<section class="ui-world ui-world-map" id="{wid}-map" data-ui-world="map" data-zoom-max="{world["zoom_max"]}" data-names="{world["names"]}"{scale}'
             f'{" data-grid" if any(f.get("tile") for f in floors) else ""}{" data-shell" if shell else ""} aria-label="{escape(world["title"], quote=True)}">')
     view = f'<div class="ui-world-view" tabindex="0"><div class="ui-world-cam" style="--fx:0;--fy:0;--z:1">{"".join(stage for stage, _ in built)}</div></div>'
     tail = f'<aside class="ui-sheet" aria-live="polite">{"".join(a for _, articles in built for a in articles)}</aside>{_pick_html(wid, world.get("avatars", []), shell)}</section>'
@@ -4208,10 +4228,14 @@ _WORLD_CSS = (
     ".ui-spot[data-sign],.ui-world[data-names=dots] .ui-spot:not([data-near]):not(:hover):not(:focus-visible),.ui-world[data-names=off] .ui-spot:not(:hover):not(:focus-visible)"
     "{z-index:var(--ui-layer-mark);padding:.3rem .5rem;border-radius:4px;font-size:0;line-height:1;letter-spacing:.04em}"
     ".ui-spot[data-sign]::before,.ui-world[data-names=dots] .ui-spot:not([data-near]):not(:hover):not(:focus-visible)::before,"
-    ".ui-world[data-names=off] .ui-spot:not(:hover):not(:focus-visible)::before{content:\"●\";font-size:.7rem}"
+    ".ui-world[data-names=off] .ui-spot:not(:hover):not(:focus-visible)::before{content:var(--mark,\"●\");font-size:.7rem}"
+    # A mark (an emoji in --mark) stands in for the dot and leads the name; --mark-x / --mark-y on the world scale every mark's width and height.
+    ".ui-spot::before{display:inline-block;transform:scale(var(--mark-x,1),var(--mark-y,1))}"
+    ".ui-world[data-names=names] .ui-spot:not([data-sign])::before,.ui-world[data-names=dots] .ui-spot[data-near]:not([data-sign])::before,"
+    ".ui-world:not([data-names=names]) .ui-spot:not([data-sign]):hover::before,.ui-world:not([data-names=names]) .ui-spot:not([data-sign]):focus-visible::before{content:var(--mark);margin-right:.3em}"
     ".ui-world[data-names]:not([data-names=names]) .ui-spot:not([data-sign]){border-radius:999px}"
     ".ui-world[data-names=dots] .ui-spot[data-near],.ui-world:not([data-names=names]) .ui-spot:hover,.ui-world:not([data-names=names]) .ui-spot:focus-visible{z-index:var(--ui-layer-mark)}"
-    ".ui-spot[data-sign][data-show]{padding:.05rem .4rem;font-size:.7rem}.ui-spot[data-sign][data-show]::before{content:\"● \"}"
+    ".ui-spot[data-sign][data-show]{padding:.05rem .4rem;font-size:.7rem}.ui-spot[data-sign][data-show]::before{content:var(--mark,\"●\");margin-right:.3em}"
     ".ui-spot[data-sign=led]{background:#111;color:#ffb000;border-color:#ffb000;font-family:monospace;text-shadow:0 0 4px #ffb000}"
     ".ui-spot[data-sign=wood]{background:#8b5a2b;color:#fff3d6;border:2px solid #5d3a1a}"
     ".ui-sheet{position:absolute;z-index:var(--ui-layer-sheet);left:8px;right:8px;bottom:8px;max-height:45%;overflow:auto;border:1px solid var(--ui-border);"
@@ -18278,6 +18302,9 @@ EXAMPLES: dict[str, Any] = {'flutter-pages': {'schema': 'web-ui-flutter-pages/1'
 # repository metadata. Consumers adapt their existing source of truth to this.
 # Real places in miniature (the `place` floor): latitude and longitude in, tiles out. The coordinates are approximate (about 100 m, read off public
 # maps), which is all a miniature needs; the point is where things stand relative to each other, so nothing here is a facility's exact position.
+_CITY_MARKS = {"exit": "🚪", "station": "🚉", "terminus": "🚆", "famous": "🏛️", "sight": "📷"}   # the mark drawn instead of the dot, by category
+
+
 def _pt(id: str, label: str, lat: float, lon: float, category: str, body: str = "", flip: str = "", sign: str = "") -> dict[str, Any]:
     return {"id": id, "label": label, "lat": lat, "lon": lon, "category": category, "body": body, **({"flip": flip} if flip else {}),
             **({"sign": sign} if sign else {})}
@@ -18454,7 +18481,7 @@ EXAMPLES.update({
     # Reverse London (the main termini, the stations beside them and famous places, the Thames and its bridges; a sign, nogard, that turns into a dragon)
     # and Fake Paris (the main stations, the metro beside them, the Seine; a fire in each block). `place` turns latitude/longitude into tiles.
     "cities": {
-        "schema": WORLD_SCHEMA, "id": "cities", "title": "Parallel cities", "zoom_max": 4, "names": "dots",
+        "schema": WORLD_SCHEMA, "id": "cities", "title": "Parallel cities", "zoom_max": 4, "names": "dots", "mark_scale": [1.5, 1.5],
         "avatars": ["🙂", "🧳", "🚶", "🎒", "🐱", "🐶", "🦊", "🐼", "🚃", "☂️", "🎩", "🗼"],
         "tools": {"🗼": {"label": "パラレル東京", "label_en": "Parallel Tokyo", "floor": "tokyo"},
                   "🎡": {"label": "リバースロンドン", "label_en": "Reverse London", "floor": "london"},
@@ -18462,12 +18489,12 @@ EXAMPLES.update({
                   "🚉": {"label": "東京駅", "label_en": "Tokyo Station",
                          "spots": ["tokyo-marunouchi-n", "tokyo-marunouchi-c", "tokyo-marunouchi-s", "tokyo-yaesu-n", "tokyo-yaesu-c", "tokyo-yaesu-s"]}},
         "board": {"title": "PARALLEL", "items": [{"text": "実在の街の、もうひとつの姿"}, {"text": "🚪で3つの街を行き来"}, {"text": "歩いて駅から駅へ"}]},
-        "floors": [{"id": "tokyo", "label": "Parallel Tokyo", "place": {"points": _TOKYO_POINTS, "meters": 32, "links": _TOKYO_LINKS}},
+        "floors": [{"id": "tokyo", "label": "Parallel Tokyo", "place": {"points": _TOKYO_POINTS, "meters": 32, "links": _TOKYO_LINKS, "marks": _CITY_MARKS}},
                    {"id": "london", "label": "Reverse London",
-                    "place": {"points": _LONDON_POINTS, "meters": 150, "links": _LONDON_LINKS, "rivers": [_THAMES]}},
+                    "place": {"points": _LONDON_POINTS, "meters": 150, "links": _LONDON_LINKS, "rivers": [_THAMES], "marks": _CITY_MARKS}},
                    {"id": "paris", "label": "Fake Paris",
                     "place": {"points": _PARIS_POINTS, "meters": 150, "links": _PARIS_LINKS, "rivers": [_SEINE],
-                              "scatter": {"kind": "fire", "every": 8, "seed": 5}}}],
+                              "scatter": {"kind": "fire", "every": 8, "seed": 5}, "marks": _CITY_MARKS}}],
     },
     "catalog-report": {
         "schema": "web-ui-catalog/1", "title": "Analysis report",

@@ -100,6 +100,9 @@ plain spots sit, and 🏷️ in ⚙️ switches it without a reload (kept with t
 | `dots` (the cities) | a dot in the mark layer; the spot the player stands by, the one under the pointer and the focused one show their names |
 | `off` | dots only (the pointer and the focus still show a name) |
 
+A spot's `mark` (one emoji) is drawn instead of the dot and leads the name when the name shows; `place_floor(marks={category: emoji})` (or `"marks"` in a
+`place`) gives every point of a category its mark, and the world's `mark_scale: [x, y]` (0.5–4, default `[1, 1]`) sets the width and height factor of every mark,
+dots included. The cities use 🚪 exits, 🚉 stations, 🚆 termini, 🏛️ famous places and 📷 sights at `[1.5, 1.5]`.
 Signs (`sign`) always sit in the mark layer and keep their own dot → text → face cycle. While a sheet is open, the camera aims a little below the player or the spot,
 so the thing you walked to stays in the view above the sheet.
 
