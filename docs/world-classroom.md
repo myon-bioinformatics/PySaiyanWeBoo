@@ -255,7 +255,8 @@ python tool/record_demo.py runs --git-commit --timestamp                        
 ```
 
 File names are `<prefix><world>-<scene><suffix>`, then the run details. `--prefix` and `--suffix` (letters, digits, `_ . -`; write
-`--suffix=-x` when it starts with `-`) are optional, and the suffix sits right after the base name. The run details are added left to right in
+`--suffix=-x` when it starts with `-`) are optional: the prefix is always leftmost and the suffix right after the base name, wherever they are given
+on the command line. The run details are added left to right in
 the order their options are given: `--timestamp` adds when the run started, in UTC as ISO 8601 basic format (`20261108T113412Z` is 20:34:12
 in Tokyo), so names sort in recording order and read the same in any time zone; `--git-commit` adds the git commit the pages were built from
 (`288cbed`, or `288cbed-dirty` when tracked files have uncommitted changes). A repeated option adds nothing. Every scene of one run shares

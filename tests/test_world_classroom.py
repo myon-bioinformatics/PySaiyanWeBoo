@@ -515,9 +515,10 @@ def test_demo_recorder_setting_string_is_parsed_by_the_same_argparse_rules(tmp_p
     target = record_demo.gif_targets_from(f"{tmp_path} --prefix ci- --suffix=-chromium --timestamp --git-commit", ["component-table"],
                                           now=JST_RUN, revision="288cbed")["component-table"]
     assert target == tmp_path / "ci-component-table-chromium-20261108T113412Z-288cbed.gif"
-    swapped = record_demo.gif_targets_from(f"{tmp_path} --git-commit --suffix=-chromium --timestamp --git-commit", ["component-table"],
+    swapped = record_demo.gif_targets_from(f"{tmp_path} --git-commit --suffix=-chromium --timestamp --git-commit --prefix ci-", ["component-table"],
                                            now=JST_RUN, revision="288cbed")["component-table"]
-    assert swapped.name == "component-table-chromium-288cbed-20261108T113412Z.gif"         # first given, first in the name; a repeat adds nothing
+    assert swapped.name == "ci-component-table-chromium-288cbed-20261108T113412Z.gif"       # prefix leftmost and suffix after the base name
+                                                                                             # wherever they are given; details in order, a repeat adds nothing
     assert record_demo.gif_targets_from(f"'{tmp_path / 'a dir'}'", ["component-table"])["component-table"] == tmp_path / "a dir/component-table.gif"
     for spec, message in ((f"{tmp_path} --time", "unrecognized"), (f"{tmp_path} --timestamp=yes", "ignored explicit argument"),
                           (f"{tmp_path} --prefix a/b", "letters"), (f"{tmp_path} --suffix -chrome", "expected one argument"),
