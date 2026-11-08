@@ -570,6 +570,7 @@ AUTO_THEME = "auto"  # the :root (modern) palette, or github-like when the brows
 
 
 REGISTERED_THEMES: set[str] = set()  # consumers' palettes, registered by theme_css() in this process
+_REGISTERED_THEME_CSS: dict[str, str] = {}  # their CSS, so page_document can embed a brand it was told about
 
 
 def _theme_name(theme: Any) -> bool:
@@ -1056,6 +1057,171 @@ def card(
 
 
 
+def _spec_text(value: Any, label: str, *, limit: int = 4000, required: bool = False) -> str:
+    """Plain text from a consumer's spec: bounded, no control characters or lone surrogates; never HTML."""
+    if (not isinstance(value, str) or len(value) > limit
+            or any(ord(c) < 32 and c not in "\n\t" for c in value)
+            or any(0xD800 <= ord(c) <= 0xDFFF for c in value)
+            or required and not value.strip()):
+        raise ValueError(f"invalid {label}")
+    return value
+
+
+def _spec_href(value: Any) -> str:
+    """A link from a consumer's spec: a path relative to the generated page, or HTTPS without credentials."""
+    value = _spec_text(value, "link href", limit=2048, required=True)
+    # Do not let browser URL preprocessing turn whitespace/backslashes into
+    # an executable scheme or a protocol-relative external destination.
+    if any(c.isspace() for c in value) or "\\" in value:
+        raise ValueError("link href must not contain whitespace or backslashes")
+    parsed = urlsplit(value)
+    if parsed.scheme:
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username is not None or parsed.password is not None:
+            raise ValueError("external links must be HTTPS without credentials")
+        try:
+            parsed.port
+        except ValueError:
+            raise ValueError("invalid HTTPS port") from None
+    elif parsed.netloc or value.startswith("/") or ":" in parsed.path.split("/", 1)[0]:
+        raise ValueError("local links must be relative to the generated page")
+    return value
+
+
+PAGE_SCHEMA = "web-ui-page/1"
+PAGE_BLOCKS = ("heading", "text", "output", "table", "card", "links", "image", "kv", "badges", "section")
+
+
+def _page_block(block: Any, *, depth: int) -> str:
+    """One block of a ``web-ui-page/1`` spec as HTML; every string is escaped, links go through ``_spec_href``."""
+    if not isinstance(block, dict) or block.get("type") not in PAGE_BLOCKS:
+        raise ValueError(f"a block is an object with type in {', '.join(PAGE_BLOCKS)}")
+    kind = block["type"]
+    allowed = {"heading": {"text", "level"}, "text": {"text", "muted"}, "output": {"text"}, "table": {"headers", "rows", "caption"},
+               "card": {"title", "text", "blocks"}, "links": {"items"}, "image": {"src", "alt", "width", "height"},
+               "kv": {"rows"}, "badges": {"items"}, "section": {"title", "blocks"}}[kind] | {"type"}
+    if block.keys() - allowed:
+        raise ValueError(f"{kind}: unknown field {sorted(block.keys() - allowed)}")
+    if kind == "heading":
+        level = block.get("level", 2)
+        if type(level) is not int or not 1 <= level <= 6:
+            raise ValueError("heading level is 1..6")
+        return f'<h{level}{" class=\"ui-title\"" if level == 1 else ""}>{escape(_spec_text(block.get("text"), "heading", limit=300, required=True))}</h{level}>'
+    if kind == "text":
+        classes = ' class="ui-muted"' if block.get("muted") is True else ""
+        return "".join(f"<p{classes}>{escape(line)}</p>" for line in _spec_text(block.get("text"), "text", required=True).split("\n\n"))
+    if kind == "output":
+        return f'<pre class="ui-output">{escape(_spec_text(block.get("text"), "output", limit=64000))}</pre>'
+    if kind == "table":
+        headers, rows = block.get("headers"), block.get("rows")
+        if not isinstance(headers, list) or not isinstance(rows, list) or len(rows) > 2000:
+            raise ValueError("table has headers and up to 2000 rows")
+        headers = [_spec_text(h, "table header", limit=200) for h in headers]
+        rows = [[_spec_text("" if c is None else (str(c) if isinstance(c, (int, float)) else c), "table cell", limit=2000) for c in r]
+                if isinstance(r, list) else _raise("a table row is a list") for r in rows]
+        caption = _spec_text(block["caption"], "caption", limit=300) if "caption" in block else None
+        return table(headers, rows, caption=caption)
+    if kind == "card":
+        inner = "".join(_page_block(b, depth=depth + 1) for b in _blocks(block.get("blocks", []), depth))
+        body = f"<p>{escape(_spec_text(block['text'], 'card text'))}</p>" if "text" in block else ""
+        title = f"<h3>{escape(_spec_text(block['title'], 'card title', limit=300, required=True))}</h3>" if "title" in block else ""
+        return f'<section class="ui-card">{title}{body}{inner}</section>'
+    if kind == "links":
+        items = block.get("items")
+        if not isinstance(items, list) or not items or len(items) > 200:
+            raise ValueError("links has 1..200 items")
+        parts = []
+        for item in items:
+            if not isinstance(item, dict) or item.keys() - {"label", "href"} or "href" not in item:
+                raise ValueError("a link has label and href")
+            href = _spec_href(item["href"])
+            label = _spec_text(item.get("label", href), "link label", limit=300, required=True)
+            parts.append(f'<a href="{escape(href, quote=True)}">{escape(label)}</a>')
+        return f'<p class="ui-links">{" · ".join(parts)}</p>'
+    if kind == "image":
+        src = _spec_href(block.get("src"))
+        alt = _spec_text(block.get("alt", ""), "image alt", limit=300)
+        size = ""
+        for key in ("width", "height"):
+            if key in block:
+                if type(block[key]) is not int or not 1 <= block[key] <= 8192:
+                    raise ValueError(f"image {key} is 1..8192")
+                size += f' {key}="{block[key]}"'
+        return f'<img src="{escape(src, quote=True)}" alt="{escape(alt, quote=True)}"{size}>'
+    if kind == "kv":
+        rows = block.get("rows")
+        if not isinstance(rows, list) or not rows or len(rows) > 500 or any(not isinstance(r, list) or len(r) != 2 for r in rows):
+            raise ValueError("kv rows are [key, value] pairs")
+        return ('<dl class="ui-kv">' + "".join(f"<dt>{escape(_spec_text(k, 'key', limit=300, required=True))}</dt>"
+                                              f"<dd>{escape(_spec_text(str(v) if isinstance(v, (int, float)) else v, 'value', limit=4000))}</dd>"
+                                              for k, v in rows) + "</dl>")
+    if kind == "badges":
+        items = block.get("items")
+        if not isinstance(items, list) or not items or len(items) > 100:
+            raise ValueError("badges has 1..100 items")
+        parts = []
+        for item in items:
+            status = ""
+            if isinstance(item, dict):
+                if item.keys() - {"text", "status"} or item.get("status") not in (None, "pass", "fail"):
+                    raise ValueError("a badge is text or {text, status: pass|fail}")
+                status = f' ui-{item["status"]}' if item.get("status") else ""
+                item = item.get("text")
+            parts.append(f'<span class="ui-tag{status}">{escape(_spec_text(item, "badge", limit=100, required=True))}</span>')
+        return f'<p class="ui-badges">{" ".join(parts)}</p>'
+    # section
+    title = _spec_text(block.get("title"), "section title", limit=300, required=True)
+    inner = "".join(_page_block(b, depth=depth + 1) for b in _blocks(block.get("blocks", []), depth))
+    return f'<section class="ui-panel"><h2>{escape(title)}</h2>{inner}</section>'
+
+
+def _raise(message: str) -> Any:
+    raise ValueError(message)
+
+
+def _blocks(value: Any, depth: int) -> list:
+    if depth >= 4:
+        raise ValueError("blocks nest at most 4 deep")
+    if not isinstance(value, list) or len(value) > 500:
+        raise ValueError("blocks is a list of at most 500 entries")
+    return value
+
+
+def page_document(spec: Any, *, layouts: Any = None) -> str:
+    """One self-contained page from a ``web-ui-page/1`` spec — the consumer owns the data, web_ui the HTML and CSS.
+
+    ``{"schema", "title", "theme"?, "description"?, "icon"?, "favicon"?, "blocks": [...]}``; blocks are ``heading``,
+    ``text`` (paragraphs; ``muted``), ``output`` (preformatted), ``table`` (headers, rows, caption), ``card`` /
+    ``section`` (title, text, nested blocks), ``links``, ``image``, ``kv`` (key–value rows) and ``badges``
+    (``{text, status: pass|fail}``). Text is never HTML; links and images are relative paths or HTTPS. The theme is one
+    of ours, ``auto`` or a brand registered with ``theme_css`` (its CSS is appended when registered in this process);
+    ``layouts`` adds switchable presets. The same from the shell or Node: ``python -S web_ui.py --page spec.json``.
+    """
+    if not isinstance(spec, dict) or spec.get("schema") != PAGE_SCHEMA:
+        raise ValueError(f"expected schema {PAGE_SCHEMA}")
+    if spec.keys() - {"schema", "title", "theme", "description", "icon", "favicon", "blocks"}:
+        raise ValueError("page has schema, title, blocks and optional theme, description, icon, favicon")
+    title = _spec_text(spec.get("title"), "title", limit=200, required=True)
+    theme = spec.get("theme", "modern")
+    if not _theme_name(theme):
+        raise ValueError("unknown theme")
+    body = [f'<main class="ui-page">']
+    if "icon" in spec:
+        body.append(f'<img src="{escape(_spec_href(spec["icon"]), quote=True)}" width="80" height="80" alt="">')
+    body.append(f'<h1 class="ui-title">{escape(title)}</h1>')
+    if "description" in spec:
+        body.append(f'<p class="ui-muted">{escape(_spec_text(spec["description"], "description", limit=2000))}</p>')
+    if layouts is not None:
+        body.append(layout_switch_html(layouts))
+    body += [_page_block(block, depth=1) for block in _blocks(spec.get("blocks"), 0)]
+    body.append("</main>")
+    css = core_css(theme if theme in THEMES or theme in CANDIDATE_THEMES or theme == AUTO_THEME else "modern")
+    css += _REGISTERED_THEME_CSS.get(theme, "") + (layout_presets_css(layouts) if layouts is not None else "")
+    css += ".ui-kv{display:grid;grid-template-columns:max-content 1fr;gap:.25rem var(--ui-space)}.ui-kv dt{color:var(--ui-muted)}.ui-kv dd{margin:0}.ui-badges .ui-tag{margin-right:.25rem}"
+    return render_document(trusted_html="".join(body), title=title, theme=theme, css=css,
+                           favicon=_spec_href(spec["favicon"]) if "favicon" in spec else None,
+                           touch_icon=_spec_href(spec["icon"]) if "icon" in spec else None)
+
+
 def catalog_document(spec: Any, *, theme: str = "modern") -> str:
     """Build a self-contained, script-free catalog from consumer-owned data.
 
@@ -1069,31 +1235,7 @@ def catalog_document(spec: Any, *, theme: str = "modern") -> str:
             raise ValueError(f"invalid {label} fields")
         return value
 
-    def text(value: Any, label: str, *, limit: int = 4000, required: bool = False) -> str:
-        if (not isinstance(value, str) or len(value) > limit
-                or any(ord(c) < 32 and c not in "\n\t" for c in value)
-                or any(0xD800 <= ord(c) <= 0xDFFF for c in value)
-                or required and not value.strip()):
-            raise ValueError(f"invalid {label}")
-        return value
-
-    def href(value: Any) -> str:
-        value = text(value, "link href", limit=2048, required=True)
-        # Do not let browser URL preprocessing turn whitespace/backslashes into
-        # an executable scheme or a protocol-relative external destination.
-        if any(c.isspace() for c in value) or "\\" in value:
-            raise ValueError("link href must not contain whitespace or backslashes")
-        parsed = urlsplit(value)
-        if parsed.scheme:
-            if parsed.scheme != "https" or not parsed.hostname or parsed.username is not None or parsed.password is not None:
-                raise ValueError("external links must be HTTPS without credentials")
-            try:
-                parsed.port
-            except ValueError:
-                raise ValueError("invalid HTTPS port") from None
-        elif parsed.netloc or value.startswith("/") or ":" in parsed.path.split("/", 1)[0]:
-            raise ValueError("local links must be relative to the generated page")
-        return value
+    text, href = _spec_text, _spec_href
 
     mapping(spec, {"schema", "title", "items"}, {"description"}, "catalog")
     if spec["schema"] != "web-ui-catalog/1":
@@ -4071,7 +4213,9 @@ def theme_css(name: str, tokens: dict[str, str]) -> str:
     scheme = "dark" if _luminance(tokens["--ui-bg"]) < 0.18 else "light"
     declarations = ";".join(f"{k}:{v}" for k, v in tokens.items())
     REGISTERED_THEMES.add(name)  # render_document(theme=name) is now accepted in this process
-    return f'@layer theme{{body[data-ui-theme="{name}"]{{{declarations};color-scheme:{scheme}}}}}\n'
+    css = f'@layer theme{{body[data-ui-theme="{name}"]{{{declarations};color-scheme:{scheme}}}}}\n'
+    _REGISTERED_THEME_CSS[name] = css
+    return css
 
 
 TEXT_TOKENS = ("--ui-fg", "--ui-muted", "--ui-accent", "--ui-danger")
@@ -17313,6 +17457,17 @@ EXAMPLES: dict[str, Any] = {'flutter-pages': {'schema': 'web-ui-flutter-pages/1'
                               'label': 'Screen 1',
                               'adapter': 'flutter-screen1',
                               'url': 'https://myon-bioinformatics.github.io/flutter_navigation_basic/#/screen1'}]},
+ 'page': {'schema': 'web-ui-page/1',
+          'title': 'Run report',
+          'description': 'A page built from data: the consumer owns the JSON, web_ui the HTML and CSS.',
+          'blocks': [{'type': 'badges', 'items': ['chromium', {'text': '12 pass', 'status': 'pass'}, {'text': '1 fail', 'status': 'fail'}]},
+                     {'type': 'kv', 'rows': [['commit', 'abc1234'], ['recorded', '2026-11-08']]},
+                     {'type': 'table', 'headers': ['environment', 'verdict'], 'caption': 'per environment',
+                      'rows': [['Linux-chromium-desktop', 'pass'], ['Linux-chromium-pixel', 'fail']]},
+                     {'type': 'section', 'title': 'Detail',
+                      'blocks': [{'type': 'text', 'text': 'Two paragraphs,\n\nseparated by a blank line.', 'muted': True},
+                                 {'type': 'output', 'text': '$ run\nok'},
+                                 {'type': 'links', 'items': [{'label': 'receipt', 'href': './receipt.json'}]}]}]},
  'page-layouts': {'schema': 'web-ui-layout-presets/1',
                   'default': 'comfortable',
                   'presets': [{'id': 'comfortable', 'label': 'Comfortable', 'note': 'default: 16px text, 16px spacing, 960px page',
@@ -18019,6 +18174,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--css", type=Path, help="trusted CSS file to embed")
     parser.add_argument("--catalog", type=Path, metavar="FILE",
                         help="print a script-free page for a web-ui-catalog/1 JSON spec and exit")
+    parser.add_argument("--page", type=Path, metavar="FILE",
+                        help="print a self-contained page for a web-ui-page/1 JSON spec (see page_document; --brand registers its theme, --layouts adds presets) and exit")
     parser.add_argument("--world", type=Path, metavar="FILE",
                         help="print a single-file page for a web-ui-world/1 JSON spec and exit; `-` reads the spec from stdin")
     parser.add_argument("--example", metavar="NAME", help="print one example spec as JSON and exit (including catalog-report, catalog-projects)")
@@ -18101,6 +18258,17 @@ def main(argv: list[str] | None = None) -> int:
         return _reports_main(parser, args)
     if args.command:
         parser.error("unexpected arguments: " + " ".join(args.command))
+    if args.page:
+        try:
+            spec = json.loads(args.page.read_text(encoding="utf-8"))
+            if args.brand:
+                brand = json.loads(args.brand.read_text(encoding="utf-8"))
+                theme_css(str(brand["name"]), dict(brand["tokens"]))
+            layouts = json.loads(args.layouts.read_text(encoding="utf-8")) if args.layouts else None
+            sys.stdout.write(page_document(spec, layouts=layouts))
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            parser.error(str(exc))
+        return 0
     if args.check_theme:
         try:
             spec = json.loads(args.check_theme.read_text(encoding="utf-8"))

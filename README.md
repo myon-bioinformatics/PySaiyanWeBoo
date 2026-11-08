@@ -603,6 +603,12 @@ Layout is a preset too: the core reads `--ui-text` / `--ui-space` / `--ui-max`, 
 (comfortable, compact, wide, device; 8 px spacing grid) and `write_bundle(..., layouts=spec)` + `layout_switch_html(spec)`
 make them switchable without a reload — people and Playwright try each, and the [sweep](docs/layout-presets.md) keeps every
 one that holds as a candidate.
+📄 A whole page from data: `page_document(spec)` renders a `web-ui-page/1` JSON — title, description, icon and blocks
+(`heading`, `text`, `output`, `table`, `card`, `section`, `links`, `image`, `kv`, `badges`) — as one self-contained page,
+every string escaped and every link relative or HTTPS, with a brand theme (`theme_css`) and switchable layouts
+(`layouts=`). `python -S web_ui.py --example page` prints a spec; `--page spec.json [--brand brand.json --layouts
+page-layouts.json]` renders it from the shell or Node, so a report script owns only its data.
+
 The core also carries `@media print` (white page, `.ui-no-print` / `.ui-print-only`), `prefers-reduced-motion` (animations and
 transitions off) and `theme="auto"` (the dark modern palette, or github-like when the browser prefers light).
 

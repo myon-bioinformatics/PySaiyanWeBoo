@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import json
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import web_ui  # noqa: E402
@@ -195,3 +196,33 @@ def test_core_prints_and_respects_reduced_motion_and_auto_scheme():
     light = tokens.split('@media(prefers-color-scheme:light){body[data-ui-theme="auto"]{', 1)[1].split("}", 1)[0]
     assert "--ui-bg:#ffffff" in light and "--ui-accent:#0969da" in light  # the github-like palette, not a copy
     assert "/* css/tokens.css */" in web_ui.core_css("auto") and "themes/" not in web_ui.core_css("auto")
+
+
+def test_page_document_builds_a_page_from_a_spec(tmp_path):
+    import pytest
+    import subprocess
+    import sys
+    spec = web_ui.EXAMPLES["page"]
+    page = web_ui.page_document(spec, layouts=web_ui.EXAMPLES["page-layouts"])
+    assert page.startswith("<!doctype html>") and '<h1 class="ui-title">Run report</h1>' in page
+    assert '<span class="ui-tag ui-pass">12 pass</span>' in page and '<dl class="ui-kv"><dt>commit</dt><dd>abc1234</dd>' in page
+    assert '<caption>per environment</caption>' in page and '<section class="ui-panel"><h2>Detail</h2><p class="ui-muted">Two paragraphs,</p><p class="ui-muted">separated' in page
+    assert '<pre class="ui-output">$ run\nok</pre>' in page and '<a href="./receipt.json">receipt</a>' in page
+    assert 'name="ui-layout"' in page and ":root{--ui-text:16px" in page and "/* css/components.css */" in page
+    hostile = {"schema": "web-ui-page/1", "title": "<b>", "blocks": [{"type": "text", "text": "<script>"}, {"type": "table", "headers": ["<h>", "n"], "rows": [["<c>", 1]]}]}
+    out = web_ui.page_document(hostile)
+    assert "<script>" not in out and "&lt;b&gt;" in out and "&lt;h&gt;" in out and "<td>1</td>" in out
+    for bad in ({"schema": "nope"}, {**spec, "extra": 1}, {**spec, "theme": "never"},
+                {**spec, "blocks": [{"type": "links", "items": [{"href": "javascript:alert(1)"}]}]},
+                {**spec, "blocks": [{"type": "image", "src": "//evil/x.png"}]},
+                {**spec, "blocks": [{"type": "heading", "text": "x", "level": 7}]},
+                {**spec, "blocks": [{"type": "card", "blocks": [{"type": "card", "blocks": [{"type": "card", "blocks": [{"type": "card", "blocks": []}]}]}]}]},
+                {**spec, "blocks": [{"type": "what"}]}):
+        with pytest.raises(ValueError):
+            web_ui.page_document(bad)
+    web_ui.theme_css("acme", {"--ui-bg": "#ffffff", "--ui-fg": "#000000"})
+    branded = web_ui.page_document({**spec, "theme": "acme"})
+    assert '<body data-ui-theme="acme">' in branded and 'body[data-ui-theme="acme"]{--ui-bg:#ffffff' in branded
+    (tmp_path / "spec.json").write_text(json.dumps(spec), encoding="utf-8")
+    done = subprocess.run([sys.executable, "-S", str(ROOT / "web_ui.py"), "--page", str(tmp_path / "spec.json")], capture_output=True, text=True)
+    assert done.returncode == 0 and web_ui.GENERATOR_META.sub("", done.stdout) == web_ui.GENERATOR_META.sub("", web_ui.page_document(spec))
