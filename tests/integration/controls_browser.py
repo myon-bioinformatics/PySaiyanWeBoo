@@ -1001,6 +1001,46 @@ class CatalogBrowserTests(unittest.TestCase):
                 thread.join(timeout=5)
 
 
+class RepositoryDiagnosticsBrowserTests(unittest.TestCase):
+    """repository_diagnostics_document(): the page ascii_artist, markdown and mcp-toolcall-lab each wrote by hand. One GET of the JSON beside it
+    fills the metadata card, the resolver summary and one card per observation; a javascript: URL stays text; a missing JSON says so."""
+
+    def test_the_page_reads_its_json_once_and_fills_three_slots(self):
+        import json
+        from web_ui import repository_diagnostics_document
+        record = json.loads((ROOT / 'tests' / 'fixtures' / 'repository_metadata_v1.json').read_text(encoding='utf-8'))
+        payload = {'metadata': record, 'resolver': {'auth': 'anonymous', 'status': 'ok', 'observations': [
+            {'kind': 'repository', 'status': 'public', 'http_status': 200, 'url': 'https://github.com/myon-bioinformatics/Ironmate'},
+            {'kind': 'pages', 'status': 'missing', 'http_status': None, 'url': 'javascript:alert(1)'}]}}
+        page = repository_diagnostics_document('myon-bioinformatics/Ironmate', links=(('JSON', './repository-diagnostics.json'), ('Back', './')))
+        server, origin = WorldBrowserTests.serve({'repository-diagnostics.html': page, 'repository-diagnostics.json': json.dumps(payload),
+                                                  'broken.html': page.replace('./repository-diagnostics.json"', './missing.json"', 1)})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={'width': 390, 'height': 844})
+                    errors, gets = [], []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.on('request', lambda request: request.url.endswith('.json') and gets.append(request.url.rsplit('/', 1)[1]))
+                    page.goto(origin + '/repository-diagnostics.html')
+                    expect(page.locator('[data-repo-summary]')).to_have_text('Auth: anonymous · Status: ok')
+                    expect(page.locator('.repo-diagnostics__repository')).to_have_text('myon-bioinformatics/Ironmate')
+                    expect(page.locator('[data-repo-observations] .ui-card')).to_have_count(2)
+                    self.assertEqual(page.locator('[data-repo-observations] a').get_attribute('href'), 'https://github.com/myon-bioinformatics/Ironmate')
+                    expect(page.locator('[data-repo-observations] span')).to_have_text('javascript:alert(1)')
+                    self.assertEqual(gets, ['repository-diagnostics.json'])
+                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)
+                    page.goto(origin + '/broken.html')
+                    expect(page.locator('[data-repo-summary]')).to_have_text('Diagnostics could not be loaded.')
+                    expect(page.locator('[data-repo-observations] .ui-card')).to_have_count(0)
+                    self.assertEqual(errors, [])
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
 class ShowcaseBrowserTests(unittest.TestCase):
     """The app shell in Chromium: sections switch with no reload, the rail gives way to the bottom bar, nothing overflows, every theme reads."""
 
