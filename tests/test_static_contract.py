@@ -226,8 +226,8 @@ def test_css_variables_are_defined_generated_or_a_listed_gap():
     css = {name: _css_text(name) for name in _css_sources()}
     defined = {name for text in css.values() for name in re.findall(r"(--ui-[a-z0-9-]+)\s*:", text)}
     used = {name for text in css.values() for name in re.findall(r"var\((--ui-[a-z0-9-]+)", text)}
-    # layout presets (tool/layout_presets.py) set these; matrix.css carries the defaults as fallbacks.
-    generated = {"--ui-matrix-col", "--ui-matrix-gap", "--ui-matrix-pad"}
+    # layout presets (tool/layout_presets.py) set the matrix ones; dial.js sets --ui-dial-angle on each dial; the stylesheets carry the fallbacks.
+    generated = {"--ui-matrix-col", "--ui-matrix-gap", "--ui-matrix-pad", "--ui-dial-angle"}
     # repository-diagnostics.css falls back to fixed colors; there is no token for them yet.
     known_gaps = {"--ui-surface", "--ui-text"}
     assert used - defined - generated <= known_gaps, sorted(used - defined - generated - known_gaps)
