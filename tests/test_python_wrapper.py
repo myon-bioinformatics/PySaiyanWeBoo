@@ -542,9 +542,9 @@ class WorldTests(unittest.TestCase):
         self.assertEqual(html.count('class="ui-board-zones"'), 1)                                # the clocks share one row
         self.assertNotIn("ui-board-zone", web_ui.world_html({**WORLD, "board": {"title": "T", "items": [{"text": "x"}]}}))
 
-    def test_world_script_caches_only_favorites_and_language_and_requests_only_for_the_opt_in_shared_section(self):
+    def test_world_script_caches_only_display_preferences_and_favorites_and_requests_only_for_the_opt_in_shared_section(self):
         # What a visitor writes stays in the page: no cookies, beacons or sockets, no place names. The one thing kept is a small cache of the
-        # chosen language and starred places in this browser (localStorage, key "ui-world:<id>"; the emoji and board messages are never written).
+        # chosen language, name-layer preference and starred places in this browser (localStorage, key "ui-world:<id>"; the emoji and board messages are never written).
         # The one network call is the shared section's refresh button (opt in with shared_issue): an anonymous GET without credentials, cache or referrer.
         for word in ("sessionStorage", "indexedDB", "cookie", "XMLHttpRequest", "sendBeacon", "WebSocket",
                      "caches", "Intl", "timeZone", "geolocation", "pushState", "postMessage", "Worker"):
@@ -556,7 +556,7 @@ class WorldTests(unittest.TestCase):
         for word in ("canvas", "drawImage", "FileReader", "ImageCapture", "MediaRecorder", "toDataURL", "toBlob", "createImageBitmap", "arrayBuffer", "readAsDataURL"):
             self.assertTrue(word not in web_ui.WORLD_JS, word)
         self.assertEqual(sorted(re.findall(r"localStorage\.(\w+)", web_ui.WORLD_JS)), ["getItem", "setItem"])
-        self.assertEqual(re.findall(r"save\(\{(\w+)", web_ui.WORLD_JS), ["lang", "fav"])        # the only two things written
+        self.assertEqual(re.findall(r"save\(\{(\w+)", web_ui.WORLD_JS), ["lang", "fav", "names"])  # only these three preferences are written
         self.assertIn("'ui-world:'+el.id", web_ui.WORLD_JS)
         self.assertEqual(web_ui.WORLD_JS.count("fetch("), 1)
         for needle in ('method:"GET"', 'credentials:"omit"', 'cache:"no-store"', 'referrerPolicy:"no-referrer"'):
