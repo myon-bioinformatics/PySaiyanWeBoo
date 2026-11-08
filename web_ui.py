@@ -394,7 +394,7 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
  * The browser does what it already does well: decode the PNG (createImageBitmap), resize and crop it (drawImage) and
  * draw caption text (fillText). This module adds only what no browser offers:
  *   bucket keys (6 bits per channel) and a histogram while frames arrive, keeping only the rectangle that changed;
- *   one global palette (exact when the buckets fit in it, else median cut + refinement), one lookup per pixel;
+ *   one global palette (exact when distinct RGB colours fit in it, else bucket median cut + refinement), one lookup per pixel;
  *   each frame as its tight changed rectangle, unchanged pixels transparent when that encodes smaller;
  *   GIF LZW (12-bit, clear on full table) into GIF89a: loop forever, delays in centiseconds and at least 2, so no
  *   browser rewrites them; over a byte budget, fewer colours, then fewer frames of a burst.
@@ -439,10 +439,19 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
 
   // ---- palette --------------------------------------------------------------------------------------------------
 
+  const bucketKey = rgb => ((rgb >> 18) << 12) | (((rgb >> 10) & 63) << 6) | ((rgb >> 2) & 63);
   const WR = 3, WG = 4, WB = 2;                    // "nearest colour" weights: green most, blue least
 
   /** ≤ maxColors colours for a bucket histogram {count, sum, used} and a lookup table key → index. */
   function palette(hist, maxColors) {
+    if (hist.exact && hist.exact.size <= maxColors) {
+      const colors = new Uint8Array(hist.exact.size * 3), exact = new Map();
+      for (const rgb of hist.exact.keys()) {
+        const i = exact.size; exact.set(rgb, i);
+        colors.set([rgb >> 16, (rgb >> 8) & 255, rgb & 255], i * 3);
+      }
+      return {colors, size: exact.size, index: rgb => exact.get(rgb)};
+    }
     const n = hist.used, ids = new Uint32Array(n), mean = new Float64Array(n * 3), cnt = new Float64Array(n);
     for (let k = 0, j = 0; k < KEYS; k++) {
       const c = hist.count[k];
@@ -455,7 +464,7 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
     if (n <= maxColors) {
       const colors = new Uint8Array(Math.max(1, n) * 3);
       for (let j = 0; j < n; j++) { lut[ids[j]] = j; for (let ch = 0; ch < 3; ch++) colors[j * 3 + ch] = Math.round(mean[j * 3 + ch]); }
-      return {colors, size: Math.max(1, n), lut};
+      return {colors, size: Math.max(1, n), index: rgb => lut[bucketKey(rgb)]};
     }
     const order = new Uint32Array(n);
     for (let j = 0; j < n; j++) order[j] = j;
@@ -510,7 +519,7 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
     const colors = new Uint8Array(size * 3);
     for (let i = 0; i < size * 3; i++) colors[i] = Math.round(pal[i]);
     for (let j = 0; j < n; j++) lut[ids[j]] = assign[j];
-    return {colors, size, lut};
+    return {colors, size, index: rgb => lut[bucketKey(rgb)]};
   }
 
   // ---- LZW ------------------------------------------------------------------------------------------------------
@@ -572,12 +581,12 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
       const o = opts || {};
       this.width = o.width; this.height = o.height; this.pixels = o.width * o.height;
       this.count = new Uint32Array(KEYS); this.sum = new Float64Array(KEYS * 3); this.used = 0;
-      this.current = null; this.frames = []; this.merged = 0;
+      this.current = null; this.frames = []; this.merged = 0; this.exact = new Map();
     }
 
     add(image, delayMs, opts) {
       const rgba = image.data || image, W = this.width, H = this.height, keys = new Uint32Array(this.pixels);
-      for (let i = 0, p = 0; i < this.pixels; i++, p += 4) keys[i] = ((rgba[p] >> 2) << 12) | ((rgba[p + 1] >> 2) << 6) | (rgba[p + 2] >> 2);
+      for (let i = 0, p = 0; i < this.pixels; i++, p += 4) keys[i] = (rgba[p] << 16) | (rgba[p + 1] << 8) | rgba[p + 2];
       let x0 = 0, y0 = 0, x1 = W - 1, y1 = H - 1;
       if (this.current) {
         x0 = W; y0 = H; x1 = -1; y1 = -1;
@@ -591,7 +600,11 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
         const row = (y0 + y) * W + x0;
         part.set(keys.subarray(row, row + w), y * w);
         for (let x = 0; x < w; x++) {
-          const k = keys[row + x], p = (row + x) * 4;
+          const rgb = keys[row + x], k = bucketKey(rgb), p = (row + x) * 4;
+          if (this.exact) {
+            this.exact.set(rgb, true);
+            if (this.exact.size > 255) this.exact = null; // bounded exact path; retain the bucket fallback
+          }
           if (this.count[k]++ === 0) this.used++;
           this.sum[k * 3] += rgba[p]; this.sum[k * 3 + 1] += rgba[p + 1]; this.sum[k * 3 + 2] += rgba[p + 2];
         }
@@ -602,7 +615,7 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
     }
 
     _once(colors, thin, comment) {
-      const W = this.width, H = this.height, N = this.pixels, pal = palette(this, colors), lut = pal.lut;
+      const W = this.width, H = this.height, N = this.pixels, pal = palette(this, colors), index = pal.index;
       const minCode = bitsFor(pal.size + 1), T = pal.size, state = new Uint32Array(N), shown = new Uint8Array(N), out = [];
       let ux0 = W, uy0 = H, ux1 = -1, uy1 = -1, pos = 0, last = 0, t = 0, shownCs = 0;
       const close = endMs => { if (out.length) { const f = out[out.length - 1]; f.delayCs = Math.max(MIN_DELAY_CS, Math.round(endMs / 10) - shownCs); shownCs += f.delayCs; } };
@@ -616,12 +629,12 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
         if (out.length && thin > 0 && f.group && !end && pos % (1 << thin) !== 0) continue;
         if (!out.length) {
           const idx = new Uint8Array(N);
-          for (let i = 0; i < N; i++) idx[i] = lut[state[i]];
+          for (let i = 0; i < N; i++) idx[i] = index(state[i]);
           shown.set(idx);
           out.push({x: 0, y: 0, w: W, h: H, transparent: false, lzw: lzw(idx, minCode)});
         } else {
           let x0 = W, y0 = H, x1 = -1, y1 = -1;
-          for (let y = uy0; y <= uy1; y++) for (let x = ux0, i = y * W + ux0; x <= ux1; x++, i++) if (lut[state[i]] !== shown[i]) {
+          for (let y = uy0; y <= uy1; y++) for (let x = ux0, i = y * W + ux0; x <= ux1; x++, i++) if (index(state[i]) !== shown[i]) {
             if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
           }
           ux0 = W; uy0 = H; ux1 = -1; uy1 = -1;
@@ -629,7 +642,7 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
           close(start);
           const w = x1 - x0 + 1, h = y1 - y0 + 1, solid = new Uint8Array(w * h), holes = new Uint8Array(w * h);
           for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-            const i = (y0 + y) * W + x0 + x, v = lut[state[i]];
+            const i = (y0 + y) * W + x0 + x, v = index(state[i]);
             solid[y * w + x] = v; holes[y * w + x] = v === shown[i] ? T : v; shown[i] = v;
           }
           const a = lzw(solid, minCode), b = lzw(holes, minCode);
@@ -639,7 +652,19 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
         ux0 = W; uy0 = H; ux1 = -1; uy1 = -1;
       }
       close(t);
-      return {bytes: assemble(W, H, pal, out, comment), frames: out.length, colors: pal.size, thin};
+      // GIF stores at most 65535 cs per image. Repeating the same disposal-1 rectangle is idempotent,
+      // including transparent pixels. Avoid a 1 cs remainder, which browsers would inflate.
+      const timed = [];
+      for (const f of out) {
+        if (!Number.isSafeInteger(f.delayCs)) throw new RangeError("GIF duration must be finite and safely representable in centiseconds");
+        let remaining = f.delayCs;
+        while (remaining > 65535) {
+          const delayCs = remaining === 65536 ? 65534 : 65535;
+          timed.push({...f, delayCs}); remaining -= delayCs;
+        }
+        timed.push({...f, delayCs: remaining});
+      }
+      return {bytes: assemble(W, H, pal, timed, comment), frames: timed.length, colors: pal.size, thin};
     }
 
     /** {colors ≤ 255, maxBytes, comment} → {bytes, report}. Over maxBytes: colours halve down to 16, then burst frames

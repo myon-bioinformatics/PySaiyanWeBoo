@@ -611,9 +611,18 @@ page-layouts.json]` renders it from the shell or Node, so a report script owns o
 
 🎞️ `gif.js` (`UiGif`) turns canvas frames into one animated GIF89a with no dependency: the browser decodes, resizes, zooms and
 captions the images it is given (`Composer`), and the module adds only what browsers lack — a bucket histogram while frames arrive,
-one global palette (exact when it fits, else median cut + refinement), each frame as its tight changed rectangle (transparent where
+one global palette (exact for at most 255 distinct RGB colours when the selected palette fits them, else bucket median cut + refinement), each frame as its tight changed rectangle (transparent where
 unchanged when that is smaller), 12-bit LZW, delays ≥ 2 cs on the real timeline, and a byte budget (`maxBytes`: fewer colours, then
-fewer burst frames). `gif_recorder_document()` is the blank page a browser driver opens to use it — screenshots go in once, the GIF
+fewer burst frames). RGB changes are compared before quantization; input alpha is ignored, so composite onto the desired
+background first. Exact colours are not promised when a smaller palette or budget requires quantization. Delays use centiseconds,
+rounded on the timeline with a 20 ms minimum per displayed state; shorter inputs can lengthen playback. Holds over 655350 ms
+split into repeated GIF images without losing duration (`report.frames` counts these physical images).
+`maxBytes` is a best-effort encoded-byte target, not a memory limit or hard output cap: colours halve down to 16 (or start lower
+if requested), then grouped bursts keep every 2nd, 4th or 8th state plus their endpoints. Dropped states donate their time to
+retained states. If none fits, the smallest attempt is returned with `report.overBudget: true`; callers requiring a hard cap must
+check that flag before saving. Timing continuation images also count toward this budget. Non-finite or unsafe-integer centisecond durations are rejected;
+very long finite recordings can still require substantial memory and output.
+`gif_recorder_document()` is the blank page a browser driver opens to use it — screenshots go in once, the GIF
 comes out once; BrowserTestKit's `evidence_gif.py` is that driver. The encoder (`UiGif.Encoder`) also runs in Node from the file
 `--site` writes; `tests/gif.node.js` checks it against an independent decoder, `GifBrowserTests` in each engine with Pillow.
 

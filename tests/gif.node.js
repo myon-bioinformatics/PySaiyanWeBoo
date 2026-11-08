@@ -158,6 +158,48 @@ for (const [name, min, values] of [
   assert(impossible.report.overBudget && impossible.report.colors === 16 && impossible.report.thin === 3);
 }
 
+// Distinct RGB values in one 6-bit bucket must survive both spatial and temporal deltas.
+{
+  const e = new G.Encoder({width: 2, height: 1});
+  const a = Uint8Array.from([100, 100, 100, 255, 101, 102, 103, 255]);
+  const b = Uint8Array.from([101, 102, 103, 255, 101, 102, 103, 255]);
+  assert(e.add(a, 100)); assert(e.add(b, 200)); assert(!e.add(b, 300));
+  const result = e.encode(), gif = decodeGif(result.bytes);
+  assert.strictEqual(result.report.colors, 2);
+  assert.deepStrictEqual(gif.frames.map(f => Array.from(f.rgb)), [Array.from(rgbOf(a)), Array.from(rgbOf(b))]);
+  assert.deepStrictEqual(gif.frames.map(f => f.delay), [10, 50]);
+  assert.deepStrictEqual([gif.frames[1].x, gif.frames[1].w], [0, 1]);
+}
+
+// Exact path includes 255 distinct colours; the 256th uses the bounded quantizer.
+for (const count of [255, 256]) {
+  const a = new Uint8Array(count * 4);
+  for (let i = 0; i < count; i++) a.set([i, 100, 101, 255], i * 4);
+  const e = new G.Encoder({width: count, height: 1}); e.add(a, 100);
+  const result = e.encode(), gif = decodeGif(result.bytes);
+  if (count === 255) assert.deepStrictEqual(gif.frames[0].rgb, rgbOf(a));
+  assert(result.report.colors <= 255);
+  const reduced = e.encode({colors: 2}); assert(reduced.report.colors <= 2);
+}
+
+// Long holds, merged holds and the 1 cs remainder preserve total time, even over budget.
+for (const total of [655350, 655360, 700000, 1310710]) {
+  const e = new G.Encoder({width: 1, height: 1}), a = solid(1, 1, [101, 102, 103]);
+  e.add(a, total / 2); e.add(a, total / 2);
+  const result = e.encode({maxBytes: 1}), gif = decodeGif(result.bytes);
+  assert(result.report.overBudget);
+  assert.strictEqual(result.report.frames, gif.frames.length);
+  assert.strictEqual(gif.frames.reduce((s, f) => s + f.delay, 0), total / 10);
+  for (const f of gif.frames) {
+    assert(f.delay >= 2 && f.delay <= 65535);
+    assert.deepStrictEqual(f.rgb, rgbOf(a));
+  }
+}
+
+{
+  const e = new G.Encoder({width: 1, height: 1}); e.add(solid(1, 1, [0, 0, 0]), Infinity);
+  assert.throws(() => e.encode(), /duration must be finite/);
+}
 assert.throws(() => new G.Encoder({width: 2, height: 2}).encode(), /no frames/);
 assert.strictEqual(G.toBase64(G.fromBase64("R0lGODlh")), "R0lGODlh");
 console.log("gif.node.js ok");
