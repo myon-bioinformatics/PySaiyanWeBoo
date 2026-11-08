@@ -745,18 +745,22 @@ python -S web_ui.py --site .   # writes js/records.js next to it
 
 ### Components from Python, in this repository or another
 
-`COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `theme-switch`, `coordinates`, `door`,
-`playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `photo`, `studio`, `source`, `stub`, `world`), and two calls wrap them:
+`COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `coordinates`,
+`door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `stub`, `curl`, `showcase`,
+`front`, `world`; `components()` lists them as data), and two calls wrap them:
 
 ```python
 import web_ui                                   # the vendored copy (vendor/web_ui.py) in another repository
 parts = web_ui.component_parts("dial", "volume", maximum=11, label="Volume")   # {"html", "css", "js"}: place them where your page wants them
-page = web_ui.component_document("dial", "volume", maximum=11, title="Volume")  # or one single-file page: bundled_css() + the stylesheet, the HTML, the module inline
+page = web_ui.component_document("dial", "volume", maximum=11, document_title="Volume")  # or one single-file page: bundled_css() + the stylesheet, the HTML, the module inline
 ```
 
 `parts["css"]` is what the component needs beyond `bundled_css()`; `parts["js"]` is the module source, which binds its own elements when the page loads it
 (`[data-ui-dial]`, `[data-ui-door]`, …), so a page lists it once with `module_script()` or `render_document(embedded_modules=...)`. A spec goes first for the
 components that take one (`door`, `source`, `stub`, `world`); keyword arguments reach the builder (`heading_level=`, a dial's `minimum=`/`maximum=`/`step=`).
+From Node or a shell, the same calls by name: `python -S web_ui.py --component dial --set name=volume --set maximum=11 --part json` prints the three as
+JSON (`--part page|html|css|js|json`, `--spec FILE` or `--spec -` for a spec, `--set KEY=VALUE` with JSON values, `--component list` for the table);
+from Node, `require("./vendor/py_launch.cjs").run("vendor/web_ui.py", ["--component", ...], {noSite: true}).stdout`.
 `css_source(name)` and `js_source(name)` stay the raw sources by file name; `write_js()` still writes the modules out for pages that link files (`python -S web_ui.py --css-bundle` the stylesheets).
 mcp-toolcall-lab is the model consumer: it vendors `web_ui.py` through the parent repository's `vendor_sync.py` (`vendor-consumers.json`, `vendor.lock.json`)
 and builds its Pokémon panel from `source_panel_html(spec)` + `css_source("source.css")` + `js_source("source.js")`; `component_parts("source", spec)` is the
