@@ -463,13 +463,15 @@ def test_demo_recorder_refuses_before_it_opens_a_browser(tmp_path, capsys):
 JST_RUN = datetime(2026, 11, 8, 20, 34, 12, tzinfo=timezone(timedelta(hours=9)))
 
 
-def test_demo_recorder_names_files_with_a_prefix_a_suffix_a_timestamp_and_a_commit(tmp_path):
-    """gif_targets(): <prefix><stem><suffix>[-<timestamp>][-<commit>].gif; one timestamp and commit for the whole batch."""
+def test_demo_recorder_names_files_with_a_prefix_a_timestamp_a_git_commit_and_a_suffix(tmp_path):
+    """gif_targets(): <prefix><stem>[-<timestamp>][-<git-commit>]<suffix>.gif (the suffix ends the name); one timestamp and commit per batch."""
     plain = record_demo.gif_targets(tmp_path / "new", ["school-pick", "school-keys"])
     assert plain == {"school-pick": tmp_path / "new/school-pick.gif", "school-keys": tmp_path / "new/school-keys.gif"} and (tmp_path / "new").is_dir()
     assert record_demo.gif_targets(tmp_path, ["school-pick"], prefix="ci-", suffix="-chrome") == {"school-pick": tmp_path / "ci-school-pick-chrome.gif"}
-    both = record_demo.gif_targets(tmp_path, ["school-pick", "school-keys"], prefix="ci-", timestamp=True, commit=True, now=JST_RUN, revision="288cbed")
-    assert both == {"school-pick": tmp_path / "ci-school-pick-20261108T113412Z-288cbed.gif", "school-keys": tmp_path / "ci-school-keys-20261108T113412Z-288cbed.gif"}
+    both = record_demo.gif_targets(tmp_path, ["school-pick", "school-keys"], prefix="ci-", suffix="-chrome", timestamp=True, git_commit=True,
+                                  now=JST_RUN, revision="288cbed")
+    assert both == {"school-pick": tmp_path / "ci-school-pick-20261108T113412Z-288cbed-chrome.gif",
+                    "school-keys": tmp_path / "ci-school-keys-20261108T113412Z-288cbed-chrome.gif"}
     assert record_demo.run_timestamp(JST_RUN) == "20261108T113412Z"                        # 20:34:12 in Tokyo is 11:34:12 UTC
     assert record_demo.run_timestamp(JST_RUN) < record_demo.run_timestamp(JST_RUN + timedelta(seconds=1))   # names sort in recording order
     with pytest.raises(ValueError, match="time zone"):
@@ -486,7 +488,7 @@ def test_demo_recorder_names_files_with_a_prefix_a_suffix_a_timestamp_and_a_comm
 
 
 def test_demo_recorder_reads_the_commit_from_git(tmp_path):
-    """source_commit(): `git rev-parse --short=7 HEAD`, plus -dirty when a tracked file changed; outside a checkout --commit says so."""
+    """source_commit(): `git rev-parse --short=7 HEAD`, plus -dirty when a tracked file changed; outside a checkout --git-commit says so."""
     def git(*args):
         subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
     git("init", "-q")
@@ -499,19 +501,20 @@ def test_demo_recorder_reads_the_commit_from_git(tmp_path):
     assert record_demo.source_commit(tmp_path) == head                                     # untracked files do not count
     (tmp_path / "page.txt").write_text("two\n", encoding="utf-8")
     assert record_demo.source_commit(tmp_path) == head + "-dirty"
-    with pytest.raises(ValueError, match="git checkout"):
+    with pytest.raises(ValueError, match="--git-commit needs a git checkout"):
         record_demo.source_commit(tmp_path / "missing")
 
 
 def test_demo_recorder_setting_string_is_parsed_by_the_same_argparse_rules(tmp_path):
-    """WEB_UI_GIFS="DIR --timestamp --commit --prefix P --suffix=-S" goes through add_gif_arguments too: same checks, errors raised, no abbreviations."""
-    target = record_demo.gif_targets_from(f"{tmp_path} --timestamp --commit --prefix ci- --suffix=-chromium", ["component-table"],
+    """WEB_UI_GIFS="DIR --timestamp --git-commit --prefix P --suffix=-S" goes through add_gif_arguments too: same checks, errors raised, no abbreviations."""
+    target = record_demo.gif_targets_from(f"{tmp_path} --timestamp --git-commit --prefix ci- --suffix=-chromium", ["component-table"],
                                           now=JST_RUN, revision="288cbed")["component-table"]
-    assert target == tmp_path / "ci-component-table-chromium-20261108T113412Z-288cbed.gif"
+    assert target == tmp_path / "ci-component-table-20261108T113412Z-288cbed-chromium.gif"
     assert record_demo.gif_targets_from(f"'{tmp_path / 'a dir'}'", ["component-table"])["component-table"] == tmp_path / "a dir/component-table.gif"
     for spec, message in ((f"{tmp_path} --time", "unrecognized"), (f"{tmp_path} --timestamp=yes", "ignored explicit argument"),
                           (f"{tmp_path} --prefix a/b", "letters"), (f"{tmp_path} --suffix -chrome", "expected one argument"),
-                          ("", "required: out"), (f"{tmp_path} --number", "unrecognized")):
+                          ("", "required: out"), (f"{tmp_path} --number", "unrecognized"), (f"{tmp_path} --commit", "unrecognized"),
+                          (f"{tmp_path} --git", "unrecognized")):                     # the old name and an abbreviation are both refused
         with pytest.raises(argparse.ArgumentError, match=message):
             record_demo.gif_targets_from(spec, ["x"])
     # the CLI: --only is a choice, and nothing touches a browser before these are checked
@@ -527,11 +530,11 @@ def test_demo_recorder_setting_string_is_parsed_by_the_same_argparse_rules(tmp_p
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(record_demo, "record", fake_record)
     try:
-        record_demo.main([str(tmp_path), "--only", "pick", "--timestamp", "--commit", "--prefix", "ci-", "--suffix=-chrome"])
+        record_demo.main([str(tmp_path), "--only", "pick", "--timestamp", "--git-commit", "--prefix", "ci-", "--suffix=-chrome"])
     finally:
         monkeypatch.undo()
     assert seen == {"out": tmp_path, "names": ["pick"], "chrome": None, "width": None, "force": False, "prefix": "ci-", "suffix": "-chrome",
-                    "timestamp": True, "commit": True}
+                    "timestamp": True, "git_commit": True}
 
 
 def test_demo_zoom_goes_in_toward_the_anchor_and_stays_on_the_real_clock():

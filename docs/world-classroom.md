@@ -250,16 +250,16 @@ time whenever a scene waits; Pillow writes one shared palette and delta frames).
 ```sh
 WEB_UI_CHROME=/path/to/chrome python tool/record_demo.py docs/demo --force            # all scenes
 python tool/record_demo.py docs/demo --only keys tap --force --width 400               # some, smaller
-python tool/record_demo.py runs --timestamp --commit --prefix ci- --suffix=-chrome     # runs/ci-school-pick-chrome-20261108T113412Z-288cbed.gif …
+python tool/record_demo.py runs --timestamp --git-commit --prefix ci- --suffix=-chrome # runs/ci-school-pick-20261108T113412Z-288cbed-chrome.gif …
 ```
 
-File names are `<prefix><world>-<scene><suffix>[-<timestamp>][-<commit>].gif`. `--prefix` and `--suffix` (letters, digits, `_ . -`; write
-`--suffix=-x` when it starts with `-`) are optional. `--timestamp` appends when the run started, in UTC as ISO 8601 basic format
-(`20261108T113412Z` is 20:34:12 in Tokyo), so names sort in recording order and read the same in any time zone; `--commit` appends the git
+File names are `<prefix><world>-<scene>[-<timestamp>][-<git-commit>]<suffix>.gif`. `--prefix` and `--suffix` (letters, digits, `_ . -`;
+write `--suffix=-x` when it starts with `-`) are optional, and the suffix always ends the name. `--timestamp` adds when the run started, in UTC as ISO 8601 basic format
+(`20261108T113412Z` is 20:34:12 in Tokyo), so names sort in recording order and read the same in any time zone; `--git-commit` adds the git
 commit the pages were built from (`288cbed`, or `288cbed-dirty` when tracked files have uncommitted changes). Every scene of one run shares
 the same timestamp and commit. Without `--timestamp` an existing file is refused unless `--force`, so a repeated run by hand or by an agent
 either keeps its own files or says so. `record_demo.add_gif_arguments`, `gif_targets` and `gif_targets_from` are these rules as functions:
-the browser tests name their GIFs through them from `WEB_UI_GIFS="DIR [--timestamp] [--commit] [--prefix P] [--suffix S] [--force]"`.
+the browser tests name their GIFs through them from `WEB_UI_GIFS="DIR [--timestamp] [--git-commit] [--prefix P] [--suffix S] [--force]"`.
 
 | File | Shows |
 |---|---|
