@@ -139,6 +139,10 @@ def test_write_bundle_and_check_bundle_round_trip(tmp_path):
     import pytest
     with pytest.raises(ValueError):
         web_ui.write_bundle(target, note="two\nlines")
+    second = tmp_path / "second.css"
+    web_ui.write_bundle(second, theme=None, extra_css=".y{}")  # a sheet loaded after the first: no second core
+    assert second.read_text(encoding="utf-8").split("\n", 1)[1] == ".y{}"
+    assert web_ui.check_bundle(second, theme=None, extra_css=".y{}") == []
     # The CLI is the same two calls, so Node (vendor/py_launch.cjs) and python -S consumers get the same bytes.
     spec = tmp_path / "brand.json"
     spec.write_text('{"name": "acme", "tokens": {"--ui-bg": "#ffffff", "--ui-fg": "#000000"}}', encoding="utf-8")

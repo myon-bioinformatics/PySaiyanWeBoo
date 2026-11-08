@@ -611,16 +611,17 @@ BUNDLE_SCHEMA = "web-ui-bundle/1"
 _BUNDLE_HEADER = re.compile(r"^/\* (web-ui-bundle/\d+) commit=([0-9a-f]{40}|unknown) sha256=([0-9a-f]{64}) ([^\n]*)\*/\n")
 
 
-def bundle_css(*, theme: str = "modern", brand: tuple[str, dict[str, str]] | None = None, extra_css: str = "") -> str:
+def bundle_css(*, theme: str | None = "modern", brand: tuple[str, dict[str, str]] | None = None, extra_css: str = "") -> str:
     """The stylesheet a consumer ships: ``core_css(theme)``, then the consumer's own palette (``theme_css``), then
-    its layout rules. ``brand`` is ``(name, tokens)``; render the pages with ``theme=name`` so the palette applies."""
-    body = core_css(theme)
+    its layout rules. ``brand`` is ``(name, tokens)``; render the pages with ``theme=name`` so the palette applies.
+    ``theme=None`` leaves the core out, for a second sheet loaded after the first."""
+    body = core_css(theme) if theme is not None else ""
     if brand is not None:
         body += theme_css(*brand)
     return body + extra_css
 
 
-def write_bundle(path: Path | str, *, theme: str = "modern", brand: tuple[str, dict[str, str]] | None = None,
+def write_bundle(path: Path | str, *, theme: str | None = "modern", brand: tuple[str, dict[str, str]] | None = None,
                  extra_css: str = "", note: str = "") -> dict[str, str]:
     """Write ``bundle_css(...)`` to ``path`` under a one-line provenance header (schema, this module's commit, the
     sha256 of the body, ``note``). The file is meant to be committed, so stdlib-only consumers can serve it without
@@ -635,7 +636,7 @@ def write_bundle(path: Path | str, *, theme: str = "modern", brand: tuple[str, d
     return fields
 
 
-def check_bundle(path: Path | str, *, theme: str = "modern", brand: tuple[str, dict[str, str]] | None = None,
+def check_bundle(path: Path | str, *, theme: str | None = "modern", brand: tuple[str, dict[str, str]] | None = None,
                  extra_css: str = "") -> list[str]:
     """Problems with a committed bundle (empty when it is current): missing, no header, body edited by hand
     (sha256), or stale against ``bundle_css(...)`` from this module (including a moved pin)."""
