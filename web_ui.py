@@ -597,14 +597,9 @@ def core_css(theme: str = "modern") -> str:
 def source_commit() -> str | None:
     """The git commit this module came from: pip's install record when installed from git (the consumers' pinned
     dependency), else the checkout's HEAD when run from the repository, else None. Stdlib only, no subprocess."""
-    try:
-        import importlib.metadata
-        raw = importlib.metadata.distribution("pysaiyanweboo").read_text("direct_url.json")
-        commit = (json.loads(raw).get("vcs_info") or {}).get("commit_id") if raw else None
-        if isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit):
-            return commit
-    except Exception:  # not installed, or not from git: fall through to the checkout
-        pass
+    commit = installed_commit()
+    if commit:
+        return commit
     git = Path(__file__).resolve().parent / ".git"
     try:
         head = (git / "HEAD").read_text(encoding="utf-8").strip()
@@ -977,13 +972,26 @@ def render_document(
     )
 
 
-GENERATOR_META = re.compile(r'<meta name="generator" content="web_ui ([0-9a-f]{40}|unknown)">')
+GENERATOR_META = re.compile(r'<meta name="generator" content="web_ui ([0-9a-f]{40}|checkout)">')
 
 
 def generator_meta() -> str:
     """The ``<meta name="generator">`` every rendered page carries: which web_ui commit drew it, so a screenshot or
-    a GIF receipt (BrowserTestKit's evidence_gif reads it as ``generator``) says what it is evidence of."""
-    return f'<meta name="generator" content="web_ui {source_commit() or "unknown"}">'
+    a GIF receipt (BrowserTestKit's evidence_gif reads it as ``generator``) says what it is evidence of. The commit
+    is the installed module's (pip's install record); a checkout says ``checkout``, because a page committed from a
+    checkout cannot name the commit that will contain it."""
+    return f'<meta name="generator" content="web_ui {installed_commit() or "checkout"}">'
+
+
+def installed_commit() -> str | None:
+    """The git commit the installed module came from (pip's install record), or None in a checkout."""
+    try:
+        import importlib.metadata
+        raw = importlib.metadata.distribution("pysaiyanweboo").read_text("direct_url.json")
+        commit = (json.loads(raw).get("vcs_info") or {}).get("commit_id") if raw else None
+        return commit if isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit) else None
+    except Exception:  # not installed, or not from git
+        return None
 
 
 def repository_diagnostics_page(
@@ -1245,7 +1253,7 @@ def parts_document(*, spec: Any = None, layouts: Any = None, themes: Sequence[st
             f'<p class="ui-muted">Every block of <code>web-ui-page/1</code> under every theme; the layout radios inside each frame '
             f'switch its presets. Screenshot this page to see a change before it reaches a consumer.</p><p>{nav}</p>'
             + "".join(frames) + "</main>")
-    css = (core_css() + ".ui-parts{--ui-max:1280px}.ui-parts-frame{margin:var(--ui-space) 0}.ui-parts-frame h2{margin:0 0 .25rem}"
+    css = (bundled_css() + ".ui-parts{--ui-max:1280px}.ui-parts-frame{margin:var(--ui-space) 0}.ui-parts-frame h2{margin:0 0 .25rem}"
            ".ui-parts-frame iframe{width:100%;height:720px;border:1px solid var(--ui-border);background:#fff}")
     return render_document(trusted_html=body, title="PySaiyanWeBoo parts", css=css)
 

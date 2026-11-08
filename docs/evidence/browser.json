@@ -1,8 +1,8 @@
 {
   "schema": "btk-evidence-gif/1",
   "gif": "browser.gif",
-  "bytes": 683593,
-  "sha256": "8afcd3b7cdd9ac91dcec7fde1d013067699e2213bbd2aa40d97f09a73bedc135",
+  "bytes": 683573,
+  "sha256": "0a5f8e544ccd5bbb36d5408307df3d1c665f30e53a424e3cfd0ddf7b9321a928",
   "frames": 27,
   "canvas": "720x512",
   "browser": "chromium 153.0.8010.12",
@@ -23,7 +23,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🏠 examples",
@@ -34,7 +34,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "📜 example",
@@ -45,7 +45,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🐙 github-like",
@@ -56,7 +56,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🧩 parts × themes",
@@ -69,7 +69,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "📱 parts × themes",
@@ -80,7 +80,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🧩 showcase",
@@ -91,7 +91,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🧱 patterns",
@@ -102,7 +102,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🛝 playground",
@@ -113,7 +113,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🖥️ screens",
@@ -124,7 +124,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🚪 door",
@@ -135,7 +135,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "📐 coordinates",
@@ -146,7 +146,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🕒 timeline",
@@ -157,7 +157,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🖼️ image-studio",
@@ -168,7 +168,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "📷 photo-studio",
@@ -179,7 +179,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🎛️ composition-studio",
@@ -190,7 +190,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🎵 play-studio",
@@ -201,7 +201,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "📋 clipboard-shelf",
@@ -212,7 +212,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🧪 mcp-lab",
@@ -223,7 +223,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🔌 mcp-stub",
@@ -234,7 +234,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🔗 api-stub",
@@ -245,7 +245,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "🧾 test-report",
@@ -256,7 +256,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "📱 top",
@@ -267,7 +267,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "📱 examples",
@@ -278,7 +278,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "📱 door",
@@ -289,7 +289,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     },
     {
       "label": "📱 screens",
@@ -300,7 +300,7 @@
       "errors": [],
       "allowed": [],
       "external": [],
-      "generator": "web_ui 31db05473fdd42e74b18165158c263e4d7e7cfec"
+      "generator": "web_ui checkout"
     }
   ],
   "plan": [

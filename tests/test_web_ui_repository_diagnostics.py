@@ -182,7 +182,7 @@ def test_check_theme_reads_every_palette_we_ship_and_names_what_fails():
 def test_every_page_says_which_web_ui_drew_it():
     page = web_ui.render_document("x")
     match = web_ui.GENERATOR_META.search(page)
-    assert match and match.group(1) == (web_ui.source_commit() or "unknown")
+    assert match and match.group(1) == (web_ui.installed_commit() or "checkout")  # never the checkout's HEAD: it moves
     assert page.index('name="generator"') < page.index("<title>")
     assert web_ui.GENERATOR_META.search(web_ui.repository_diagnostics_page("o/r"))
 
