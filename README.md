@@ -585,6 +585,8 @@ stylesheet. The status classes `ui-pass` / `ui-fail` / `ui-changed` style any el
 `core_css("terminal")` is the dark monospace terminal look (palette in tokens.css, `# ` titles / `[tags]` / `> ` buttons in
 `themes/terminal.css`) that mcp-toolcall-lab's stub pages use instead of a stylesheet of their own. A consumer with a brand
 palette registers it as `theme_css("ironmate", {"--ui-bg": …})` next to `core_css()` and renders with `theme="ironmate"`.
+A page whose forms are plain `<button>` / `<input>` / `<select>` / `<textarea>` / `<table>` elements (hand-written or
+built by its own script) opts them into the component look with `class="ui-elements"` on `<body>` or a container.
 
 🩺 The repository-diagnostics page itself is one function: `web_ui.repository_diagnostics_page("owner/repo")`
 returns the self-contained HTML (bundled CSS and `repository-diagnostics.js` embedded, nothing from a CDN) that

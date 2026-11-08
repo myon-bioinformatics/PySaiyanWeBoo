@@ -76,7 +76,7 @@ def test_table_escapes_and_classes():
         web_ui.table(("a",), [("1", "2")])
     with pytest.raises(ValueError):
         web_ui.table(("a",), [("1",)], row_classes=[])
-    assert ".ui-table{" in web_ui.css_source("components.css")
+    assert ".ui-table,.ui-elements table{" in web_ui.css_source("components.css")
 
 
 def test_terminal_is_a_token_only_theme():
@@ -94,7 +94,7 @@ def test_core_css_is_the_small_bundle():
     import pytest
     core = web_ui.core_css()
     assert core.startswith("@layer base,components,theme;") and "/* css/themes/modern.css */" in core
-    assert ".ui-table{" in core and ".ui-pass{" in core and "/* css/shell.css */" not in core
+    assert ".ui-table,.ui-elements table{" in core and ".ui-pass{" in core and "/* css/shell.css */" not in core
     assert len(core) < 6000 < len(web_ui.bundled_css())
     assert 'body[data-ui-theme="terminal"]' in web_ui.core_css("terminal") and 'body[data-ui-theme="green"]' in web_ui.core_css("green")
     with pytest.raises(ValueError):
@@ -110,3 +110,10 @@ def test_theme_css_registers_a_consumer_palette():
     for name, tokens in (("Bad", {"--ui-bg": "#fff"}), ("x", {"--ui-fg": "#fff"}), ("x", {"--ui-bg": "#fff", "color": "red"})):
         with pytest.raises(ValueError):
             web_ui.theme_css(name, tokens)
+
+
+def test_ui_elements_opt_in_styles_bare_form_elements():
+    css = web_ui.css_source("components.css")
+    assert ".ui-elements button," in css and ".ui-elements textarea," in css and ".ui-elements table{" in css
+    assert "[type=checkbox],[type=radio],[type=range],[type=color],[type=file])" in css
+    assert ".ui-elements button:hover{border-color:var(--ui-accent)}" in css
