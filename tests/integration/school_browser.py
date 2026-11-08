@@ -568,7 +568,7 @@ def write_city_gallery(out, records, meta):
         fresh = {(r["viewport"], r["floor"], r["kind"], r["id"]) for r in records}
         kept = [r for r in json.loads(manifest.read_text(encoding="utf-8")).get("records", []) if (r["viewport"], r["floor"], r["kind"], r["id"]) not in fresh]
         records = kept + records
-    kinds = ["overview", "sheet", "map", "sign", "tool", "category", "favorite", "key", "fire", "width", "lang", "nojs", "pick"]
+    kinds = ["overview", "sheet", "map", "sign", "layer", "tool", "category", "favorite", "key", "fire", "width", "lang", "nojs", "pick"]
     records = sorted(records, key=lambda r: (kinds.index(r["kind"]) if r["kind"] in kinds else len(kinds), r["viewport"], r["floor"], r["order"]))
     ok = sum(1 for r in records if not r["notes"])
     (out / "manifest.json").write_text(json.dumps({"schema": "web-ui-cities-evidence/1", **meta, "shots": len(records), "clean": ok,
@@ -581,7 +581,7 @@ def write_city_gallery(out, records, meta):
            ".g{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(var(--w),1fr))}.phone{--w:192px}.desktop,.wide,.tablet{--w:320px}"
            "figure{margin:0;padding:8px;border:1px solid #30363d;border-radius:8px}figure.n{border-color:#d29922}img{width:100%;height:auto;display:block}"
            "figcaption{font-size:12px;line-height:16px;margin-top:8px}.note{color:#d29922}")
-    names = {"overview": "🗺️", "sheet": "📄", "map": "📍", "sign": "🪧", "tool": "🧰", "width": "📐", "lang": "🌐", "nojs": "🚫", "pick": "🙂", "favorite": "⭐", "fire": "🔥", "key": "⌨️", "category": "🏷️"}
+    names = {"overview": "🗺️", "sheet": "📄", "map": "📍", "sign": "🪧", "layer": "🏷️", "tool": "🧰", "width": "📐", "lang": "🌐", "nojs": "🚫", "pick": "🙂", "favorite": "⭐", "fire": "🔥", "key": "⌨️", "category": "🏷️"}
     parts = [f"<!doctype html><html lang=ja><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
              f"<title>🗼🎡🥖 cities evidence</title><style>{css}</style><h1>🗼🎡🥖 cities evidence</h1>"
              f"<p>✅ {ok} · ⚠️ {len(records) - ok} · 📸 {len(records)} · {escape(meta['browser'])} · {escape(meta['date'])} · {escape(meta['commit'][:12])}</p><nav>"]
@@ -1007,6 +1007,50 @@ class CitiesTests(unittest.TestCase):
                 self.shot(page, "map", f["id"], f"reduced-{s['id']}", f"🐢→⚡ reduced motion: {s['label']}")
                 page.click(".ui-sheet-close:visible")
         self.assertEqual(self.errors, [])
+
+    def test_the_name_layer_switches_without_a_reload(self):
+        """Cities open with dots (the name of the spot the player stands by, the one under the pointer and the focused one); 🏷️ in ⚙️ switches to names or off, kept across reloads."""
+        px = lambda sel: page.eval_on_selector_all(sel, "els => els.map(e => getComputedStyle(e).fontSize)")   # noqa: E731
+        for size in SIZES:
+            page = self.open(size)
+            self.start(page)
+            self.show(page, "london")
+            page.mouse.move(1, 1)                                                                   # the pointer left on the map would :hover a dot into its name
+            plain = f'{CITY_FLOOR.format("london")} .ui-spot:not([data-sign])'
+            self.assertEqual(page.get_attribute(".ui-world", "data-names"), "dots")
+            london = next(f for f in CITIES["floors"] if f["id"] == "london")
+            here, reach = london["player"], london["tile"] * 1.5
+            near = [min((s for s in london["spots"] if not s.get("sign")), key=lambda s: max(abs(s["x"] - here["x"]), abs(s["y"] - here["y"])))["label"]]
+            self.assertEqual(near, ["キングス・クロス"])
+            self.assertLessEqual(max(abs(london["spots"][0]["x"] - here["x"]), abs(london["spots"][0]["y"] - here["y"])), reach)
+            sizes = px(plain)
+            self.assertEqual(sizes.count("0px"), len(sizes) - len(near), "only the spot the player stands by shows its name")
+            self.assertEqual(sorted(page.eval_on_selector_all(f"{plain}[data-near]", "els => els.map(e => e.textContent)")), near)
+            marker = f'{CITY_FLOOR.format("london")} .ui-spot[href="#cities-spot-london-charing-cross"]'
+            self.menu(page, "spots")
+            page.click('.ui-world-spots[data-floor="london"] a[href="#cities-spot-london-charing-cross"]')
+            page.evaluate(CITY_WALK, "london")
+            page.click(".ui-sheet-close:visible")
+            self.still(page)
+            self.assertEqual(self.press(page, marker), [], "a dot is never covered by a neighbour's name")   # ⚠️ in the names layer: Embankment covered it
+            page.click(".ui-sheet-close:visible")
+            self.still(page)
+            self.shot(page, "layer", "london", "dots", "● dots: names beside 🧳 only")
+            for mode, want in (("names", 0), ("off", len(sizes)), ("dots", len(sizes) - len(near))):
+                with self.subTest(size=size, names=mode):
+                    self.menu(page, "settings")
+                    page.select_option("[data-names-pick]", mode)
+                    page.keyboard.press("Escape")
+                    page.mouse.move(1, 1)
+                    self.assertEqual(page.get_attribute(".ui-world", "data-names"), mode)
+                    self.assertEqual(px(plain).count("0px"), want)
+                    self.shot(page, "layer", "london", mode, {"names": "🏷️ names: every name", "off": "✖️ off: dots only", "dots": "● dots"}[mode])
+            self.menu(page, "settings")
+            page.select_option("[data-names-pick]", "names")
+            page.reload()
+            self.start(page)
+            self.assertEqual(page.get_attribute(".ui-world", "data-names"), "names")   # kept with the language
+            self.assertEqual(self.errors, [])
 
     def test_fires_rivers_and_bridges_are_drawn(self):
         page = self.open("desktop")

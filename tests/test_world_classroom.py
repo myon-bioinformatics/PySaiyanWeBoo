@@ -305,7 +305,7 @@ def test_a_shell_world_is_icons_in_a_header_a_side_and_a_footer():
     assert [m for m in ("🏠", "🗺️", "🏫", "⭐", "⚙️") if m in head] == ["🏠", "🗺️", "🏫", "⭐", "⚙️"] and head.index("🏠") < head.index("🗺️") < head.index("⭐") < head.index("⚙️")
     assert "☰" in side and "⋯" in side and "🛝" in side and 'for="school-floor-yard"' in side and "🚪" in html[html.index("<footer"):]
     assert 'aria-label="ホーム" title="ホーム" data-t="home"' in head and 'aria-label="地図" title="地図" data-labels="{&quot;ja&quot;:&quot;地図&quot;,&quot;en&quot;:&quot;Map&quot;}"' in head
-    assert "<select data-lang" in head and head.count("<option ") == 11 and "data-pick-open" in head and "data-pick-open" in head and 'class="ui-world-pause"' in head and " data-me " in side         # global in the header, local in the side
+    assert "<select data-lang" in head and head.count("<option ") == 11 + 3 and "<select data-names-pick" in head and "data-pick-open" in head and "data-pick-open" in head and 'class="ui-world-pause"' in head and " data-me " in side         # global in the header, local in the side
     assert 'class="ui-world-pause"' not in side and "data-pick-open" not in side
     assert '<a href="#school-spot-flowers" data-x="480" data-y="96" data-floor="yard">' in html                                  # a place on another floor shows 🚪, not an arrow
     assert html.count("ui-world-star") >= 5 and 'class="ui-world-rows ui-world-favs"' in head
@@ -642,3 +642,18 @@ assert.equal(radios.classroom.checked, true);
 assert.equal(events.length, 2);
 ''')
     subprocess.run([node, str(script)], check=True, capture_output=True, text=True)
+
+
+def test_the_name_layer_is_names_dots_or_off_and_switches_in_the_header():
+    """Layers like a slide's z-order: ground < names < marks < player < sheet. data-names picks where plain spots sit."""
+    spec = ui.example_data("school")
+    assert ui.world_validate(spec)["names"] == "names"
+    assert ui.world_validate(ui.example_data("cities"))["names"] == "dots"
+    with pytest.raises(ValueError, match="names is names"):
+        ui.world_validate({**spec, "names": "pills"})
+    html = ui.world_html({**spec, "names": "dots"})
+    assert 'data-names="dots"' in html
+    assert '<option value="dots" selected>●</option>' in html
+    css = ui.world_css(spec)
+    assert "--ui-layer-ground:0;--ui-layer-name:1;--ui-layer-mark:2;--ui-layer-player:3;--ui-layer-sheet:4" in css
+    assert ".ui-world[data-names=dots] .ui-spot:not([data-near]):not(:hover):not(:focus-visible)" in css

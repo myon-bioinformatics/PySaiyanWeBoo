@@ -60,7 +60,7 @@ vertical scrolling and nothing changes page. The screen is icons; the words are 
   * **🏠** home: first floor, everything in view, sheet and menus closed.
   * **⭐** favourites: a ☆ in the ☰ list stars a place; the ⭐ panel lists them (on any floor) and takes you there. They are a light cache: kept in this browser
     (`localStorage` key `ui-world:<id>`, only the starred places and the language) and restored on the next visit. No dialog, no per-floor favourites, no export.
-  * **⚙️** settings: ⏸️ pause the motion, 🙂✏️ change the emoji, 🌐 pick the language (a `<select>` of native names).
+  * **⚙️** settings: ⏸️ pause the motion, 🙂✏️ change the emoji, 🌐 pick the language (a `<select>` of native names), 🏷️ the name layer (names / dots / off).
 * **Side** (this screen): 48px buttons that open a panel over the map (one menu open at a time; Escape, a tap on the map or choosing an item closes it).
   * **☰**: the places of this floor (and the category chips, if any). Each row has an arrow from you to the place (⬆️ ↗️ ➡️ ↘️ ⬇️ ↙️ ⬅️ ↖️, 📍 within one tile,
     🚪 when it is on another floor) that follows you as you walk; tap a row to go there and read its sheet. Works without JavaScript too (the rows are links).
@@ -87,6 +87,21 @@ Adding an icon is adding a key: nothing else in the page changes, and the key is
 How flutter_navigation_basic's header maps here (so it can be archived): Home → 🏠; Favorite this page / Favorites → ☆ and ⭐ (session only); Menu → ☰ ⚙️;
 Language → 🌐 (labels switch, the content stays yours); Door-to-Door selector → 🚪 in the footer; the page's own action row → the emoji `tools`. Not taken over:
 the "leave this page?" confirmation (a world has no unsaved page to lose; 🏠 has its own small ask() dialog) and favouriting a whole floor.
+
+### Layers (🏷️)
+
+A map is drawn in layers, back to front, like the z-order of a slide: the ground (props, `--ui-layer-ground`), the names (spot pills, `--ui-layer-name`),
+the marks (dots and signs, `--ui-layer-mark`), the player and actors (`--ui-layer-player`), the sheet (`--ui-layer-sheet`). The world's `names` picks where
+plain spots sit, and 🏷️ in ⚙️ switches it without a reload (kept with the language):
+
+| `names` | plain spots |
+|---|---|
+| `names` (default) | every spot shows its name pill; crowded places overlap until you zoom |
+| `dots` (the cities) | a dot in the mark layer; the spot the player stands by, the one under the pointer and the focused one show their names |
+| `off` | dots only (the pointer and the focus still show a name) |
+
+Signs (`sign`) always sit in the mark layer and keep their own dot → text → face cycle. While a sheet is open, the camera aims a little below the player or the spot,
+so the thing you walked to stays in the view above the sheet.
 
 ### Languages (🌐)
 
@@ -162,7 +177,7 @@ the metro beside them and the Seine, with a 🔥 in each block. Nothing is drawn
   tools, keys, categories, favourites, six widths, eleven languages and the page without JavaScript. With `WEB_UI_SHOTS=DIR` it also keeps a WebP of each check with
   a `manifest.json` and an `index.html`; the reviewed set lives under `docs/evidence/cities-<date>/`. The three `cities-*.gif` demos are the same operations in motion.
 * From Python: `web_ui.place_floor(points, meters=, tile=, links=, rivers=, area=, start=, id=, label=)`; from another repository: `--world -` with `place` as above.
-  At the page's first view the whole floor is shown, so crowded places overlap their names until you zoom (wheel, pinch, or ⭐ and ☰ to go to one).
+  The cities open in the **dots** name layer (below), so the crowded centre is dots, not a pile of names; `"names": "names"` on the world shows every name.
 
 ## Real × virtual (🖼️📷)
 

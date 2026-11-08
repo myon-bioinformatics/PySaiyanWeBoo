@@ -3377,8 +3377,11 @@ def world_validate(spec: Any) -> dict[str, Any]:
     """Checked copy of a ``web-ui-world/1`` spec: optional ``shots`` (scroll scenes) and ``floors`` (maps with spots)."""
     if not isinstance(spec, dict) or spec.get("schema") != WORLD_SCHEMA:
         raise ValueError(f"expected schema {WORLD_SCHEMA}")
-    if set(spec) - {"schema", "id", "title", "shots", "floors", "zoom_max", "board", "avatars", "shell", "tools"}:
-        raise ValueError("a world has schema, id, title, shots, floors, zoom_max, board, avatars, shell and tools")
+    if set(spec) - {"schema", "id", "title", "shots", "floors", "zoom_max", "board", "avatars", "shell", "tools", "names"}:
+        raise ValueError("a world has schema, id, title, shots, floors, zoom_max, board, avatars, shell, tools and names")
+    names = spec.get("names", "names")
+    if names not in WORLD_NAMES:
+        raise ValueError("names is names (every spot shows its name), dots (a dot; the name beside the player, under the pointer or focused) or off (dots only)")
     shell = spec.get("shell", False)
     if not isinstance(shell, bool):
         raise ValueError("shell is true or false")
@@ -3550,7 +3553,7 @@ def world_validate(spec: Any) -> dict[str, Any]:
             built["body"] = _world_text(tool["body"], "body", 400)
         tools[emoji] = built
     return {"schema": WORLD_SCHEMA, "id": world_id, "title": _world_text(spec.get("title", "World"), "title", 80),
-            "shots": shots, "floors": floors, "zoom_max": zoom_max, "board": board, **({"avatars": avatars} if avatars else {}),
+            "shots": shots, "floors": floors, "zoom_max": zoom_max, "board": board, "names": names, **({"avatars": avatars} if avatars else {}),
             **({"shell": True} if shell else {}), **({"tools": tools} if tools else {})}
 
 
@@ -3966,6 +3969,7 @@ def _board_html(board: dict[str, Any] | None) -> str:
 
 # The words of a shell world's chrome. The page shows icons; these are the aria-label and tooltip. 🌐 picks the language, the same
 # eleven as flutter_navigation_basic (ja is the page's own, so it is what the markup carries until JS switches it).
+WORLD_NAMES = ("names", "dots", "off")   # the name layer of a map: see docs/world-classroom.md "Layers"
 WORLD_LANGS = (("ja", "日本語"), ("en", "English"), ("fr", "Français"), ("es", "Español"), ("pt", "Português"), ("ar", "العربية"),
                ("zh", "中文"), ("ru", "Русский"), ("id", "Bahasa Indonesia"), ("de", "Deutsch"), ("sw", "Kiswahili"))
 WORLD_TEXT = {
@@ -3978,6 +3982,15 @@ WORLD_TEXT = {
     "pause": ("動きを止める", "Pause motion", "Arrêter le mouvement", "Pausar el movimiento", "Pausar o movimento", "إيقاف الحركة", "暂停动态", "Остановить движение", "Jeda gerakan", "Bewegung anhalten", "Simamisha mwendo"),
     "avatar": ("絵文字を変える", "Change emoji", "Changer d'emoji", "Cambiar emoji", "Mudar emoji", "تغيير الرمز التعبيري", "更换表情", "Сменить эмодзи", "Ganti emoji", "Emoji ändern", "Badilisha emoji"),
     "language": ("言語", "Language", "Langue", "Idioma", "Idioma", "اللغة", "语言", "Язык", "Bahasa", "Sprache", "Lugha"),
+    "names": ("名前の層: 🏷️ 名前 / ● 点（近く・指先で名前） / ✖️ 点だけ", "Name layer: 🏷️ names / ● dots (names near you or under the pointer) / ✖️ dots only",
+              "Couche des noms : 🏷️ noms / ● points (noms près de vous ou sous le pointeur) / ✖️ points seulement",
+              "Capa de nombres: 🏷️ nombres / ● puntos (nombres cerca de ti o bajo el puntero) / ✖️ solo puntos",
+              "Camada de nomes: 🏷️ nomes / ● pontos (nomes perto de você ou sob o ponteiro) / ✖️ só pontos",
+              "طبقة الأسماء: 🏷️ أسماء / ● نقاط (الأسماء قربك أو تحت المؤشر) / ✖️ نقاط فقط",
+              "名称层：🏷️ 名称 / ● 圆点（靠近或指向时显示名称） / ✖️ 仅圆点", "Слой имён: 🏷️ имена / ● точки (имена рядом или под указателем) / ✖️ только точки",
+              "Lapisan nama: 🏷️ nama / ● titik (nama di dekatmu atau di bawah penunjuk) / ✖️ titik saja",
+              "Namensebene: 🏷️ Namen / ● Punkte (Namen nahe bei dir oder unter dem Zeiger) / ✖️ nur Punkte",
+              "Tabaka ya majina: 🏷️ majina / ● nukta (majina karibu nawe au chini ya kielekezi) / ✖️ nukta tu"),
     "me": ("自分の場所", "Find me", "Où suis-je", "Mi ubicación", "Minha posição", "موقعي", "我的位置", "Где я", "Posisi saya", "Mein Standort", "Nilipo"),
     "walk": ("ここへ歩く", "Walk here", "Aller ici", "Caminar aquí", "Caminhar até aqui", "امشِ إلى هنا", "走到这里", "Идти сюда", "Jalan ke sini", "Hierhin gehen", "Tembea hapa"),
     "close": ("閉じる", "Close", "Fermer", "Cerrar", "Fechar", "إغلاق", "关闭", "Закрыть", "Tutup", "Schließen", "Funga"),
@@ -4121,7 +4134,10 @@ def _shell_html(world: dict[str, Any], *, head: str, radios: str, view: str, tai
                 (f'<button type="button" data-pick-open {_wt("avatar")}>🙂✏️</button>' if avatars else "") +
                 f'<label class="ui-world-lang">🌐 <select data-lang {_wt("language")}>' +
                 "".join(f'<option value="{code}" lang="{code}"{" selected" if i == 0 else ""}>{name}</option>' for i, (code, name) in enumerate(WORLD_LANGS)) +
-                '</select></label>')
+                '</select></label>' +
+                (f'<label class="ui-world-names">🏷️ <select data-names-pick {_wt("names")}>' +
+                 "".join(f'<option value="{v}"{" selected" if v == world["names"] else ""}>{t}</option>' for v, t in zip(WORLD_NAMES, ("🏷️", "●", "✖️"))) +
+                 '</select></label>' if any(f["spots"] for f in floors) else ""))
     header_tools = (f'<a class="ui-world-home" href="#{wid}-map" data-home {_wt("home")}>🏠</a>' +
                     "".join(custom(e, t) for e, t in tools.items() if t["slot"] == "head") +
                     icon("favorites", "⭐", _wt("favorites"), '<p class="ui-world-empty" aria-hidden="true">☆</p><ul class="ui-world-rows ui-world-favs"></ul>', hidden=True) +
@@ -4152,7 +4168,7 @@ def _map_html(world: dict[str, Any]) -> str:
         labels += "".join(f'<label for="{wid}-cat-{"value-" + c if c else "all"}" data-cat="{c}">{escape(c or "all")}</label>' for c in cat_ids)
     close = f'<a class="ui-sheet-close" href="#{wid}-map"' + (f' {_wt("close")}>✖️</a>' if shell else ">Close</a>")          # an icon in a shell world
     built = [_floor_html(wid, f, close) for f in floors]
-    head = (f'<section class="ui-world ui-world-map" id="{wid}-map" data-ui-world="map" data-zoom-max="{world["zoom_max"]}"'
+    head = (f'<section class="ui-world ui-world-map" id="{wid}-map" data-ui-world="map" data-zoom-max="{world["zoom_max"]}" data-names="{world["names"]}"'
             f'{" data-grid" if any(f.get("tile") for f in floors) else ""}{" data-shell" if shell else ""} aria-label="{escape(world["title"], quote=True)}">')
     view = f'<div class="ui-world-view" tabindex="0"><div class="ui-world-cam" style="--fx:0;--fy:0;--z:1">{"".join(stage for stage, _ in built)}</div></div>'
     tail = f'<aside class="ui-sheet" aria-live="polite">{"".join(a for _, articles in built for a in articles)}</aside>{_pick_html(wid, world.get("avatars", []), shell)}</section>'
@@ -4183,13 +4199,22 @@ _WORLD_CSS = (
     ".ui-world[data-js][data-drag] .ui-world-cam{transition:none}"
     ".ui-floor{position:relative;display:none;background-color:var(--ui-panel);background-image:linear-gradient(var(--ui-border) 1px,transparent 1px),"
     "linear-gradient(90deg,var(--ui-border) 1px,transparent 1px);background-size:64px 64px}"
-    ".ui-spot{position:absolute;transform:translate(-50%,-50%) scale(calc(1 / var(--z,1)));white-space:nowrap;border:1px solid var(--ui-accent);"
+    # Layers of a map, back to front, like the z-order of a slide: the ground (props), the names (spot pills), the marks (dots and signs),
+    # the player and actors, the sheet. data-names on .ui-world moves every plain spot between the name layer (names) and the mark layer
+    # (dots: a dot; the one the player stands by, the one under the pointer and the focused one show their names; off: dots only).
+    ".ui-world-map{--ui-layer-ground:0;--ui-layer-name:1;--ui-layer-mark:2;--ui-layer-player:3;--ui-layer-sheet:4}"
+    ".ui-spot{position:absolute;z-index:var(--ui-layer-name);transform:translate(-50%,-50%) scale(calc(1 / var(--z,1)));white-space:nowrap;border:1px solid var(--ui-accent);"
     "background:var(--ui-bg);color:var(--ui-fg);padding:.2rem .6rem;border-radius:999px;text-decoration:none;font-size:.85rem}"
-    ".ui-spot[data-sign]{padding:.3rem .5rem;border-radius:4px;font-size:0;line-height:1;letter-spacing:.04em}.ui-spot[data-sign]::before{content:\"●\";font-size:.7rem}"
+    ".ui-spot[data-sign],.ui-world[data-names=dots] .ui-spot:not([data-near]):not(:hover):not(:focus-visible),.ui-world[data-names=off] .ui-spot:not(:hover):not(:focus-visible)"
+    "{z-index:var(--ui-layer-mark);padding:.3rem .5rem;border-radius:4px;font-size:0;line-height:1;letter-spacing:.04em}"
+    ".ui-spot[data-sign]::before,.ui-world[data-names=dots] .ui-spot:not([data-near]):not(:hover):not(:focus-visible)::before,"
+    ".ui-world[data-names=off] .ui-spot:not(:hover):not(:focus-visible)::before{content:\"●\";font-size:.7rem}"
+    ".ui-world[data-names]:not([data-names=names]) .ui-spot:not([data-sign]){border-radius:999px}"
+    ".ui-world[data-names=dots] .ui-spot[data-near],.ui-world:not([data-names=names]) .ui-spot:hover,.ui-world:not([data-names=names]) .ui-spot:focus-visible{z-index:var(--ui-layer-mark)}"
     ".ui-spot[data-sign][data-show]{padding:.05rem .4rem;font-size:.7rem}.ui-spot[data-sign][data-show]::before{content:\"● \"}"
     ".ui-spot[data-sign=led]{background:#111;color:#ffb000;border-color:#ffb000;font-family:monospace;text-shadow:0 0 4px #ffb000}"
     ".ui-spot[data-sign=wood]{background:#8b5a2b;color:#fff3d6;border:2px solid #5d3a1a}"
-    ".ui-sheet{position:absolute;left:8px;right:8px;bottom:8px;max-height:45%;overflow:auto;border:1px solid var(--ui-border);"
+    ".ui-sheet{position:absolute;z-index:var(--ui-layer-sheet);left:8px;right:8px;bottom:8px;max-height:45%;overflow:auto;border:1px solid var(--ui-border);"
     "background:var(--ui-panel);border-radius:var(--ui-radius);padding:1rem}"
     ".ui-world:not([data-js]) .ui-sheet:not(:has(.ui-sheet-item:target)){display:none}"
     ".ui-world[data-js] .ui-sheet:not(:has(.ui-sheet-item[data-open])){display:none}"
@@ -4203,7 +4228,7 @@ _WORLD_CSS = (
     ".ui-shot-mark{position:absolute;left:0;top:calc(var(--i) * var(--ui-world-h));width:1px;height:var(--ui-world-h);pointer-events:none}"
     ".ui-actor{position:absolute;left:0;top:0;text-decoration:none;color:inherit}"
     ".ui-actor span,.ui-player span{display:block;transform:translate(-50%,-50%) scale(calc(1 / var(--z,1)));font-size:1.5rem;line-height:1}"
-    ".ui-player{position:absolute;left:0;top:0;pointer-events:none;transform:translate(calc(var(--px,0) * 1px),calc(var(--py,0) * 1px));"
+    ".ui-player{position:absolute;z-index:var(--ui-layer-player);left:0;top:0;pointer-events:none;transform:translate(calc(var(--px,0) * 1px),calc(var(--py,0) * 1px));"
     "transition:transform var(--walk,0s) linear}"
     ".ui-board{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:4px 8px;border-bottom:1px solid var(--ui-border);background:var(--ui-panel);"
     "font-family:var(--ui-font-mono);font-size:.85rem;overflow:hidden}"
@@ -4219,7 +4244,7 @@ _WORLD_CSS = (
     ".ui-board-post{display:flex;gap:4px;flex:1 1 13rem}.ui-board-post .ui-input{flex:1;min-width:0;width:auto;padding:.2rem .5rem}.ui-board-post .ui-button{padding:.2rem .6rem}"
     "@keyframes ui-board-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}"
     ".ui-floor[data-tile]{background-size:var(--tile) var(--tile)}"
-    ".ui-prop{position:absolute;box-sizing:border-box;pointer-events:none;border:2px solid var(--ui-border);border-radius:4px}"
+    ".ui-prop{position:absolute;z-index:var(--ui-layer-ground);box-sizing:border-box;pointer-events:none;border:2px solid var(--ui-border);border-radius:4px}"
     ".ui-prop[data-kind=desk]{background:color-mix(in srgb,var(--ui-accent) 24%,var(--ui-panel))}"
     ".ui-prop[data-kind=board]{background:color-mix(in srgb,var(--ui-accent) 55%,#000)}"
     ".ui-prop[data-kind=wall]{background:var(--ui-border)}"
@@ -4449,8 +4474,12 @@ const open=id=>{for(const i of el.querySelectorAll(".ui-sheet-item"))i.toggleAtt
 // Side menus (☰ ⋯), the footer pulldown (door to door) and the arrows from the player to each listed spot.
 const menus=[...el.querySelectorAll('.ui-world-menu')],shut=()=>{for(const m of menus)m.open=false},goto=el.querySelector('.ui-world-goto'),rows='.ui-world-rows a';
 for(const m of menus)m.hidden=false;
-const aim=p=>{for(const a of el.querySelectorAll(rows)){if(!a.offsetParent)continue;const out=a.querySelector('.ui-world-arrow'),f=floor(),g=a.dataset.floor===f.dataset.floor?direction(p,[Number(a.dataset.x),Number(a.dataset.y)],Number(f.dataset.tile)||16):'🚪';if(out.textContent!==g)out.textContent=g}if(goto){const r=shown();if(r&&goto.value!==r.value)goto.value=r.value}};
-let follow=false,lx,ly;const walk=bindPlayer(el,floor,p=>{if(follow&&(p[0]!==lx||p[1]!==ly)){lx=p[0];ly=p[1];go(p[0],p[1],z)}aim(p)});
+// The spot the player stands by (the closest within 1.5 tiles) carries data-near: in the dots layer it alone shows its name.
+const near=p=>{const f=floor(),t=(Number(f.dataset.tile)||16)*1.5;let best=null,bd=Infinity;for(const a of f.querySelectorAll(".ui-spot[data-x]")){const d=Math.max(Math.abs(Number(a.dataset.x)-p[0]),Math.abs(Number(a.dataset.y)-p[1]));if(d<=t&&d<bd){best=a;bd=d}}for(const a of f.querySelectorAll(".ui-spot[data-near]"))if(a!==best)a.removeAttribute("data-near");if(best&&!best.hasAttribute("data-near"))best.setAttribute("data-near","")};
+const aim=p=>{near(p);for(const a of el.querySelectorAll(rows)){if(!a.offsetParent)continue;const out=a.querySelector('.ui-world-arrow'),f=floor(),g=a.dataset.floor===f.dataset.floor?direction(p,[Number(a.dataset.x),Number(a.dataset.y)],Number(f.dataset.tile)||16):'🚪';if(out.textContent!==g)out.textContent=g}if(goto){const r=shown();if(r&&goto.value!==r.value)goto.value=r.value}};
+// While a sheet is open the camera aims below the player or the spot, so they stay in the view above the sheet.
+const lift=()=>{const s=el.querySelector(".ui-sheet");return s&&el.querySelector(".ui-sheet-item[data-open]")?s.offsetHeight/(2*z):0};
+let follow=false,lx,ly;const walk=bindPlayer(el,floor,p=>{if(follow&&(p[0]!==lx||p[1]!==ly)){lx=p[0];ly=p[1];go(p[0],p[1]+lift(),z)}aim(p)});
 for(const m of menus)m.addEventListener('toggle',()=>{if(m.open)for(const o of menus)if(o!==m)o.open=false});
 view.addEventListener('pointerdown',shut);
 // ⭐ favourites and 🌐 language are all a world keeps, as a small cache in this browser (one key per world, nothing else is written):
@@ -4470,6 +4499,10 @@ if(favs)el.addEventListener('click',e=>{const b=e.target.closest('.ui-world-star
 const kept=load();
 if(favs){for(const a of spotRows())if(Array.isArray(kept.fav)&&kept.fav.includes(a.getAttribute('href')))fav.add(a.getAttribute('href'));if(fav.size)showFavs()}
 if(typeof kept.lang==='string'&&kept.lang!=='ja')setLang(kept.lang);
+// 🏷️ the name layer (names / dots / off) switches without a reload and is kept with the language.
+const namesPick=el.querySelector('[data-names-pick]'),setNames=to=>{if(!['names','dots','off'].includes(to))return;el.dataset.names=to;if(namesPick)namesPick.value=to};
+if(typeof kept.names==='string')setNames(kept.names);
+namesPick?.addEventListener('change',()=>{setNames(namesPick.value);save({names:namesPick.value})});
 goto?.addEventListener('change',()=>setFloor(goto.value,true));
 // Emoji picker: shown first (JS only); the choice replaces every floor's player emoji. Dragging the map stops the camera following.
 const pick=el.querySelector('.ui-world-pick'),showPick=on=>{pick.hidden=!on;el.toggleAttribute('data-pick',on)},choose=g=>{for(const s of el.querySelectorAll('.ui-player span'))s.textContent=g;showPick(false);follow=true;view.focus({preventScroll:true})};
@@ -4510,7 +4543,7 @@ const chars=baseChars+notes.reduce((n,note)=>n+[...note.text].length+6,0);board.
 const goHome=()=>{shut();close();follow=false;allCategories();setFloor(el.querySelector('input[name$="-floor"]')?.value,true);home()};
 el.querySelector('[data-home]')?.addEventListener('click',e=>{e.preventDefault();shut();ask('🏠❓',[{glyph:'🏠',t:'home',value:true}],'home').then(v=>{if(v)goHome()})});
 const close=()=>{open(null);if([...el.querySelectorAll(".ui-sheet-item")].some(i=>"#"+i.id===location.hash))history.replaceState(null,"",location.pathname+location.search)};
-const focusSpot=a=>{allCategories();setFloor(a.closest(".ui-floor").dataset.floor);go(Number(a.dataset.x),Number(a.dataset.y),Math.max(z,2))};
+const focusSpot=a=>{allCategories();setFloor(a.closest(".ui-floor").dataset.floor);const zoom=Math.max(z,2);go(Number(a.dataset.x),Number(a.dataset.y)+lift()*z/zoom,zoom)};
 view.addEventListener("pointerdown",e=>{if(e.button!==0)return;pts.set(e.pointerId,[e.clientX,e.clientY]);if(pts.size===1)moved=0;else moved=9;el.dataset.drag=""});
 view.addEventListener("pointermove",e=>{const p=pts.get(e.pointerId);if(!p)return;if(pts.size===1){const dx=e.clientX-p[0],dy=e.clientY-p[1];moved+=Math.abs(dx)+Math.abs(dy);if(moved>8){follow=false;if(!view.hasPointerCapture(e.pointerId))view.setPointerCapture(e.pointerId)}fx-=dx/z;fy-=dy/z;apply()}else if(pts.size===2){const q=[...pts].find(([id])=>id!==e.pointerId)[1],d0=Math.hypot(p[0]-q[0],p[1]-q[1]),d1=Math.hypot(e.clientX-q[0],e.clientY-q[1]);moved+=9;if(d0)z*=d1/d0;apply()}p[0]=e.clientX;p[1]=e.clientY});
 const end=e=>{const tapping=pts.has(e.pointerId)&&pts.size===1&&moved<=8&&e.type==="pointerup"&&view.contains(e.target)&&!e.target.closest("a,button,input");pts.delete(e.pointerId);if(!pts.size)delete el.dataset.drag;if(tapping&&walk){const f=floor(),r=f.getBoundingClientRect();walk((e.clientX-r.left)*Number(f.dataset.w)/r.width,(e.clientY-r.top)*Number(f.dataset.h)/r.height)}};
@@ -18421,7 +18454,7 @@ EXAMPLES.update({
     # Reverse London (the main termini, the stations beside them and famous places, the Thames and its bridges; a sign, nogard, that turns into a dragon)
     # and Fake Paris (the main stations, the metro beside them, the Seine; a fire in each block). `place` turns latitude/longitude into tiles.
     "cities": {
-        "schema": WORLD_SCHEMA, "id": "cities", "title": "Parallel cities", "zoom_max": 4,
+        "schema": WORLD_SCHEMA, "id": "cities", "title": "Parallel cities", "zoom_max": 4, "names": "dots",
         "avatars": ["🙂", "🧳", "🚶", "🎒", "🐱", "🐶", "🦊", "🐼", "🚃", "☂️", "🎩", "🗼"],
         "tools": {"🗼": {"label": "パラレル東京", "label_en": "Parallel Tokyo", "floor": "tokyo"},
                   "🎡": {"label": "リバースロンドン", "label_en": "Reverse London", "floor": "london"},
