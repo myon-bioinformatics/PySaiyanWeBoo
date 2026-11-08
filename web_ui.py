@@ -477,10 +477,10 @@ _CSS = {
         "@media(prefers-reduced-motion:reduce){.ui-shell-main{scroll-behavior:auto}}"
         "}"
     ),
-    "tokens.css": r""":root{--ui-bg:#0d1117;--ui-panel:#101820;--ui-fg:#d1f7c4;--ui-muted:#8b949e;--ui-border:#58a6ff;--ui-accent:#7ee787;--ui-danger:#cf222e;--ui-radius:0;--ui-space:1rem;--ui-max:960px;--ui-font:Meiryo,メイリオ,sans-serif;--ui-font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+    "tokens.css": r""":root{--ui-bg:#0d1117;--ui-panel:#101820;--ui-fg:#d1f7c4;--ui-muted:#8b949e;--ui-border:#58a6ff;--ui-accent:#7ee787;--ui-danger:#cf222e;--ui-radius:0;--ui-text:16px;--ui-space:1rem;--ui-max:960px;--ui-font:Meiryo,メイリオ,sans-serif;--ui-font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
 """,
-    "base.css": r"""@layer base{*{box-sizing:border-box}body{margin:0;background:var(--ui-bg);color:var(--ui-fg);font:16px/1.6 var(--ui-font)}pre,code,kbd,samp{font-family:var(--ui-font-mono)!important}.ui-page{max-width:var(--ui-max);margin:auto;padding:1.25rem}a{color:inherit}}""",
-    "components.css": r"""@layer components{.ui-panel,.ui-card{background:var(--ui-panel);border:1px solid var(--ui-border);padding:1rem;margin:1rem 0;border-radius:var(--ui-radius)}.ui-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}.ui-tag{display:inline-block;border:1px solid var(--ui-border);padding:.1rem .4rem}.ui-button,.ui-input,.ui-elements button,.ui-elements select,.ui-elements textarea,.ui-elements input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file]){font:inherit;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);padding:.6rem;border-radius:var(--ui-radius)}.ui-button,.ui-elements button{cursor:pointer}.ui-button:hover,.ui-elements button:hover{border-color:var(--ui-accent)}.ui-button:disabled,.ui-elements button:disabled{opacity:.4;cursor:default}.ui-elements input[type=range],.ui-elements input[type=checkbox],.ui-elements input[type=radio]{accent-color:var(--ui-accent)}.ui-elements label{color:var(--ui-muted)}.ui-muted{color:var(--ui-muted)}.ui-output{font:inherit;white-space:pre-wrap;overflow:auto;background:#d8dee4;color:#161b22;border:1px solid #8c959f;border-radius:4px;padding:.75rem}pre code,.ui-output code{font-family:inherit;color:inherit}pre.ui-output code{background:transparent}@media(max-width:480px){.ui-page{padding:.75rem}.ui-grid{grid-template-columns:1fr}.ui-card,.ui-panel{margin:.75rem 0;padding:.75rem}}.ui-lightbox{border:1px solid var(--ui-border);background:var(--ui-panel);color:var(--ui-fg);padding:1rem;max-width:min(96vw,960px);max-height:96vh;border-radius:var(--ui-radius)}.ui-lightbox::backdrop{background:rgba(0,0,0,.72)}.ui-lightbox img{display:block;max-width:100%;max-height:calc(96vh - 8rem);margin:auto}.ui-lightbox-bar{display:flex;gap:.5rem;justify-content:space-between;margin-top:.75rem}body:has(.ui-lightbox[open]){overflow:hidden}.ui-table,.ui-elements table{border-collapse:collapse;width:100%}.ui-table th,.ui-table td,.ui-elements th,.ui-elements td{border-bottom:1px solid var(--ui-border);padding:.25rem .5rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}.ui-table th,.ui-elements th{color:var(--ui-muted);font-weight:500}.ui-table caption,.ui-elements caption{text-align:left;color:var(--ui-muted);padding:.25rem 0}.ui-pass{color:var(--ui-accent)}.ui-fail{color:var(--ui-danger)}.ui-changed{background:color-mix(in srgb,var(--ui-accent) 18%,transparent)}.ui-tag.ui-pass{border-color:var(--ui-accent)}.ui-tag.ui-fail{border-color:var(--ui-danger)}}""",
+    "base.css": r"""@layer base{*{box-sizing:border-box}body{margin:0;background:var(--ui-bg);color:var(--ui-fg);font:var(--ui-text)/1.6 var(--ui-font)}pre,code,kbd,samp{font-family:var(--ui-font-mono)!important}.ui-page{max-width:var(--ui-max);margin:auto;padding:var(--ui-space)}a{color:inherit}}""",
+    "components.css": r"""@layer components{.ui-panel,.ui-card{background:var(--ui-panel);border:1px solid var(--ui-border);padding:var(--ui-space);margin:var(--ui-space) 0;border-radius:var(--ui-radius)}.ui-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}.ui-tag{display:inline-block;border:1px solid var(--ui-border);padding:.1rem .4rem}.ui-button,.ui-input,.ui-elements button,.ui-elements select,.ui-elements textarea,.ui-elements input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file]){font:inherit;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);padding:.6rem;border-radius:var(--ui-radius)}.ui-button,.ui-elements button{cursor:pointer}.ui-button:hover,.ui-elements button:hover{border-color:var(--ui-accent)}.ui-button:disabled,.ui-elements button:disabled{opacity:.4;cursor:default}.ui-elements input[type=range],.ui-elements input[type=checkbox],.ui-elements input[type=radio]{accent-color:var(--ui-accent)}.ui-elements label{color:var(--ui-muted)}.ui-muted{color:var(--ui-muted)}.ui-output{font:inherit;white-space:pre-wrap;overflow:auto;background:#d8dee4;color:#161b22;border:1px solid #8c959f;border-radius:4px;padding:.75rem}pre code,.ui-output code{font-family:inherit;color:inherit}pre.ui-output code{background:transparent}@media(max-width:480px){.ui-page{padding:.75rem}.ui-grid{grid-template-columns:1fr}.ui-card,.ui-panel{margin:.75rem 0;padding:.75rem}}.ui-lightbox{border:1px solid var(--ui-border);background:var(--ui-panel);color:var(--ui-fg);padding:1rem;max-width:min(96vw,960px);max-height:96vh;border-radius:var(--ui-radius)}.ui-lightbox::backdrop{background:rgba(0,0,0,.72)}.ui-lightbox img{display:block;max-width:100%;max-height:calc(96vh - 8rem);margin:auto}.ui-lightbox-bar{display:flex;gap:.5rem;justify-content:space-between;margin-top:.75rem}body:has(.ui-lightbox[open]){overflow:hidden}.ui-table,.ui-elements table{border-collapse:collapse;width:100%}.ui-table th,.ui-table td,.ui-elements th,.ui-elements td{border-bottom:1px solid var(--ui-border);padding:.25rem .5rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}.ui-table th,.ui-elements th{color:var(--ui-muted);font-weight:500}.ui-table caption,.ui-elements caption{text-align:left;color:var(--ui-muted);padding:.25rem 0}.ui-pass{color:var(--ui-accent)}.ui-fail{color:var(--ui-danger)}.ui-changed{background:color-mix(in srgb,var(--ui-accent) 18%,transparent)}.ui-tag.ui-pass{border-color:var(--ui-accent)}.ui-tag.ui-fail{border-color:var(--ui-danger)}}""",
     "matrix.css": r"""@layer components{.ui-matrix:has(>section:target)>section:not(:target){display:none}.ui-matrix>section{scroll-margin-top:16px}.ui-matrix-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--ui-matrix-col,160px),1fr));gap:var(--ui-matrix-gap,8px);padding:0;list-style:none}.ui-matrix-tiles li{border:1px solid var(--ui-border);padding:var(--ui-matrix-pad,8px);font-size:.8rem;overflow-wrap:anywhere}.ui-matrix-tiles img{display:block;width:100%;height:auto;margin:var(--ui-matrix-pad,8px) 0;background:#fff}.ui-matrix-tiles .is-missing{border-style:dashed;color:var(--ui-muted)}.ui-matrix-tiles .is-fail{outline:2px solid var(--ui-danger)}.ui-matrix-tiles .is-reference{outline:2px solid var(--ui-accent)}.ui-matrix-page>nav{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.ui-matrix-page>nav .ui-button{white-space:nowrap;text-decoration:none}.ui-matrix a{overflow-wrap:anywhere}}
 """,
     "repository-diagnostics.css": r""".repo-diagnostics{box-sizing:border-box;border:1px solid var(--ui-border,#c9c9cf);border-radius:1rem;padding:1.25rem;background:var(--ui-surface,#fff);color:var(--ui-text,#222)}.repo-diagnostics h2{margin:0 0 .75rem;font-size:1.25rem}.repo-diagnostics__commit{overflow-wrap:anywhere}.repo-diagnostics__measurements{display:grid;grid-template-columns:minmax(8rem,1fr) 1fr;gap:.45rem 1rem;margin:1rem 0 0}.repo-diagnostics__measurements dt,.repo-diagnostics__measurements dd{margin:0}.repo-diagnostics__measurements dd{font-variant-numeric:tabular-nums}@media(max-width:30rem){.repo-diagnostics__measurements{grid-template-columns:1fr}.repo-diagnostics__measurements dd{margin-bottom:.35rem}}
@@ -611,22 +611,26 @@ BUNDLE_SCHEMA = "web-ui-bundle/1"
 _BUNDLE_HEADER = re.compile(r"^/\* (web-ui-bundle/\d+) commit=([0-9a-f]{40}|unknown) sha256=([0-9a-f]{64}) ([^\n]*)\*/\n")
 
 
-def bundle_css(*, theme: str | None = "modern", brand: tuple[str, dict[str, str]] | None = None, extra_css: str = "") -> str:
+def bundle_css(*, theme: str | None = "modern", brand: tuple[str, dict[str, str]] | None = None, extra_css: str = "",
+               layouts: Any = None) -> str:
     """The stylesheet a consumer ships: ``core_css(theme)``, then the consumer's own palette (``theme_css``), then
-    its layout rules. ``brand`` is ``(name, tokens)``; render the pages with ``theme=name`` so the palette applies.
+    switchable layout presets (``layout_presets_css``; ``EXAMPLES["page-layouts"]`` or the consumer's own), then its
+    layout rules. ``brand`` is ``(name, tokens)``; render the pages with ``theme=name`` so the palette applies.
     ``theme=None`` leaves the core out, for a second sheet loaded after the first."""
     body = core_css(theme) if theme is not None else ""
     if brand is not None:
         body += theme_css(*brand)
+    if layouts is not None:
+        body += layout_presets_css(layouts)
     return body + extra_css
 
 
 def write_bundle(path: Path | str, *, theme: str | None = "modern", brand: tuple[str, dict[str, str]] | None = None,
-                 extra_css: str = "", note: str = "") -> dict[str, str]:
+                 extra_css: str = "", layouts: Any = None, note: str = "") -> dict[str, str]:
     """Write ``bundle_css(...)`` to ``path`` under a one-line provenance header (schema, this module's commit, the
     sha256 of the body, ``note``). The file is meant to be committed, so stdlib-only consumers can serve it without
     web_ui installed; ``check_bundle`` with the same arguments says when it is stale. Returns the header fields."""
-    body = bundle_css(theme=theme, brand=brand, extra_css=extra_css)
+    body = bundle_css(theme=theme, brand=brand, extra_css=extra_css, layouts=layouts)
     if "*/" in note or "\n" in note:
         raise ValueError("note must be one line without */")
     fields = {"schema": BUNDLE_SCHEMA, "commit": source_commit() or "unknown",
@@ -637,7 +641,7 @@ def write_bundle(path: Path | str, *, theme: str | None = "modern", brand: tuple
 
 
 def check_bundle(path: Path | str, *, theme: str | None = "modern", brand: tuple[str, dict[str, str]] | None = None,
-                 extra_css: str = "") -> list[str]:
+                 extra_css: str = "", layouts: Any = None) -> list[str]:
     """Problems with a committed bundle (empty when it is current): missing, no header, body edited by hand
     (sha256), or stale against ``bundle_css(...)`` from this module (including a moved pin)."""
     path = Path(path)
@@ -652,7 +656,7 @@ def check_bundle(path: Path | str, *, theme: str | None = "modern", brand: tuple
     problems = []
     if hashlib.sha256(body.encode("utf-8")).hexdigest() != match.group(3):
         problems.append(f"{path}: body does not match its sha256 (edited by hand?)")
-    if body != bundle_css(theme=theme, brand=brand, extra_css=extra_css):
+    if body != bundle_css(theme=theme, brand=brand, extra_css=extra_css, layouts=layouts):
         problems.append(f"{path}: stale against web_ui {(source_commit() or 'unknown')[:8]} (header commit {match.group(2)[:8]}); run write_bundle")
     return problems
 
@@ -4083,6 +4087,99 @@ def check_theme(tokens: dict[str, str], *, minimum: float = 4.5, border_minimum:
         if ratio < border_minimum:
             problems.append(f"--ui-border {tokens['--ui-border']} on {ground} {colour}: contrast {ratio:.2f} < {border_minimum}")
     return problems
+
+
+LAYOUT_PRESETS_SCHEMA = "web-ui-layout-presets/1"
+LAYOUT_CANDIDATES_SCHEMA = "web-ui-layout-candidates/1"
+_LAYOUT_ID = re.compile(r"[a-z][a-z0-9-]{0,31}")
+_LAYOUT_VAR = re.compile(r"--ui-[a-z][a-z0-9-]{0,47}")
+_LAYOUT_VALUE = re.compile(r"(?:0|\d{1,4}(?:\.\d{1,3})?(?:px|rem|em|%|vw|fr))")
+MAX_LAYOUT_PRESETS = 12
+
+
+def validate_layout_presets(spec: Any) -> dict[str, Any]:
+    """Checked ``web-ui-layout-presets/1``: ``{"default", "presets": [{"id", "label", "vars", "note"?}]}``; every preset
+    sets the same ``--ui-*`` variables and values are plain lengths only (the core reads ``--ui-text``, ``--ui-space``
+    and ``--ui-max``; see ``EXAMPLES["page-layouts"]``)."""
+    if not isinstance(spec, dict) or spec.get("schema") != LAYOUT_PRESETS_SCHEMA:
+        raise ValueError(f"expected schema {LAYOUT_PRESETS_SCHEMA}")
+    presets = spec.get("presets")
+    if not isinstance(presets, list) or not 1 <= len(presets) <= MAX_LAYOUT_PRESETS:
+        raise ValueError(f"presets must list 1..{MAX_LAYOUT_PRESETS} entries")
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    names = None
+    for preset in presets:
+        if not isinstance(preset, dict) or set(preset) - {"id", "label", "vars", "note"}:
+            raise ValueError("a preset has id, label, vars and an optional note")
+        pid, label, values = preset.get("id"), preset.get("label"), preset.get("vars")
+        if not isinstance(pid, str) or not _LAYOUT_ID.fullmatch(pid) or pid in seen:
+            raise ValueError(f"preset id must be a unique lowercase token: {pid!r}")
+        if not isinstance(label, str) or not label.strip() or len(label) > 60:
+            raise ValueError(f"preset {pid}: label must be 1..60 characters")
+        if not isinstance(values, dict) or not values:
+            raise ValueError(f"preset {pid}: vars must be a nonempty object")
+        for name, value in values.items():
+            if not _LAYOUT_VAR.fullmatch(name) or not isinstance(value, str) or not _LAYOUT_VALUE.fullmatch(value):
+                raise ValueError(f"preset {pid}: {name}: {value!r} is not a --ui-* length")
+        if names is not None and set(values) != names:
+            raise ValueError(f"preset {pid}: every preset must set the same variables")
+        names = set(values)
+        note = preset.get("note", "")
+        if not isinstance(note, str) or len(note) > 120:
+            raise ValueError(f"preset {pid}: note must be at most 120 characters")
+        seen.add(pid)
+        out.append({"id": pid, "label": label, "vars": dict(values), "note": note})
+    default = spec.get("default", out[0]["id"])
+    if default not in seen:
+        raise ValueError(f"default preset {default!r} is not listed")
+    return {"default": default, "presets": out}
+
+
+def layout_presets_css(spec: Any) -> str:
+    """CSS for switchable presets: the default on ``:root``, then one
+    ``body:has(input[name=ui-layout][value=ID]:checked)`` rule per preset, so choosing a radio re-lays the page at
+    once with no reload and no JavaScript, also from ``file://``. Put it after ``core_css()``; the switch itself is
+    ``layout_switch_html(spec)``."""
+    data = validate_layout_presets(spec)
+    default = next(p for p in data["presets"] if p["id"] == data["default"])
+    decls = lambda values: ";".join(f"{name}:{value}" for name, value in values.items())  # noqa: E731
+    rules = [":root{" + decls(default["vars"]) + "}"]
+    rules += [f'body:has(input[name="ui-layout"][value="{p["id"]}"]:checked){{{decls(p["vars"])}}}' for p in data["presets"]]
+    rules.append(".ui-layout-switch{display:flex;flex-wrap:wrap;gap:8px;border:1px solid var(--ui-border);"
+                 "padding:8px;margin:16px 0}.ui-layout-switch label{display:inline-flex;gap:4px;align-items:center}"
+                 ".ui-layout-switch small{color:var(--ui-muted)}")
+    return "\n".join(rules) + "\n"
+
+
+def _layout_note(preset: dict[str, Any], candidates: dict[str, Any] | None) -> str:
+    if candidates is None:
+        return preset["note"]
+    row = candidates.get("presets", {}).get(preset["id"])
+    if not row:
+        return "not checked"
+    passed, failed = row.get("passed", []), row.get("failed", [])
+    parts = []
+    if passed:
+        parts.append("ok at " + ", ".join(f"{w}px" for w in passed))
+    if failed:
+        parts.append("check at " + ", ".join(f"{w}px" for w in failed))
+    return "; ".join(parts)
+
+
+def layout_switch_html(spec: Any, candidates: dict[str, Any] | None = None, *, legend: str = "Layout") -> str:
+    """Radio buttons, one per preset, the default checked; with a ``web-ui-layout-candidates/1`` sweep result
+    (tool/layout_presets.py sweep) each is labelled with the widths where it held — none is disabled."""
+    data = validate_layout_presets(spec)
+    if candidates is not None and (not isinstance(candidates, dict) or candidates.get("schema") != LAYOUT_CANDIDATES_SCHEMA):
+        raise ValueError(f"candidates must be {LAYOUT_CANDIDATES_SCHEMA}")
+    items = []
+    for p in data["presets"]:
+        checked = " checked" if p["id"] == data["default"] else ""
+        note = _layout_note(p, candidates)
+        items.append(f'<label><input type="radio" name="ui-layout" value="{p["id"]}"{checked}> '
+                     f'{escape(p["label"])}' + (f" <small>{escape(note)}</small>" if note else "") + "</label>")
+    return f'<fieldset class="ui-layout-switch"><legend>{escape(legend)}</legend>' + "".join(items) + "</fieldset>"
 
 
 def _token_theme_css() -> str:
@@ -17191,6 +17288,16 @@ EXAMPLES: dict[str, Any] = {'flutter-pages': {'schema': 'web-ui-flutter-pages/1'
                               'label': 'Screen 1',
                               'adapter': 'flutter-screen1',
                               'url': 'https://myon-bioinformatics.github.io/flutter_navigation_basic/#/screen1'}]},
+ 'page-layouts': {'schema': 'web-ui-layout-presets/1',
+                  'default': 'comfortable',
+                  'presets': [{'id': 'comfortable', 'label': 'Comfortable', 'note': 'default: 16px text, 16px spacing, 960px page',
+                               'vars': {'--ui-text': '16px', '--ui-space': '16px', '--ui-max': '960px'}},
+                              {'id': 'compact', 'label': 'Compact', 'note': '14px text, 8px spacing: dense tables and tools',
+                               'vars': {'--ui-text': '14px', '--ui-space': '8px', '--ui-max': '960px'}},
+                              {'id': 'wide', 'label': 'Wide', 'note': '1280px page for side-by-side panels',
+                               'vars': {'--ui-text': '16px', '--ui-space': '16px', '--ui-max': '1280px'}},
+                              {'id': 'device', 'label': 'Device width', 'note': 'full width, 8px spacing: phones and embedded frames',
+                               'vars': {'--ui-text': '15px', '--ui-space': '8px', '--ui-max': '100%'}}]},
  'layout-presets': {'schema': 'web-ui-layout-presets/1',
                     'default': 'grid8',
                     'presets': [{'id': 'grid8',
@@ -17907,6 +18014,7 @@ def main(argv: list[str] | None = None) -> int:
     bundle.add_argument("--bundle-check", type=Path, metavar="FILE", help="exit 1 if FILE is not what --bundle would write now")
     bundle.add_argument("--brand", type=Path, metavar="FILE", help="with --bundle: a JSON {\"name\": ..., \"tokens\": {\"--ui-bg\": ...}} palette appended as theme_css")
     bundle.add_argument("--extra-css", type=Path, metavar="FILE", help="with --bundle: the consumer's own rules appended after the theme")
+    bundle.add_argument("--layouts", type=Path, metavar="FILE", help="with --bundle: a web-ui-layout-presets/1 JSON (python -S web_ui.py --example page-layouts) made switchable in the sheet")
     bundle.add_argument("--note", default="", help="with --bundle: one line kept in the header (who generated it)")
     bundle.add_argument("--check-theme", type=Path, metavar="FILE", help="exit 1 listing why the --brand-shaped JSON palette in FILE would not read (see check_theme)")
     parser.add_argument("--asset-base", help="local or pinned HTTPS shared asset directory")
@@ -17984,7 +18092,8 @@ def main(argv: list[str] | None = None) -> int:
                 spec = json.loads(args.brand.read_text(encoding="utf-8"))
                 brand = (str(spec["name"]), dict(spec["tokens"]))
             extra = args.extra_css.read_text(encoding="utf-8") if args.extra_css else ""
-            options = {"theme": args.theme, "brand": brand, "extra_css": extra}
+            layouts = json.loads(args.layouts.read_text(encoding="utf-8")) if args.layouts else None
+            options = {"theme": args.theme, "brand": brand, "extra_css": extra, "layouts": layouts}
             if args.bundle:
                 fields = write_bundle(args.bundle, note=args.note, **options)
                 sys.stdout.write(f"{args.bundle} commit={fields['commit'][:8]} sha256={fields['sha256'][:8]}\n")

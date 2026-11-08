@@ -599,6 +599,10 @@ Before a brand palette ships, `check_theme(tokens)` lists every text token that 
 construction. CLI: `python -S web_ui.py --check-theme brand.json`.
 Every rendered page carries `<meta name="generator" content="web_ui <commit>">` (`generator_meta()`), so a screenshot or a
 GIF receipt says which web_ui drew it; BrowserTestKit's `evidence_gif.py` records it as `generator`.
+Layout is a preset too: the core reads `--ui-text` / `--ui-space` / `--ui-max`, `EXAMPLES["page-layouts"]` names four
+(comfortable, compact, wide, device; 8 px spacing grid) and `write_bundle(..., layouts=spec)` + `layout_switch_html(spec)`
+make them switchable without a reload — people and Playwright try each, and the [sweep](docs/layout-presets.md) keeps every
+one that holds as a candidate.
 
 🩺 The repository-diagnostics page itself is one function: `web_ui.repository_diagnostics_page("owner/repo")`
 returns the self-contained HTML (bundled CSS and `repository-diagnostics.js` embedded, nothing from a CDN) that
