@@ -603,6 +603,8 @@ Layout is a preset too: the core reads `--ui-text` / `--ui-space` / `--ui-max`, 
 (comfortable, compact, wide, device; 8 px spacing grid) and `write_bundle(..., layouts=spec)` + `layout_switch_html(spec)`
 make them switchable without a reload — people and Playwright try each, and the [sweep](docs/layout-presets.md) keeps every
 one that holds as a candidate.
+The core also carries `@media print` (white page, `.ui-no-print` / `.ui-print-only`), `prefers-reduced-motion` (animations and
+transitions off) and `theme="auto"` (the dark modern palette, or github-like when the browser prefers light).
 
 🩺 The repository-diagnostics page itself is one function: `web_ui.repository_diagnostics_page("owner/repo")`
 returns the self-contained HTML (bundled CSS and `repository-diagnostics.js` embedded, nothing from a CDN) that

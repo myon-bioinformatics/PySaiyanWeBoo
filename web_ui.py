@@ -479,7 +479,7 @@ _CSS = {
     ),
     "tokens.css": r""":root{--ui-bg:#0d1117;--ui-panel:#101820;--ui-fg:#d1f7c4;--ui-muted:#8b949e;--ui-border:#58a6ff;--ui-accent:#7ee787;--ui-danger:#cf222e;--ui-radius:0;--ui-text:16px;--ui-space:1rem;--ui-max:960px;--ui-font:Meiryo,メイリオ,sans-serif;--ui-font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
 """,
-    "base.css": r"""@layer base{*{box-sizing:border-box}body{margin:0;background:var(--ui-bg);color:var(--ui-fg);font:var(--ui-text)/1.6 var(--ui-font)}pre,code,kbd,samp{font-family:var(--ui-font-mono)!important}.ui-page{max-width:var(--ui-max);margin:auto;padding:var(--ui-space)}a{color:inherit}}""",
+    "base.css": r"""@layer base{*{box-sizing:border-box}body{margin:0;background:var(--ui-bg);color:var(--ui-fg);font:var(--ui-text)/1.6 var(--ui-font)}pre,code,kbd,samp{font-family:var(--ui-font-mono)!important}.ui-page{max-width:var(--ui-max);margin:auto;padding:var(--ui-space)}a{color:inherit}.ui-print-only{display:none}@media print{body{background:#fff;color:#000}.ui-page{max-width:none;padding:0}.ui-no-print{display:none}.ui-print-only{display:block}a{text-decoration:none}}@media(prefers-reduced-motion:reduce){*,::before,::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}}""",
     "components.css": r"""@layer components{.ui-panel,.ui-card{background:var(--ui-panel);border:1px solid var(--ui-border);padding:var(--ui-space);margin:var(--ui-space) 0;border-radius:var(--ui-radius)}.ui-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}.ui-tag{display:inline-block;border:1px solid var(--ui-border);padding:.1rem .4rem}.ui-button,.ui-input,.ui-elements button,.ui-elements select,.ui-elements textarea,.ui-elements input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file]){font:inherit;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);padding:.6rem;border-radius:var(--ui-radius)}.ui-button,.ui-elements button{cursor:pointer}.ui-button:hover,.ui-elements button:hover{border-color:var(--ui-accent)}.ui-button:disabled,.ui-elements button:disabled{opacity:.4;cursor:default}.ui-elements input[type=range],.ui-elements input[type=checkbox],.ui-elements input[type=radio]{accent-color:var(--ui-accent)}.ui-elements label{color:var(--ui-muted)}.ui-muted{color:var(--ui-muted)}.ui-output{font:inherit;white-space:pre-wrap;overflow:auto;background:#d8dee4;color:#161b22;border:1px solid #8c959f;border-radius:4px;padding:.75rem}pre code,.ui-output code{font-family:inherit;color:inherit}pre.ui-output code{background:transparent}@media(max-width:480px){.ui-page{padding:.75rem}.ui-grid{grid-template-columns:1fr}.ui-card,.ui-panel{margin:.75rem 0;padding:.75rem}}.ui-lightbox{border:1px solid var(--ui-border);background:var(--ui-panel);color:var(--ui-fg);padding:1rem;max-width:min(96vw,960px);max-height:96vh;border-radius:var(--ui-radius)}.ui-lightbox::backdrop{background:rgba(0,0,0,.72)}.ui-lightbox img{display:block;max-width:100%;max-height:calc(96vh - 8rem);margin:auto}.ui-lightbox-bar{display:flex;gap:.5rem;justify-content:space-between;margin-top:.75rem}body:has(.ui-lightbox[open]){overflow:hidden}.ui-table,.ui-elements table{border-collapse:collapse;width:100%}.ui-table th,.ui-table td,.ui-elements th,.ui-elements td{border-bottom:1px solid var(--ui-border);padding:.25rem .5rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}.ui-table th,.ui-elements th{color:var(--ui-muted);font-weight:500}.ui-table caption,.ui-elements caption{text-align:left;color:var(--ui-muted);padding:.25rem 0}.ui-pass{color:var(--ui-accent)}.ui-fail{color:var(--ui-danger)}.ui-changed{background:color-mix(in srgb,var(--ui-accent) 18%,transparent)}.ui-tag.ui-pass{border-color:var(--ui-accent)}.ui-tag.ui-fail{border-color:var(--ui-danger)}}""",
     "matrix.css": r"""@layer components{.ui-matrix:has(>section:target)>section:not(:target){display:none}.ui-matrix>section{scroll-margin-top:16px}.ui-matrix-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--ui-matrix-col,160px),1fr));gap:var(--ui-matrix-gap,8px);padding:0;list-style:none}.ui-matrix-tiles li{border:1px solid var(--ui-border);padding:var(--ui-matrix-pad,8px);font-size:.8rem;overflow-wrap:anywhere}.ui-matrix-tiles img{display:block;width:100%;height:auto;margin:var(--ui-matrix-pad,8px) 0;background:#fff}.ui-matrix-tiles .is-missing{border-style:dashed;color:var(--ui-muted)}.ui-matrix-tiles .is-fail{outline:2px solid var(--ui-danger)}.ui-matrix-tiles .is-reference{outline:2px solid var(--ui-accent)}.ui-matrix-page>nav{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.ui-matrix-page>nav .ui-button{white-space:nowrap;text-decoration:none}.ui-matrix a{overflow-wrap:anywhere}}
 """,
@@ -566,13 +566,25 @@ def bundled_css() -> str:
     return "".join(parts)
 
 
+AUTO_THEME = "auto"  # the :root (modern) palette, or github-like when the browser prefers light; tokens.css carries it
+
+
+REGISTERED_THEMES: set[str] = set()  # consumers' palettes, registered by theme_css() in this process
+
+
+def _theme_name(theme: Any) -> bool:
+    """A theme the page may name: one of ours, ``auto``, or a consumer's own registered with ``theme_css``."""
+    return isinstance(theme, str) and (theme in THEMES or theme in CANDIDATE_THEMES or theme == AUTO_THEME
+                                       or theme in REGISTERED_THEMES)
+
+
 def core_css(theme: str = "modern") -> str:
     """The small bundle for a consumer's report page: tokens, base, components and one theme (about 4 KB),
     against ``bundled_css()``'s every stylesheet (tens of KB). ``theme`` is a ``themes/<name>.css`` source or a
     ``CANDIDATE_THEMES`` palette (those live in tokens.css already); ``render_document(theme=...)`` must name
     the same theme for it to apply."""
     source = f"themes/{theme}.css"
-    if source not in _CSS and theme not in CANDIDATE_THEMES:
+    if source not in _CSS and theme not in CANDIDATE_THEMES and theme != AUTO_THEME:
         raise ValueError(f"unknown theme: {theme!r}")
     order = [*_CSS_CORE, *([source] if source in _CSS else [])]
     parts = ["@layer base,components,theme;\n"]
@@ -929,7 +941,7 @@ def render_document(
     base element); it must only contain caller-audited HTML. This is an HTML
     emitter, not a general HTML/CSS/JS sanitizer or provenance verifier.
     """
-    if theme not in THEMES + CANDIDATE_THEMES:
+    if not _theme_name(theme):
         raise ValueError("unknown theme")
     if re.search(r"</style(?=[\s/>])", css, re.IGNORECASE):
         raise ValueError("CSS must not contain a style end tag")
@@ -2014,7 +2026,7 @@ def adopt_document(page: str, *, asset_base: str | None = None, class_aliases: d
     hashes and label the transformed publication separately. The shared CSS is
     embedded (bundled_css()); ``asset_base`` is accepted for old callers and unused.
     """
-    if theme not in THEMES + CANDIDATE_THEMES:
+    if not _theme_name(theme):
         raise ValueError("unknown theme")
     aliases = class_aliases or {}
     if any(not re.fullmatch(r"[A-Za-z_][\w-]*", key) or
@@ -4048,7 +4060,8 @@ def theme_css(name: str, tokens: dict[str, str]) -> str:
     """A consumer's own palette as one ``@layer theme`` block for ``body[data-ui-theme=NAME]`` — the same shape
     as the candidate themes in tokens.css, so ``render_document(theme=name, css=core_css() + theme_css(name, …))``
     gives a brand its colours without a stylesheet of its own. ``tokens`` are ``--ui-*`` custom properties
-    (``--ui-bg`` is required: it decides ``color-scheme``)."""
+    (``--ui-bg`` is required: it decides ``color-scheme``). Calling it registers ``name`` for ``render_document``
+    in this process (a page renderer calls it once, even if the bundle was written elsewhere)."""
     if not re.fullmatch(r"[a-z][a-z0-9-]*", name):
         raise ValueError("theme name must be lowercase letters, digits and hyphens")
     if "--ui-bg" not in tokens or any(not key.startswith("--ui-") for key in tokens):
@@ -4057,6 +4070,7 @@ def theme_css(name: str, tokens: dict[str, str]) -> str:
         raise ValueError("--ui-bg must be #rrggbb (it decides color-scheme)")
     scheme = "dark" if _luminance(tokens["--ui-bg"]) < 0.18 else "light"
     declarations = ";".join(f"{k}:{v}" for k, v in tokens.items())
+    REGISTERED_THEMES.add(name)  # render_document(theme=name) is now accepted in this process
     return f'@layer theme{{body[data-ui-theme="{name}"]{{{declarations};color-scheme:{scheme}}}}}\n'
 
 
@@ -4182,8 +4196,19 @@ def layout_switch_html(spec: Any, candidates: dict[str, Any] | None = None, *, l
     return f'<fieldset class="ui-layout-switch"><legend>{escape(legend)}</legend>' + "".join(items) + "</fieldset>"
 
 
+def _auto_theme_css() -> str:
+    """``data-ui-theme="auto"``: the dark :root palette (modern) unless the browser prefers light, then the
+    github-like palette — the token block of themes/github-like.css, so the two never drift."""
+    source = _CSS["themes/github-like.css"]
+    block = re.search(r'body\[data-ui-theme="github-like"\]\{([^}]*)\}', source).group(1)
+    tokens = ";".join(line.strip().rstrip(";") for line in block.strip().splitlines() if line.strip())
+    return ('/* auto: dark (the :root palette) unless the browser prefers light, then the github-like palette. */\n'
+            'body[data-ui-theme="auto"]{color-scheme:dark light}'
+            f'@media(prefers-color-scheme:light){{body[data-ui-theme="auto"]{{{tokens}}}}}\n')
+
+
 def _token_theme_css() -> str:
-    blocks = ["/* Candidate themes, token-only: palettes, no theme files (see theme_palettes()). */"]
+    blocks = [_auto_theme_css() + "/* Candidate themes, token-only: palettes, no theme files (see theme_palettes()). */"]
     for name in CANDIDATE_THEMES:
         tokens = theme_palettes()[name]
         scheme = "dark" if _luminance(tokens["--ui-bg"]) < 0.18 else "light"

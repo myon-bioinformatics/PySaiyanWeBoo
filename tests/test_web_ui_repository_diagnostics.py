@@ -110,6 +110,10 @@ def test_theme_css_registers_a_consumer_palette():
     for name, tokens in (("Bad", {"--ui-bg": "#fff"}), ("x", {"--ui-fg": "#fff"}), ("x", {"--ui-bg": "#fff", "color": "red"})):
         with pytest.raises(ValueError):
             web_ui.theme_css(name, tokens)
+    assert '<body data-ui-theme="ironmate">' in web_ui.render_document("x", theme="ironmate")  # registered above
+    with pytest.raises(ValueError):
+        web_ui.render_document("x", theme="never-registered")
+    assert '<body data-ui-theme="auto">' in web_ui.render_document("x", theme="auto")
 
 
 def test_ui_elements_opt_in_styles_bare_form_elements():
@@ -180,3 +184,14 @@ def test_every_page_says_which_web_ui_drew_it():
     assert match and match.group(1) == (web_ui.source_commit() or "unknown")
     assert page.index('name="generator"') < page.index("<title>")
     assert web_ui.GENERATOR_META.search(web_ui.repository_diagnostics_page("o/r"))
+
+
+def test_core_prints_and_respects_reduced_motion_and_auto_scheme():
+    base = web_ui.css_source("base.css")
+    assert "@media print{body{background:#fff;color:#000}" in base and ".ui-no-print{display:none}" in base
+    assert ".ui-print-only{display:none}" in base and "@media(prefers-reduced-motion:reduce)" in base
+    tokens = web_ui.css_source("tokens.css")
+    assert 'body[data-ui-theme="auto"]{color-scheme:dark light}' in tokens
+    light = tokens.split('@media(prefers-color-scheme:light){body[data-ui-theme="auto"]{', 1)[1].split("}", 1)[0]
+    assert "--ui-bg:#ffffff" in light and "--ui-accent:#0969da" in light  # the github-like palette, not a copy
+    assert "/* css/tokens.css */" in web_ui.core_css("auto") and "themes/" not in web_ui.core_css("auto")
