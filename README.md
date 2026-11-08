@@ -48,7 +48,7 @@ Current themes:
 
 - `modern` — terminal-styled default (text is Meiryo like every theme; code stays monospace)
 - `github-like` — generic light presentation intentionally using familiar GitHub visual cues
-- `green`, `red`, `blue` — candidates, token-only: palettes (green first built by hand in Ironmate's studio; red and blue are `theme_palette(hue)`, and any hue works) whose values are generated into `tokens.css` (no theme files, not in contract v1 yet)
+- `green`, `red`, `blue`, `terminal` — candidates, token-only: palettes (green first built by hand in Ironmate's studio; red and blue are `theme_palette(hue)`, and any hue works; terminal is mcp-toolcall-lab's dark terminal-lite returned here, mono body font) whose values are generated into `tokens.css` (no theme files, not in contract v1 yet)
 
 Single-file pages: `render_document(css=bundled_css())` (or `python -S web_ui.py --css-bundle`) embeds every
 stylesheet and theme, built in memory from the sources in `web_ui.py`; nothing is written to the repository. Because all themes ship
@@ -576,6 +576,10 @@ assert run_node("tests/repository_diagnostics.node.js").returncode == 0
 
 Existing `ui.js` text/clipboard helpers, `stub.js` form binding, and
 `repository-diagnostics.js` rendering remain in use by examples or consumers.
+
+📋 `web_ui.table(headers, rows, caption=…, row_classes=…)` renders a `.ui-table` (escaped cells; `trusted_html=True` for
+cells that are already HTML). Consumers' report pages (BrowserTestKit's platform matrix and app digest, markdown's
+real-world report, ascii_artist's captures) build on `render_document` + `bundled_css()` + this instead of their own CSS.
 
 🩺 The repository-diagnostics page itself is one function: `web_ui.repository_diagnostics_page("owner/repo")`
 returns the self-contained HTML (bundled CSS and `repository-diagnostics.js` embedded, nothing from a CDN) that

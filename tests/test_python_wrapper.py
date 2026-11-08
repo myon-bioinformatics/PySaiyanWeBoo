@@ -244,7 +244,7 @@ class BundledCssTests(unittest.TestCase):
         for name in web_ui.CANDIDATE_THEMES:
             self.assertIn(f'body[data-ui-theme="{name}"]', tokens)
             self.assertNotIn(f"themes/{name}.css", web_ui._CSS)
-        self.assertEqual(web_ui.CANDIDATE_THEMES, ("green", "red", "blue"))
+        self.assertEqual(web_ui.CANDIDATE_THEMES, ("green", "red", "blue", "terminal"))
         for hue in (0.0, 0.08, 0.33, 0.6, 0.83):
             for dark in (False, True):
                 theme = web_ui.theme_palette(hue, dark=dark)

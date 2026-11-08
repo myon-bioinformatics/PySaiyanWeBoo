@@ -36,7 +36,7 @@ import subprocess
 import sys
 import time
 import unicodedata
-from typing import Any
+from typing import Any, Sequence
 import urllib.error
 import urllib.request
 import zlib
@@ -45,7 +45,7 @@ from urllib.parse import parse_qsl, quote, urlsplit
 
 THEMES = ("modern", "github-like")
 # Token-only candidates: their values live in the Python tokens.css source; not in contract v1 yet.
-CANDIDATE_THEMES = ("green", "red", "blue")
+CANDIDATE_THEMES = ("green", "red", "blue", "terminal")
 # The browser modules, as data: Python is the only source (there are no js/ files). write_js()/--site writes them under DIR/js/.
 _JS = {
     "ui.js": r"""/** Set text-only content. User-controlled values are never interpreted as HTML. */
@@ -480,7 +480,7 @@ _CSS = {
     "tokens.css": r""":root{--ui-bg:#0d1117;--ui-panel:#101820;--ui-fg:#d1f7c4;--ui-muted:#8b949e;--ui-border:#58a6ff;--ui-accent:#7ee787;--ui-danger:#cf222e;--ui-radius:0;--ui-space:1rem;--ui-max:960px;--ui-font:Meiryo,メイリオ,sans-serif;--ui-font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
 """,
     "base.css": r"""@layer base{*{box-sizing:border-box}body{margin:0;background:var(--ui-bg);color:var(--ui-fg);font:16px/1.6 var(--ui-font)}pre,code,kbd,samp{font-family:var(--ui-font-mono)!important}.ui-page{max-width:var(--ui-max);margin:auto;padding:1.25rem}a{color:inherit}}""",
-    "components.css": r"""@layer components{.ui-panel,.ui-card{background:var(--ui-panel);border:1px solid var(--ui-border);padding:1rem;margin:1rem 0;border-radius:var(--ui-radius)}.ui-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}.ui-tag{display:inline-block;border:1px solid var(--ui-border);padding:.1rem .4rem}.ui-button,.ui-input{font:inherit;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);padding:.6rem;border-radius:var(--ui-radius)}.ui-muted{color:var(--ui-muted)}.ui-output{font:inherit;white-space:pre-wrap;overflow:auto;background:#d8dee4;color:#161b22;border:1px solid #8c959f;border-radius:4px;padding:.75rem}pre code,.ui-output code{font-family:inherit;color:inherit}pre.ui-output code{background:transparent}@media(max-width:480px){.ui-page{padding:.75rem}.ui-grid{grid-template-columns:1fr}.ui-card,.ui-panel{margin:.75rem 0;padding:.75rem}}.ui-lightbox{border:1px solid var(--ui-border);background:var(--ui-panel);color:var(--ui-fg);padding:1rem;max-width:min(96vw,960px);max-height:96vh;border-radius:var(--ui-radius)}.ui-lightbox::backdrop{background:rgba(0,0,0,.72)}.ui-lightbox img{display:block;max-width:100%;max-height:calc(96vh - 8rem);margin:auto}.ui-lightbox-bar{display:flex;gap:.5rem;justify-content:space-between;margin-top:.75rem}body:has(.ui-lightbox[open]){overflow:hidden}}""",
+    "components.css": r"""@layer components{.ui-panel,.ui-card{background:var(--ui-panel);border:1px solid var(--ui-border);padding:1rem;margin:1rem 0;border-radius:var(--ui-radius)}.ui-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}.ui-tag{display:inline-block;border:1px solid var(--ui-border);padding:.1rem .4rem}.ui-button,.ui-input{font:inherit;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);padding:.6rem;border-radius:var(--ui-radius)}.ui-muted{color:var(--ui-muted)}.ui-output{font:inherit;white-space:pre-wrap;overflow:auto;background:#d8dee4;color:#161b22;border:1px solid #8c959f;border-radius:4px;padding:.75rem}pre code,.ui-output code{font-family:inherit;color:inherit}pre.ui-output code{background:transparent}@media(max-width:480px){.ui-page{padding:.75rem}.ui-grid{grid-template-columns:1fr}.ui-card,.ui-panel{margin:.75rem 0;padding:.75rem}}.ui-lightbox{border:1px solid var(--ui-border);background:var(--ui-panel);color:var(--ui-fg);padding:1rem;max-width:min(96vw,960px);max-height:96vh;border-radius:var(--ui-radius)}.ui-lightbox::backdrop{background:rgba(0,0,0,.72)}.ui-lightbox img{display:block;max-width:100%;max-height:calc(96vh - 8rem);margin:auto}.ui-lightbox-bar{display:flex;gap:.5rem;justify-content:space-between;margin-top:.75rem}body:has(.ui-lightbox[open]){overflow:hidden}.ui-table{border-collapse:collapse;width:100%}.ui-table th,.ui-table td{border-bottom:1px solid var(--ui-border);padding:.25rem .5rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}.ui-table th{color:var(--ui-muted);font-weight:500}.ui-table caption{text-align:left;color:var(--ui-muted);padding:.25rem 0}.ui-table .ui-pass{color:var(--ui-accent)}.ui-table .ui-fail{color:var(--ui-danger)}.ui-table .ui-changed{background:color-mix(in srgb,var(--ui-accent) 18%,transparent)}}""",
     "matrix.css": r"""@layer components{.ui-matrix:has(>section:target)>section:not(:target){display:none}.ui-matrix>section{scroll-margin-top:16px}.ui-matrix-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--ui-matrix-col,160px),1fr));gap:var(--ui-matrix-gap,8px);padding:0;list-style:none}.ui-matrix-tiles li{border:1px solid var(--ui-border);padding:var(--ui-matrix-pad,8px);font-size:.8rem;overflow-wrap:anywhere}.ui-matrix-tiles img{display:block;width:100%;height:auto;margin:var(--ui-matrix-pad,8px) 0;background:#fff}.ui-matrix-tiles .is-missing{border-style:dashed;color:var(--ui-muted)}.ui-matrix-tiles .is-fail{outline:2px solid var(--ui-danger)}.ui-matrix-tiles .is-reference{outline:2px solid var(--ui-accent)}.ui-matrix-page>nav{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.ui-matrix-page>nav .ui-button{white-space:nowrap;text-decoration:none}.ui-matrix a{overflow-wrap:anywhere}}
 """,
     "repository-diagnostics.css": r""".repo-diagnostics{box-sizing:border-box;border:1px solid var(--ui-border,#c9c9cf);border-radius:1rem;padding:1.25rem;background:var(--ui-surface,#fff);color:var(--ui-text,#222)}.repo-diagnostics h2{margin:0 0 .75rem;font-size:1.25rem}.repo-diagnostics__commit{overflow-wrap:anywhere}.repo-diagnostics__measurements{display:grid;grid-template-columns:minmax(8rem,1fr) 1fr;gap:.45rem 1rem;margin:1rem 0 0}.repo-diagnostics__measurements dt,.repo-diagnostics__measurements dd{margin:0}.repo-diagnostics__measurements dd{font-variant-numeric:tabular-nums}@media(max-width:30rem){.repo-diagnostics__measurements{grid-template-columns:1fr}.repo-diagnostics__measurements dd{margin-bottom:.35rem}}
@@ -1021,6 +1021,26 @@ def catalog_document(spec: Any, *, theme: str = "modern") -> str:
     css = "@layer base,components,theme;" + "".join(css_source(name) for name in names)
     css += ".ui-catalog{overflow-wrap:anywhere}.ui-catalog section{scroll-margin-top:1rem}"
     return render_document(title=title, theme=theme, css=css, trusted_html=body)
+
+def table(headers: Sequence[str], rows: Sequence[Sequence[Any]], *, caption: str | None = None, id: str | None = None,
+          trusted_html: bool = False, row_classes: Sequence[str | None] | None = None) -> str:
+    """A ``.ui-table``: header cells and rows, every cell escaped unless ``trusted_html`` (then cells are HTML the
+    caller already built, e.g. an ``<img>``). ``row_classes`` gives one class (or None) per row, such as ``ui-pass`` /
+    ``ui-fail``; cell classes ``ui-changed`` / ``ui-pass`` / ``ui-fail`` are styled by components.css."""
+    if row_classes is not None and len(row_classes) != len(rows):
+        raise ValueError("row_classes must have one entry per row")
+    cell = (lambda value: str(value)) if trusted_html else (lambda value: escape("" if value is None else str(value)))
+    head = "".join(f"<th scope=\"col\">{escape(str(h))}</th>" for h in headers)
+    body = []
+    for index, row in enumerate(rows):
+        if len(row) != len(headers):
+            raise ValueError(f"row {index} has {len(row)} cells, expected {len(headers)}")
+        cls = row_classes[index] if row_classes else None
+        body.append((f'<tr class="{escape(cls, quote=True)}">' if cls else "<tr>") + "".join(f"<td>{cell(v)}</td>" for v in row) + "</tr>")
+    attrs = f' id="{_element_id(id)}"' if id else ""
+    return (f'<table class="ui-table"{attrs}>' + (f"<caption>{escape(caption)}</caption>" if caption else "")
+            + f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>")
+
 
 def button(label: str, *, id: str | None = None, type: str = "button", disabled: bool = False) -> str:
     """An escaped native button; custom actions remain consumer-owned."""
@@ -3909,6 +3929,11 @@ def theme_palettes() -> dict[str, dict[str, str]]:
         "green": {"--ui-bg": "#edf0ec", "--ui-panel": "#ffffff", "--ui-fg": "#163b3b", "--ui-muted": "#546a61",
                   "--ui-border": "#ccdcd4", "--ui-accent": "#126d66", "--ui-danger": "#a73528", "--ui-radius": ".5rem"},
         "red": theme_palette(0.0), "blue": theme_palette(0.6),
+        # terminal: mcp-toolcall-lab's terminal-lite (dark ASCII presentation, borders instead of shadows), returned here
+        # so every repository can pick it; it also sets the body font to the mono stack.
+        "terminal": {"--ui-bg": "#0a0e10", "--ui-panel": "#11171a", "--ui-fg": "#d5dee0", "--ui-muted": "#7c8a8d",
+                     "--ui-border": "#2b3436", "--ui-accent": "#5fd7a7", "--ui-danger": "#ff8080", "--ui-radius": "0",
+                     "--ui-font": "var(--ui-font-mono)"},
     }
 
 

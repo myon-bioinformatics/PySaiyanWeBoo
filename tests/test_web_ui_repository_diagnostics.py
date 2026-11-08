@@ -63,3 +63,25 @@ def test_repository_diagnostics_page_options_and_rejections():
         web_ui.repository_diagnostics_page("o/r", json_name="../x.json?y")
     with pytest.raises(ValueError):
         web_ui.repository_diagnostics_page("o/r", theme="nope")
+
+
+def test_table_escapes_and_classes():
+    import pytest
+    html = web_ui.table(("Env", "Verdict"), [("linux-chromium", "pass"), ("<x>", None)], caption="c", id="facts",
+                        row_classes=["ui-pass", None])
+    assert html.startswith('<table class="ui-table" id="facts"><caption>c</caption><thead><tr><th scope="col">Env</th>')
+    assert '<tr class="ui-pass"><td>linux-chromium</td><td>pass</td></tr><tr><td>&lt;x&gt;</td><td></td></tr>' in html
+    assert web_ui.table(("a",), [("<b>bold</b>",)], trusted_html=True).count("<b>bold</b>") == 1
+    with pytest.raises(ValueError):
+        web_ui.table(("a",), [("1", "2")])
+    with pytest.raises(ValueError):
+        web_ui.table(("a",), [("1",)], row_classes=[])
+    assert ".ui-table{" in web_ui.css_source("components.css")
+
+
+def test_terminal_is_a_token_only_theme():
+    tokens = web_ui.css_source("tokens.css")
+    assert "terminal" in web_ui.CANDIDATE_THEMES
+    assert 'body[data-ui-theme="terminal"]{--ui-bg:#0a0e10;' in tokens and "--ui-font:var(--ui-font-mono)" in tokens
+    assert "color-scheme:dark" in tokens.split('body[data-ui-theme="terminal"]')[1].split("}")[0]
+    assert '<body data-ui-theme="terminal">' in web_ui.render_document("x", theme="terminal")
