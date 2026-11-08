@@ -532,6 +532,8 @@ body[data-ui-theme="github-like"] .ui-tag{
 }
 }
 """,
+    "themes/terminal.css": r"""/* terminal: glyphs for the token-only terminal palette in tokens.css (# titles, [tags], > buttons, dark output). */
+@layer theme{body[data-ui-theme="terminal"] .ui-title::before{content:"# ";color:var(--ui-accent)}body[data-ui-theme="terminal"] .ui-tag:not(.ui-pass,.ui-fail)::before{content:"["}body[data-ui-theme="terminal"] .ui-tag:not(.ui-pass,.ui-fail)::after{content:"]"}body[data-ui-theme="terminal"] .ui-button::before{content:"> ";color:var(--ui-accent)}body[data-ui-theme="terminal"] .ui-button:hover{border-color:var(--ui-accent)}body[data-ui-theme="terminal"] .ui-output{background:#05080a;color:var(--ui-fg);border:1px solid var(--ui-border);border-radius:0}body[data-ui-theme="terminal"] .ui-panel,body[data-ui-theme="terminal"] .ui-card{box-shadow:none}}""",
     "themes/modern.css": r"""@layer theme{body[data-ui-theme="modern"]{color-scheme:dark}body[data-ui-theme="modern"] .ui-title::before,body[data-ui-theme="modern"] .ui-card>h2::before{content:"> ";color:var(--ui-accent)}body[data-ui-theme="modern"] .ui-panel,body[data-ui-theme="modern"] .ui-card{background:var(--ui-panel);box-shadow:4px 4px 0 rgba(88,166,255,.16)}body[data-ui-theme="modern"] .ui-tag:not(.ui-pass,.ui-fail)::before{content:"#";color:var(--ui-accent)}}""",
 }
 _CSS_CORE = ("tokens.css", "base.css", "components.css")
