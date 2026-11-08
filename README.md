@@ -588,6 +588,13 @@ palette registers it as `theme_css("ironmate", {"--ui-bg": …})` next to `core_
 A page whose forms are plain `<button>` / `<input>` / `<select>` / `<textarea>` / `<table>` elements (hand-written or
 built by its own script) opts them into the component look with `class="ui-elements"` on `<body>` or a container.
 
+📦 A consumer ships one committed stylesheet: `web_ui.write_bundle("static/site.css", theme="terminal", brand=("acme", tokens),
+extra_css=LAYOUT)` writes `core_css` + the brand palette + the consumer's own layout rules under a one-line provenance header
+(`web-ui-bundle/1 commit=… sha256=…`), and `check_bundle(...)` with the same arguments lists why it is stale (moved pin, hand
+edit, changed layout) — a two-line test per repository. The same from the shell or Node: `python -S web_ui.py --bundle FILE
+--theme terminal --brand brand.json --extra-css layout.css` / `--bundle-check FILE`. `source_commit()` is the commit the
+installed module came from (pip's install record, or the checkout's HEAD).
+
 🩺 The repository-diagnostics page itself is one function: `web_ui.repository_diagnostics_page("owner/repo")`
 returns the self-contained HTML (bundled CSS and `repository-diagnostics.js` embedded, nothing from a CDN) that
 reads `./repository-diagnostics.json` next to it via `RepositoryDiagnostics.mount`. Consumers (markdown,

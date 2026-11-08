@@ -117,3 +117,39 @@ def test_ui_elements_opt_in_styles_bare_form_elements():
     assert ".ui-elements button," in css and ".ui-elements textarea," in css and ".ui-elements table{" in css
     assert "[type=checkbox],[type=radio],[type=range],[type=color],[type=file])" in css
     assert ".ui-elements button:hover{border-color:var(--ui-accent)}" in css
+
+
+def test_write_bundle_and_check_bundle_round_trip(tmp_path):
+    import hashlib
+    import subprocess
+    import sys
+    brand = ("acme", {"--ui-bg": "#ffffff", "--ui-fg": "#000000"})
+    target = tmp_path / "site.css"
+    fields = web_ui.write_bundle(target, theme="terminal", brand=brand, extra_css=".x{}", note="scripts/x.py")
+    text = target.read_text(encoding="utf-8")
+    head, body = text.split("\n", 1)
+    assert head == f"/* web-ui-bundle/1 commit={fields['commit']} sha256={hashlib.sha256(body.encode()).hexdigest()} scripts/x.py*/"
+    assert fields["commit"] == (web_ui.source_commit() or "unknown")
+    assert body == web_ui.core_css("terminal") + web_ui.theme_css(*brand) + ".x{}"
+    assert web_ui.check_bundle(target, theme="terminal", brand=brand, extra_css=".x{}") == []
+    assert "stale" in web_ui.check_bundle(target, theme="terminal")[0]
+    target.write_text(text + "/*hand*/", encoding="utf-8")
+    assert "sha256" in web_ui.check_bundle(target, theme="terminal", brand=brand, extra_css=".x{}")[0]
+    assert web_ui.check_bundle(tmp_path / "none.css")
+    import pytest
+    with pytest.raises(ValueError):
+        web_ui.write_bundle(target, note="two\nlines")
+    # The CLI is the same two calls, so Node (vendor/py_launch.cjs) and python -S consumers get the same bytes.
+    spec = tmp_path / "brand.json"
+    spec.write_text('{"name": "acme", "tokens": {"--ui-bg": "#ffffff", "--ui-fg": "#000000"}}', encoding="utf-8")
+    (tmp_path / "extra.css").write_text(".x{}", encoding="utf-8")
+    cli = [sys.executable, "-S", str(ROOT / "web_ui.py"), "--theme", "terminal", "--brand", str(spec), "--extra-css", str(tmp_path / "extra.css")]
+    assert subprocess.run([*cli, "--bundle", str(target), "--note", "scripts/x.py"], capture_output=True, text=True).returncode == 0
+    assert target.read_text(encoding="utf-8").split("\n", 1)[1] == body
+    assert subprocess.run([*cli, "--bundle-check", str(target)], capture_output=True, text=True).returncode == 0
+    assert subprocess.run([sys.executable, "-S", str(ROOT / "web_ui.py"), "--bundle-check", str(target)], capture_output=True, text=True).returncode == 1
+
+
+def test_source_commit_is_the_checkout_head_or_the_install_record():
+    commit = web_ui.source_commit()
+    assert commit is None or (len(commit) == 40 and int(commit, 16) >= 0)

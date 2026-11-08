@@ -581,6 +581,81 @@ def core_css(theme: str = "modern") -> str:
     return "".join(parts)
 
 
+def source_commit() -> str | None:
+    """The git commit this module came from: pip's install record when installed from git (the consumers' pinned
+    dependency), else the checkout's HEAD when run from the repository, else None. Stdlib only, no subprocess."""
+    try:
+        import importlib.metadata
+        raw = importlib.metadata.distribution("pysaiyanweboo").read_text("direct_url.json")
+        commit = (json.loads(raw).get("vcs_info") or {}).get("commit_id") if raw else None
+        if isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit):
+            return commit
+    except Exception:  # not installed, or not from git: fall through to the checkout
+        pass
+    git = Path(__file__).resolve().parent / ".git"
+    try:
+        head = (git / "HEAD").read_text(encoding="utf-8").strip()
+        if head.startswith("ref: "):
+            ref = head[5:]
+            if (git / ref).is_file():
+                head = (git / ref).read_text(encoding="utf-8").strip()
+            else:
+                head = next((line.split()[0] for line in (git / "packed-refs").read_text(encoding="utf-8").splitlines()
+                             if line.endswith(" " + ref)), "")
+        return head if re.fullmatch(r"[0-9a-f]{40}", head) else None
+    except OSError:
+        return None
+
+
+BUNDLE_SCHEMA = "web-ui-bundle/1"
+_BUNDLE_HEADER = re.compile(r"^/\* (web-ui-bundle/\d+) commit=([0-9a-f]{40}|unknown) sha256=([0-9a-f]{64}) ([^\n]*)\*/\n")
+
+
+def bundle_css(*, theme: str = "modern", brand: tuple[str, dict[str, str]] | None = None, extra_css: str = "") -> str:
+    """The stylesheet a consumer ships: ``core_css(theme)``, then the consumer's own palette (``theme_css``), then
+    its layout rules. ``brand`` is ``(name, tokens)``; render the pages with ``theme=name`` so the palette applies."""
+    body = core_css(theme)
+    if brand is not None:
+        body += theme_css(*brand)
+    return body + extra_css
+
+
+def write_bundle(path: Path | str, *, theme: str = "modern", brand: tuple[str, dict[str, str]] | None = None,
+                 extra_css: str = "", note: str = "") -> dict[str, str]:
+    """Write ``bundle_css(...)`` to ``path`` under a one-line provenance header (schema, this module's commit, the
+    sha256 of the body, ``note``). The file is meant to be committed, so stdlib-only consumers can serve it without
+    web_ui installed; ``check_bundle`` with the same arguments says when it is stale. Returns the header fields."""
+    body = bundle_css(theme=theme, brand=brand, extra_css=extra_css)
+    if "*/" in note or "\n" in note:
+        raise ValueError("note must be one line without */")
+    fields = {"schema": BUNDLE_SCHEMA, "commit": source_commit() or "unknown",
+              "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(), "note": note}
+    text = f"/* {fields['schema']} commit={fields['commit']} sha256={fields['sha256']} {note}*/\n" + body
+    Path(path).write_text(text, encoding="utf-8")
+    return fields
+
+
+def check_bundle(path: Path | str, *, theme: str = "modern", brand: tuple[str, dict[str, str]] | None = None,
+                 extra_css: str = "") -> list[str]:
+    """Problems with a committed bundle (empty when it is current): missing, no header, body edited by hand
+    (sha256), or stale against ``bundle_css(...)`` from this module (including a moved pin)."""
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"{path}: {exc.strerror or exc}"]
+    match = _BUNDLE_HEADER.match(text)
+    if not match:
+        return [f"{path}: no {BUNDLE_SCHEMA} header; run write_bundle"]
+    body = text[match.end():]
+    problems = []
+    if hashlib.sha256(body.encode("utf-8")).hexdigest() != match.group(3):
+        problems.append(f"{path}: body does not match its sha256 (edited by hand?)")
+    if body != bundle_css(theme=theme, brand=brand, extra_css=extra_css):
+        problems.append(f"{path}: stale against web_ui {(source_commit() or 'unknown')[:8]} (header commit {match.group(2)[:8]}); run write_bundle")
+    return problems
+
+
 def _require_local_script_path(value: str, *, label: str) -> None:
     # Check before urlsplit, which strips some whitespace/control characters.
     # Browsers also treat backslashes as slashes in HTTP(S) URL references.
@@ -3963,6 +4038,8 @@ def theme_css(name: str, tokens: dict[str, str]) -> str:
         raise ValueError("theme name must be lowercase letters, digits and hyphens")
     if "--ui-bg" not in tokens or any(not key.startswith("--ui-") for key in tokens):
         raise ValueError("tokens are --ui-* custom properties and include --ui-bg")
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", tokens["--ui-bg"]):
+        raise ValueError("--ui-bg must be #rrggbb (it decides color-scheme)")
     scheme = "dark" if _luminance(tokens["--ui-bg"]) < 0.18 else "light"
     declarations = ";".join(f"{k}:{v}" for k, v in tokens.items())
     return f'@layer theme{{body[data-ui-theme="{name}"]{{{declarations};color-scheme:{scheme}}}}}\n'
@@ -17785,6 +17862,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="print a page showing N seeded random themes side by side and exit")
     parser.add_argument("--css-bundle", action="store_true",
                         help="embed every web-ui stylesheet and theme (see bundled_css) in the page")
+    bundle = parser.add_argument_group("📦 consumer stylesheet (see write_bundle, check_bundle)")
+    bundle.add_argument("--bundle", type=Path, metavar="FILE", help="write core_css(--theme) + --brand + --extra-css to FILE under a provenance header and exit")
+    bundle.add_argument("--bundle-check", type=Path, metavar="FILE", help="exit 1 if FILE is not what --bundle would write now")
+    bundle.add_argument("--brand", type=Path, metavar="FILE", help="with --bundle: a JSON {\"name\": ..., \"tokens\": {\"--ui-bg\": ...}} palette appended as theme_css")
+    bundle.add_argument("--extra-css", type=Path, metavar="FILE", help="with --bundle: the consumer's own rules appended after the theme")
+    bundle.add_argument("--note", default="", help="with --bundle: one line kept in the header (who generated it)")
     parser.add_argument("--asset-base", help="local or pinned HTTPS shared asset directory")
     parser.add_argument(
         "--with-scripts",
@@ -17844,6 +17927,23 @@ def main(argv: list[str] | None = None) -> int:
         return _reports_main(parser, args)
     if args.command:
         parser.error("unexpected arguments: " + " ".join(args.command))
+    if args.bundle or args.bundle_check:
+        try:
+            brand = None
+            if args.brand:
+                spec = json.loads(args.brand.read_text(encoding="utf-8"))
+                brand = (str(spec["name"]), dict(spec["tokens"]))
+            extra = args.extra_css.read_text(encoding="utf-8") if args.extra_css else ""
+            options = {"theme": args.theme, "brand": brand, "extra_css": extra}
+            if args.bundle:
+                fields = write_bundle(args.bundle, note=args.note, **options)
+                sys.stdout.write(f"{args.bundle} commit={fields['commit'][:8]} sha256={fields['sha256'][:8]}\n")
+            problems = check_bundle(args.bundle_check, **options) if args.bundle_check else []
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            parser.error(str(exc))
+        for problem in problems:
+            sys.stderr.write(problem + "\n")
+        return 1 if problems else 0
     if args.sri:
         try:
             raw = args.sri.read_bytes()
