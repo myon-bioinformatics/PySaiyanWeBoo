@@ -636,7 +636,7 @@ boundary](docs/python-controls.md).
 
 `COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `coordinates`,
 `door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `stub`, `curl`, `showcase`,
-`front`, `world`, `repository-diagnostics`; `components()` lists them as data), and two calls wrap them:
+`front`, `world`, `repository-diagnostics`, `table`; `components()` lists them as data), and two calls wrap them:
 
 ```python
 import web_ui                                   # the vendored copy (vendor/web_ui.py) in another repository
@@ -661,6 +661,17 @@ same three in one call. `tests/test_components.py` renders every entry.
 `repository-diagnostics.js` stays a classic script (`"classic": true` in the table, so `component_document()` inlines `<script>`, not a module):
 on load it reads the JSON once (`cache: "no-store"`), renders the Ironmate metadata card with `render()`, the resolver summary and one escaped card
 per observation (a link only for an `https://` URL), and shows "Diagnostics could not be loaded." when the GET fails.
+
+`table` is the report table Ironmate (`browser_matrix.py`, `image_digest.py`), markdown (`real_world_pages_report.py`) and browser-test-kit
+(`app_digest.py`) each build by hand, and the one the showcase sections already used: `table_html({"columns", "rows", "caption", "row_headers",
+"missing"})` gives an escaped `<table class="ui-shell-table">` in its own horizontal scroller, styled by `shell.css` (already in `bundled_css()`),
+no script. A cell is text (line breaks kept), a finite number (right-aligned, `data-num`), `null` (the `missing` text, muted) or
+`{text, href, image: {src, alt, width, height}, status, num}`; `status` is a token written as `data-status` for the page to color, hrefs and image
+sources are relative paths or http(s) addresses. `python -S web_ui.py --component table --spec table.json --part html` from the shell or Node.
+
+<img src="docs/demo/component-table.gif" width="320" alt="A browser matrix table on a phone: the themes change its colors, then it scrolls sideways inside its box while the page stays still">
+
+The GIF comes from the browser test (`WEB_UI_GIFS=docs/demo python -m pytest tests/integration/controls_browser.py -k TableBrowserTests`).
 
 ## Focused test discovery
 

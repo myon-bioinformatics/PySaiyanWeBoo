@@ -1053,6 +1053,68 @@ class RepositoryDiagnosticsBrowserTests(unittest.TestCase):
             server.shutdown()
 
 
+TABLE_TILE = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="40"><rect width="64" height="40" fill="#3fb950"/></svg>'
+
+
+def table_spec():
+    """A browser-matrix shaped table, the kind Ironmate, markdown and browser-test-kit write by hand: wider than a phone on purpose."""
+    envs = ['chromium', 'firefox', 'webkit', 'Pixel 7', 'iPhone 13']
+    rows = [[page] + [{'text': 'pass', 'status': 'pass', 'image': {'src': 'tile.svg', 'alt': f'{page} on {env}', 'width': 64, 'height': 40}} if env != 'webkit' or page != 'about' else None
+                      for env in envs] + [1234 * (i + 1), 0.987654 - i / 10] for i, page in enumerate(['index', 'about', 'log'])]
+    rows[2][1] = {'text': 'log <b>', 'href': './log.txt'}
+    return {'columns': ['', *envs, 'bytes', 'score'], 'rows': rows, 'row_headers': True, 'caption': 'Screenshots per browser', 'missing': 'not run'}
+
+
+class TableBrowserTests(unittest.TestCase):
+    """component_document("table", spec): an escaped table in its own scroller, styled by shell.css under every theme, no script.
+    The GIF (``WEB_UI_GIFS=DIR`` keeps it as component-table.gif) walks the themes and scrolls the table sideways on a phone."""
+
+    def test_the_table_scrolls_inside_its_box_on_a_phone_and_follows_every_theme(self):
+        sys.path.insert(0, str(ROOT / 'tool'))
+        import record_demo
+        from PIL import Image
+        from web_ui import CANDIDATE_THEMES, THEMES, component_document
+        server, origin = WorldBrowserTests.serve({'table.html': component_document('table', table_spec(), document_title='Table'), 'tile.svg': TABLE_TILE})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={'width': 392, 'height': 560})
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/table.html')
+                    page.wait_for_function("[...document.images].every(i => i.complete && i.naturalWidth > 0)")
+                    expect(page.locator('th[scope="row"]')).to_have_count(3)
+                    expect(page.locator('td[data-missing]')).to_have_text('not run')
+                    expect(page.locator('td a[href="./log.txt"]')).to_have_text('log <b>')
+                    self.assertEqual(page.locator('td[data-num]').first.evaluate('e => getComputedStyle(e).textAlign'), 'right')
+                    self.assertEqual(set(page.evaluate("[...document.images].map(i => i.getBoundingClientRect().width)")), {64})   # no shrinking in narrow columns
+                    box = page.locator('.ui-shell-scroll')
+                    self.assertGreater(box.evaluate('e => e.scrollWidth - e.clientWidth'), 0)        # the table scrolls in its box...
+                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)   # ...not the page
+                    cam, borders = record_demo.Camera(page, crop='.ui-shell-scroll'), set()
+                    for theme in (*THEMES, *CANDIDATE_THEMES):
+                        page.evaluate('t => document.body.dataset.uiTheme = t', theme)
+                        borders.add(page.locator('td').first.evaluate('e => getComputedStyle(e).borderBottomColor'))
+                        cam.hold(400)
+                    page.evaluate("document.body.dataset.uiTheme = 'modern'")
+                    for step in range(1, 9):
+                        box.evaluate('(e, f) => e.scrollLeft = (e.scrollWidth - e.clientWidth) * f', step / 8)
+                        cam.hold(120)
+                    cam.hold(600)
+                    self.assertGreater(len(borders), 1)                                  # the border follows the theme tokens
+                    self.assertEqual(errors, [])
+                    gif = record_demo.encode(cam.shots)
+                    frames = Image.open(__import__('io').BytesIO(gif))
+                    self.assertTrue(gif.startswith(b'GIF89a') and getattr(frames, 'n_frames', 1) > 1)
+                    if os.environ.get('WEB_UI_GIFS'):
+                        (Path(os.environ['WEB_UI_GIFS']) / 'component-table.gif').write_bytes(gif)
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
 class ShowcaseBrowserTests(unittest.TestCase):
     """The app shell in Chromium: sections switch with no reload, the rail gives way to the bottom bar, nothing overflows, every theme reads."""
 
