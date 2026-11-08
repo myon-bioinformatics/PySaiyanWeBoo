@@ -930,6 +930,8 @@ _CSS = {
         ".ui-shell-cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(256px,1fr))}"
         ".ui-shell-card{display:flex;gap:16px;margin:0;min-width:0}.ui-shell-card h3{margin:0 0 8px;font-size:1rem;font-weight:400}.ui-shell-card p{margin:0;overflow-wrap:anywhere}"
         ".ui-shell-table{width:100%;border-collapse:collapse}.ui-shell-table th,.ui-shell-table td{padding:8px 16px;border-bottom:1px solid var(--ui-border);text-align:left}"
+        ".ui-shell-table caption{padding:0 0 8px;text-align:left;caption-side:top}.ui-shell-table td[data-num]{text-align:right;font-variant-numeric:tabular-nums}"
+        ".ui-shell-table td img{display:block;max-width:none;height:auto;margin:0 0 8px}.ui-shell-table td[data-missing]{color:var(--ui-muted)}.ui-shell-table td{white-space:pre-line}"
         ".ui-shell-scroll{overflow-x:auto}.ui-shell-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
         ".ui-bottom-nav{display:flex;border-top:1px solid var(--ui-border);background:var(--ui-panel)}"
         ".ui-bottom-item{flex:1;flex-direction:column;justify-content:center;gap:0;min-height:64px;padding:8px 0;text-align:center}"
@@ -4803,6 +4805,92 @@ def showcase_css(spec: Any) -> str:
     return "@layer components{" + "".join(rules) + "}"
 
 
+TABLE_MAX_COLUMNS, TABLE_MAX_ROWS, TABLE_MAX_TEXT = 64, 10000, 1000
+_TABLE_STATUS = re.compile(r"[a-z0-9][a-z0-9-]{0,31}")
+
+
+def _table_cell(cell: Any) -> Any:
+    if cell is None or (isinstance(cell, (int, float)) and not isinstance(cell, bool) and math.isfinite(cell)):
+        return cell
+    if isinstance(cell, str):
+        if len(cell) > TABLE_MAX_TEXT:
+            raise ValueError(f"a cell is text of up to {TABLE_MAX_TEXT} characters")
+        return cell
+    if not isinstance(cell, dict) or not cell or set(cell) - {"text", "href", "image", "status", "num"}:
+        raise ValueError("a cell is text, a finite number, null, or {text, href, image: {src, alt, width, height}, status, num}")
+    out: dict[str, Any] = {"text": cell.get("text", "")}
+    if not isinstance(out["text"], str) or len(out["text"]) > TABLE_MAX_TEXT:
+        raise ValueError(f"a cell's text is up to {TABLE_MAX_TEXT} characters")
+    if "href" in cell:
+        out["href"] = _door_href(cell["href"])
+    if "image" in cell:
+        image = cell["image"]
+        if not isinstance(image, dict) or not {"src", "alt"} <= set(image) <= {"src", "alt", "width", "height"} \
+                or not isinstance(image["alt"], str) or len(image["alt"]) > 200 \
+                or any(type(image.get(k, 1)) is not int or not 1 <= image.get(k, 1) <= 4096 for k in ("width", "height")):
+            raise ValueError("a cell image is {src, alt, width, height}: alt text of up to 200 characters, sizes of 1..4096 px")
+        out["image"] = {"src": _door_href(image["src"]), "alt": image["alt"], **{k: image[k] for k in ("width", "height") if k in image}}
+    if "status" in cell:
+        if not isinstance(cell["status"], str) or not _TABLE_STATUS.fullmatch(cell["status"]):
+            raise ValueError("a cell status is a lowercase token (a-z, 0-9, -) of up to 32 characters")
+        out["status"] = cell["status"]
+    if not isinstance(cell.get("num", False), bool):
+        raise ValueError("a cell's num is true or false")
+    out["num"] = cell.get("num", False)
+    return out
+
+
+def table_validate(spec: Any) -> dict[str, Any]:
+    """Checked copy of a table: ``columns`` (header texts), ``rows`` (lists as wide as ``columns``), optional ``caption``, ``row_headers``
+    (the first cell of each row is its ``<th scope="row">``) and ``missing`` (the text of a null cell, default "—"). A cell is text, a finite
+    number (right-aligned), null (missing) or ``{text, href, image: {src, alt, width, height}, status, num}``; hrefs and image sources are relative paths or
+    http(s) addresses, ``status`` a token written as ``data-status`` for the page to color. The showcase's section tables are its 1..6 × 16 text subset."""
+    if not isinstance(spec, dict) or set(spec) - {"columns", "rows", "caption", "row_headers", "missing"}:
+        raise ValueError("a table is {columns, rows, caption, row_headers, missing}")
+    columns, rows = spec.get("columns"), spec.get("rows")
+    if not isinstance(columns, list) or not 1 <= len(columns) <= TABLE_MAX_COLUMNS \
+            or any(not isinstance(c, str) or len(c) > TABLE_MAX_TEXT for c in columns):
+        raise ValueError(f"columns is a list of 1..{TABLE_MAX_COLUMNS} header texts")
+    if not isinstance(rows, list) or len(rows) > TABLE_MAX_ROWS or any(not isinstance(r, list) or len(r) != len(columns) for r in rows):
+        raise ValueError(f"rows is a list of up to {TABLE_MAX_ROWS} rows, each as wide as columns")
+    caption, missing = spec.get("caption", ""), spec.get("missing", "—")
+    if not isinstance(caption, str) or len(caption) > TABLE_MAX_TEXT or not isinstance(missing, str) or len(missing) > 80:
+        raise ValueError("caption is text, missing is text of up to 80 characters")
+    if not isinstance(spec.get("row_headers", False), bool):
+        raise ValueError("row_headers is true or false")
+    return {"columns": list(columns), "rows": [[_table_cell(c) for c in r] for r in rows], "caption": caption,
+            "row_headers": spec.get("row_headers", False), "missing": missing}
+
+
+def table_html(spec: Any) -> str:
+    """An escaped ``<table class="ui-shell-table">`` in its horizontal scroller, styled by shell.css (part of bundled_css()), no script.
+    The report pages of Ironmate, markdown and browser-test-kit each built this by hand; the showcase's section tables come from here too."""
+    table = table_validate(spec)
+
+    def cell(value: Any, header: bool) -> str:
+        if header:
+            text = "" if value is None else value if isinstance(value, str) else value.get("text", "") if isinstance(value, dict) else format(value, "g")
+            return f'<th scope="row">{escape(text)}</th>'
+        if value is None:
+            return f'<td data-missing>{escape(table["missing"])}</td>'
+        if not isinstance(value, dict):
+            return f"<td data-num>{format(value, 'g')}</td>" if not isinstance(value, str) else f"<td>{escape(value)}</td>"
+        attrs = (f' data-status="{value["status"]}"' if "status" in value else "") + (" data-num" if value["num"] else "")
+        image = (f'<img src="{escape(value["image"]["src"], quote=True)}" alt="{escape(value["image"]["alt"], quote=True)}"'
+                 + "".join(f' {k}="{value["image"][k]}"' for k in ("width", "height") if k in value["image"]) + ' loading="lazy">'
+                 if "image" in value else "")
+        text = escape(value["text"])
+        if "href" in value:
+            text = f'<a href="{escape(value["href"], quote=True)}">{image}{text}</a>'
+            image = ""
+        return f"<td{attrs}>{image}{text}</td>"
+
+    head = "".join(f'<th scope="col">{escape(c)}</th>' for c in table["columns"])
+    rows = "".join("<tr>" + "".join(cell(c, table["row_headers"] and i == 0) for i, c in enumerate(r)) + "</tr>" for r in table["rows"])
+    caption = f"<caption>{escape(table['caption'])}</caption>" if table["caption"] else ""
+    return f'<div class="ui-shell-scroll"><table class="ui-shell-table">{caption}<thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table></div>'
+
+
 def showcase_html(spec: Any) -> str:
     """The shell as semantic HTML. Sections switch through radio buttons (rail and bottom bar share them), so there is no reload and no script;
     only the favorite button and the theme list use ``bindToggles`` / ``bindTheme`` from ui.js. Everything is escaped."""
@@ -4831,9 +4919,7 @@ def showcase_html(spec: Any) -> str:
                 f'<article class="ui-card ui-shell-card">{icon(c["icon"])}<div><h3>{escape(c["title"])}</h3><p>{escape(c["body"])}</p></div></article>'
                 for c in s["cards"]) + "</div>")
         if s["table"]:
-            head = "".join(f'<th scope="col">{escape(c)}</th>' for c in s["table"]["columns"])
-            rows = "".join("<tr>" + "".join(f"<td>{escape(c)}</td>" for c in r) + "</tr>" for r in s["table"]["rows"])
-            out.append(f'<div class="ui-shell-scroll"><table class="ui-shell-table"><thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table></div>')
+            out.append(table_html(s["table"]))
         if s["controls"]:
             out.append(f'<div class="ui-shell-controls"><label for="{sid}-demo-input">Input</label><input class="ui-input" id="{sid}-demo-input" value="shared semantic HTML"> '
                        '<button class="ui-button" type="button">Button</button><span class="ui-tag">tag</span></div>'
@@ -5244,6 +5330,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "curl": {"html": "curl_panel_html", "css": (), "js": ("curl.js",)},
     "repository-diagnostics": {"html": "repository_diagnostics_html", "css": ("repository-diagnostics.css",), "js": ("repository-diagnostics.js",), "classic": True},
     "front": {"html": "front_html", "css": ("front_css",), "js": ()},
+    "table": {"html": "table_html", "css": (), "js": (), "spec": "table_validate"},
     "seed-roll": {"html": "seed_roll_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
 }
 # Stylesheets that are built rather than stored: the spec (the first argument) decides them.
