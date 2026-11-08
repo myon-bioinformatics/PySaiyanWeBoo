@@ -18,7 +18,7 @@ SOURCE_SPEC = {"id": "t", "label": "Name", "name": "[a-z]+", "url": "https://exa
 def args_for(name):
     return {"dial": (("level",), {"maximum": 11, "label": "Level"}), "door": ((ui.example_data("door"),), {}), "world": ((ui.example_data("school"),), {}),
             "stub": ((ui.EXAMPLE_STUBS["api"],), {}), "source": ((SOURCE_SPEC,), {}), "showcase": ((ui.example_data("showcase"),), {}),
-            "front": (("<p>main</p>", [ROOM]), {"title": "Front"})}.get(name, ((), {}))
+            "front": (("<p>main</p>", [ROOM]), {"title": "Front"}), "repository-diagnostics": (("myon-bioinformatics/web-ui",), {})}.get(name, ((), {}))
 
 
 @pytest.mark.parametrize("name", sorted(ui.COMPONENTS))
@@ -30,6 +30,7 @@ def test_every_component_gives_html_css_and_a_module_that_mounts(name):
         assert (ui.css_source(sheet) if sheet.endswith(".css") else ui._COMPONENT_CSS[sheet](*args)) in parts["css"]
     page = ui.component_document(name, *args, document_title=f"{name} demo", **kwargs)
     assert page.startswith("<!doctype html>") and parts["html"] in page and parts["js"] in page and f"<title>{name} demo</title>" in page
+    assert ("<script>" + parts["js"] + "</script>" in page) == bool(ui.COMPONENTS[name].get("classic"))      # a classic script, or a module
     assert ui.bundled_css().split("\n")[0] in page                                              # the shared tokens, base and components come first
     mount = ui.COMPONENTS[name].get("mount")
     if not ui.COMPONENTS[name]["js"]:
@@ -61,7 +62,7 @@ def run_cli(*argv, stdin=None):
 def test_the_cli_prints_a_component_for_node_and_the_shell():
     """python -S web_ui.py --component NAME: the same calls by name, with --spec FILE|- and --set KEY=VALUE (JSON values, else text)."""
     listing = json.loads(run_cli("--component", "list"))
-    assert listing == ui.components() and listing["dial"] == {"html": "dial_html", "css": ["dial.css"], "js": ["dial.js"], "mount": ""}
+    assert listing == ui.components() and listing["dial"] == {"html": "dial_html", "css": ["dial.css"], "js": ["dial.js"], "mount": "", "classic": False}
     parts = json.loads(run_cli("--component", "dial", "--set", "name=volume", "--set", "maximum=11", "--set", "label=Volume", "--part", "json"))
     assert parts == ui.component_parts("dial", name="volume", maximum=11, label="Volume")
     assert run_cli("--component", "dial", "--set", "name=volume", "--part", "html") == ui.dial_html("volume")

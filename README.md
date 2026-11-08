@@ -636,7 +636,7 @@ boundary](docs/python-controls.md).
 
 `COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `coordinates`,
 `door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `stub`, `curl`, `showcase`,
-`front`, `world`; `components()` lists them as data), and two calls wrap them:
+`front`, `world`, `repository-diagnostics`; `components()` lists them as data), and two calls wrap them:
 
 ```python
 import web_ui                                   # the vendored copy (vendor/web_ui.py) in another repository
@@ -654,6 +654,13 @@ from Node, `require("./vendor/py_launch.cjs").run("vendor/web_ui.py", ["--compon
 mcp-toolcall-lab is the model consumer: it vendors `web_ui.py` through the parent repository's `vendor_sync.py` (`vendor-consumers.json`, `vendor.lock.json`)
 and builds its Pokémon panel from `source_panel_html(spec)` + `css_source("source.css")` + `js_source("source.js")`; `component_parts("source", spec)` is the
 same three in one call. `tests/test_components.py` renders every entry.
+
+`repository-diagnostics` is the page ascii_artist, markdown and mcp-toolcall-lab each wrote by hand (one inline script reading
+`repository-diagnostics.json` beside it): `repository_diagnostics_html(repository, icon=, links=, source=)` is the body with three slots
+(`data-repo-metadata`, `data-repo-summary`, `data-repo-observations`), `repository_diagnostics_document(repository, favicon=)` the single-file page.
+`repository-diagnostics.js` stays a classic script (`"classic": true` in the table, so `component_document()` inlines `<script>`, not a module):
+on load it reads the JSON once (`cache: "no-store"`), renders the Ironmate metadata card with `render()`, the resolver summary and one escaped card
+per observation (a link only for an `https://` URL), and shows "Diagnostics could not be loaded." when the GET fails.
 
 ## Focused test discovery
 

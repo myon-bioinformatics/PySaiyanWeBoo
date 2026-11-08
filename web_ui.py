@@ -350,9 +350,55 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
       '</dl></section>';
   }
 
-  var api = {validate: validate, formatBytes: bytes, commitLine: commitLine, render: render};
+  // The public URL observations of a gh_identity resolver: one card per observation, every value escaped, links only to https:// addresses.
+  function resolverSummary(resolver) {
+    var r = resolver || {};
+    return "Auth: " + (r.auth || "unknown") + " · Status: " + (r.status || "unknown");
+  }
+
+  function renderObservations(resolver) {
+    return ((resolver || {}).observations || []).map(function (item) {
+      var url = typeof item.url === "string" ? item.url : "";
+      var http = item.http_status === null || item.http_status === undefined ? "HTTP: not observed" : "HTTP: " + item.http_status;
+      return '<article class="ui-card"><h3>' + esc(item.kind || "resource") + '</h3><p class="ui-tag">' + esc(item.status || "unknown") + '</p>' +
+        '<p class="ui-muted">' + esc(http) + '</p>' +
+        (/^https:\/\//.test(url) ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + '</a>' : '<span>' + esc(url) + '</span>') +
+        '</article>';
+    }).join("");
+  }
+
+  // A page from repository_diagnostics_html(): [data-ui-repo-diagnostics] names the JSON (metadata + resolver); one GET, no retry, no polling.
+  function mount(box, fetchImpl) {
+    var get = fetchImpl || global.fetch, src = box.getAttribute("data-ui-repo-diagnostics");
+    var metadata = box.querySelector("[data-repo-metadata]"), summary = box.querySelector("[data-repo-summary]");
+    var observations = box.querySelector("[data-repo-observations]");
+    return Promise.resolve().then(function () { return get(src, {cache: "no-store"}); }).then(function (response) {
+      if (!response.ok) throw new Error("diagnostics fetch failed");
+      return response.json();
+    }).then(function (payload) {
+      metadata.innerHTML = render(payload.metadata);
+      summary.textContent = resolverSummary(payload.resolver);
+      observations.innerHTML = renderObservations(payload.resolver);
+      return payload;
+    }).catch(function () {
+      summary.textContent = "Diagnostics could not be loaded.";
+      observations.innerHTML = "";
+      return null;
+    });
+  }
+
+  function mountAll(root) {
+    return Array.prototype.map.call((root || global.document).querySelectorAll("[data-ui-repo-diagnostics]"), function (box) { return mount(box); });
+  }
+
+  var api = {validate: validate, formatBytes: bytes, commitLine: commitLine, render: render, resolverSummary: resolverSummary,
+             renderObservations: renderObservations, mount: mount, mountAll: mountAll};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   global.RepositoryDiagnostics = api;
+  if (global.document) {
+    if (global.document.readyState === "loading") global.document.addEventListener("DOMContentLoaded", function () { mountAll(); }, {once: true});
+    else mountAll();
+  }
 })(typeof globalThis !== "undefined" ? globalThis : this);
 """,
 }
@@ -4070,10 +4116,46 @@ def dial_html(name: str, *, minimum: float = 0, maximum: float = 100, step: floa
     return (f'<span class="ui-dial" data-ui-dial><input type="range" name="{name}" min="{minimum:g}" max="{maximum:g}" step="{step:g}" value="{value:g}"{aria}></span>')
 
 
+# --- Repository diagnostics: the page ascii_artist, markdown and mcp-toolcall-lab each wrote by hand, as one builder ----------------------
+REPO_DIAGNOSTICS_LEAD = "Canonical metadata plus anonymous public GitHub observations."
+
+
+def repository_diagnostics_html(repository: str, *, lead: str = REPO_DIAGNOSTICS_LEAD, source: str = "./repository-diagnostics.json",
+                                links: Any = (("JSON", "./repository-diagnostics.json"), ("JSONL", "./repository-diagnostics.jsonl")),
+                                icon: str | None = None, heading_level: int = 1) -> str:
+    """The repository diagnostics page body that ``repository-diagnostics.js`` fills: the metadata card (``RepositoryDiagnostics.render``), the
+    resolver summary and one card per public URL observation, read from ``source`` (the JSON of metadata + resolver, one GET). ``links`` are
+    ``(label, href)`` pairs under it, ``icon`` an image above the title; hrefs are relative paths or http(s) addresses."""
+    if not isinstance(repository, str) or not 1 <= len(repository) <= 140 or any(ord(c) < 32 for c in repository):
+        raise ValueError("repository is a name of 1 to 140 characters")
+    if not isinstance(lead, str) or len(lead) > 400:
+        raise ValueError("lead is text of up to 400 characters")
+    level = heading_level if type(heading_level) is int and 1 <= heading_level <= 5 else 1
+    pairs = [(str(label), _door_href(href)) for label, href in links]
+    head = (f'<img src="{escape(_door_href(icon), quote=True)}" width="80" height="80" alt="{escape(repository, quote=True)} icon">' if icon else "")
+    return (f'<section class="ui-repo-diagnostics" data-ui-repo-diagnostics="{escape(_door_href(source), quote=True)}">{head}'
+            f'<h{level} class="ui-title">{escape(repository)} repository diagnostics</h{level}>'
+            + (f'<p class="ui-muted">{escape(lead)}</p>' if lead else "") +
+            '<div data-repo-metadata></div>'
+            f'<section class="ui-panel"><h{level + 1}>Public URL observations</h{level + 1}><p class="ui-muted" data-repo-summary>Loading…</p>'
+            '<div class="ui-grid" data-repo-observations></div></section>'
+            + (("<p>" + " · ".join(f'<a href="{escape(h, quote=True)}">{escape(t)}</a>' for t, h in pairs) + "</p>") if pairs else "") +
+            "</section>")
+
+
+def repository_diagnostics_document(repository: str, *, favicon: str | None = None, touch_icon: str | None = None, theme: str = "modern", **kwargs: Any) -> str:
+    """A single-file repository diagnostics page: bundled_css() (repository-diagnostics.css is part of it), the body, the module inline.
+    ``kwargs`` go to repository_diagnostics_html(); write the JSON beside it."""
+    body = repository_diagnostics_html(repository, **kwargs)
+    return render_document(trusted_html='<main class="ui-page">' + body + "</main><script>" + _JS["repository-diagnostics.js"] + "</script>",
+                           title=f"{repository} repository diagnostics", theme=theme, css=bundled_css(), favicon=favicon, touch_icon=touch_icon)
+
+
 # --- Components as a Python wrapper: one name gives the HTML builder, the stylesheet and the module, for pages here and in other repositories ---
 COMPONENTS: dict[str, dict[str, Any]] = {
     # name: html builder, stylesheets (a css_source name, or a builder in _COMPONENT_CSS), module names (js_source), "mount" when the module
-    # does not bind itself on load, and "spec" when the builder wants a checked spec. Specs and keyword arguments pass through to the builder.
+    # does not bind itself on load, "spec" when the builder wants a checked spec, and "classic" for a classic script (not an ES module).
+    # Specs and keyword arguments pass through to the builder.
     "dial": {"html": "dial_html", "css": ("dial.css",), "js": ("dial.js",)},
     "seed-dial": {"html": "seed_dial_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
     "theme-switch": {"html": "theme_switch_html", "css": (), "js": ("theme.js",), "mount": "bindTheme();"},
@@ -4094,6 +4176,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "showcase": {"html": "showcase_html", "css": ("showcase_css",), "js": ("ui.js",), "mount": "bindTheme();bindToggles();", "spec": "showcase_validate"},
     "tempclip": {"html": "tempclip_html", "css": ("shelf.css",), "js": ("shelf.js",)},
     "curl": {"html": "curl_panel_html", "css": (), "js": ("curl.js",)},
+    "repository-diagnostics": {"html": "repository_diagnostics_html", "css": ("repository-diagnostics.css",), "js": ("repository-diagnostics.js",), "classic": True},
     "front": {"html": "front_html", "css": ("front_css",), "js": ()},
     "seed-roll": {"html": "seed_roll_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
 }
@@ -4120,7 +4203,8 @@ def component_parts(name: str, /, *args: Any, **kwargs: Any) -> dict[str, str]:
 
 def components() -> dict[str, dict[str, Any]]:
     """What each component needs, as plain data (for a listing, or for another language): its builder's name, stylesheets, modules, mount line."""
-    return {name: {"html": part["html"], "css": list(part["css"]), "js": list(part["js"]), "mount": part.get("mount", "")} for name, part in COMPONENTS.items()}
+    return {name: {"html": part["html"], "css": list(part["css"]), "js": list(part["js"]), "mount": part.get("mount", ""), "classic": bool(part.get("classic"))}
+            for name, part in COMPONENTS.items()}
 
 
 def _component_main(args: Any) -> str:
@@ -4156,7 +4240,8 @@ def component_document(name: str, /, *args: Any, document_title: str | None = No
     """One single-file page around a component: bundled_css() plus its stylesheet, its HTML in ``<main class="ui-page">``, its module inline.
     ``document_title`` is the tab's title (default: the builder's ``title`` keyword, else the component's name)."""
     parts = component_parts(name, *args, **kwargs)
-    return render_document(trusted_html='<main class="ui-page">' + parts["html"] + "</main>" + (module_script(parts["js"]) if parts["js"] else ""),
+    script = ("<script>" + parts["js"] + "</script>" if COMPONENTS[name].get("classic") else module_script(parts["js"])) if parts["js"] else ""
+    return render_document(trusted_html='<main class="ui-page">' + parts["html"] + "</main>" + script,
                            title=document_title or kwargs.get("title") or name, theme=theme, css=bundled_css() + parts["css"])
 
 
