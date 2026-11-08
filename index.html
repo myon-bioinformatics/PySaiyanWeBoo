@@ -370,7 +370,7 @@ const lift=()=>{const s=el.querySelector(".ui-sheet");return s&&el.querySelector
 let follow=false,lx,ly;const walk=bindPlayer(el,floor,p=>{if(follow&&(p[0]!==lx||p[1]!==ly)){lx=p[0];ly=p[1];go(p[0],p[1]+lift(),z)}aim(p)});
 for(const m of menus)m.addEventListener('toggle',()=>{if(m.open)for(const o of menus)if(o!==m)o.open=false});
 view.addEventListener('pointerdown',shut);
-// ⭐ favourites and 🌐 language are all a world keeps, as a small cache in this browser (one key per world, nothing else is written):
+// ⭐ favourites, 🌐 language and 🏷️ the name layer are all a world keeps, as a small cache in this browser (one key per world, nothing else is written):
 // the emoji you pick and the board messages you post stay in the page.
 const slot='ui-world:'+el.id,load=()=>{try{const v=JSON.parse(localStorage.getItem(slot));return v&&typeof v==='object'?v:{}}catch(e){return{}}},
  save=part=>{try{localStorage.setItem(slot,JSON.stringify({...load(),...part}))}catch(e){}};

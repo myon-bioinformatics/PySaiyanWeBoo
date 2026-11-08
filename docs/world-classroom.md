@@ -59,7 +59,7 @@ vertical scrolling and nothing changes page. The screen is icons; the words are 
 * **Header** (the whole world): the info board, then 🏠 / ⭐ / ⚙️ and the emoji tools you add.
   * **🏠** home: first floor, everything in view, sheet and menus closed.
   * **⭐** favourites: a ☆ in the ☰ list stars a place; the ⭐ panel lists them (on any floor) and takes you there. They are a light cache: kept in this browser
-    (`localStorage` key `ui-world:<id>`, only the starred places and the language) and restored on the next visit. No dialog, no per-floor favourites, no export.
+    (`localStorage` key `ui-world:<id>`, only the starred places, the language and the name layer) and restored on the next visit. No dialog, no per-floor favourites, no export.
   * **⚙️** settings: ⏸️ pause the motion, 🙂✏️ change the emoji, 🌐 pick the language (a `<select>` of native names), 🏷️ the name layer (names / dots / off).
 * **Side** (this screen): 48px buttons that open a panel over the map (one menu open at a time; Escape, a tap on the map or choosing an item closes it).
   * **☰**: the places of this floor (and the category chips, if any). Each row has an arrow from you to the place (⬆️ ↗️ ➡️ ↘️ ⬇️ ↙️ ⬅️ ↖️, 📍 within one tile,
