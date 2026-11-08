@@ -1113,7 +1113,8 @@ def _page_block(block: Any, *, depth: int) -> str:
         level = block.get("level", 2)
         if type(level) is not int or not 1 <= level <= 6:
             raise ValueError("heading level is 1..6")
-        return f'<h{level}{" class=\"ui-title\"" if level == 1 else ""}>{escape(_spec_text(block.get("text"), "heading", limit=300, required=True))}</h{level}>'
+        classes = ' class="ui-title"' if level == 1 else ""
+        return f'<h{level}{classes}>{escape(_spec_text(block.get("text"), "heading", limit=300, required=True))}</h{level}>'
     if kind == "text":
         classes = ' class="ui-muted"' if block.get("muted") is True else ""
         return "".join(f"<p{classes}>{escape(line)}</p>" for line in _spec_text(block.get("text"), "text", required=True).split("\n\n"))
