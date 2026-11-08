@@ -463,28 +463,33 @@ def test_demo_recorder_refuses_before_it_opens_a_browser(tmp_path, capsys):
 JST_RUN = datetime(2026, 11, 8, 20, 34, 12, tzinfo=timezone(timedelta(hours=9)))
 
 
-def test_demo_recorder_names_files_with_a_prefix_a_timestamp_a_git_commit_and_a_suffix(tmp_path):
-    """gif_targets(): <prefix><stem>[-<timestamp>][-<git-commit>]<suffix>.gif (the suffix ends the name); one timestamp and commit per batch."""
+def test_demo_recorder_names_files_with_a_prefix_a_suffix_and_run_details_in_order(tmp_path):
+    """gif_targets(): <prefix><stem><suffix>[-<run detail>...].gif, the details left to right in the order given; one timestamp and commit per batch."""
     plain = record_demo.gif_targets(tmp_path / "new", ["school-pick", "school-keys"])
     assert plain == {"school-pick": tmp_path / "new/school-pick.gif", "school-keys": tmp_path / "new/school-keys.gif"} and (tmp_path / "new").is_dir()
     assert record_demo.gif_targets(tmp_path, ["school-pick"], prefix="ci-", suffix="-chrome") == {"school-pick": tmp_path / "ci-school-pick-chrome.gif"}
-    both = record_demo.gif_targets(tmp_path, ["school-pick", "school-keys"], prefix="ci-", suffix="-chrome", timestamp=True, git_commit=True,
+    both = record_demo.gif_targets(tmp_path, ["school-pick", "school-keys"], prefix="ci-", suffix="-chrome", run_details=["timestamp", "git-commit"],
                                   now=JST_RUN, revision="288cbed")
-    assert both == {"school-pick": tmp_path / "ci-school-pick-20261108T113412Z-288cbed-chrome.gif",
-                    "school-keys": tmp_path / "ci-school-keys-20261108T113412Z-288cbed-chrome.gif"}
+    assert both == {"school-pick": tmp_path / "ci-school-pick-chrome-20261108T113412Z-288cbed.gif",
+                    "school-keys": tmp_path / "ci-school-keys-chrome-20261108T113412Z-288cbed.gif"}
+    swapped = record_demo.gif_targets(tmp_path, ["school-pick"], suffix="-chrome", run_details=["git-commit", "timestamp"], now=JST_RUN, revision="288cbed")
+    assert swapped["school-pick"].name == "school-pick-chrome-288cbed-20261108T113412Z.gif"          # the order given is the order in the name
     assert record_demo.run_timestamp(JST_RUN) == "20261108T113412Z"                        # 20:34:12 in Tokyo is 11:34:12 UTC
     assert record_demo.run_timestamp(JST_RUN) < record_demo.run_timestamp(JST_RUN + timedelta(seconds=1))   # names sort in recording order
     with pytest.raises(ValueError, match="time zone"):
         record_demo.run_timestamp(datetime(2026, 11, 8, 20, 34, 12))
     (tmp_path / "school-pick-20261108T113412Z.gif").write_bytes(b"GIF89a")
     with pytest.raises(FileExistsError, match="--timestamp"):                               # the same second twice is still refused
-        record_demo.gif_targets(tmp_path, ["school-pick"], timestamp=True, now=JST_RUN)
-    assert record_demo.gif_targets(tmp_path, ["school-pick"], timestamp=True, now=JST_RUN, force=True)["school-pick"].name == "school-pick-20261108T113412Z.gif"
+        record_demo.gif_targets(tmp_path, ["school-pick"], run_details=["timestamp"], now=JST_RUN)
+    assert record_demo.gif_targets(tmp_path, ["school-pick"], run_details=["timestamp"], now=JST_RUN, force=True)["school-pick"].name == "school-pick-20261108T113412Z.gif"
     for bad in ({"prefix": "a/b"}, {"suffix": "a b"}):
         with pytest.raises(argparse.ArgumentTypeError):
             record_demo.gif_targets(tmp_path, ["x"], **bad)
     with pytest.raises(ValueError, match="distinct"):
         record_demo.gif_targets(tmp_path, ["x", "x"])
+    for bad in (["timestamp", "timestamp"], ["commit"]):
+        with pytest.raises(ValueError, match="run_details"):
+            record_demo.gif_targets(tmp_path, ["x"], run_details=bad)
 
 
 def test_demo_recorder_reads_the_commit_from_git(tmp_path):
@@ -506,10 +511,13 @@ def test_demo_recorder_reads_the_commit_from_git(tmp_path):
 
 
 def test_demo_recorder_setting_string_is_parsed_by_the_same_argparse_rules(tmp_path):
-    """WEB_UI_GIFS="DIR --timestamp --git-commit --prefix P --suffix=-S" goes through add_gif_arguments too: same checks, errors raised, no abbreviations."""
-    target = record_demo.gif_targets_from(f"{tmp_path} --timestamp --git-commit --prefix ci- --suffix=-chromium", ["component-table"],
+    """WEB_UI_GIFS="DIR --prefix P --suffix=-S --timestamp --git-commit" goes through add_gif_arguments too: same checks, same order, errors raised, no abbreviations."""
+    target = record_demo.gif_targets_from(f"{tmp_path} --prefix ci- --suffix=-chromium --timestamp --git-commit", ["component-table"],
                                           now=JST_RUN, revision="288cbed")["component-table"]
-    assert target == tmp_path / "ci-component-table-20261108T113412Z-288cbed-chromium.gif"
+    assert target == tmp_path / "ci-component-table-chromium-20261108T113412Z-288cbed.gif"
+    swapped = record_demo.gif_targets_from(f"{tmp_path} --git-commit --suffix=-chromium --timestamp --git-commit", ["component-table"],
+                                           now=JST_RUN, revision="288cbed")["component-table"]
+    assert swapped.name == "component-table-chromium-288cbed-20261108T113412Z.gif"         # first given, first in the name; a repeat adds nothing
     assert record_demo.gif_targets_from(f"'{tmp_path / 'a dir'}'", ["component-table"])["component-table"] == tmp_path / "a dir/component-table.gif"
     for spec, message in ((f"{tmp_path} --time", "unrecognized"), (f"{tmp_path} --timestamp=yes", "ignored explicit argument"),
                           (f"{tmp_path} --prefix a/b", "letters"), (f"{tmp_path} --suffix -chrome", "expected one argument"),
@@ -530,11 +538,11 @@ def test_demo_recorder_setting_string_is_parsed_by_the_same_argparse_rules(tmp_p
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(record_demo, "record", fake_record)
     try:
-        record_demo.main([str(tmp_path), "--only", "pick", "--timestamp", "--git-commit", "--prefix", "ci-", "--suffix=-chrome"])
+        record_demo.main([str(tmp_path), "--only", "pick", "--git-commit", "--prefix", "ci-", "--suffix=-chrome", "--timestamp"])
     finally:
         monkeypatch.undo()
     assert seen == {"out": tmp_path, "names": ["pick"], "chrome": None, "width": None, "force": False, "prefix": "ci-", "suffix": "-chrome",
-                    "timestamp": True, "git_commit": True}
+                    "run_details": ["git-commit", "timestamp"]}
 
 
 def test_demo_zoom_goes_in_toward_the_anchor_and_stays_on_the_real_clock():
