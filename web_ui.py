@@ -3303,10 +3303,10 @@ _WORLD_CSS = (
     ".ui-world-map{--ui-layer-ground:0;--ui-layer-name:1;--ui-layer-mark:2;--ui-layer-player:3;--ui-layer-sheet:4}"
     ".ui-spot{position:absolute;z-index:var(--ui-layer-name);transform:translate(-50%,-50%) scale(calc(1 / var(--z,1)));white-space:nowrap;border:1px solid var(--ui-accent);"
     "background:var(--ui-bg);color:var(--ui-fg);padding:.2rem .6rem;border-radius:999px;text-decoration:none;font-size:.85rem}"
-    ".ui-spot[data-sign],.ui-world[data-names=dots] .ui-spot:not([data-near]):not(:hover):not(:focus-visible),.ui-world[data-names=off] .ui-spot:not(:hover):not(:focus-visible)"
+    ".ui-spot[data-sign],.ui-world[data-names=dots] .ui-spot:not([data-sign]):not([data-near]):not(:hover):not(:focus-visible),.ui-world[data-names=off] .ui-spot:not([data-sign]):not(:hover):not(:focus-visible)"
     "{z-index:var(--ui-layer-mark);padding:.3rem .5rem;border-radius:4px;font-size:0;line-height:1;letter-spacing:.04em}"
-    ".ui-spot[data-sign]::before,.ui-world[data-names=dots] .ui-spot:not([data-near]):not(:hover):not(:focus-visible)::before,"
-    ".ui-world[data-names=off] .ui-spot:not(:hover):not(:focus-visible)::before{content:var(--mark,\"●\");font-size:.7rem}"
+    ".ui-spot[data-sign]::before,.ui-world[data-names=dots] .ui-spot:not([data-sign]):not([data-near]):not(:hover):not(:focus-visible)::before,"
+    ".ui-world[data-names=off] .ui-spot:not([data-sign]):not(:hover):not(:focus-visible)::before{content:var(--mark,\"●\");font-size:.7rem}"
     # A mark (an emoji in --mark) stands in for the dot and leads the name; --mark-x / --mark-y on the world scale every mark's width and height.
     ".ui-spot::before{display:inline-block;transform:scale(var(--mark-x,1),var(--mark-y,1))}"
     ".ui-world[data-names=names] .ui-spot:not([data-sign])::before,.ui-world[data-names=dots] .ui-spot[data-near]:not([data-sign])::before,"

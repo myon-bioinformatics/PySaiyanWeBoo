@@ -661,7 +661,7 @@ def test_the_name_layer_is_names_dots_or_off_and_switches_in_the_header():
     assert '<option value="dots" selected>●</option>' in html
     css = ui.world_css(spec)
     assert "--ui-layer-ground:0;--ui-layer-name:1;--ui-layer-mark:2;--ui-layer-player:3;--ui-layer-sheet:4" in css
-    assert ".ui-world[data-names=dots] .ui-spot:not([data-near]):not(:hover):not(:focus-visible)" in css
+    assert ".ui-world[data-names=dots] .ui-spot:not([data-sign]):not([data-near]):not(:hover):not(:focus-visible)" in css
 
 
 def test_a_mark_is_an_emoji_in_place_of_the_dot_scaled_by_the_world():
