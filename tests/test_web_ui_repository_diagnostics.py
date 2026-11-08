@@ -157,3 +157,18 @@ def test_write_bundle_and_check_bundle_round_trip(tmp_path):
 def test_source_commit_is_the_checkout_head_or_the_install_record():
     commit = web_ui.source_commit()
     assert commit is None or (len(commit) == 40 and int(commit, 16) >= 0)
+
+
+def test_check_theme_reads_every_palette_we_ship_and_names_what_fails():
+    for name, tokens in web_ui.theme_palettes().items():
+        assert web_ui.check_theme(tokens) == [], name
+    for hue in (0.0, 0.17, 0.5, 0.83):
+        for dark in (False, True):
+            assert web_ui.check_theme(web_ui.theme_palette(hue, dark=dark)) == [], (hue, dark)
+    pale = {"--ui-bg": "#edf0ec", "--ui-panel": "#ffffff", "--ui-fg": "#213a3c", "--ui-muted": "#657970",
+            "--ui-border": "#d9e0d9", "--ui-accent": "#087d79", "--ui-danger": "#bc4e40"}
+    problems = web_ui.check_theme(pale)
+    assert any(p.startswith("--ui-muted #657970 on --ui-bg #edf0ec: contrast 4.04 < 4.5") for p in problems)
+    assert any(p.startswith("--ui-border") for p in problems) and not any("--ui-fg" in p for p in problems)
+    assert web_ui.check_theme(pale, minimum=4.0, border_minimum=1.1) == []
+    assert web_ui.check_theme({"--ui-bg": "#fff"})[0] == "--ui-bg: '#fff' is not #rrggbb"

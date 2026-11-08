@@ -4046,6 +4046,35 @@ def theme_css(name: str, tokens: dict[str, str]) -> str:
     return f'@layer theme{{body[data-ui-theme="{name}"]{{{declarations};color-scheme:{scheme}}}}}\n'
 
 
+TEXT_TOKENS = ("--ui-fg", "--ui-muted", "--ui-accent", "--ui-danger")
+
+
+def check_theme(tokens: dict[str, str], *, minimum: float = 4.5, border_minimum: float = 1.2) -> list[str]:
+    """Why a palette would not read (empty when it does): every text token (``TEXT_TOKENS``) must reach ``minimum``
+    contrast (WCAG AA 4.5) on both grounds, ``--ui-bg`` and ``--ui-panel``; ``--ui-border`` must be visible against
+    them (``border_minimum``); colours are ``#rrggbb``. Palettes from ``theme_palette()`` pass by construction; a
+    hand-picked brand is checked here before ``theme_css`` / ``write_bundle`` ship it — run it in the consumer's tests."""
+    problems = []
+    for key in ("--ui-bg", "--ui-panel", *TEXT_TOKENS, "--ui-border"):
+        if key not in tokens:
+            problems.append(f"{key}: missing")
+        elif not re.fullmatch(r"#[0-9a-fA-F]{6}", tokens[key]):
+            problems.append(f"{key}: {tokens[key]!r} is not #rrggbb")
+    if problems:
+        return problems
+    grounds = {"--ui-bg": tokens["--ui-bg"], "--ui-panel": tokens["--ui-panel"]}
+    for key in TEXT_TOKENS:
+        for ground, colour in grounds.items():
+            ratio = contrast_ratio(tokens[key], colour)
+            if ratio < minimum:
+                problems.append(f"{key} {tokens[key]} on {ground} {colour}: contrast {ratio:.2f} < {minimum}")
+    for ground, colour in grounds.items():
+        ratio = contrast_ratio(tokens["--ui-border"], colour)
+        if ratio < border_minimum:
+            problems.append(f"--ui-border {tokens['--ui-border']} on {ground} {colour}: contrast {ratio:.2f} < {border_minimum}")
+    return problems
+
+
 def _token_theme_css() -> str:
     blocks = ["/* Candidate themes, token-only: palettes, no theme files (see theme_palettes()). */"]
     for name in CANDIDATE_THEMES:
@@ -17869,6 +17898,7 @@ def main(argv: list[str] | None = None) -> int:
     bundle.add_argument("--brand", type=Path, metavar="FILE", help="with --bundle: a JSON {\"name\": ..., \"tokens\": {\"--ui-bg\": ...}} palette appended as theme_css")
     bundle.add_argument("--extra-css", type=Path, metavar="FILE", help="with --bundle: the consumer's own rules appended after the theme")
     bundle.add_argument("--note", default="", help="with --bundle: one line kept in the header (who generated it)")
+    bundle.add_argument("--check-theme", type=Path, metavar="FILE", help="exit 1 listing why the --brand-shaped JSON palette in FILE would not read (see check_theme)")
     parser.add_argument("--asset-base", help="local or pinned HTTPS shared asset directory")
     parser.add_argument(
         "--with-scripts",
@@ -17928,6 +17958,15 @@ def main(argv: list[str] | None = None) -> int:
         return _reports_main(parser, args)
     if args.command:
         parser.error("unexpected arguments: " + " ".join(args.command))
+    if args.check_theme:
+        try:
+            spec = json.loads(args.check_theme.read_text(encoding="utf-8"))
+            problems = check_theme(dict(spec["tokens"] if "tokens" in spec else spec))
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            parser.error(str(exc))
+        for problem in problems:
+            sys.stderr.write(problem + "\n")
+        return 1 if problems else 0
     if args.bundle or args.bundle_check:
         try:
             brand = None

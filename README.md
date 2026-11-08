@@ -594,6 +594,9 @@ extra_css=LAYOUT)` writes `core_css` + the brand palette + the consumer's own la
 edit, changed layout) — a two-line test per repository. The same from the shell or Node: `python -S web_ui.py --bundle FILE
 --theme terminal --brand brand.json --extra-css layout.css` / `--bundle-check FILE`. `source_commit()` is the commit the
 installed module came from (pip's install record, or the checkout's HEAD).
+Before a brand palette ships, `check_theme(tokens)` lists every text token that misses WCAG AA (4.5) on `--ui-bg` or
+`--ui-panel` and a border that would vanish; `theme_palette(hue, dark=…)` builds a palette from one hue that passes by
+construction. CLI: `python -S web_ui.py --check-theme brand.json`.
 
 🩺 The repository-diagnostics page itself is one function: `web_ui.repository_diagnostics_page("owner/repo")`
 returns the self-contained HTML (bundled CSS and `repository-diagnostics.js` embedded, nothing from a CDN) that
