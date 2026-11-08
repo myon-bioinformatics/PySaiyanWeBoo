@@ -1,12 +1,12 @@
 {
  "schema": "web-ui-cities-evidence/1",
  "browser": "Chromium 153.0.8010.12 (Playwright 1.63.0)",
- "commit": "eaaf0d4e1ac3c785fdf09816ced08ea6dfdd02b3",
- "date": "2026-11-07",
+ "commit": "b31ff268c8814e7eed23b9465ecf8530ffcee2fd",
+ "date": "2026-11-08",
  "player_speed": "480 (FAST) for the sweeps; 96 for keys, pad and reduced motion",
- "shots": 562,
- "clean": 549,
- "noted": 13,
+ "shots": 570,
+ "clean": 562,
+ "noted": 8,
  "records": [
   {
    "order": 150,
@@ -396,9 +396,7 @@
    "kind": "sheet",
    "id": "london-pimlico",
    "label": "ピムリコ",
-   "notes": [
-    "⚠️ シートが🧳を隠す"
-   ]
+   "notes": []
   },
   {
    "order": 217,
@@ -708,9 +706,7 @@
    "kind": "sheet",
    "id": "paris-saint-marcel",
    "label": "サン・マルセル",
-   "notes": [
-    "⚠️ シートが🧳を隠す"
-   ]
+   "notes": []
   },
   {
    "order": 280,
@@ -1432,10 +1428,7 @@
    "kind": "sheet",
    "id": "london-pimlico",
    "label": "ピムリコ",
-   "notes": [
-    "⚠️ シートが行き先の目印を隠す",
-    "⚠️ シートが🧳を隠す"
-   ]
+   "notes": []
   },
   {
    "order": 426,
@@ -2257,9 +2250,7 @@
    "kind": "map",
    "id": "london-charing-cross",
    "label": "チャリング・クロス",
-   "notes": [
-    "⚠️ 目印の上に「エンバンクメント」が重なり押せない（スクリプトで代用）"
-   ]
+   "notes": []
   },
   {
    "order": 176,
@@ -2632,7 +2623,7 @@
    "notes": []
   },
   {
-   "order": 549,
+   "order": 552,
    "file": "desktop-london-map-reduced-london-tower-bridge.webp",
    "viewport": "desktop",
    "floor": "london",
@@ -2972,7 +2963,7 @@
    "notes": []
   },
   {
-   "order": 550,
+   "order": 553,
    "file": "desktop-paris-map-reduced-paris-falguiere.webp",
    "viewport": "desktop",
    "floor": "paris",
@@ -3192,7 +3183,7 @@
    "notes": []
   },
   {
-   "order": 548,
+   "order": 551,
    "file": "desktop-tokyo-map-reduced-tokyo-shimbashi.webp",
    "viewport": "desktop",
    "floor": "tokyo",
@@ -3319,9 +3310,7 @@
    "kind": "map",
    "id": "london-charing-cross",
    "label": "チャリング・クロス",
-   "notes": [
-    "⚠️ 目印の上に「エンバンクメント」が重なり押せない（スクリプトで代用）"
-   ]
+   "notes": []
   },
   {
    "order": 385,
@@ -4674,6 +4663,86 @@
    "notes": []
   },
   {
+   "order": 558,
+   "file": "desktop-london-layer-dots.webp",
+   "viewport": "desktop",
+   "floor": "london",
+   "kind": "layer",
+   "id": "dots",
+   "label": "● dots: names beside 🧳 only",
+   "notes": []
+  },
+  {
+   "order": 559,
+   "file": "desktop-london-layer-names.webp",
+   "viewport": "desktop",
+   "floor": "london",
+   "kind": "layer",
+   "id": "names",
+   "label": "🏷️ names: every name",
+   "notes": []
+  },
+  {
+   "order": 560,
+   "file": "desktop-london-layer-off.webp",
+   "viewport": "desktop",
+   "floor": "london",
+   "kind": "layer",
+   "id": "off",
+   "label": "✖️ off: dots only",
+   "notes": []
+  },
+  {
+   "order": 561,
+   "file": "desktop-london-layer-dots.webp",
+   "viewport": "desktop",
+   "floor": "london",
+   "kind": "layer",
+   "id": "dots",
+   "label": "● dots",
+   "notes": []
+  },
+  {
+   "order": 554,
+   "file": "phone-london-layer-dots.webp",
+   "viewport": "phone",
+   "floor": "london",
+   "kind": "layer",
+   "id": "dots",
+   "label": "● dots: names beside 🧳 only",
+   "notes": []
+  },
+  {
+   "order": 555,
+   "file": "phone-london-layer-names.webp",
+   "viewport": "phone",
+   "floor": "london",
+   "kind": "layer",
+   "id": "names",
+   "label": "🏷️ names: every name",
+   "notes": []
+  },
+  {
+   "order": 556,
+   "file": "phone-london-layer-off.webp",
+   "viewport": "phone",
+   "floor": "london",
+   "kind": "layer",
+   "id": "off",
+   "label": "✖️ off: dots only",
+   "notes": []
+  },
+  {
+   "order": 557,
+   "file": "phone-london-layer-dots.webp",
+   "viewport": "phone",
+   "floor": "london",
+   "kind": "layer",
+   "id": "dots",
+   "label": "● dots",
+   "notes": []
+  },
+  {
    "order": 42,
    "file": "desktop-london-tool-🎡.webp",
    "viewport": "desktop",
@@ -5194,7 +5263,7 @@
    "notes": []
   },
   {
-   "order": 540,
+   "order": 543,
    "file": "phone-paris-favorite-panel.webp",
    "viewport": "phone",
    "floor": "paris",
@@ -5204,7 +5273,7 @@
    "notes": []
   },
   {
-   "order": 541,
+   "order": 544,
    "file": "phone-tokyo-favorite-home.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5214,27 +5283,27 @@
    "notes": []
   },
   {
-   "order": 546,
+   "order": 549,
    "file": "desktop-london-key-shore.webp",
    "viewport": "desktop",
    "floor": "london",
    "kind": "key",
    "id": "shore",
-   "label": "Reverse London: 🌊 refused at (21, 33)",
+   "label": "Reverse London: 🌊 refused at (23, 32)",
    "notes": []
   },
   {
-   "order": 547,
+   "order": 550,
    "file": "desktop-paris-key-shore.webp",
    "viewport": "desktop",
    "floor": "paris",
    "kind": "key",
    "id": "shore",
-   "label": "Fake Paris: 🌊 refused at (31, 4)",
+   "label": "Fake Paris: 🌊 refused at (36, 27)",
    "notes": []
   },
   {
-   "order": 544,
+   "order": 547,
    "file": "phone-london-key-shore.webp",
    "viewport": "phone",
    "floor": "london",
@@ -5244,7 +5313,7 @@
    "notes": []
   },
   {
-   "order": 545,
+   "order": 548,
    "file": "phone-paris-key-shore.webp",
    "viewport": "phone",
    "floor": "paris",
@@ -5254,7 +5323,7 @@
    "notes": []
   },
   {
-   "order": 542,
+   "order": 545,
    "file": "desktop-london-fire-fit.webp",
    "viewport": "desktop",
    "floor": "london",
@@ -5264,7 +5333,7 @@
    "notes": []
   },
   {
-   "order": 543,
+   "order": 546,
    "file": "desktop-paris-fire-fit.webp",
    "viewport": "desktop",
    "floor": "paris",
@@ -5274,7 +5343,7 @@
    "notes": []
   },
   {
-   "order": 13,
+   "order": 538,
    "file": "desktop-london-width-1280x800.webp",
    "viewport": "desktop",
    "floor": "london",
@@ -5284,7 +5353,7 @@
    "notes": []
   },
   {
-   "order": 14,
+   "order": 539,
    "file": "desktop-paris-width-1280x800.webp",
    "viewport": "desktop",
    "floor": "paris",
@@ -5294,7 +5363,7 @@
    "notes": []
   },
   {
-   "order": 12,
+   "order": 537,
    "file": "desktop-tokyo-width-1280x800.webp",
    "viewport": "desktop",
    "floor": "tokyo",
@@ -5304,7 +5373,7 @@
    "notes": []
   },
   {
-   "order": 4,
+   "order": 529,
    "file": "phone-london-width-390x844.webp",
    "viewport": "phone",
    "floor": "london",
@@ -5312,11 +5381,11 @@
    "id": "390x844",
    "label": "Reverse London 390×844",
    "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 23:47"
+    "⚠️ ヘッダーで切れる: PARALLEL / 09:46"
    ]
   },
   {
-   "order": 5,
+   "order": 530,
    "file": "phone-paris-width-390x844.webp",
    "viewport": "phone",
    "floor": "paris",
@@ -5324,11 +5393,11 @@
    "id": "390x844",
    "label": "Fake Paris 390×844",
    "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 23:47"
+    "⚠️ ヘッダーで切れる: PARALLEL / 09:46"
    ]
   },
   {
-   "order": 3,
+   "order": 528,
    "file": "phone-tokyo-width-390x844.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5336,11 +5405,11 @@
    "id": "390x844",
    "label": "Parallel Tokyo 390×844",
    "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 23:47"
+    "⚠️ ヘッダーで切れる: PARALLEL / 09:46"
    ]
   },
   {
-   "order": 1,
+   "order": 526,
    "file": "phone-320-london-width-320x640.webp",
    "viewport": "phone-320",
    "floor": "london",
@@ -5348,11 +5417,11 @@
    "id": "320x640",
    "label": "Reverse London 320×640",
    "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 23:47"
+    "⚠️ ヘッダーで切れる: PARALLEL / 09:46"
    ]
   },
   {
-   "order": 2,
+   "order": 527,
    "file": "phone-320-paris-width-320x640.webp",
    "viewport": "phone-320",
    "floor": "paris",
@@ -5360,11 +5429,11 @@
    "id": "320x640",
    "label": "Fake Paris 320×640",
    "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 23:47"
+    "⚠️ ヘッダーで切れる: PARALLEL / 09:46"
    ]
   },
   {
-   "order": 0,
+   "order": 525,
    "file": "phone-320-tokyo-width-320x640.webp",
    "viewport": "phone-320",
    "floor": "tokyo",
@@ -5372,11 +5441,11 @@
    "id": "320x640",
    "label": "Parallel Tokyo 320×640",
    "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 23:47"
+    "⚠️ ヘッダーで切れる: PARALLEL / 09:46"
    ]
   },
   {
-   "order": 7,
+   "order": 532,
    "file": "phone-landscape-london-width-844x390.webp",
    "viewport": "phone-landscape",
    "floor": "london",
@@ -5386,7 +5455,7 @@
    "notes": []
   },
   {
-   "order": 8,
+   "order": 533,
    "file": "phone-landscape-paris-width-844x390.webp",
    "viewport": "phone-landscape",
    "floor": "paris",
@@ -5396,7 +5465,7 @@
    "notes": []
   },
   {
-   "order": 6,
+   "order": 531,
    "file": "phone-landscape-tokyo-width-844x390.webp",
    "viewport": "phone-landscape",
    "floor": "tokyo",
@@ -5406,7 +5475,7 @@
    "notes": []
   },
   {
-   "order": 10,
+   "order": 535,
    "file": "tablet-london-width-768x1024.webp",
    "viewport": "tablet",
    "floor": "london",
@@ -5416,7 +5485,7 @@
    "notes": []
   },
   {
-   "order": 11,
+   "order": 536,
    "file": "tablet-paris-width-768x1024.webp",
    "viewport": "tablet",
    "floor": "paris",
@@ -5426,7 +5495,7 @@
    "notes": []
   },
   {
-   "order": 9,
+   "order": 534,
    "file": "tablet-tokyo-width-768x1024.webp",
    "viewport": "tablet",
    "floor": "tokyo",
@@ -5436,7 +5505,7 @@
    "notes": []
   },
   {
-   "order": 16,
+   "order": 541,
    "file": "wide-london-width-1920x1080.webp",
    "viewport": "wide",
    "floor": "london",
@@ -5446,7 +5515,7 @@
    "notes": []
   },
   {
-   "order": 17,
+   "order": 542,
    "file": "wide-paris-width-1920x1080.webp",
    "viewport": "wide",
    "floor": "paris",
@@ -5456,7 +5525,7 @@
    "notes": []
   },
   {
-   "order": 15,
+   "order": 540,
    "file": "wide-tokyo-width-1920x1080.webp",
    "viewport": "wide",
    "floor": "tokyo",
@@ -5576,7 +5645,7 @@
    "notes": []
   },
   {
-   "order": 557,
+   "order": 568,
    "file": "desktop-london-nojs-static.webp",
    "viewport": "desktop",
    "floor": "london",
@@ -5586,7 +5655,7 @@
    "notes": []
   },
   {
-   "order": 558,
+   "order": 569,
    "file": "desktop-paris-nojs-static.webp",
    "viewport": "desktop",
    "floor": "paris",
@@ -5596,7 +5665,7 @@
    "notes": []
   },
   {
-   "order": 556,
+   "order": 567,
    "file": "desktop-tokyo-nojs-static.webp",
    "viewport": "desktop",
    "floor": "tokyo",
@@ -5606,7 +5675,7 @@
    "notes": []
   },
   {
-   "order": 554,
+   "order": 565,
    "file": "phone-london-nojs-static.webp",
    "viewport": "phone",
    "floor": "london",
@@ -5616,7 +5685,7 @@
    "notes": []
   },
   {
-   "order": 555,
+   "order": 566,
    "file": "phone-paris-nojs-static.webp",
    "viewport": "phone",
    "floor": "paris",
@@ -5626,7 +5695,7 @@
    "notes": []
   },
   {
-   "order": 553,
+   "order": 564,
    "file": "phone-tokyo-nojs-static.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5636,7 +5705,7 @@
    "notes": []
   },
   {
-   "order": 551,
+   "order": 562,
    "file": "phone-tokyo-pick-picker.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5646,7 +5715,7 @@
    "notes": []
   },
   {
-   "order": 552,
+   "order": 563,
    "file": "phone-tokyo-pick-last.webp",
    "viewport": "phone",
    "floor": "tokyo",
