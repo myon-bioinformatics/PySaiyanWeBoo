@@ -2,7 +2,13 @@
 
 Browser behaviour (picker, keys, pad, taps, collisions) is in tests/integration/school_browser.py.
 """
-import io, json, math, random, subprocess, sys
+import argparse
+import io
+import json
+import math
+import random
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -451,6 +457,62 @@ def test_demo_recorder_refuses_before_it_opens_a_browser(tmp_path, capsys):
     with pytest.raises(SystemExit) as exit_info:
         record_demo.main([str(tmp_path), "--only", "pick"])
     assert exit_info.value.code == 1 and "refusing to overwrite" in capsys.readouterr().err
+
+
+def test_demo_recorder_names_files_with_a_prefix_a_suffix_and_a_run_number(tmp_path):
+    """gif_targets(): <prefix><stem><suffix>[-NNN].gif; --number alone takes the next number of that prefix/suffix family in the folder."""
+    plain = record_demo.gif_targets(tmp_path / "new", ["school-pick", "school-keys"])
+    assert plain == {"school-pick": tmp_path / "new/school-pick.gif", "school-keys": tmp_path / "new/school-keys.gif"} and (tmp_path / "new").is_dir()
+    assert record_demo.gif_targets(tmp_path, ["school-pick"], prefix="run-", suffix="-chrome") == {"school-pick": tmp_path / "run-school-pick-chrome.gif"}
+    assert record_demo.gif_targets(tmp_path, ["school-pick", "school-keys"], prefix="run-", number="auto") == {
+        "school-pick": tmp_path / "run-school-pick-001.gif", "school-keys": tmp_path / "run-school-keys-001.gif"}     # one number per batch
+    (tmp_path / "run-school-pick-chrome-003.gif").write_bytes(b"GIF89a")
+    (tmp_path / "other-007.gif").write_bytes(b"GIF89a")
+    assert record_demo.next_run_number(tmp_path, prefix="run-", suffix="-chrome") == 4      # the family with this prefix and suffix
+    assert record_demo.next_run_number(tmp_path) == 8                                       # no prefix, no suffix: every numbered GIF
+    assert record_demo.next_run_number(tmp_path / "none") == 1
+    assert record_demo.gif_targets(tmp_path, ["x"], prefix="run-", suffix="-chrome", number="auto")["x"].name == "run-x-chrome-004.gif"
+    with pytest.raises(FileExistsError, match="--number"):
+        record_demo.gif_targets(tmp_path, ["other"], number=7)
+    assert record_demo.gif_targets(tmp_path, ["other"], number=7, force=True)["other"].name == "other-007.gif"
+    for bad in ({"prefix": "a/b"}, {"suffix": "a b"}, {"number": 0}, {"number": "7"}, {"number": True}):
+        with pytest.raises((ValueError, argparse.ArgumentTypeError)):
+            record_demo.gif_targets(tmp_path, ["x"], **bad)
+    with pytest.raises(ValueError, match="distinct"):
+        record_demo.gif_targets(tmp_path, ["x", "x"])
+
+
+def test_demo_recorder_setting_string_is_parsed_by_the_same_argparse_rules(tmp_path):
+    """WEB_UI_GIFS="DIR --number --prefix P --suffix=-S" goes through add_gif_arguments too: same checks, errors raised, no abbreviations."""
+    (tmp_path / "run-component-table-chrome-003.gif").write_bytes(b"GIF89a")
+    target = record_demo.gif_targets_from(f"{tmp_path} --number --prefix run- --suffix=-chrome", ["component-table"])["component-table"]
+    assert target == tmp_path / "run-component-table-chrome-004.gif"
+    assert record_demo.gif_targets_from(f"{tmp_path} --number 12", ["component-table"])["component-table"].name == "component-table-012.gif"
+    assert record_demo.gif_targets_from(f"'{tmp_path / 'a dir'}'", ["component-table"])["component-table"] == tmp_path / "a dir/component-table.gif"
+    for spec, message in ((f"{tmp_path} --pre a", "unrecognized"), (f"{tmp_path} --number 0", "whole number"), (f"{tmp_path} --prefix a/b", "letters"),
+                          (f"{tmp_path} --suffix -chrome", "expected one argument"), ("", "required: out"), (f"{tmp_path} --number --force extra", "unrecognized")):
+        with pytest.raises(argparse.ArgumentError, match=message):
+            record_demo.gif_targets_from(spec, ["x"])
+    # the CLI: --number alone is auto, --only is a choice, and nothing touches a browser before these are checked
+    with pytest.raises(SystemExit) as exit_info:
+        record_demo.main([str(tmp_path), "--only", "nope"])
+    assert exit_info.value.code == 2
+    with pytest.raises(SystemExit) as exit_info:
+        record_demo.main([str(tmp_path), "--number", "x"])
+    assert exit_info.value.code == 2
+    seen = {}
+
+    def fake_record(out, names, **kwargs):
+        seen.update(out=out, names=names, **kwargs)
+        return []
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(record_demo, "record", fake_record)
+    try:
+        record_demo.main([str(tmp_path), "--only", "pick", "--number", "--prefix", "run-", "--suffix=-chrome"])
+    finally:
+        monkeypatch.undo()
+    assert seen == {"out": tmp_path, "names": ["pick"], "chrome": None, "width": None, "force": False, "prefix": "run-", "suffix": "-chrome", "number": "auto"}
 
 
 def test_demo_zoom_goes_in_toward_the_anchor_and_stays_on_the_real_clock():

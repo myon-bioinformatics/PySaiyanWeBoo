@@ -1055,7 +1055,8 @@ def table_spec():
 
 class TableBrowserTests(unittest.TestCase):
     """component_document("table", spec): an escaped table in its own scroller, styled by shell.css under every theme, no script.
-    The GIF (``WEB_UI_GIFS=DIR`` keeps it as component-table.gif) walks the themes and scrolls the table sideways on a phone."""
+    The GIF walks the themes and scrolls the table sideways on a phone; ``WEB_UI_GIFS="DIR [--number] [--prefix P] [--suffix S] [--force]"``
+    keeps it as DIR/<P>component-table<S>[-NNN].gif through record_demo.gif_targets_from (the recorder's own naming rules)."""
 
     def test_the_table_scrolls_inside_its_box_on_a_phone_and_follows_every_theme(self):
         sys.path.insert(0, str(ROOT / 'tool'))
@@ -1096,7 +1097,7 @@ class TableBrowserTests(unittest.TestCase):
                     frames = Image.open(__import__('io').BytesIO(gif))
                     self.assertTrue(gif.startswith(b'GIF89a') and getattr(frames, 'n_frames', 1) > 1)
                     if os.environ.get('WEB_UI_GIFS'):
-                        (Path(os.environ['WEB_UI_GIFS']) / 'component-table.gif').write_bytes(gif)
+                        record_demo.gif_targets_from(os.environ['WEB_UI_GIFS'], ['component-table'])['component-table'].write_bytes(gif)
                 finally:
                     browser.close()
         finally:
