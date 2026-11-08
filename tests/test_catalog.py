@@ -147,7 +147,8 @@ class CatalogTests(unittest.TestCase):
             done = subprocess.run([sys.executable, '-I', '-S', str(root / 'web_ui.py'),
                                    '--catalog', str(root / 'input.json')], capture_output=True, timeout=10)
             self.assertEqual(done.returncode, 0, done.stderr)
-            self.assertEqual(done.stdout.decode('utf-8'), ui.catalog_document(self.spec()))
+            # The copy outside the checkout cannot know its commit; only the generator meta differs.
+            self.assertEqual(ui.GENERATOR_META.sub('', done.stdout.decode('utf-8')), ui.GENERATOR_META.sub('', ui.catalog_document(self.spec())))
             (root / 'input.json').write_text('{"invalid": true}', encoding='utf-8')
             bad = subprocess.run([sys.executable, '-I', '-S', str(root / 'web_ui.py'),
                                   '--catalog', str(root / 'input.json')], capture_output=True, timeout=10)

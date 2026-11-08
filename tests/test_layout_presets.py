@@ -77,3 +77,21 @@ def test_front_page_demo_matches_the_presets():
     layout = page.split("<legend>Layout</legend>")[1].split("</fieldset>")[0]
     assert layout.count('type="radio" name="ui-layout"') == len(data["presets"]) and "disabled" not in layout
     assert page.count('name="ui-theme"') == 2 + len(web_ui.CANDIDATE_THEMES) and 'class="ui-matrix-tiles"' in page
+
+
+def test_page_layouts_drive_the_core_and_live_in_web_ui():
+    import web_ui
+    spec = web_ui.EXAMPLES["page-layouts"]
+    data = web_ui.validate_layout_presets(spec)
+    assert data["default"] == "comfortable" and [p["id"] for p in data["presets"]] == ["comfortable", "compact", "wide", "device"]
+    for preset in data["presets"]:
+        assert set(preset["vars"]) == {"--ui-text", "--ui-space", "--ui-max"}
+        assert all(int(v[:-2]) % 8 == 0 for k, v in preset["vars"].items() if k == "--ui-space")  # 8 px grid
+    core = web_ui.core_css()
+    assert "font:var(--ui-text)/1.6" in core and ".ui-page{max-width:var(--ui-max);margin:auto;padding:var(--ui-space)}" in core
+    assert "padding:var(--ui-space);margin:var(--ui-space) 0" in core
+    css = web_ui.layout_presets_css(spec)
+    assert css.startswith(":root{--ui-text:16px;--ui-space:16px;--ui-max:960px}") and 'body:has(input[name="ui-layout"][value="device"]:checked){--ui-text:15px' in css
+    assert web_ui.layout_switch_html(spec).count('name="ui-layout"') == 4
+    assert lp.css is web_ui.layout_presets_css and lp.validate is web_ui.validate_layout_presets  # the tool delegates
+    assert web_ui.bundle_css(layouts=spec).count(':root{--ui-text:16px') == 1
