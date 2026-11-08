@@ -4234,6 +4234,7 @@ export function bindDial(root=document){
   for(const t of["pointerup","pointercancel","lostpointercapture"])dial.addEventListener(t,()=>{delete dial.dataset.uiDialDrag});
   dial.addEventListener("wheel",e=>{e.preventDefault();e.deltaY<0?input.stepUp():input.stepDown();input.dispatchEvent(new Event("input",{bubbles:true}));input.dispatchEvent(new Event("change",{bubbles:true}))},{passive:false});
   input.addEventListener("input",paint);paint()}}
+if(typeof document!=="undefined")bindDial();
 """
 
 
@@ -5134,6 +5135,9 @@ def theme_switch_html(*, legend: str = "Theme") -> str:
                       for t in (*THEMES, *CANDIDATE_THEMES)) + "</fieldset>")
 
 
+_CSS["dial.css"] = "@layer components{" + DIAL_CSS + "}"
+
+
 def dial_html(name: str, *, minimum: float = 0, maximum: float = 100, step: float = 1, value: float = 0, label: str = "", attrs: str = "") -> str:
     """A rotary dial (``bindDial()`` from dial.js turns it) over a range input named ``name``; DIAL_CSS draws it. The input is what forms, keys and screen
     readers see: ``label`` is its aria-label, ``attrs`` any further attributes (already escaped) for it."""
@@ -5144,6 +5148,51 @@ def dial_html(name: str, *, minimum: float = 0, maximum: float = 100, step: floa
         raise ValueError("a dial has minimum < maximum, a positive step and a value between them")
     aria = (f' aria-label="{escape(label, quote=True)}"' if label else "") + (f" {attrs}" if attrs else "")
     return (f'<span class="ui-dial" data-ui-dial><input type="range" name="{name}" min="{minimum:g}" max="{maximum:g}" step="{step:g}" value="{value:g}"{aria}></span>')
+
+
+# --- Components as a Python wrapper: one name gives the HTML builder, the stylesheet and the module, for pages here and in other repositories ---
+COMPONENTS: dict[str, dict[str, Any]] = {
+    # name: html builder, stylesheet names (css_source), module names (js_source), and "mount" when the module does not bind itself on load.
+    # Specs and keyword arguments pass through to the builder.
+    "dial": {"html": "dial_html", "css": ("dial.css",), "js": ("dial.js",)},
+    "seed-dial": {"html": "seed_dial_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
+    "theme-switch": {"html": "theme_switch_html", "css": (), "js": ("theme.js",), "mount": "bindTheme();"},
+    "coordinates": {"html": "coordinates_html", "css": ("coordinates.css",), "js": ("coordinates.js",)},
+    "door": {"html": "door_html", "css": ("door.css",), "js": ("door.js",)},
+    "playground": {"html": "playground_html", "css": ("playground.css",), "js": ("playground.js",)},
+    "report": {"html": "report_html", "css": ("report.css",), "js": ("report.js",)},
+    "mcp": {"html": "mcp_html", "css": ("mcp.css",), "js": ("mcp.js",)},
+    "screens": {"html": "screens_html", "css": ("screens.css",), "js": ("screens.js",)},
+    "patterns": {"html": "patterns_html", "css": ("patterns.css",), "js": ("patterns.js",)},
+    "imagestudio": {"html": "imagestudio_html", "css": ("imagestudio.css",), "js": ("imagestudio.js",)},
+    "shelf": {"html": "shelf_html", "css": ("shelf.css",), "js": ("shelf.js",)},
+    "photo": {"html": "photo_html", "css": ("photo.css",), "js": ("photo.js",)},
+    "studio": {"html": "studio_html", "css": ("studio.css",), "js": ("composition.js", "studio-audio.js")},
+    "source": {"html": "source_panel_html", "css": ("source.css",), "js": ("source.js",)},
+    "stub": {"html": "stub_html", "css": ("stub.css",), "js": ("stub.js",)},
+    "world": {"html": "world_html", "css": ("world",), "js": ("world.js",)},
+}
+
+
+def component_parts(name: str, *args: Any, **kwargs: Any) -> dict[str, str]:
+    """``{"html", "css", "js"}`` of one component of COMPONENTS: the HTML its builder makes from ``args``/``kwargs`` (a spec, a dial's numbers),
+    the stylesheet text it needs beyond bundled_css(), and the module source that binds it (it mounts itself when the page loads).
+    Another repository that vendors web_ui.py calls this from Python and places the three where its page wants them."""
+    try:
+        part = COMPONENTS[name]
+    except KeyError:
+        raise ValueError(f"unknown component: {name}; one of {', '.join(COMPONENTS)}") from None
+    html = globals()[part["html"]](*args, **kwargs)
+    css = "".join(world_css(args[0], base=False) if n == "world" else css_source(n) for n in part["css"])
+    js = "".join(js_source(n) for n in part["js"])
+    return {"html": html, "css": css, "js": js + ("\n" + part["mount"] + "\n" if part.get("mount") else "")}
+
+
+def component_document(name: str, *args: Any, title: str | None = None, theme: str = "modern", **kwargs: Any) -> str:
+    """One single-file page around a component: bundled_css() plus its stylesheet, its HTML in ``<main class="ui-page">``, its module inline."""
+    parts = component_parts(name, *args, **kwargs)
+    return render_document(trusted_html='<main class="ui-page">' + parts["html"] + "</main>" + (module_script(parts["js"]) if parts["js"] else ""),
+                           title=title or name, theme=theme, css=bundled_css() + parts["css"])
 
 
 def seed_dial_html(*, maximum: int = 99) -> str:
