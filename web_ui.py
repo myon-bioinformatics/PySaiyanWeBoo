@@ -4072,8 +4072,8 @@ def dial_html(name: str, *, minimum: float = 0, maximum: float = 100, step: floa
 
 # --- Components as a Python wrapper: one name gives the HTML builder, the stylesheet and the module, for pages here and in other repositories ---
 COMPONENTS: dict[str, dict[str, Any]] = {
-    # name: html builder, stylesheet names (css_source), module names (js_source), and "mount" when the module does not bind itself on load.
-    # Specs and keyword arguments pass through to the builder.
+    # name: html builder, stylesheets (a css_source name, or a builder in _COMPONENT_CSS), module names (js_source), "mount" when the module
+    # does not bind itself on load, and "spec" when the builder wants a checked spec. Specs and keyword arguments pass through to the builder.
     "dial": {"html": "dial_html", "css": ("dial.css",), "js": ("dial.js",)},
     "seed-dial": {"html": "seed_dial_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
     "theme-switch": {"html": "theme_switch_html", "css": (), "js": ("theme.js",), "mount": "bindTheme();"},
@@ -4090,11 +4090,19 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "studio": {"html": "studio_html", "css": ("studio.css",), "js": ("composition.js", "studio-audio.js")},
     "source": {"html": "source_panel_html", "css": ("source.css",), "js": ("source.js",)},
     "stub": {"html": "stub_html", "css": ("stub.css",), "js": ("stub.js",)},
-    "world": {"html": "world_html", "css": ("world",), "js": ("world.js",)},
+    "world": {"html": "world_html", "css": ("world_css",), "js": ("world.js",)},
+    "showcase": {"html": "showcase_html", "css": ("showcase_css",), "js": ("ui.js",), "mount": "bindTheme();bindToggles();", "spec": "showcase_validate"},
+    "tempclip": {"html": "tempclip_html", "css": ("shelf.css",), "js": ("shelf.js",)},
+    "curl": {"html": "curl_panel_html", "css": (), "js": ("curl.js",)},
+    "front": {"html": "front_html", "css": ("front_css",), "js": ()},
+    "seed-roll": {"html": "seed_roll_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
 }
+# Stylesheets that are built rather than stored: the spec (the first argument) decides them.
+_COMPONENT_CSS = {"world_css": lambda *a: world_css(a[0], base=False), "showcase_css": lambda *a: showcase_css(showcase_validate(a[0])),
+                  "front_css": lambda *a: front_css()}
 
 
-def component_parts(name: str, *args: Any, **kwargs: Any) -> dict[str, str]:
+def component_parts(name: str, /, *args: Any, **kwargs: Any) -> dict[str, str]:
     """``{"html", "css", "js"}`` of one component of COMPONENTS: the HTML its builder makes from ``args``/``kwargs`` (a spec, a dial's numbers),
     the stylesheet text it needs beyond bundled_css(), and the module source that binds it (it mounts itself when the page loads).
     Another repository that vendors web_ui.py calls this from Python and places the three where its page wants them."""
@@ -4102,17 +4110,54 @@ def component_parts(name: str, *args: Any, **kwargs: Any) -> dict[str, str]:
         part = COMPONENTS[name]
     except KeyError:
         raise ValueError(f"unknown component: {name}; one of {', '.join(COMPONENTS)}") from None
+    if part.get("spec") and args:
+        args = (globals()[part["spec"]](args[0]), *args[1:])
     html = globals()[part["html"]](*args, **kwargs)
-    css = "".join(world_css(args[0], base=False) if n == "world" else css_source(n) for n in part["css"])
+    css = "".join(_COMPONENT_CSS[n](*args) if n in _COMPONENT_CSS else css_source(n) for n in part["css"])
     js = "".join(js_source(n) for n in part["js"])
     return {"html": html, "css": css, "js": js + ("\n" + part["mount"] + "\n" if part.get("mount") else "")}
 
 
-def component_document(name: str, *args: Any, title: str | None = None, theme: str = "modern", **kwargs: Any) -> str:
-    """One single-file page around a component: bundled_css() plus its stylesheet, its HTML in ``<main class="ui-page">``, its module inline."""
+def components() -> dict[str, dict[str, Any]]:
+    """What each component needs, as plain data (for a listing, or for another language): its builder's name, stylesheets, modules, mount line."""
+    return {name: {"html": part["html"], "css": list(part["css"]), "js": list(part["js"]), "mount": part.get("mount", "")} for name, part in COMPONENTS.items()}
+
+
+def _component_main(args: Any) -> str:
+    """The --component CLI: the same component_parts()/component_document() calls, for Node (vendor/py_launch.cjs) and the shell."""
+    if args.component == "list":
+        return json.dumps(components(), ensure_ascii=False, indent=2) + "\n"
+    positional: tuple[Any, ...] = ()
+    if args.spec:
+        if args.spec == Path("-"):
+            raw = sys.stdin.buffer.read(PATTERN_MAX_INPUT + 1)
+            if len(raw) > PATTERN_MAX_INPUT:
+                raise ValueError(f"spec is larger than {PATTERN_MAX_INPUT} bytes")
+            text = raw.decode("utf-8")
+        else:
+            text = args.spec.read_text(encoding="utf-8")
+        positional = (json.loads(text),)
+    kwargs: dict[str, Any] = {}
+    for item in args.set:
+        key, sep, value = item.partition("=")
+        if not sep or not key.isidentifier():
+            raise ValueError(f"--set wants KEY=VALUE, got {item!r}")
+        try:
+            kwargs[key] = json.loads(value)
+        except ValueError:
+            kwargs[key] = value
+    if args.part == "page":
+        return component_document(args.component, *positional, theme=args.theme, **kwargs)
+    parts = component_parts(args.component, *positional, **kwargs)
+    return json.dumps(parts, ensure_ascii=False) + "\n" if args.part == "json" else parts[args.part]
+
+
+def component_document(name: str, /, *args: Any, document_title: str | None = None, theme: str = "modern", **kwargs: Any) -> str:
+    """One single-file page around a component: bundled_css() plus its stylesheet, its HTML in ``<main class="ui-page">``, its module inline.
+    ``document_title`` is the tab's title (default: the builder's ``title`` keyword, else the component's name)."""
     parts = component_parts(name, *args, **kwargs)
     return render_document(trusted_html='<main class="ui-page">' + parts["html"] + "</main>" + (module_script(parts["js"]) if parts["js"] else ""),
-                           title=title or name, theme=theme, css=bundled_css() + parts["css"])
+                           title=document_title or kwargs.get("title") or name, theme=theme, css=bundled_css() + parts["css"])
 
 
 def seed_dial_html(*, maximum: int = 99) -> str:
@@ -17806,6 +17851,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="print a script-free page for a web-ui-catalog/1 JSON spec and exit")
     parser.add_argument("--world", type=Path, metavar="FILE",
                         help="print a single-file page for a web-ui-world/1 JSON spec and exit; `-` reads the spec from stdin")
+    parser.add_argument("--component", metavar="NAME", help="print one component of COMPONENTS (a page by default; --part html, css, js or json)."
+                        " A spec comes from --spec FILE (- for stdin), keyword arguments from --set KEY=VALUE (JSON values, else text); --component list names them")
+    parser.add_argument("--spec", type=Path, metavar="FILE", help="with --component: the spec, the builder's first argument (- reads stdin)")
+    parser.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="with --component: one keyword argument for the builder")
+    parser.add_argument("--part", choices=("page", "html", "css", "js", "json"), default="page", help="with --component: what to print (default %(default)s)")
     parser.add_argument("--example", metavar="NAME", help="print one example spec as JSON and exit (including catalog-report, catalog-projects)")
     parser.add_argument("--btk-adapter", metavar="ID", help="print one browser-test-kit platform adapter (btk-platform-adapter/1) as JSON and exit; `list` names them")
     parser.add_argument("--pattern", metavar="FAMILY", help="run one pattern reference on the JSON request in stdin and print its JSON result (see PATTERN_RUNNERS); `list` names the families, `catalogue` prints the 792 patterns")
@@ -17884,6 +17934,16 @@ def main(argv: list[str] | None = None) -> int:
         except OSError as exc:
             parser.error(str(exc))
         sys.stdout.write(f"{sri(raw)}\nsha256 {hashlib.sha256(raw).hexdigest()}\n")
+        return 0
+    if args.component:
+        try:
+            result = _component_main(args)
+        except (OSError, ValueError, TypeError) as exc:
+            parser.error(str(exc))
+        if hasattr(sys.stdout, "buffer"):
+            sys.stdout.buffer.write(result.encode("utf-8"))
+        else:
+            sys.stdout.write(result)
         return 0
     if args.example:
         try:
