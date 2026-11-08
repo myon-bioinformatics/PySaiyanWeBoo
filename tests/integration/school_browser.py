@@ -585,6 +585,10 @@ def write_city_gallery(out, records, meta):
     parts = [f"<!doctype html><html lang=ja><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
              f"<title>🗼🎡🥖 cities evidence</title><style>{css}</style><h1>🗼🎡🥖 cities evidence</h1>"
              f"<p>✅ {ok} · ⚠️ {len(records) - ok} · 📸 {len(records)} · {escape(meta['browser'])} · {escape(meta['date'])} · {escape(meta['commit'][:12])}</p><nav>"]
+    if meta.get("revalidation"):
+        count = len(meta["revalidation"]["files"])
+        parts.append(f"<p>Partial revalidation: {count} records were recaptured; the other {len(records) - count} retain their original capture metadata. "
+                     "<a href='revalidation.md'>Revalidation details</a></p>")
     keys = list(sections)
     parts += [f"<a href='#s{i}'>{names.get(k[0], k[0])} {escape(k[1])} {escape(k[2])} ({len(sections[k])})</a>" for i, k in enumerate(keys)]
     parts.append("</nav>")
@@ -921,6 +925,26 @@ class CitiesTests(unittest.TestCase):
         self.shot(page, "favorite", "tokyo", "home", "🏠 → Parallel Tokyo")
         self.assertEqual(self.errors, [])
 
+    def test_shimbashi_sheet_keeps_the_player_visible_at_the_map_edge(self):
+        for size in SIZES:
+            page = self.open(size)
+            self.start(page)
+            for spot in CITIES["floors"][0]["spots"]:
+                self.menu(page, "spots")
+                page.click(f'.ui-world-spots[data-floor="tokyo"] a[href="#cities-spot-{spot["id"]}"]')
+                page.evaluate(CITY_WALK, "tokyo")
+                self.still(page)
+                if spot["id"] == "tokyo-shimbashi":
+                    notes = []
+                    if page.evaluate(CITY_TOP, f"{CITY_FLOOR.format('tokyo')} .ui-player")["sheet"]:
+                        notes.append("⚠️ シートが🧳を隠す")
+                    self.shot(page, "sheet", "tokyo", spot["id"], spot["label"], notes)
+                    with self.subTest(size=size):
+                        self.assertEqual(notes, [])
+                    break
+                page.click(".ui-sheet-close:visible")
+            self.assertEqual(self.errors, [])
+
     def test_every_width_fits_each_city(self):
         for size, (width, height, touch) in WIDTHS.items():
             page = self.open(size)
@@ -941,6 +965,7 @@ class CitiesTests(unittest.TestCase):
                     out = page.evaluate("() => [...document.querySelectorAll('.ui-world-head .ui-world-tools > *, .ui-world-side summary, .ui-world-goto')].filter(e => { const r = e.getBoundingClientRect(); return r.width && (r.left < 0 || r.right > innerWidth + .5) }).map(e => e.textContent.trim().slice(0, 4))")
                     self.assertEqual(out, [], "a control sticks out of the window")
                     self.shot(page, "width", f["id"], f"{width}x{height}", f"{f['label']} {width}×{height}", notes)
+                    self.assertEqual(notes, [], "layout must fit without visual warnings")
             self.assertEqual(self.errors, [])
 
     def test_every_language_labels_the_city_tools(self):

@@ -4,9 +4,29 @@
  "commit": "2df4fb1267da31db06a1b151d1a7ec198d19858f",
  "date": "2026-11-08",
  "player_speed": "480 (FAST) for the sweeps; 96 for keys, pad and reduced motion",
+ "revalidation": {
+  "date": "2026-11-08",
+  "source_head": "82cc7c16ce79af2be55aa61a6703a3045fd2e53e",
+  "source_sha256": "0b124c4d0f27d1a00bb1775c9391dfbee5e5e678c21b4963f925b5fae18a4161",
+  "browser": "Chromium 141.0.7390.37 (Playwright 1.56.0)",
+  "fonts": "Noto Sans CJK; Noto Color Emoji",
+  "files": [
+   "desktop-tokyo-sheet-tokyo-shimbashi.webp",
+   "phone-tokyo-sheet-tokyo-shimbashi.webp",
+   "phone-london-width-390x844.webp",
+   "phone-paris-width-390x844.webp",
+   "phone-tokyo-width-390x844.webp",
+   "phone-320-london-width-320x640.webp",
+   "phone-320-paris-width-320x640.webp",
+   "phone-320-tokyo-width-320x640.webp"
+  ],
+  "before": 8,
+  "after": 0,
+  "scope": "18 width/city combinations and 2 Shimbashi approaches checked; only the 8 previously noted captures replaced"
+ },
  "shots": 574,
- "clean": 566,
- "noted": 8,
+ "clean": 574,
+ "noted": 0,
  "records": [
   {
    "order": 150,
@@ -1076,9 +1096,8 @@
    "kind": "sheet",
    "id": "tokyo-shimbashi",
    "label": "新橋",
-   "notes": [
-    "⚠️ シートが🧳を隠す"
-   ]
+   "notes": [],
+   "revalidated": true
   },
   {
    "order": 146,
@@ -2108,9 +2127,8 @@
    "kind": "sheet",
    "id": "tokyo-shimbashi",
    "label": "新橋",
-   "notes": [
-    "⚠️ シートが🧳を隠す"
-   ]
+   "notes": [],
+   "revalidated": true
   },
   {
    "order": 355,
@@ -5420,9 +5438,8 @@
    "kind": "width",
    "id": "390x844",
    "label": "Reverse London 390×844",
-   "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 10:16"
-   ]
+   "notes": [],
+   "revalidated": true
   },
   {
    "order": 530,
@@ -5432,9 +5449,8 @@
    "kind": "width",
    "id": "390x844",
    "label": "Fake Paris 390×844",
-   "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 10:16"
-   ]
+   "notes": [],
+   "revalidated": true
   },
   {
    "order": 528,
@@ -5444,9 +5460,8 @@
    "kind": "width",
    "id": "390x844",
    "label": "Parallel Tokyo 390×844",
-   "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 10:16"
-   ]
+   "notes": [],
+   "revalidated": true
   },
   {
    "order": 526,
@@ -5456,9 +5471,8 @@
    "kind": "width",
    "id": "320x640",
    "label": "Reverse London 320×640",
-   "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 10:16"
-   ]
+   "notes": [],
+   "revalidated": true
   },
   {
    "order": 527,
@@ -5468,9 +5482,8 @@
    "kind": "width",
    "id": "320x640",
    "label": "Fake Paris 320×640",
-   "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 10:16"
-   ]
+   "notes": [],
+   "revalidated": true
   },
   {
    "order": 525,
@@ -5480,9 +5493,8 @@
    "kind": "width",
    "id": "320x640",
    "label": "Parallel Tokyo 320×640",
-   "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 10:16"
-   ]
+   "notes": [],
+   "revalidated": true
   },
   {
    "order": 532,

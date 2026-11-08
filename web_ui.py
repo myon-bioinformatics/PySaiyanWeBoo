@@ -3403,6 +3403,7 @@ _WORLD_CSS = (
     ".ui-world-head .ui-board{flex:1;min-width:0;border-bottom:0}.ui-world-head .ui-board-track{flex:4 1 4rem}"
     ".ui-world-tools{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;padding:4px 8px}"   # at 320px seven 40px tools wrap into two rows instead of leaving the window
     ".ui-world-tools .ui-world-home,.ui-world-tools .ui-world-tool,.ui-world-tools .ui-world-menu>summary{width:40px;height:40px}"
+    "@media(max-width:600px){.ui-world-head{flex-wrap:wrap}.ui-world-head .ui-board{flex-basis:100%;box-sizing:border-box}.ui-world-head .ui-world-tools{width:100%;box-sizing:border-box}}"
     ".ui-world-panel p{margin:0}.ui-world-panel>button{min-width:48px}.ui-world-panel button[aria-pressed=true]{background:var(--ui-accent);color:var(--ui-bg)}"
     ".ui-world-tools .ui-world-panel{top:100%;right:8px;width:min(320px,calc(100% - 16px));max-height:min(60vh,384px)}"
     ".ui-world-settings,.ui-world-tools .ui-world-panel{display:flex;flex-wrap:wrap;gap:8px}.ui-world-tools .ui-world-panel[hidden]{display:none}"
@@ -3606,8 +3607,10 @@ const shown=()=>el.querySelector('input[name$="-floor"]:checked'),radio=(kind,va
  setFloor=(value,notify)=>{const r=radio('floor',value);if(r){r.checked=true;const select=el.querySelector('.ui-world-goto');if(select)select.value=r.value;if(notify)r.dispatchEvent(new Event('change',{bubbles:true}))}};
 const floor=()=>{const r=shown();return(r&&el.querySelector(`.ui-floor[data-floor="${r.value}"]`))||el.querySelector(".ui-floor")};
 const size=()=>{const f=floor();return[Number(f.dataset.w),Number(f.dataset.h),view.clientWidth,view.clientHeight]};
+// Reserve sheet space below the map too: the bottom-edge clamp must not undo the lift.
+const sheetInset=()=>{const s=el.querySelector(".ui-sheet");return s&&el.querySelector(".ui-sheet-item[data-open]")?s.offsetHeight+16:0};
 const zoomDial=el.querySelector('.ui-world-zoom input[type="range"]');
-const apply=()=>{const[w,h,vw,vh]=size();if(!vw||!vh)return;z=clamp(z,fitZoom(w,h,vw,vh),zmax);[fx,fy]=clampFocus(fx,fy,z,w,h,vw,vh);cam.style.setProperty("--fx",fx);cam.style.setProperty("--fy",fy);cam.style.setProperty("--z",z);
+const apply=()=>{const[w,h,vw,vh]=size();if(!vw||!vh)return;z=clamp(z,fitZoom(w,h,vw,vh),zmax);[fx,fy]=clampFocus(fx,fy,z,w,h+sheetInset()/z,vw,vh);cam.style.setProperty("--fx",fx);cam.style.setProperty("--fy",fy);cam.style.setProperty("--z",z);
  if(zoomDial&&Math.abs(Number(zoomDial.value)-z)>.001){syncing=true;zoomDial.value=z.toFixed(2);zoomDial.dispatchEvent(new Event("input"));syncing=false}onFloor()};
 // 🔍 the zoom dial (dial.js) turns the camera; the camera turns the dial back (syncing keeps the two from chasing each other across the clamp).
 // 🫥 sets the opacity of the controls over the map (data-overlay).
@@ -3624,7 +3627,7 @@ for(const m of menus)m.hidden=false;
 const near=p=>{const f=floor(),t=(Number(f.dataset.tile)||16)*1.5;let best=null,bd=Infinity;for(const a of f.querySelectorAll(".ui-spot[data-x]")){const d=Math.max(Math.abs(Number(a.dataset.x)-p[0]),Math.abs(Number(a.dataset.y)-p[1]));if(d<=t&&d<bd){best=a;bd=d}}for(const a of f.querySelectorAll(".ui-spot[data-near]"))if(a!==best)a.removeAttribute("data-near");if(best&&!best.hasAttribute("data-near"))best.setAttribute("data-near","")};
 const aim=p=>{near(p);for(const a of el.querySelectorAll(rows)){if(!a.offsetParent)continue;const out=a.querySelector('.ui-world-arrow'),f=floor(),g=a.dataset.floor===f.dataset.floor?direction(p,[Number(a.dataset.x),Number(a.dataset.y)],Number(f.dataset.tile)||16):'🚪';if(out.textContent!==g)out.textContent=g}if(goto){const r=shown();if(r&&goto.value!==r.value)goto.value=r.value}};
 // While a sheet is open the camera aims below the player or the spot, so they stay in the view above the sheet.
-const lift=()=>{const s=el.querySelector(".ui-sheet");return s&&el.querySelector(".ui-sheet-item[data-open]")?s.offsetHeight/(2*z):0};
+const lift=()=>sheetInset()/(2*z);
 let follow=false,lx,ly;const walk=bindPlayer(el,floor,p=>{if(follow&&(p[0]!==lx||p[1]!==ly)){lx=p[0];ly=p[1];go(p[0],p[1]+lift(),z)}aim(p)});
 for(const m of menus)m.addEventListener('toggle',()=>{if(m.open)for(const o of menus)if(o!==m)o.open=false});
 view.addEventListener('pointerdown',shut);
@@ -3689,7 +3692,7 @@ const chars=baseChars+notes.reduce((n,note)=>n+[...note.text].length+6,0);board.
 // 🏠 asks first (the shared dialog: 🏠 goes, ✖️ stays): home resets the floor, the filter and the sheet.
 const goHome=()=>{shut();close();follow=false;allCategories();setFloor(el.querySelector('input[name$="-floor"]')?.value,true);home()};
 el.querySelector('[data-home]')?.addEventListener('click',e=>{e.preventDefault();shut();ask('🏠❓',[{glyph:'🏠',t:'home',value:true}],'home').then(v=>{if(v)goHome()})});
-const close=()=>{open(null);if([...el.querySelectorAll(".ui-sheet-item")].some(i=>"#"+i.id===location.hash))history.replaceState(null,"",location.pathname+location.search)};
+const close=()=>{open(null);apply();if([...el.querySelectorAll(".ui-sheet-item")].some(i=>"#"+i.id===location.hash))history.replaceState(null,"",location.pathname+location.search)};
 const focusSpot=a=>{allCategories();setFloor(a.closest(".ui-floor").dataset.floor);const zoom=Math.max(z,2);go(Number(a.dataset.x),Number(a.dataset.y)+lift()*z/zoom,zoom)};
 view.addEventListener("pointerdown",e=>{if(e.button!==0)return;pts.set(e.pointerId,[e.clientX,e.clientY]);if(pts.size===1)moved=0;else moved=9;el.dataset.drag=""});
 view.addEventListener("pointermove",e=>{const p=pts.get(e.pointerId);if(!p)return;if(pts.size===1){const dx=e.clientX-p[0],dy=e.clientY-p[1];moved+=Math.abs(dx)+Math.abs(dy);if(moved>8){follow=false;if(!view.hasPointerCapture(e.pointerId))view.setPointerCapture(e.pointerId)}fx-=dx/z;fy-=dy/z;apply()}else if(pts.size===2){const q=[...pts].find(([id])=>id!==e.pointerId)[1],d0=Math.hypot(p[0]-q[0],p[1]-q[1]),d1=Math.hypot(e.clientX-q[0],e.clientY-q[1]);moved+=9;if(d0)z*=d1/d0;apply()}p[0]=e.clientX;p[1]=e.clientY});
