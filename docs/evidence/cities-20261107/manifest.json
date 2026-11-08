@@ -1,7 +1,7 @@
 {
  "schema": "web-ui-cities-evidence/1",
  "browser": "Chromium 153.0.8010.12 (Playwright 1.63.0)",
- "commit": "b31ff268c8814e7eed23b9465ecf8530ffcee2fd",
+ "commit": "e322b81f7862ccaf1d6cef835fea602845a88a06",
  "date": "2026-11-08",
  "player_speed": "480 (FAST) for the sweeps; 96 for keys, pad and reduced motion",
  "shots": 570,
@@ -5381,7 +5381,7 @@
    "id": "390x844",
    "label": "Reverse London 390×844",
    "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 09:46"
+    "⚠️ ヘッダーで切れる: PARALLEL / 10:16"
    ]
   },
   {
@@ -5393,7 +5393,7 @@
    "id": "390x844",
    "label": "Fake Paris 390×844",
    "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 09:46"
+    "⚠️ ヘッダーで切れる: PARALLEL / 10:16"
    ]
   },
   {
@@ -5405,7 +5405,7 @@
    "id": "390x844",
    "label": "Parallel Tokyo 390×844",
    "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 09:46"
+    "⚠️ ヘッダーで切れる: PARALLEL / 10:16"
    ]
   },
   {
@@ -5417,7 +5417,7 @@
    "id": "320x640",
    "label": "Reverse London 320×640",
    "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 09:46"
+    "⚠️ ヘッダーで切れる: PARALLEL / 10:16"
    ]
   },
   {
@@ -5429,7 +5429,7 @@
    "id": "320x640",
    "label": "Fake Paris 320×640",
    "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 09:46"
+    "⚠️ ヘッダーで切れる: PARALLEL / 10:16"
    ]
   },
   {
@@ -5441,7 +5441,7 @@
    "id": "320x640",
    "label": "Parallel Tokyo 320×640",
    "notes": [
-    "⚠️ ヘッダーで切れる: PARALLEL / 09:46"
+    "⚠️ ヘッダーで切れる: PARALLEL / 10:16"
    ]
   },
   {
