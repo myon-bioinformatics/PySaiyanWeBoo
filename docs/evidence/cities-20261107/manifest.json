@@ -1,11 +1,11 @@
 {
  "schema": "web-ui-cities-evidence/1",
  "browser": "Chromium 153.0.8010.12 (Playwright 1.63.0)",
- "commit": "e322b81f7862ccaf1d6cef835fea602845a88a06",
+ "commit": "2df4fb1267da31db06a1b151d1a7ec198d19858f",
  "date": "2026-11-08",
  "player_speed": "480 (FAST) for the sweeps; 96 for keys, pad and reduced motion",
- "shots": 570,
- "clean": 562,
+ "shots": 574,
+ "clean": 566,
  "noted": 8,
  "records": [
   {
@@ -4773,6 +4773,26 @@
    "notes": []
   },
   {
+   "order": 2,
+   "file": "desktop-tokyo-tool-zoom-dial.webp",
+   "viewport": "desktop",
+   "floor": "tokyo",
+   "kind": "tool",
+   "id": "zoom-dial",
+   "label": "🔍 dial → z 3.40",
+   "notes": []
+  },
+  {
+   "order": 3,
+   "file": "desktop-tokyo-tool-overlay-alpha.webp",
+   "viewport": "desktop",
+   "floor": "tokyo",
+   "kind": "tool",
+   "id": "overlay-alpha",
+   "label": "🫥 .3: the pad lets the map through",
+   "notes": []
+  },
+  {
    "order": 44,
    "file": "desktop-tokyo-tool-🗼.webp",
    "viewport": "desktop",
@@ -4870,6 +4890,26 @@
    "kind": "tool",
    "id": "🥖",
    "label": "🥖 Fake Paris",
+   "notes": []
+  },
+  {
+   "order": 0,
+   "file": "phone-tokyo-tool-zoom-dial.webp",
+   "viewport": "phone",
+   "floor": "tokyo",
+   "kind": "tool",
+   "id": "zoom-dial",
+   "label": "🔍 dial → z 3.35",
+   "notes": []
+  },
+  {
+   "order": 1,
+   "file": "phone-tokyo-tool-overlay-alpha.webp",
+   "viewport": "phone",
+   "floor": "tokyo",
+   "kind": "tool",
+   "id": "overlay-alpha",
+   "label": "🫥 .3: the pad lets the map through",
    "notes": []
   },
   {
@@ -5535,7 +5575,7 @@
    "notes": []
   },
   {
-   "order": 52,
+   "order": 4,
    "file": "phone-tokyo-lang-ja.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5545,7 +5585,7 @@
    "notes": []
   },
   {
-   "order": 53,
+   "order": 5,
    "file": "phone-tokyo-lang-en.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5555,7 +5595,7 @@
    "notes": []
   },
   {
-   "order": 54,
+   "order": 6,
    "file": "phone-tokyo-lang-fr.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5565,7 +5605,7 @@
    "notes": []
   },
   {
-   "order": 55,
+   "order": 7,
    "file": "phone-tokyo-lang-es.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5575,7 +5615,7 @@
    "notes": []
   },
   {
-   "order": 56,
+   "order": 8,
    "file": "phone-tokyo-lang-pt.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5585,7 +5625,7 @@
    "notes": []
   },
   {
-   "order": 57,
+   "order": 9,
    "file": "phone-tokyo-lang-ar.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5595,7 +5635,7 @@
    "notes": []
   },
   {
-   "order": 58,
+   "order": 10,
    "file": "phone-tokyo-lang-zh.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5605,7 +5645,7 @@
    "notes": []
   },
   {
-   "order": 59,
+   "order": 11,
    "file": "phone-tokyo-lang-ru.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5615,7 +5655,7 @@
    "notes": []
   },
   {
-   "order": 60,
+   "order": 12,
    "file": "phone-tokyo-lang-id.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5625,7 +5665,7 @@
    "notes": []
   },
   {
-   "order": 61,
+   "order": 13,
    "file": "phone-tokyo-lang-de.webp",
    "viewport": "phone",
    "floor": "tokyo",
@@ -5635,7 +5675,7 @@
    "notes": []
   },
   {
-   "order": 62,
+   "order": 14,
    "file": "phone-tokyo-lang-sw.webp",
    "viewport": "phone",
    "floor": "tokyo",
