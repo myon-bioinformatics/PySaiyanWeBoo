@@ -662,3 +662,27 @@ def test_the_name_layer_is_names_dots_or_off_and_switches_in_the_header():
     css = ui.world_css(spec)
     assert "--ui-layer-ground:0;--ui-layer-name:1;--ui-layer-mark:2;--ui-layer-player:3;--ui-layer-sheet:4" in css
     assert ".ui-world[data-names=dots] .ui-spot:not([data-near]):not(:hover):not(:focus-visible)" in css
+
+
+def test_a_mark_is_an_emoji_in_place_of_the_dot_scaled_by_the_world():
+    """A spot's mark (or its category's, through place_floor marks=) replaces the dot and leads the name; mark_scale sets every mark's width and height."""
+    cities = ui.world_validate(ui.example_data("cities"))
+    assert cities["mark_scale"] == [1.5, 1.5]
+    assert {s["category"]: s.get("mark") for f in cities["floors"] for s in f["spots"]} == {"exit": "🚪", "station": "🚉", "terminus": "🚆", "famous": "🏛️", "sight": "📷", "sign": None}
+    html = ui.world_html(ui.example_data("cities"))
+    assert 'style="--mark-x:1.5;--mark-y:1.5"' in html
+    assert "top:1232px;--mark:'🚪'\"" in html
+    css = ui.world_css(ui.example_data("cities"))
+    assert 'content:var(--mark,"●")' in css and "transform:scale(var(--mark-x,1),var(--mark-y,1))" in css
+    spec = ui.example_data("school")
+    assert ui.world_validate(spec)["mark_scale"] == [1, 1] and ' style="--mark-x' not in ui.world_html(spec)
+    with pytest.raises(ValueError, match="mark_scale is"):
+        ui.world_validate({**spec, "mark_scale": [1, 9]})
+    floor = {**spec["floors"][0], "spots": [{**spec["floors"][0]["spots"][0], "mark": "🪑"}, {**spec["floors"][0]["spots"][1], "mark": "a b"}]}
+    with pytest.raises(ValueError, match="a mark is"):
+        ui.world_validate({**spec, "floors": [floor]})
+    with pytest.raises(ValueError, match="marks is"):
+        ui.place_floor([{"id": "a", "label": "A", "lat": 35.0, "lon": 139.0}], marks={"Bad Key": "x"})
+    own = ui.place_floor([{"id": "a", "label": "A", "lat": 35.0, "lon": 139.0, "category": "cafe", "mark": "☕"}, {"id": "b", "label": "B", "lat": 35.001, "lon": 139.0, "category": "cafe"}],
+                         marks={"cafe": "🍰"})
+    assert [s.get("mark") for s in own["spots"]] == ["☕", "🍰"]                                   # a point's own mark wins over its category's
