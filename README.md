@@ -450,7 +450,7 @@ The first phase intentionally treats screenshots as observable test evidence rat
 
 ```sh
 python3 -S web_ui.py --site build/site
-python ../BrowserTestKit/tools/evidence_gif.py docs/evidence/browser.gif --serve build/site --plan docs/evidence/browser.json
+uv run --project ../BrowserTestKit --group pages --group browser python ../BrowserTestKit/tools/evidence_gif.py docs/evidence/browser.gif --serve build/site --plan docs/evidence/browser.json
 ```
 
 ## Visual regression
