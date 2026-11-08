@@ -60,7 +60,7 @@ vertical scrolling and nothing changes page. The screen is icons; the words are 
   * **🏠** home: first floor, everything in view, sheet and menus closed.
   * **⭐** favourites: a ☆ in the ☰ list stars a place; the ⭐ panel lists them (on any floor) and takes you there. They are a light cache: kept in this browser
     (`localStorage` key `ui-world:<id>`, only the starred places, the language and the name layer) and restored on the next visit. No dialog, no per-floor favourites, no export.
-  * **⚙️** settings: ⏸️ pause the motion, 🙂✏️ change the emoji, 🌐 pick the language (a `<select>` of native names), 🏷️ the name layer (names / dots / off).
+  * **⚙️** settings: ⏸️ pause the motion, 🙂✏️ change the emoji, 🌐 pick the language (a `<select>` of native names), 🏷️ the name layer (names / dots / off), 🔍 a dial for the zoom (turn it, or the wheel on the map turns it), 🫥 a slider for how see-through the controls over the map are (the pad, `data-overlay`; `--ui-overlay-alpha` .2–1, kept with the language).
 * **Side** (this screen): 48px buttons that open a panel over the map (one menu open at a time; Escape, a tap on the map or choosing an item closes it).
   * **☰**: the places of this floor (and the category chips, if any). Each row has an arrow from you to the place (⬆️ ↗️ ➡️ ↘️ ⬇️ ↙️ ⬅️ ↖️, 📍 within one tile,
     🚪 when it is on another floor) that follows you as you walk; tap a row to go there and read its sheet. Works without JavaScript too (the rows are links).
@@ -105,6 +105,13 @@ A spot's `mark` (one emoji) is drawn instead of the dot and leads the name when 
 dots included. The cities use 🚪 exits, 🚉 stations, 🚆 termini, 🏛️ famous places and 📷 sights at `[1.5, 1.5]`.
 Signs (`sign`) always sit in the mark layer and keep their own dot → text → face cycle. While a sheet is open, the camera aims a little below the player or the spot,
 so the thing you walked to stays in the view above the sheet.
+
+### Dial (🔍)
+
+`dial_html(name, minimum=, maximum=, step=, value=, label=, attrs=)` is a rotary dial over an ordinary `<input type="range">`: `DIAL_CSS` draws the knob and its
+pointer (`--ui-dial-angle`, −135° to 135°), `bindDial(root)` from `dial.js` turns it by a drag around its centre or the wheel, and the input keeps the value, the keys,
+the form and the aria-label, so a listener on `input`/`change` sees a dial and a slider the same way. The map's 🔍 is its first use; `dialAngle` and `dialValue` are the
+pure maps between a value and an angle (`tests/test_theme_seed.py` checks them in Node).
 
 ### Languages (🌐)
 

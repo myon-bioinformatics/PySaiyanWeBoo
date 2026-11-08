@@ -3078,6 +3078,12 @@ WORLD_TEXT = {
     "pause": ("動きを止める", "Pause motion", "Arrêter le mouvement", "Pausar el movimiento", "Pausar o movimento", "إيقاف الحركة", "暂停动态", "Остановить движение", "Jeda gerakan", "Bewegung anhalten", "Simamisha mwendo"),
     "avatar": ("絵文字を変える", "Change emoji", "Changer d'emoji", "Cambiar emoji", "Mudar emoji", "تغيير الرمز التعبيري", "更换表情", "Сменить эмодзи", "Ganti emoji", "Emoji ändern", "Badilisha emoji"),
     "language": ("言語", "Language", "Langue", "Idioma", "Idioma", "اللغة", "语言", "Язык", "Bahasa", "Sprache", "Lugha"),
+    "zoom": ("ズーム（回して拡大・縮小）", "Zoom (turn to zoom in or out)", "Zoom (tournez pour agrandir ou réduire)", "Zoom (gira para acercar o alejar)",
+             "Zoom (gire para aproximar ou afastar)", "التكبير (أدر للتكبير أو التصغير)", "缩放（旋转以放大或缩小）", "Масштаб (поверните, чтобы приблизить или отдалить)",
+             "Zum (putar untuk memperbesar atau memperkecil)", "Zoom (drehen zum Vergrößern oder Verkleinern)", "Kuza (zungusha kukuza au kupunguza)"),
+    "overlay": ("地図の上の操作類の透け具合", "How see-through the controls over the map are", "Transparence des commandes sur la carte", "Transparencia de los controles sobre el mapa",
+                "Transparência dos controles sobre o mapa", "شفافية عناصر التحكم فوق الخريطة", "地图上控件的透明度", "Прозрачность элементов управления над картой",
+                "Transparansi kontrol di atas peta", "Durchsichtigkeit der Bedienelemente über der Karte", "Uwazi wa vidhibiti juu ya ramani"),
     "names": ("名前の層: 🏷️ 名前 / ● 点（近く・指先で名前） / ✖️ 点だけ", "Name layer: 🏷️ names / ● dots (names near you or under the pointer) / ✖️ dots only",
               "Couche des noms : 🏷️ noms / ● points (noms près de vous ou sous le pointeur) / ✖️ points seulement",
               "Capa de nombres: 🏷️ nombres / ● puntos (nombres cerca de ti o bajo el puntero) / ✖️ solo puntos",
@@ -3232,6 +3238,8 @@ def _shell_html(world: dict[str, Any], *, head: str, radios: str, view: str, tai
                 f'<label class="ui-world-lang">🌐 <select data-lang {_wt("language")}>' +
                 "".join(f'<option value="{code}" lang="{code}"{" selected" if i == 0 else ""}>{name}</option>' for i, (code, name) in enumerate(WORLD_LANGS)) +
                 '</select></label>' +
+                f'<label class="ui-world-zoom">🔍 {dial_html("zoom", minimum=0.1, maximum=world["zoom_max"], step=0.05, value=1, attrs=_wt("zoom"))}</label>' +
+                f'<label class="ui-world-alpha">🫥 <input type="range" data-alpha min="0.2" max="1" step="0.1" value="0.9" {_wt("overlay")}></label>' +
                 (f'<label class="ui-world-names">🏷️ <select data-names-pick {_wt("names")}>' +
                  "".join(f'<option value="{v}"{" selected" if v == world["names"] else ""}>{t}</option>' for v, t in zip(WORLD_NAMES, ("🏷️", "●", "✖️"))) +
                  '</select></label>' if any(f["spots"] for f in floors) else ""))
@@ -3241,7 +3249,7 @@ def _shell_html(world: dict[str, Any], *, head: str, radios: str, view: str, tai
                     icon("settings", "⚙️", _wt("settings"), settings, hidden=True))
     steps = "".join(f'<button type="button" data-step="{d}" {_wt(k)}>{g}</button>'
                     for d, k, g in (("0,-1", "up", "▲"), ("-1,0", "left", "◀"), ("1,0", "right", "▶"), ("0,1", "down", "▼")))
-    dpad = f'<div class="ui-world-dpad ui-world-grid-only" role="group" {_wt("move")} hidden>{steps}</div>' if tiled and playable else ""
+    dpad = f'<div class="ui-world-dpad ui-world-grid-only" role="group" data-overlay {_wt("move")} hidden>{steps}</div>' if tiled and playable else ""
     foot = (f'<footer class="ui-world-foot"><nav class="ui-world-bar">{floor_labels}</nav>'
             f'<label class="ui-world-goto-wrap">🚪 <select class="ui-world-goto" {_wt("floor")}>' +
             "".join(f'<option value="{f["id"]}"{" selected" if i == 0 else ""}>{escape(f["label"])}</option>' for i, f in enumerate(floors)) +
@@ -3281,6 +3289,32 @@ def world_html(spec: Any) -> str:
     return (_shots_html(world) if world["shots"] else "") + (_map_html(world) if world["floors"] else "")
 
 
+DIAL_CSS = (
+    # A rotary dial over a range input: the input keeps the value, the keys, the form and the accessibility; the dial is the drawing and the drag.
+    ".ui-dial{position:relative;display:inline-block;width:48px;height:48px;border-radius:50%;border:2px solid var(--ui-border);background:var(--ui-panel);"
+    "box-sizing:border-box;touch-action:none;cursor:grab;vertical-align:middle}.ui-dial[data-ui-dial-drag]{cursor:grabbing}"
+    ".ui-dial::after{content:\"\";position:absolute;left:50%;top:4px;width:4px;height:16px;border-radius:2px;background:var(--ui-accent);"
+    "transform-origin:50% 18px;transform:translateX(-50%) rotate(var(--ui-dial-angle,-135deg))}"
+    ".ui-dial>input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;pointer-events:none}"
+    ".ui-dial:focus-within{outline:2px solid var(--ui-accent);outline-offset:2px}")
+
+DIAL_JS = r"""/* A rotary dial over a range input (dial_html): drag around its centre, turn the wheel, or use the range's own keys. Value and events stay the input's. */
+export function dialAngle(value,min,max){const span=max-min;const t=span>0?(Number(value)-min)/span:0;return -135+270*Math.min(1,Math.max(0,t))}
+export function dialValue(angle,min,max,step){const t=(Math.min(135,Math.max(-135,angle))+135)/270,raw=min+t*(max-min),s=step>0?step:1;
+ const v=min+Math.round((raw-min)/s)*s;return Math.min(max,Math.max(min,Number(v.toFixed(6))))}
+export function bindDial(root=document){
+ for(const dial of root.querySelectorAll("[data-ui-dial]")){const input=dial.querySelector('input[type="range"]');if(!input||dial.dataset.uiDialBound)continue;dial.dataset.uiDialBound="";
+  const num=k=>Number(input[k])||0,paint=()=>dial.style.setProperty("--ui-dial-angle",dialAngle(input.value,num("min"),num("max"))+"deg");
+  const turn=(x,y)=>{const r=dial.getBoundingClientRect(),a=Math.atan2(x-(r.left+r.width/2),(r.top+r.height/2)-y)*180/Math.PI;
+   const v=dialValue(a,num("min"),num("max"),Number(input.step)||0);if(String(v)===input.value)return;input.value=v;input.dispatchEvent(new Event("input",{bubbles:true}));input.dispatchEvent(new Event("change",{bubbles:true}))};
+  dial.addEventListener("pointerdown",e=>{if(e.button)return;e.preventDefault();dial.setPointerCapture(e.pointerId);dial.dataset.uiDialDrag="";input.focus({preventScroll:true});turn(e.clientX,e.clientY)});
+  dial.addEventListener("pointermove",e=>{if("uiDialDrag"in dial.dataset)turn(e.clientX,e.clientY)});
+  for(const t of["pointerup","pointercancel","lostpointercapture"])dial.addEventListener(t,()=>{delete dial.dataset.uiDialDrag});
+  dial.addEventListener("wheel",e=>{e.preventDefault();e.deltaY<0?input.stepUp():input.stepDown();input.dispatchEvent(new Event("input",{bubbles:true}));input.dispatchEvent(new Event("change",{bubbles:true}))},{passive:false});
+  input.addEventListener("input",paint);paint()}}
+"""
+
+
 _WORLD_CSS = (
     ".ui-world{--ui-world-h:min(70vh,560px);position:relative;margin:1rem 0;border:1px solid var(--ui-border);background:var(--ui-bg);"
     "color:var(--ui-fg);border-radius:var(--ui-radius);overflow:hidden}"
@@ -3300,6 +3334,7 @@ _WORLD_CSS = (
     # Layers of a map, back to front, like the z-order of a slide: the ground (props), the names (spot pills), the marks (dots and signs),
     # the player and actors, the sheet. data-names on .ui-world moves every plain spot between the name layer (names) and the mark layer
     # (dots: a dot; the one the player stands by, the one under the pointer and the focused one show their names; off: dots only).
+    + DIAL_CSS +
     ".ui-world-map{--ui-layer-ground:0;--ui-layer-name:1;--ui-layer-mark:2;--ui-layer-player:3;--ui-layer-sheet:4}"
     ".ui-spot{position:absolute;z-index:var(--ui-layer-name);transform:translate(-50%,-50%) scale(calc(1 / var(--z,1)));white-space:nowrap;border:1px solid var(--ui-accent);"
     "background:var(--ui-bg);color:var(--ui-fg);padding:.2rem .6rem;border-radius:999px;text-decoration:none;font-size:.85rem}"
@@ -3393,7 +3428,9 @@ _WORLD_CSS = (
     ".ui-world-goto-wrap{display:none;align-items:center;gap:8px;flex:1}.ui-world[data-js] .ui-world-goto-wrap{display:flex}.ui-world[data-js] .ui-world-foot .ui-world-bar{display:none}"
     ".ui-world-goto{flex:1;min-width:0;max-width:384px;min-height:40px;font:inherit;color:var(--ui-fg);background:var(--ui-bg);border:1px solid var(--ui-border);border-radius:var(--ui-radius)}"
     ".ui-world[data-shell] .ui-sheet{z-index:3;right:80px;bottom:calc(var(--ui-world-foot) + 8px)}.ui-world[data-shell]:not(:has(.ui-world-foot)) .ui-sheet{bottom:8px}"
-    ".ui-world-body>.ui-world-dpad{position:absolute;left:8px;bottom:8px;z-index:1;opacity:.9}.ui-world-dpad[hidden]{display:none}"
+    # Controls drawn over the map (data-overlay: the pad) share one opacity, --ui-overlay-alpha, that 🫥 in ⚙️ sets from .2 to 1.
+    ".ui-world-body>.ui-world-dpad{position:absolute;left:8px;bottom:8px;z-index:1}.ui-world [data-overlay]{opacity:var(--ui-overlay-alpha,.9)}.ui-world-dpad[hidden]{display:none}"
+    ".ui-world-zoom,.ui-world-alpha{display:inline-flex;align-items:center;gap:8px}.ui-world-alpha input{width:96px;accent-color:var(--ui-accent)}"
     ".ui-world-dpad{display:grid;grid-template-columns:repeat(3,48px);grid-auto-rows:48px;gap:8px}"
     ".ui-world-dpad button{min-width:48px;min-height:48px;font-size:1.25rem;line-height:1;border:1px solid var(--ui-border);background:var(--ui-panel);"
     "color:var(--ui-fg);border-radius:var(--ui-radius);cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}"
@@ -3547,7 +3584,7 @@ export function bindSharedBoard(board){
 }
 """
 
-WORLD_JS = WORLD_MOTION_JS + WORLD_SHARED_JS + WORLD_TEXT_JS + r"""/* web-ui world: one page, a camera. Shots: scroll marks light up (data-lit). Map: drag, wheel and pinch move a camera; spots open a sheet. No page changes. */
+WORLD_JS = WORLD_MOTION_JS + WORLD_SHARED_JS + WORLD_TEXT_JS + DIAL_JS + r"""/* web-ui world: one page, a camera. Shots: scroll marks light up (data-lit). Map: drag, wheel and pinch move a camera; spots open a sheet. No page changes. */
 const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
 export function fitZoom(w,h,vw,vh){return Math.min(vw/w,vh/h)}
 export function travelSeconds(x0,y0,x1,y1,speed){return Math.hypot(x1-x0,y1-y0)/speed}
@@ -3569,7 +3606,14 @@ const shown=()=>el.querySelector('input[name$="-floor"]:checked'),radio=(kind,va
  setFloor=(value,notify)=>{const r=radio('floor',value);if(r){r.checked=true;const select=el.querySelector('.ui-world-goto');if(select)select.value=r.value;if(notify)r.dispatchEvent(new Event('change',{bubbles:true}))}};
 const floor=()=>{const r=shown();return(r&&el.querySelector(`.ui-floor[data-floor="${r.value}"]`))||el.querySelector(".ui-floor")};
 const size=()=>{const f=floor();return[Number(f.dataset.w),Number(f.dataset.h),view.clientWidth,view.clientHeight]};
-const apply=()=>{const[w,h,vw,vh]=size();if(!vw||!vh)return;z=clamp(z,fitZoom(w,h,vw,vh),zmax);[fx,fy]=clampFocus(fx,fy,z,w,h,vw,vh);cam.style.setProperty("--fx",fx);cam.style.setProperty("--fy",fy);cam.style.setProperty("--z",z);onFloor()};
+const zoomDial=el.querySelector('.ui-world-zoom input[type="range"]');
+const apply=()=>{const[w,h,vw,vh]=size();if(!vw||!vh)return;z=clamp(z,fitZoom(w,h,vw,vh),zmax);[fx,fy]=clampFocus(fx,fy,z,w,h,vw,vh);cam.style.setProperty("--fx",fx);cam.style.setProperty("--fy",fy);cam.style.setProperty("--z",z);
+ if(zoomDial&&Math.abs(Number(zoomDial.value)-z)>.001){syncing=true;zoomDial.value=z.toFixed(2);zoomDial.dispatchEvent(new Event("input"));syncing=false}onFloor()};
+// 🔍 the zoom dial (dial.js) turns the camera; the camera turns the dial back (syncing keeps the two from chasing each other across the clamp).
+// 🫥 sets the opacity of the controls over the map (data-overlay).
+let syncing=false;bindDial(el);zoomDial?.addEventListener("input",()=>{if(syncing)return;z=Number(zoomDial.value);apply()});
+const alpha=el.querySelector("[data-alpha]"),setAlpha=v=>{v=Number(v);if(!(v>=.2&&v<=1))return;el.style.setProperty("--ui-overlay-alpha",v);if(alpha)alpha.value=v};
+alpha?.addEventListener("input",()=>{setAlpha(alpha.value);save({alpha:Number(alpha.value)})});
 const go=(x,y,zoom)=>{fx=x;fy=y;z=zoom;apply()};
 const home=()=>{const[w,h,vw,vh]=size();go(w/2,h/2,vw&&vh?fitZoom(w,h,vw,vh):1)};
 const open=id=>{for(const i of el.querySelectorAll(".ui-sheet-item"))i.toggleAttribute("data-open",i.id===id)};
@@ -3604,6 +3648,7 @@ if(typeof kept.lang==='string'&&kept.lang!=='ja')setLang(kept.lang);
 // 🏷️ the name layer (names / dots / off) switches without a reload and is kept with the language.
 const namesPick=el.querySelector('[data-names-pick]'),setNames=to=>{if(!['names','dots','off'].includes(to))return;el.dataset.names=to;if(namesPick)namesPick.value=to};
 if(typeof kept.names==='string')setNames(kept.names);
+if(typeof kept.alpha==='number')setAlpha(kept.alpha);
 namesPick?.addEventListener('change',()=>{setNames(namesPick.value);save({names:namesPick.value})});
 goto?.addEventListener('change',()=>setFloor(goto.value,true));
 // Emoji picker: shown first (JS only); the choice replaces every floor's player emoji. Dragging the map stops the camera following.
@@ -4004,6 +4049,18 @@ def theme_switch_html(*, legend: str = "Theme") -> str:
     return (f'<fieldset class="ui-layout-switch"><legend>{escape(legend)}</legend>'
             + "".join(f'<label><input type="radio" name="ui-theme" value="{t}"{" checked" if t == "modern" else ""}> {t}</label>'
                       for t in (*THEMES, *CANDIDATE_THEMES)) + "</fieldset>")
+
+
+def dial_html(name: str, *, minimum: float = 0, maximum: float = 100, step: float = 1, value: float = 0, label: str = "", attrs: str = "") -> str:
+    """A rotary dial (``bindDial()`` from dial.js turns it) over a range input named ``name``; DIAL_CSS draws it. The input is what forms, keys and screen
+    readers see: ``label`` is its aria-label, ``attrs`` any further attributes (already escaped) for it."""
+    if not isinstance(name, str) or not _WORLD_TOKEN.fullmatch(name):
+        raise ValueError("a dial's name is a token")
+    nums = (minimum, maximum, step, value)
+    if any(type(v) not in (int, float) for v in nums) or not minimum < maximum or step <= 0 or not minimum <= value <= maximum:
+        raise ValueError("a dial has minimum < maximum, a positive step and a value between them")
+    aria = (f' aria-label="{escape(label, quote=True)}"' if label else "") + (f" {attrs}" if attrs else "")
+    return (f'<span class="ui-dial" data-ui-dial><input type="range" name="{name}" min="{minimum:g}" max="{maximum:g}" step="{step:g}" value="{value:g}"{aria}></span>')
 
 
 def seed_dial_html(*, maximum: int = 99) -> str:
@@ -17568,8 +17625,8 @@ def _index_page() -> str:
 
 
 def js_modules() -> dict[str, str]:
-    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, world.js)."""
-    return {**_JS, "world.js": WORLD_JS}
+    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, world.js)."""
+    return {**_JS, "dial.js": DIAL_JS, "world.js": WORLD_JS}
 
 
 def js_source(name: str) -> str:

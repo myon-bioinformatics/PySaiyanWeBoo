@@ -1055,6 +1055,50 @@ class CitiesTests(unittest.TestCase):
             self.assertEqual(page.get_attribute(".ui-world", "data-names"), "names")   # kept with the language
             self.assertEqual(self.errors, [])
 
+    def test_zoom_dial_and_overlay_opacity(self):
+        """⚙️ 🔍 is a rotary dial (dial.js over a range): a drag around it zooms the camera, the wheel on the map turns it back, its keys step it.
+        ⚙️ 🫥 is a slider: the controls over the map (the pad, data-overlay) take its opacity, kept across reloads."""
+        Z = "() => [Number(document.querySelector('.ui-world-cam').style.getPropertyValue('--z')), Number(document.querySelector('.ui-world-zoom input').value), document.querySelector('.ui-world-zoom .ui-dial').style.getPropertyValue('--ui-dial-angle')]"
+        for size in SIZES:
+            page = self.open(size)
+            self.start(page)
+            self.menu(page, "settings")
+            z0, v0, a0 = page.evaluate(Z)
+            self.assertAlmostEqual(z0, v0, delta=.01)                                              # the dial shows the camera's zoom
+            box = page.locator(".ui-world-zoom .ui-dial").bounding_box()
+            cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+            if page.touch:
+                page.touchscreen.tap(cx + 20, cy)                                                 # a finger at 3 o'clock on the dial
+            else:
+                page.mouse.move(cx + 20, cy)
+                page.mouse.down()
+                page.mouse.move(cx + 20, cy + 1, steps=2)
+                page.mouse.up()
+            page.wait_for_timeout(100)
+            z1, v1, a1 = page.evaluate(Z)
+            self.assertAlmostEqual(v1, .1 + (CITIES["zoom_max"] - .1) * (90 + 135) / 270, delta=.06)   # 3 o'clock is 5/6 of the dial
+            self.assertAlmostEqual(z1, v1, delta=.01)
+            self.assertEqual(a1, "90deg" if abs(float(a1[:-3]) - 90) < 2 else a1)
+            self.shot(page, "tool", "tokyo", "zoom-dial", f"🔍 dial → z {z1:.2f}")
+            page.focus(".ui-world-zoom input")
+            page.keyboard.press("ArrowLeft")
+            page.wait_for_timeout(50)
+            z2, v2, _ = page.evaluate(Z)
+            self.assertAlmostEqual(v2, v1 - .05, delta=.001)                                       # the range's own keys
+            self.assertAlmostEqual(z2, v2, delta=.01)
+            page.keyboard.press("Escape")
+            self.assertEqual(page.eval_on_selector(".ui-world-dpad", "e => getComputedStyle(e).opacity"), "0.9")
+            self.menu(page, "settings")
+            page.locator("[data-alpha]").fill("0.3")
+            self.assertEqual(page.eval_on_selector(".ui-world-dpad", "e => getComputedStyle(e).opacity"), "0.3")
+            page.keyboard.press("Escape")
+            self.shot(page, "tool", "tokyo", "overlay-alpha", "🫥 .3: the pad lets the map through")
+            page.reload()
+            self.start(page)
+            self.assertEqual(page.eval_on_selector(".ui-world-dpad", "e => getComputedStyle(e).opacity"), "0.3")   # kept with the language
+            self.assertEqual(page.input_value("[data-alpha]"), "0.3")
+            self.assertEqual(self.errors, [])
+
     def test_fires_rivers_and_bridges_are_drawn(self):
         page = self.open("desktop")
         self.start(page)
