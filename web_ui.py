@@ -387,6 +387,424 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
   global.RepositoryDiagnostics = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
 """,
+    "gif.js": r"""/* gif.js — animated GIF from canvas frames, for pages and tools built with web_ui. No dependencies.
+ * Browser: classic script, sets window.UiGif. Node: require() the file `web_ui.py --site DIR` writes (the encoder needs
+ * no DOM; Composer and Recorder need a canvas).
+ *
+ * The browser does what it already does well: decode the PNG (createImageBitmap), resize and crop it (drawImage) and
+ * draw caption text (fillText). This module adds only what no browser offers:
+ *   bucket keys (6 bits per channel) and a histogram while frames arrive, keeping only the rectangle that changed;
+ *   one global palette (exact when the buckets fit in it, else median cut + refinement), one lookup per pixel;
+ *   each frame as its tight changed rectangle, unchanged pixels transparent when that encodes smaller;
+ *   GIF LZW (12-bit, clear on full table) into GIF89a: loop forever, delays in centiseconds and at least 2, so no
+ *   browser rewrites them; over a byte budget, fewer colours, then fewer frames of a burst.
+ */
+(function (root) {
+  "use strict";
+
+  const MIN_DELAY_CS = 2;                          // browsers raise 0–1 cs to 10 cs
+  const KEYS = 1 << 18;                            // 6 bits per channel
+  const FONT = "Meiryo, 'メイリオ', 'Hiragino Sans', 'Noto Sans CJK JP', 'Yu Gothic', sans-serif";
+
+  function fromBase64(text) {
+    if (typeof Uint8Array.fromBase64 === "function") return Uint8Array.fromBase64(text);
+    if (typeof Buffer === "function") return new Uint8Array(Buffer.from(text, "base64"));
+    const bin = atob(text), out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  function toBase64(bytes) {
+    if (typeof bytes.toBase64 === "function") return bytes.toBase64();
+    if (typeof Buffer === "function") return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64");
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+
+  class Bytes {
+    constructor(size) { this.buf = new Uint8Array(size || 65536); this.length = 0; }
+    room(n) {
+      if (this.length + n <= this.buf.length) return;
+      let size = this.buf.length * 2;
+      while (size < this.length + n) size *= 2;
+      const next = new Uint8Array(size); next.set(this.buf.subarray(0, this.length)); this.buf = next;
+    }
+    byte(b) { this.room(1); this.buf[this.length++] = b; }
+    u16(v) { this.room(2); this.buf[this.length++] = v & 255; this.buf[this.length++] = (v >> 8) & 255; }
+    put(a) { this.room(a.length); this.buf.set(a, this.length); this.length += a.length; }
+    ascii(s) { for (let i = 0; i < s.length; i++) this.byte(s.charCodeAt(i) & 127); }
+    done() { return this.buf.slice(0, this.length); }
+  }
+
+  // ---- palette --------------------------------------------------------------------------------------------------
+
+  const WR = 3, WG = 4, WB = 2;                    // "nearest colour" weights: green most, blue least
+
+  /** ≤ maxColors colours for a bucket histogram {count, sum, used} and a lookup table key → index. */
+  function palette(hist, maxColors) {
+    const n = hist.used, ids = new Uint32Array(n), mean = new Float64Array(n * 3), cnt = new Float64Array(n);
+    for (let k = 0, j = 0; k < KEYS; k++) {
+      const c = hist.count[k];
+      if (!c) continue;
+      ids[j] = k; cnt[j] = c;
+      for (let ch = 0; ch < 3; ch++) mean[j * 3 + ch] = hist.sum[k * 3 + ch] / c;
+      j++;
+    }
+    const lut = new Uint8Array(KEYS);
+    if (n <= maxColors) {
+      const colors = new Uint8Array(Math.max(1, n) * 3);
+      for (let j = 0; j < n; j++) { lut[ids[j]] = j; for (let ch = 0; ch < 3; ch++) colors[j * 3 + ch] = Math.round(mean[j * 3 + ch]); }
+      return {colors, size: Math.max(1, n), lut};
+    }
+    const order = new Uint32Array(n);
+    for (let j = 0; j < n; j++) order[j] = j;
+    const measure = box => {
+      let total = 0; const lo = [255, 255, 255], hi = [0, 0, 0];
+      for (let i = box.a; i < box.b; i++) {
+        const j = order[i]; total += cnt[j];
+        for (let ch = 0; ch < 3; ch++) { const v = mean[j * 3 + ch]; if (v < lo[ch]) lo[ch] = v; if (v > hi[ch]) hi[ch] = v; }
+      }
+      const spread = [(hi[0] - lo[0]) * WR, (hi[1] - lo[1]) * WG, (hi[2] - lo[2]) * WB];
+      box.axis = spread[0] >= spread[1] && spread[0] >= spread[2] ? 0 : spread[1] >= spread[2] ? 1 : 2;
+      box.total = total; box.score = box.b - box.a > 1 ? total * spread[box.axis] : -1;
+      return box;
+    };
+    const boxes = [measure({a: 0, b: n})];
+    while (boxes.length < maxColors) {
+      let best = -1;
+      for (let i = 0; i < boxes.length; i++) if (boxes[i].score > 0 && (best < 0 || boxes[i].score > boxes[best].score)) best = i;
+      if (best < 0) break;
+      const box = boxes[best], axis = box.axis;
+      order.set(Array.from(order.subarray(box.a, box.b)).sort((x, y) => mean[x * 3 + axis] - mean[y * 3 + axis]), box.a);
+      let acc = 0, cut = box.b - 1;                 // never past half before the end: the heavy last bucket stands alone
+      for (let i = box.a; i < box.b - 1; i++) { acc += cnt[order[i]]; if (acc * 2 >= box.total) { cut = i + 1; break; } }
+      boxes.splice(best, 1, measure({a: box.a, b: cut}), measure({a: cut, b: box.b}));
+    }
+    const size = boxes.length, pal = new Float64Array(size * 3), assign = new Uint16Array(n);
+    boxes.forEach((box, p) => {
+      let total = 0; const s = [0, 0, 0];
+      for (let i = box.a; i < box.b; i++) {
+        const j = order[i], w = cnt[j]; assign[j] = p; total += w;
+        for (let ch = 0; ch < 3; ch++) s[ch] += mean[j * 3 + ch] * w;
+      }
+      for (let ch = 0; ch < 3; ch++) pal[p * 3 + ch] = s[ch] / total;
+    });
+    for (let pass = 0, passes = n * size <= 1.5e7 ? 2 : n * size <= 4e7 ? 1 : 0; pass < passes; pass++) {
+      for (let j = 0; j < n; j++) {
+        let best = assign[j], bestD = Infinity;
+        for (let p = 0; p < size; p++) {
+          const dr = mean[j * 3] - pal[p * 3], dg = mean[j * 3 + 1] - pal[p * 3 + 1], db = mean[j * 3 + 2] - pal[p * 3 + 2];
+          const d = WR * dr * dr + WG * dg * dg + WB * db * db;
+          if (d < bestD) { bestD = d; best = p; }
+        }
+        assign[j] = best;
+      }
+      const acc = new Float64Array(size * 4);
+      for (let j = 0; j < n; j++) {
+        const p = assign[j], w = cnt[j]; acc[p * 4] += w;
+        for (let ch = 0; ch < 3; ch++) acc[p * 4 + 1 + ch] += mean[j * 3 + ch] * w;
+      }
+      for (let p = 0; p < size; p++) if (acc[p * 4] > 0) for (let ch = 0; ch < 3; ch++) pal[p * 3 + ch] = acc[p * 4 + 1 + ch] / acc[p * 4];
+    }
+    const colors = new Uint8Array(size * 3);
+    for (let i = 0; i < size * 3; i++) colors[i] = Math.round(pal[i]);
+    for (let j = 0; j < n; j++) lut[ids[j]] = assign[j];
+    return {colors, size, lut};
+  }
+
+  // ---- LZW ------------------------------------------------------------------------------------------------------
+
+  const codeAt = new Uint16Array(1 << 20), stampAt = new Uint32Array(1 << 20);   // key = prefix << 8 | index
+  let generation = 0;
+  const fresh = () => { if (++generation === 0xFFFFFFFF) { stampAt.fill(0); generation = 1; } };
+
+  /** GIF LZW of indices (< 2**minCodeSize) as sub-blocks + terminator: widen when the next code reaches 2**width,
+   *  clear when the table reaches 4096 — the rules every decoder follows. */
+  function lzw(indices, minCodeSize) {
+    const clear = 1 << minCodeSize, eoi = clear + 1, stream = new Bytes(Math.max(64, indices.length >> 1));
+    let width = minCodeSize + 1, next = eoi + 1, acc = 0, bits = 0;
+    const emit = code => { acc |= code << bits; bits += width; while (bits >= 8) { stream.byte(acc & 255); acc >>>= 8; bits -= 8; } };
+    fresh(); emit(clear);
+    let prefix = indices[0] || 0;
+    for (let i = 1; i < indices.length; i++) {
+      const k = indices[i], key = (prefix << 8) | k;
+      if (stampAt[key] === generation) { prefix = codeAt[key]; continue; }
+      emit(prefix);
+      if (next === 4096) { emit(clear); width = minCodeSize + 1; next = eoi + 1; fresh(); }
+      else { if (next >= 1 << width) width++; stampAt[key] = generation; codeAt[key] = next++; }
+      prefix = k;
+    }
+    emit(prefix); emit(eoi);
+    if (bits > 0) stream.byte(acc & 255);
+    const data = stream.done(), out = new Bytes(data.length + (data.length / 255 | 0) + 4);
+    out.byte(minCodeSize);
+    for (let i = 0; i < data.length; i += 255) { const n = Math.min(255, data.length - i); out.byte(n); out.put(data.subarray(i, i + n)); }
+    out.byte(0);
+    return out.done();
+  }
+
+  const bitsFor = entries => { let b = 2; while ((1 << b) < entries) b++; return b; };
+
+  /** GIF89a bytes: global palette (size colours + one transparent slot), loop forever, frames {x,y,w,h,transparent,delayCs,lzw}. */
+  function assemble(width, height, pal, frames, comment) {
+    const tableBits = bitsFor(pal.size + 1), out = new Bytes(1 << 20);
+    out.ascii("GIF89a"); out.u16(width); out.u16(height); out.byte(0x80 | 0x70 | (tableBits - 1)); out.byte(0); out.byte(0);
+    const table = new Uint8Array((1 << tableBits) * 3); table.set(pal.colors.subarray(0, pal.size * 3)); out.put(table);
+    out.put([0x21, 0xFF, 0x0B]); out.ascii("NETSCAPE2.0"); out.put([3, 1, 0, 0, 0]);
+    if (comment) { const text = String(comment).replace(/[^\x20-\x7e]/g, "?").slice(0, 255); out.put([0x21, 0xFE, text.length]); out.ascii(text); out.byte(0); }
+    for (const f of frames) {
+      out.put([0x21, 0xF9, 4, 4 | (f.transparent ? 1 : 0)]); out.u16(Math.max(MIN_DELAY_CS, Math.min(65535, f.delayCs)));
+      out.byte(f.transparent ? pal.size : 0); out.byte(0);
+      out.byte(0x2C); out.u16(f.x); out.u16(f.y); out.u16(f.w); out.u16(f.h); out.byte(0); out.put(f.lzw);
+    }
+    out.byte(0x3B);
+    return out.done();
+  }
+
+  // ---- encoder --------------------------------------------------------------------------------------------------
+
+  /** Frames in, one GIF out. add() takes RGBA (ImageData or {data}) of width x height; consecutive frames that look
+   *  the same merge into one longer frame; only the changed rectangle is kept. group > 0 marks a burst whose inner
+   *  frames may be dropped to meet a byte budget. */
+  class Encoder {
+    constructor(opts) {
+      const o = opts || {};
+      this.width = o.width; this.height = o.height; this.pixels = o.width * o.height;
+      this.count = new Uint32Array(KEYS); this.sum = new Float64Array(KEYS * 3); this.used = 0;
+      this.current = null; this.frames = []; this.merged = 0;
+    }
+
+    add(image, delayMs, opts) {
+      const rgba = image.data || image, W = this.width, H = this.height, keys = new Uint32Array(this.pixels);
+      for (let i = 0, p = 0; i < this.pixels; i++, p += 4) keys[i] = ((rgba[p] >> 2) << 12) | ((rgba[p + 1] >> 2) << 6) | (rgba[p + 2] >> 2);
+      let x0 = 0, y0 = 0, x1 = W - 1, y1 = H - 1;
+      if (this.current) {
+        x0 = W; y0 = H; x1 = -1; y1 = -1;
+        for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) if (keys[i] !== this.current[i]) {
+          if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        }
+        if (x1 < 0) { this.frames[this.frames.length - 1].delay += delayMs || 0; this.merged++; return false; }
+      }
+      const w = x1 - x0 + 1, h = y1 - y0 + 1, part = new Uint32Array(w * h);
+      for (let y = 0; y < h; y++) {
+        const row = (y0 + y) * W + x0;
+        part.set(keys.subarray(row, row + w), y * w);
+        for (let x = 0; x < w; x++) {
+          const k = keys[row + x], p = (row + x) * 4;
+          if (this.count[k]++ === 0) this.used++;
+          this.sum[k * 3] += rgba[p]; this.sum[k * 3 + 1] += rgba[p + 1]; this.sum[k * 3 + 2] += rgba[p + 2];
+        }
+      }
+      this.frames.push({x: x0, y: y0, w, h, keys: part, delay: delayMs || 0, group: (opts && opts.group) || 0});
+      this.current = keys;
+      return true;
+    }
+
+    _once(colors, thin, comment) {
+      const W = this.width, H = this.height, N = this.pixels, pal = palette(this, colors), lut = pal.lut;
+      const minCode = bitsFor(pal.size + 1), T = pal.size, state = new Uint32Array(N), shown = new Uint8Array(N), out = [];
+      let ux0 = W, uy0 = H, ux1 = -1, uy1 = -1, pos = 0, last = 0, t = 0, shownCs = 0;
+      const close = endMs => { if (out.length) { const f = out[out.length - 1]; f.delayCs = Math.max(MIN_DELAY_CS, Math.round(endMs / 10) - shownCs); shownCs += f.delayCs; } };
+      for (let j = 0; j < this.frames.length; j++) {
+        const f = this.frames[j];
+        for (let y = 0; y < f.h; y++) state.set(f.keys.subarray(y * f.w, (y + 1) * f.w), (f.y + y) * W + f.x);
+        ux0 = Math.min(ux0, f.x); uy0 = Math.min(uy0, f.y); ux1 = Math.max(ux1, f.x + f.w - 1); uy1 = Math.max(uy1, f.y + f.h - 1);
+        pos = f.group && f.group === last ? pos + 1 : 0; last = f.group;
+        const end = !f.group || j + 1 === this.frames.length || this.frames[j + 1].group !== f.group;
+        const start = t; t += f.delay;
+        if (out.length && thin > 0 && f.group && !end && pos % (1 << thin) !== 0) continue;
+        if (!out.length) {
+          const idx = new Uint8Array(N);
+          for (let i = 0; i < N; i++) idx[i] = lut[state[i]];
+          shown.set(idx);
+          out.push({x: 0, y: 0, w: W, h: H, transparent: false, lzw: lzw(idx, minCode)});
+        } else {
+          let x0 = W, y0 = H, x1 = -1, y1 = -1;
+          for (let y = uy0; y <= uy1; y++) for (let x = ux0, i = y * W + ux0; x <= ux1; x++, i++) if (lut[state[i]] !== shown[i]) {
+            if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+          }
+          ux0 = W; uy0 = H; ux1 = -1; uy1 = -1;
+          if (x1 < 0) continue;                       // the same picture under this palette: the previous frame lasts longer
+          close(start);
+          const w = x1 - x0 + 1, h = y1 - y0 + 1, solid = new Uint8Array(w * h), holes = new Uint8Array(w * h);
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            const i = (y0 + y) * W + x0 + x, v = lut[state[i]];
+            solid[y * w + x] = v; holes[y * w + x] = v === shown[i] ? T : v; shown[i] = v;
+          }
+          const a = lzw(solid, minCode), b = lzw(holes, minCode);
+          out.push({x: x0, y: y0, w, h, transparent: b.length < a.length, lzw: b.length < a.length ? b : a});
+          continue;
+        }
+        ux0 = W; uy0 = H; ux1 = -1; uy1 = -1;
+      }
+      close(t);
+      return {bytes: assemble(W, H, pal, out, comment), frames: out.length, colors: pal.size, thin};
+    }
+
+    /** {colors ≤ 255, maxBytes, comment} → {bytes, report}. Over maxBytes: colours halve down to 16, then burst frames
+     *  thin (every 2nd, 4th, 8th); the smallest attempt comes back with overBudget when nothing fits. */
+    encode(opts) {
+      const o = opts || {}, t0 = Date.now(), colors = Math.max(2, Math.min(255, o.colors || 255));
+      if (!this.frames.length) throw new Error("no frames");
+      const ladder = [];
+      for (let c = colors; ; c = Math.max(16, c >> 1)) { ladder.push(c); if (c <= 16) break; }
+      const thinMax = this.frames.some(f => f.group) ? 3 : 0;
+      let best = null, attempts = 0;
+      search: for (let thin = 0; thin <= thinMax; thin++) for (const c of ladder) {
+        const r = this._once(c, thin, o.comment); attempts++;
+        if (!best || r.bytes.length < best.bytes.length) best = r;
+        if (!o.maxBytes || r.bytes.length <= o.maxBytes) { best = r; break search; }
+      }
+      return {bytes: best.bytes, report: {
+        bytes: best.bytes.length, frames: best.frames, colors: best.colors, thin: best.thin, attempts, stored: this.frames.length,
+        merged: this.merged, buckets: this.used, overBudget: !!o.maxBytes && best.bytes.length > o.maxBytes, encodeMs: Date.now() - t0,
+      }};
+    }
+  }
+
+  // ---- canvas composition (browser) -------------------------------------------------------------------------------
+
+  function canvas(w, h) {
+    if (typeof OffscreenCanvas === "function") return new OffscreenCanvas(w, h);
+    const c = document.createElement("canvas"); c.width = w; c.height = h; return c;
+  }
+
+  /** Frames of width x (caption + height): an image (or a rectangle of it) fitted under a caption bar. */
+  class Composer {
+    constructor(opts) {
+      const o = opts || {};
+      this.width = o.width || 720; this.height = o.height || 480; this.caption = o.caption === undefined ? 32 : o.caption;
+      this.background = o.background || "#eceff1"; this.font = o.font || `14px ${FONT}`;
+      this.ok = o.okColor || "#1b5e20"; this.fail = o.failColor || "#b71c1c"; this.outline = o.outlineColor || "#ff6f00";
+      this.surface = canvas(this.width, this.height + this.caption);
+      this.ctx = this.surface.getContext("2d", {willReadFrequently: true});
+    }
+
+    /** A decoded image from PNG bytes or base64 — the browser's own decoder. */
+    image(png) { return createImageBitmap(new Blob([typeof png === "string" ? fromBase64(png) : png], {type: "image/png"})); }
+
+    /** base with patch drawn at (x, y) in base pixels — a burst that captured only part of the page. */
+    patched(base, patch, x, y) {
+      const c = canvas(base.width, base.height), g = c.getContext("2d");
+      g.drawImage(base, 0, 0); g.drawImage(patch, x, y);
+      return c;
+    }
+
+    /** Step-halving before the final draw, so a large reduction stays smooth on engines without high-quality scaling. */
+    _source(img, rect, dw, dh) {
+      let src = img, r = rect;
+      while (r.w / dw > 2.5 && r.h / dh > 2.5) {
+        const w = Math.max(1, Math.round(r.w / 2)), h = Math.max(1, Math.round(r.h / 2)), c = canvas(w, h), g = c.getContext("2d");
+        g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+        g.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, w, h);
+        src = c; r = {x: 0, y: 0, w, h};
+      }
+      return {src, r};
+    }
+
+    /** ImageData of one frame: rect of img (default all of it) fitted into the area — enlarged only up to maxScale —
+     *  centred on the background under the caption; outline (image px) drawn as a 2 px frame. */
+    frame(img, opts) {
+      const o = opts || {}, W = this.width, H = this.height, C = this.caption, g = this.ctx;
+      const rect = o.rect || {x: 0, y: 0, w: img.width, h: img.height};
+      const scale = Math.min(W / rect.w, H / rect.h, o.maxScale || 1);
+      const dw = Math.max(1, Math.min(W, Math.round(rect.w * scale))), dh = Math.max(1, Math.min(H, Math.round(rect.h * scale)));
+      const ox = (W - dw) >> 1, oy = C + ((H - dh) >> 1);
+      g.fillStyle = this.background; g.fillRect(0, C, W, H);
+      if (C) {
+        g.fillStyle = o.ok === false ? this.fail : this.ok; g.fillRect(0, 0, W, C);
+        g.font = this.font; g.fillStyle = "#fff"; g.textBaseline = "middle";
+        let chars = Array.from(String(o.caption || ""));
+        if (g.measureText(chars.join("")).width > W - 16) {
+          while (chars.length && g.measureText(chars.join("") + "…").width > W - 16) chars.pop();
+          chars.push("…");
+        }
+        g.fillText(chars.join(""), 8, C / 2 + 1);
+      }
+      const {src, r} = this._source(img, rect, dw, dh);
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+      g.drawImage(src, r.x, r.y, r.w, r.h, ox, oy, dw, dh);
+      if (o.outline) {
+        const k = dw / rect.w, b = o.outline;
+        g.save(); g.beginPath(); g.rect(ox, oy, dw, dh); g.clip();
+        g.strokeStyle = this.outline; g.lineWidth = 2;
+        g.strokeRect(ox + (b.x - rect.x) * k - 1, oy + (b.y - rect.y) * k - 1, b.w * k + 2, b.h * k + 2);
+        g.restore();
+      }
+      return g.getImageData(0, 0, W, H + C);
+    }
+
+    /** Rectangles from the whole image to target (eased), the last one held — a zoom made from one capture. */
+    zoomPath(img, target, steps) {
+      const aspect = this.width / this.height, out = [];
+      let w = target.w, h = target.h;
+      if (w / h < aspect) w = h * aspect; else h = w / aspect;
+      w = Math.min(w, img.width); h = Math.min(h, img.height);
+      const cx = target.x + target.w / 2, cy = target.y + target.h / 2;
+      const end = {x: Math.max(0, Math.min(img.width - w, cx - w / 2)), y: Math.max(0, Math.min(img.height - h, cy - h / 2)), w, h};
+      for (let s = 1; s <= steps; s++) {
+        const t = s / steps, e = t * t * (3 - 2 * t);
+        out.push({x: end.x * e, y: end.y * e, w: img.width + (end.w - img.width) * e, h: img.height + (end.h - img.height) * e});
+      }
+      return out;
+    }
+  }
+
+  /** Composer + Encoder behind one call per batch: items are
+   *   {png?, cssWidth?, patch?: {png, x, y}, caption, ok, delay, group}            a frame (no png: the last image again)
+   *   {zoom: {x, y, w, h} or {x, y, width, height}, png?, cssWidth?, steps, ms, hold, pad, maxScale, caption, ok}   a zoom onto a CSS-px rectangle
+   * so a caller that saw an identical screenshot sends no image at all. */
+  class Recorder {
+    constructor(opts) {
+      const o = opts || {};
+      this.composer = new Composer(o);
+      this.encoder = new Encoder({width: this.composer.width, height: this.composer.height + this.composer.caption});
+      this.base = null; this.css = 0;
+      this.stats = {images: 0, reused: 0, patches: 0, synthesized: 0};
+    }
+
+    async add(items) {
+      for (const it of items) {
+        if (it.png) { this.base = await this.composer.image(it.png); this.css = it.cssWidth || this.base.width; this.stats.images++; }
+        else if (!this.base) throw new Error("the first item needs a png");
+        else if (!it.patch) this.stats.reused++;
+        const dpr = this.base.width / this.css;
+        if (it.zoom) { this._zoom(it, dpr); continue; }
+        let img = this.base;
+        if (it.patch) {
+          img = this.composer.patched(this.base, await this.composer.image(it.patch.png), Math.round(it.patch.x * dpr), Math.round(it.patch.y * dpr));
+          this.stats.patches++;
+        }
+        this.encoder.add(this.composer.frame(img, {caption: it.caption, ok: it.ok}), it.delay || 0, {group: it.group || 0});
+      }
+      return {stored: this.encoder.frames.length, merged: this.encoder.merged, ...this.stats};
+    }
+
+    _zoom(it, dpr) {
+      const pad = (it.pad === undefined ? 16 : it.pad) * dpr, z = it.zoom, maxScale = it.maxScale || 3;
+      const zw = z.w === undefined ? z.width : z.w, zh = z.h === undefined ? z.height : z.h;   // {w, h} or a bounding box {width, height}
+      if (![z.x, z.y, zw, zh].every(Number.isFinite)) throw new Error("zoom needs a finite {x, y, w, h}");
+      const el = {x: z.x * dpr, y: z.y * dpr, w: Math.max(1, zw * dpr), h: Math.max(1, zh * dpr)};
+      const minW = this.composer.width / maxScale, grow = Math.max(0, minW - (el.w + 2 * pad)) / 2;
+      const target = {x: el.x - pad - grow, y: el.y - pad, w: el.w + 2 * pad + 2 * grow, h: el.h + 2 * pad};
+      const steps = Math.max(1, it.steps || 6), ms = it.ms === undefined ? 900 : it.ms, path = this.composer.zoomPath(this.base, target, steps);
+      path.forEach((rect, s) => {
+        const delay = s + 1 === steps ? (it.hold === undefined ? 1200 : it.hold) : ms / steps;
+        this.encoder.add(this.composer.frame(this.base, {rect, caption: it.caption, ok: it.ok, maxScale, outline: el}), delay, {group: 0});
+      });
+      this.stats.synthesized += steps - 1;
+    }
+
+    encode(opts) { return this.encoder.encode(opts); }
+    encodeBase64(opts) { const r = this.encode(opts); return {gif: toBase64(r.bytes), report: {...r.report, ...this.stats}}; }
+  }
+
+  const api = {MIN_DELAY_CS, FONT, Encoder, Composer, Recorder, palette, lzw, assemble, bitsFor, fromBase64, toBase64};
+  if (typeof module === "object" && module.exports) module.exports = api;
+  root.UiGif = api;
+})(typeof globalThis === "object" ? globalThis : this);
+""",
 }
 EMBEDDED_UI_JS = _JS["ui.js"]
 
@@ -862,6 +1280,16 @@ def module_asset(name: str = "ui.js") -> tuple[bytes, str]:
     if name not in ("ui.js", "world.js"):
         raise ValueError("unknown embedded module")
     return (EMBEDDED_UI_JS if name == "ui.js" else WORLD_JS).encode("utf-8"), "text/javascript; charset=utf-8"
+
+
+def gif_recorder_document(*, title: str = "web_ui GIF recorder") -> str:
+    """A blank page carrying ``gif.js`` (``window.UiGif``) for a browser driver to build animated GIFs in.
+
+    The driver opens it in a context of its own (no routes, no network), creates ``new UiGif.Recorder({width, height,
+    caption})``, sends screenshots as base64 PNG with ``add([...])`` — the browser decodes, fits, zooms and captions
+    them on a canvas — and reads the GIF back once with ``encodeBase64({colors, maxBytes, comment})``. Screenshots go
+    in once each; pixels never come back. BrowserTestKit's ``evidence_gif.py`` is the reference driver."""
+    return render_document(trusted_html="<main></main>" + classic_script(js_source("gif.js")), title=title, css="")
 
 
 def classic_script(source: str, *, nonce: str | None = None) -> str:
@@ -18085,7 +18513,7 @@ def _index_page() -> str:
 
 
 def js_modules() -> dict[str, str]:
-    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, world.js)."""
+    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, world.js)."""
     return {**_JS, "world.js": WORLD_JS}
 
 

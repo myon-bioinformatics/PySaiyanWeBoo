@@ -609,6 +609,14 @@ every string escaped and every link relative or HTTPS, with a brand theme (`them
 (`layouts=`). `python -S web_ui.py --example page` prints a spec; `--page spec.json [--brand brand.json --layouts
 page-layouts.json]` renders it from the shell or Node, so a report script owns only its data.
 
+🎞️ `gif.js` (`UiGif`) turns canvas frames into one animated GIF89a with no dependency: the browser decodes, resizes, zooms and
+captions the images it is given (`Composer`), and the module adds only what browsers lack — a bucket histogram while frames arrive,
+one global palette (exact when it fits, else median cut + refinement), each frame as its tight changed rectangle (transparent where
+unchanged when that is smaller), 12-bit LZW, delays ≥ 2 cs on the real timeline, and a byte budget (`maxBytes`: fewer colours, then
+fewer burst frames). `gif_recorder_document()` is the blank page a browser driver opens to use it — screenshots go in once, the GIF
+comes out once; BrowserTestKit's `evidence_gif.py` is that driver. The encoder (`UiGif.Encoder`) also runs in Node from the file
+`--site` writes; `tests/gif.node.js` checks it against an independent decoder, `GifBrowserTests` in each engine with Pillow.
+
 🧩 `parts_document()` (`examples/parts.html`, `--parts`) is the regression baseline: every block of the `page` example under every
 theme (`PARTS_THEMES`, plus a `--brand`), each in its own sandboxed frame with the layout radios inside. BrowserTestKit
 records it in this repository's GIF evidence; a consumer compares its own page against the frame that uses its theme.
