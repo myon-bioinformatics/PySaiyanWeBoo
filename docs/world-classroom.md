@@ -266,7 +266,7 @@ python tool/record_demo.py docs/demo --only keys tap --force --width 400        
 | `overworld-real.gif` | the real floor: ⋯ → 🖼️📷 → 🖼️ choose a photo, walk over it, then 🧹 (the photo is drawn by the recorder) |
 | `cities-tokyo.gif` | Parallel Tokyo: the 🚉 tool (the six exits of Tokyo Station), Marunouchi to Yaesu through the concourse, the electronic board's dot and text, on to Kanda by ☰ |
 | `cities-london.gif` | Reverse London: 🎡 in the header, King's Cross to Waterloo over the Thames bridge, the wooden **nogard** board: dot, text, 🐉, dot |
-| `cities-paris.gif` | Fake Paris: 🥖 in the header, a 🔥 in each block, Gare du Nord to the **rive gauche** board by the Seine, then the Eiffel Tower |
+| `cities-paris.gif` | Fake Paris: 🥖 in the header, a 🔥 in each block, Gare du Nord down to the Louvre |
 | `school-oneliner.gif` | the one command from another repository; the byte count and time shown are that run's real output |
 
 A scene may end with `cam.zoom((x, y))` (or an anchor name or arrow emoji such as `cam.zoom("↘️")`): a smooth zoom toward that point that stays (the easing of Ironmate's `png_zoom_gif.py`, taken into this
