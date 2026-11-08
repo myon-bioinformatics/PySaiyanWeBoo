@@ -3954,6 +3954,20 @@ def theme_palettes() -> dict[str, dict[str, str]]:
     }
 
 
+def theme_css(name: str, tokens: dict[str, str]) -> str:
+    """A consumer's own palette as one ``@layer theme`` block for ``body[data-ui-theme=NAME]`` — the same shape
+    as the candidate themes in tokens.css, so ``render_document(theme=name, css=core_css() + theme_css(name, …))``
+    gives a brand its colours without a stylesheet of its own. ``tokens`` are ``--ui-*`` custom properties
+    (``--ui-bg`` is required: it decides ``color-scheme``)."""
+    if not re.fullmatch(r"[a-z][a-z0-9-]*", name):
+        raise ValueError("theme name must be lowercase letters, digits and hyphens")
+    if "--ui-bg" not in tokens or any(not key.startswith("--ui-") for key in tokens):
+        raise ValueError("tokens are --ui-* custom properties and include --ui-bg")
+    scheme = "dark" if _luminance(tokens["--ui-bg"]) < 0.18 else "light"
+    declarations = ";".join(f"{k}:{v}" for k, v in tokens.items())
+    return f'@layer theme{{body[data-ui-theme="{name}"]{{{declarations};color-scheme:{scheme}}}}}\n'
+
+
 def _token_theme_css() -> str:
     blocks = ["/* Candidate themes, token-only: palettes, no theme files (see theme_palettes()). */"]
     for name in CANDIDATE_THEMES:

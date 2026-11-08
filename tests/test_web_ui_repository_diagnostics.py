@@ -100,3 +100,13 @@ def test_core_css_is_the_small_bundle():
     with pytest.raises(ValueError):
         web_ui.core_css("nope")
     assert ".ui-tag.ui-pass{" in web_ui.css_source("components.css")
+
+
+def test_theme_css_registers_a_consumer_palette():
+    import pytest
+    css = web_ui.theme_css("ironmate", {"--ui-bg": "#edf0ec", "--ui-fg": "#213a3c", "--ui-accent": "#087d79"})
+    assert css == '@layer theme{body[data-ui-theme="ironmate"]{--ui-bg:#edf0ec;--ui-fg:#213a3c;--ui-accent:#087d79;color-scheme:light}}\n'
+    assert "color-scheme:dark" in web_ui.theme_css("night", {"--ui-bg": "#000000"})
+    for name, tokens in (("Bad", {"--ui-bg": "#fff"}), ("x", {"--ui-fg": "#fff"}), ("x", {"--ui-bg": "#fff", "color": "red"})):
+        with pytest.raises(ValueError):
+            web_ui.theme_css(name, tokens)

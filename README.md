@@ -583,7 +583,8 @@ real-world report, ascii_artist's captures) build on `render_document` + `core_c
 `core_css(theme="modern")` is the ~4 KB bundle (tokens, base, components, one theme) for such pages; `bundled_css()` is every
 stylesheet. The status classes `ui-pass` / `ui-fail` / `ui-changed` style any element, including a `.ui-tag` badge.
 `core_css("terminal")` is the dark monospace terminal look (palette in tokens.css, `# ` titles / `[tags]` / `> ` buttons in
-`themes/terminal.css`) that mcp-toolcall-lab's stub pages use instead of a stylesheet of their own.
+`themes/terminal.css`) that mcp-toolcall-lab's stub pages use instead of a stylesheet of their own. A consumer with a brand
+palette registers it as `theme_css("ironmate", {"--ui-bg": …})` next to `core_css()` and renders with `theme="ironmate"`.
 
 🩺 The repository-diagnostics page itself is one function: `web_ui.repository_diagnostics_page("owner/repo")`
 returns the self-contained HTML (bundled CSS and `repository-diagnostics.js` embedded, nothing from a CDN) that
