@@ -96,6 +96,7 @@ class PythonWrapperTests(unittest.TestCase):
                             stylesheets=('https://example.test/main.css?v=1',)),
             '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'{web_ui.generator_meta()}'
             '<title>Title</title><link rel="stylesheet" href="https://example.test/main.css?v=1">'
             '<style>body{color:red}</style></head><body data-ui-theme="modern">'
             '<main class="ui-page"><section class="ui-panel"><h1 class="ui-title">Title</h1>'

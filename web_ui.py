@@ -954,9 +954,19 @@ def render_document(
     return (
         '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f'{generator_meta()}'
         f'<title>{escape(title)}</title>{"".join(links)}{style}{"".join(head_remote_scripts)}</head>'
         f'<body data-ui-theme="{theme}">{body}{"".join(script_tags)}</body></html>\n'
     )
+
+
+GENERATOR_META = re.compile(r'<meta name="generator" content="web_ui ([0-9a-f]{40}|unknown)">')
+
+
+def generator_meta() -> str:
+    """The ``<meta name="generator">`` every rendered page carries: which web_ui commit drew it, so a screenshot or
+    a GIF receipt (BrowserTestKit's evidence_gif reads it as ``generator``) says what it is evidence of."""
+    return f'<meta name="generator" content="web_ui {source_commit() or "unknown"}">'
 
 
 def repository_diagnostics_page(

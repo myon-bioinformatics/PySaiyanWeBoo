@@ -172,3 +172,11 @@ def test_check_theme_reads_every_palette_we_ship_and_names_what_fails():
     assert any(p.startswith("--ui-border") for p in problems) and not any("--ui-fg" in p for p in problems)
     assert web_ui.check_theme(pale, minimum=4.0, border_minimum=1.1) == []
     assert web_ui.check_theme({"--ui-bg": "#fff"})[0] == "--ui-bg: '#fff' is not #rrggbb"
+
+
+def test_every_page_says_which_web_ui_drew_it():
+    page = web_ui.render_document("x")
+    match = web_ui.GENERATOR_META.search(page)
+    assert match and match.group(1) == (web_ui.source_commit() or "unknown")
+    assert page.index('name="generator"') < page.index("<title>")
+    assert web_ui.GENERATOR_META.search(web_ui.repository_diagnostics_page("o/r"))

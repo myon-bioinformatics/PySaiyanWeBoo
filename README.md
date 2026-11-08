@@ -597,6 +597,8 @@ installed module came from (pip's install record, or the checkout's HEAD).
 Before a brand palette ships, `check_theme(tokens)` lists every text token that misses WCAG AA (4.5) on `--ui-bg` or
 `--ui-panel` and a border that would vanish; `theme_palette(hue, dark=…)` builds a palette from one hue that passes by
 construction. CLI: `python -S web_ui.py --check-theme brand.json`.
+Every rendered page carries `<meta name="generator" content="web_ui <commit>">` (`generator_meta()`), so a screenshot or a
+GIF receipt says which web_ui drew it; BrowserTestKit's `evidence_gif.py` records it as `generator`.
 
 🩺 The repository-diagnostics page itself is one function: `web_ui.repository_diagnostics_page("owner/repo")`
 returns the self-contained HTML (bundled CSS and `repository-diagnostics.js` embedded, nothing from a CDN) that
