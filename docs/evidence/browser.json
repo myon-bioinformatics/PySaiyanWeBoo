@@ -1,0 +1,477 @@
+{
+  "schema": "btk-evidence-gif/2",
+  "gif": "browser.gif",
+  "bytes": 552533,
+  "sha256": "0f8b03740e0cbff6f4b6f81548eb25bdb976bd90d81de8a7f110a74c9400dae6",
+  "frames": 27,
+  "canvas": "720x512",
+  "browser": "chromium 153.0.8010.12",
+  "recorded": "2026-11-08",
+  "commit": "d55e14fcf3f088522259295e4a8cf9564beb5721",
+  "encoder": {
+    "module": "PySaiyanWeBoo web_ui gif.js",
+    "web_ui": "d55e14fcf3f088522259295e4a8cf9564beb5721",
+    "bytes": 552533,
+    "frames": 27,
+    "colors": 255,
+    "thin": 0,
+    "attempts": 1,
+    "stored": 27,
+    "merged": 0,
+    "buckets": 8551,
+    "overBudget": false,
+    "encodeMs": 268,
+    "images": 27,
+    "reused": 0,
+    "patches": 0,
+    "synthesized": 0,
+    "capture_s": 21.3
+  },
+  "limits": {
+    "colors": 255,
+    "max_bytes": null,
+    "max_frames": 300,
+    "last_hold_ms": 2000
+  },
+  "transfer": {
+    "screenshots": 27,
+    "png_bytes": 1675888,
+    "identical": 0,
+    "patches": 0,
+    "calls": 26,
+    "sent_bytes": 2234560,
+    "gif_bytes": 552533
+  },
+  "mapped": [],
+  "summary": {
+    "pass": 26,
+    "fail": 0
+  },
+  "shots": [
+    {
+      "label": "🏠 top",
+      "url": "/index.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🏠 examples",
+      "url": "/examples/index.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "📜 example",
+      "url": "/contract/v1/example.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🐙 github-like",
+      "url": "/examples/github-like.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🧩 parts × themes",
+      "url": "/examples/parts.html",
+      "viewport": "1280x800",
+      "steps": [
+        "click text=terminal"
+      ],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "📱 parts × themes",
+      "url": "/examples/parts.html",
+      "viewport": "392x848",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🧩 showcase",
+      "url": "/examples/showcase.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🧱 patterns",
+      "url": "/examples/patterns.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🛝 playground",
+      "url": "/examples/playground.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🖥️ screens",
+      "url": "/examples/screens.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🚪 door",
+      "url": "/examples/door.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "📐 coordinates",
+      "url": "/examples/coordinates.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🕒 timeline",
+      "url": "/examples/timeline.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🖼️ image-studio",
+      "url": "/examples/image-studio.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "📷 photo-studio",
+      "url": "/examples/photo-studio.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🎛️ composition-studio",
+      "url": "/examples/composition-studio.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🎵 play-studio",
+      "url": "/examples/play-studio.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "📋 clipboard-shelf",
+      "url": "/examples/clipboard-shelf.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🧪 mcp-lab",
+      "url": "/examples/mcp-lab.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🔌 mcp-stub",
+      "url": "/examples/mcp-stub.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🔗 api-stub",
+      "url": "/examples/api-stub.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "🧾 test-report",
+      "url": "/examples/test-report.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "📱 top",
+      "url": "/index.html",
+      "viewport": "392x848",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "📱 examples",
+      "url": "/examples/index.html",
+      "viewport": "392x848",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "📱 door",
+      "url": "/examples/door.html",
+      "viewport": "392x848",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    },
+    {
+      "label": "📱 screens",
+      "url": "/examples/screens.html",
+      "viewport": "392x848",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui checkout"
+    }
+  ],
+  "plan": [
+    {
+      "label": "🏠 top",
+      "url": "/index.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🏠 examples",
+      "url": "/examples/index.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "📜 example",
+      "url": "/contract/v1/example.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🐙 github-like",
+      "url": "/examples/github-like.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🧩 parts × themes",
+      "url": "/examples/parts.html",
+      "viewport": "1280x800",
+      "steps": [
+        {
+          "click": "text=terminal"
+        }
+      ]
+    },
+    {
+      "label": "📱 parts × themes",
+      "url": "/examples/parts.html",
+      "viewport": "392x848"
+    },
+    {
+      "label": "🧩 showcase",
+      "url": "/examples/showcase.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🧱 patterns",
+      "url": "/examples/patterns.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🛝 playground",
+      "url": "/examples/playground.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🖥️ screens",
+      "url": "/examples/screens.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🚪 door",
+      "url": "/examples/door.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "📐 coordinates",
+      "url": "/examples/coordinates.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🕒 timeline",
+      "url": "/examples/timeline.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🖼️ image-studio",
+      "url": "/examples/image-studio.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "📷 photo-studio",
+      "url": "/examples/photo-studio.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🎛️ composition-studio",
+      "url": "/examples/composition-studio.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🎵 play-studio",
+      "url": "/examples/play-studio.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "📋 clipboard-shelf",
+      "url": "/examples/clipboard-shelf.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🧪 mcp-lab",
+      "url": "/examples/mcp-lab.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🔌 mcp-stub",
+      "url": "/examples/mcp-stub.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🔗 api-stub",
+      "url": "/examples/api-stub.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "🧾 test-report",
+      "url": "/examples/test-report.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "📱 top",
+      "url": "/index.html",
+      "viewport": "392x848"
+    },
+    {
+      "label": "📱 examples",
+      "url": "/examples/index.html",
+      "viewport": "392x848"
+    },
+    {
+      "label": "📱 door",
+      "url": "/examples/door.html",
+      "viewport": "392x848"
+    },
+    {
+      "label": "📱 screens",
+      "url": "/examples/screens.html",
+      "viewport": "392x848"
+    }
+  ]
+}

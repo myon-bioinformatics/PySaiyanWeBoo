@@ -25,7 +25,7 @@ class FontTests(unittest.TestCase):
 
     def test_base_follows_the_tokens_and_no_stylesheet_hardcodes_a_face(self):
         base = read("base.css")
-        self.assertIn("font:16px/1.6 var(--ui-font)", base)
+        self.assertIn("font:var(--ui-text)/1.6 var(--ui-font)", base)  # size is a layout token too
         # !important: it must also win over an adapted page's own `pre, code { font-family: inherit }`
         self.assertIn("pre,code,kbd,samp{font-family:var(--ui-font-mono)!important}", base)
         for name, text in web_ui._CSS.items():

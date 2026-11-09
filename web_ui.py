@@ -9,11 +9,11 @@ only as an explicit subprocess helper for pytest/CI one-liners.
 from __future__ import annotations
 
 import argparse, base64, bisect, colorsys, errno, functools, hashlib, heapq, hmac, http.client, http.server, importlib.util, json, math, os, random, re, shutil, struct, subprocess, sys, time, unicodedata, urllib.error, urllib.request, xml.etree.ElementTree as ET, zlib
-from collections import Counter, defaultdict; from datetime import date; from decimal import Decimal; from html import escape; from pathlib import Path; from typing import Any; from urllib.parse import parse_qsl, quote, urlsplit
+from collections import Counter, defaultdict; from datetime import date; from decimal import Decimal; from html import escape; from pathlib import Path; from typing import Any, Sequence; from urllib.parse import parse_qsl, quote, urlsplit
 
 THEMES = ("modern", "github-like")
 # Token-only candidates: their values live in the Python tokens.css source; not in contract v1 yet.
-CANDIDATE_THEMES = ("green", "red", "blue")
+CANDIDATE_THEMES = ("green", "red", "blue", "terminal")
 # The browser modules, as data: Python is the only source (there are no js/ files). write_js()/--site writes them under DIR/js/.
 _JS = {
     "ui.js": r"""/** Set text-only content. User-controlled values are never interpreted as HTML. */
@@ -30,6 +30,27 @@ export function bindTheme(root=document,{key="web-ui-theme"}={}){const body=docu
 export function observeLit(targets,{threshold=0.4,root=null}={}){const nodes=typeof targets==="string"?[...document.querySelectorAll(targets)]:[...targets];if(typeof IntersectionObserver==="undefined"){for(const n of nodes)n.dataset.lit="";return()=>{}}const io=new IntersectionObserver(entries=>{for(const e of entries){if(e.isIntersecting)e.target.dataset.lit="";else delete e.target.dataset.lit}},{threshold,root});for(const n of nodes)io.observe(n);return()=>io.disconnect()}
 /** Click-to-enlarge for <a href="full.png"><img alt="..."></a> items inside [data-ui-lightbox]: one <dialog>; Esc, the backdrop and the close button shut it, arrows, buttons and a 48px swipe step through. Returns {open, close, dialog}, or null without items or <dialog>. */
 export function bindLightbox(root=document){const items=[...root.querySelectorAll("[data-ui-lightbox] a[href]")];if(!items.length||typeof HTMLDialogElement==="undefined")return null;const dialog=document.createElement("dialog");dialog.className="ui-lightbox";dialog.setAttribute("aria-label","Image viewer");dialog.innerHTML='<img alt=""><p class="ui-muted"></p><div class="ui-lightbox-bar"><button class="ui-button" type="button" data-step="-1" aria-label="Previous">\u2190</button><button class="ui-button" type="button" data-step="1" aria-label="Next">\u2192</button><button class="ui-button" type="button" data-step="0" aria-label="Close">\u00d7</button></div>';const img=dialog.querySelector("img"),note=dialog.querySelector("p");let at=0,x=null;const show=i=>{at=(i+items.length)%items.length;const a=items[at],t=a.querySelector("img");img.src=a.href;img.alt=note.textContent=t?t.alt:""};const open=i=>{show(i);if(!dialog.open)dialog.showModal()};items.forEach((a,i)=>a.addEventListener("click",e=>{e.preventDefault();open(i)}));dialog.addEventListener("click",e=>{const b=e.target.closest("[data-step]");if(b){const s=Number(b.dataset.step);if(s)show(at+s);else dialog.close()}else if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close()}});dialog.addEventListener("keydown",e=>{if(e.key==="ArrowLeft")show(at-1);if(e.key==="ArrowRight")show(at+1)});dialog.addEventListener("pointerdown",e=>{x=e.clientX});dialog.addEventListener("pointerup",e=>{if(x!==null&&Math.abs(e.clientX-x)>=48)show(at+(e.clientX<x?1:-1));x=null});document.body.append(dialog);return{open,close:()=>dialog.close(),dialog}}
+""",
+    "records.js": r"""/** Record boards: a text filter over table rows, per-field drafts kept in localStorage (best effort), and JSON export/import of those drafts. No fetch; values are text, never HTML. */
+const KEY=/^[A-Za-z0-9_.:/#@-]{1,200}$/;
+function storage(){try{const s=globalThis.localStorage;s.getItem("");return s}catch{return null}}
+function value(field){return field.type==="checkbox"?(field.checked?"1":""):field.value}
+function assign(field,text){if(field.type==="checkbox")field.checked=text==="1";else field.value=text;field.dispatchEvent(new Event("input",{bubbles:true}))}
+/** Hide rows whose text does not contain the query (case-insensitive); returns the number still shown. */
+export function filterRows(table,query){const q=String(query||"").trim().toLowerCase();let shown=0;for(const body of table.tBodies)for(const row of body.rows){const hit=!q||row.textContent.toLowerCase().includes(q);row.hidden=!hit;if(hit)shown++}return shown}
+/** input[data-ui-filter="#table"] filters that table as you type; data-ui-filter-count="#out" receives the shown count. */
+export function bindFilter(root=document){return[...root.querySelectorAll("input[data-ui-filter]")].map(input=>{const table=root.querySelector(input.dataset.uiFilter);if(!table)return null;const out=input.dataset.uiFilterCount?root.querySelector(input.dataset.uiFilterCount):null;const run=()=>{const n=filterRows(table,input.value);if(out)out.textContent=String(n)};input.addEventListener("input",run);run();return run}).filter(Boolean)}
+/** Fields with data-ui-draft="key" restore from and save to localStorage under scope:key. Returns the bound fields. */
+export function bindDrafts(root=document,{scope="web-ui-drafts"}={}){const store=storage();const fields=[...root.querySelectorAll("[data-ui-draft]")].filter(f=>KEY.test(f.dataset.uiDraft));for(const field of fields){const key=scope+":"+field.dataset.uiDraft;const saved=store?store.getItem(key):null;if(saved!==null)assign(field,saved);field.addEventListener("input",()=>{try{if(store)store.setItem(key,value(field))}catch{}})}return fields}
+/** Non-empty draft values keyed by their data-ui-draft name. */
+export function collectDrafts(root=document){const out={};for(const field of root.querySelectorAll("[data-ui-draft]")){const text=value(field);if(text!=="")out[field.dataset.uiDraft]=text}return out}
+/** Apply {key: text} to the matching draft fields; unknown keys are ignored. Returns the number applied. */
+export function applyDrafts(root,drafts){let n=0;if(!drafts||typeof drafts!=="object")return 0;for(const field of root.querySelectorAll("[data-ui-draft]")){const text=drafts[field.dataset.uiDraft];if(typeof text==="string"){assign(field,text);n++}}return n}
+/** [data-ui-export] downloads the drafts as JSON; input[type=file][data-ui-import] reads such a file back. */
+export function bindRecordsIO(root=document,{filename="records.json"}={}){for(const button of root.querySelectorAll("[data-ui-export]"))button.addEventListener("click",()=>{const blob=new Blob([JSON.stringify({schema:"web-ui-drafts/1",exported:new Date().toISOString(),drafts:collectDrafts(root)},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=button.dataset.uiExport||filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)});for(const input of root.querySelectorAll("input[type=file][data-ui-import]"))input.addEventListener("change",async()=>{const file=input.files&&input.files[0];if(!file)return;try{const data=JSON.parse(await file.text());applyDrafts(root,data&&data.drafts?data.drafts:data)}catch{}input.value=""})}
+/** Bind everything inside root; pages mark the board with data-ui-records so loading the module is enough. */
+export function mount(root=document,options={}){bindFilter(root);bindDrafts(root,options);bindRecordsIO(root,options);return root}
+if(typeof document!=="undefined"&&document.querySelector("[data-ui-records]")){const start=()=>mount(document);if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start,{once:true});else start()}
 """,
     "stub.js": r"""import{setText,prettyJson}from"./ui.js";
 /**
@@ -318,15 +339,490 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
       '</dl></section>';
   }
 
-  var api = {validate: validate, formatBytes: bytes, commitLine: commitLine, render: render};
+  function observationCard(item) {
+    var status = item && item.http_status != null ? "HTTP: " + esc(item.http_status) : "HTTP: not observed";
+    var url = item && typeof item.url === "string" ? item.url : "";
+    return '<article class="ui-card"><h3>' + esc(item && item.kind || "resource") + '</h3>' +
+      '<p class="ui-tag">' + esc(item && item.status || "unknown") + '</p>' +
+      '<p class="ui-muted">' + status + '</p>' +
+      (url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + '</a>' : '') + '</article>';
+  }
+  function summaryLine(resolver) {
+    return "Auth: " + (resolver && resolver.auth || "unknown") + " \u00b7 Status: " + (resolver && resolver.status || "unknown");
+  }
+  function renderObservations(resolver) {
+    var items = resolver && Array.isArray(resolver.observations) ? resolver.observations : [];
+    return items.map(observationCard).join("");
+  }
+  function mount(doc, url) {
+    // The diagnostics page: metadata, summary line and observation cards from one JSON next to the page.
+    var root = doc.getElementById("metadata"), summary = doc.getElementById("summary"), list = doc.getElementById("observations");
+    return fetch(url, {cache: "no-store"}).then(function (response) {
+      if (!response.ok) throw new Error("fetch failed");
+      return response.json();
+    }).then(function (payload) {
+      root.innerHTML = render(payload.metadata);
+      summary.textContent = summaryLine(payload.resolver);
+      list.innerHTML = renderObservations(payload.resolver);
+    }).catch(function () {
+      summary.textContent = "Diagnostics could not be loaded.";
+      list.innerHTML = "";
+    });
+  }
+
+  var api = {validate: validate, formatBytes: bytes, commitLine: commitLine, render: render,
+             observationCard: observationCard, summaryLine: summaryLine, renderObservations: renderObservations, mount: mount};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   global.RepositoryDiagnostics = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
 """,
+    "gif.js": r"""/* gif.js — animated GIF from canvas frames, for pages and tools built with web_ui. No dependencies.
+ * Browser: classic script, sets window.UiGif. Node: require() the file `web_ui.py --site DIR` writes (the encoder needs
+ * no DOM; Composer and Recorder need a canvas).
+ *
+ * The browser does what it already does well: decode the PNG (createImageBitmap), resize and crop it (drawImage) and
+ * draw caption text (fillText). This module adds only what no browser offers:
+ *   bucket keys (6 bits per channel) and a histogram while frames arrive, keeping only the rectangle that changed;
+ *   one global palette (exact when distinct RGB colours fit in it, else bucket median cut + refinement), one lookup per pixel;
+ *   each frame as its tight changed rectangle, unchanged pixels transparent when that encodes smaller;
+ *   GIF LZW (12-bit, clear on full table) into GIF89a: loop forever, delays in centiseconds and at least 2, so no
+ *   browser rewrites them; over a byte budget, fewer colours, then fewer frames of a burst.
+ */
+(function (root) {
+  "use strict";
+
+  const MIN_DELAY_CS = 2;                          // browsers raise 0–1 cs to 10 cs
+  const KEYS = 1 << 18;                            // 6 bits per channel
+  const FONT = "Meiryo, 'メイリオ', 'Hiragino Sans', 'Noto Sans CJK JP', 'Yu Gothic', sans-serif";
+
+  function fromBase64(text) {
+    if (typeof Uint8Array.fromBase64 === "function") return Uint8Array.fromBase64(text);
+    if (typeof Buffer === "function") return new Uint8Array(Buffer.from(text, "base64"));
+    const bin = atob(text), out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  function toBase64(bytes) {
+    if (typeof bytes.toBase64 === "function") return bytes.toBase64();
+    if (typeof Buffer === "function") return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64");
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+
+  class Bytes {
+    constructor(size) { this.buf = new Uint8Array(size || 65536); this.length = 0; }
+    room(n) {
+      if (this.length + n <= this.buf.length) return;
+      let size = this.buf.length * 2;
+      while (size < this.length + n) size *= 2;
+      const next = new Uint8Array(size); next.set(this.buf.subarray(0, this.length)); this.buf = next;
+    }
+    byte(b) { this.room(1); this.buf[this.length++] = b; }
+    u16(v) { this.room(2); this.buf[this.length++] = v & 255; this.buf[this.length++] = (v >> 8) & 255; }
+    put(a) { this.room(a.length); this.buf.set(a, this.length); this.length += a.length; }
+    ascii(s) { for (let i = 0; i < s.length; i++) this.byte(s.charCodeAt(i) & 127); }
+    done() { return this.buf.slice(0, this.length); }
+  }
+
+  // ---- palette --------------------------------------------------------------------------------------------------
+
+  const bucketKey = rgb => ((rgb >> 18) << 12) | (((rgb >> 10) & 63) << 6) | ((rgb >> 2) & 63);
+  const WR = 3, WG = 4, WB = 2;                    // "nearest colour" weights: green most, blue least
+
+  /** ≤ maxColors colours for a bucket histogram {count, sum, used} and a lookup table key → index. */
+  function palette(hist, maxColors) {
+    if (hist.exact && hist.exact.size <= maxColors) {
+      const colors = new Uint8Array(hist.exact.size * 3), exact = new Map();
+      for (const rgb of hist.exact.keys()) {
+        const i = exact.size; exact.set(rgb, i);
+        colors.set([rgb >> 16, (rgb >> 8) & 255, rgb & 255], i * 3);
+      }
+      return {colors, size: exact.size, index: rgb => exact.get(rgb)};
+    }
+    const n = hist.used, ids = new Uint32Array(n), mean = new Float64Array(n * 3), cnt = new Float64Array(n);
+    for (let k = 0, j = 0; k < KEYS; k++) {
+      const c = hist.count[k];
+      if (!c) continue;
+      ids[j] = k; cnt[j] = c;
+      for (let ch = 0; ch < 3; ch++) mean[j * 3 + ch] = hist.sum[k * 3 + ch] / c;
+      j++;
+    }
+    const lut = new Uint8Array(KEYS);
+    if (n <= maxColors) {
+      const colors = new Uint8Array(Math.max(1, n) * 3);
+      for (let j = 0; j < n; j++) { lut[ids[j]] = j; for (let ch = 0; ch < 3; ch++) colors[j * 3 + ch] = Math.round(mean[j * 3 + ch]); }
+      return {colors, size: Math.max(1, n), index: rgb => lut[bucketKey(rgb)]};
+    }
+    const order = new Uint32Array(n);
+    for (let j = 0; j < n; j++) order[j] = j;
+    const measure = box => {
+      let total = 0; const lo = [255, 255, 255], hi = [0, 0, 0];
+      for (let i = box.a; i < box.b; i++) {
+        const j = order[i]; total += cnt[j];
+        for (let ch = 0; ch < 3; ch++) { const v = mean[j * 3 + ch]; if (v < lo[ch]) lo[ch] = v; if (v > hi[ch]) hi[ch] = v; }
+      }
+      const spread = [(hi[0] - lo[0]) * WR, (hi[1] - lo[1]) * WG, (hi[2] - lo[2]) * WB];
+      box.axis = spread[0] >= spread[1] && spread[0] >= spread[2] ? 0 : spread[1] >= spread[2] ? 1 : 2;
+      box.total = total; box.score = box.b - box.a > 1 ? total * spread[box.axis] : -1;
+      return box;
+    };
+    const boxes = [measure({a: 0, b: n})];
+    while (boxes.length < maxColors) {
+      let best = -1;
+      for (let i = 0; i < boxes.length; i++) if (boxes[i].score > 0 && (best < 0 || boxes[i].score > boxes[best].score)) best = i;
+      if (best < 0) break;
+      const box = boxes[best], axis = box.axis;
+      order.set(Array.from(order.subarray(box.a, box.b)).sort((x, y) => mean[x * 3 + axis] - mean[y * 3 + axis]), box.a);
+      let acc = 0, cut = box.b - 1;                 // never past half before the end: the heavy last bucket stands alone
+      for (let i = box.a; i < box.b - 1; i++) { acc += cnt[order[i]]; if (acc * 2 >= box.total) { cut = i + 1; break; } }
+      boxes.splice(best, 1, measure({a: box.a, b: cut}), measure({a: cut, b: box.b}));
+    }
+    const size = boxes.length, pal = new Float64Array(size * 3), assign = new Uint16Array(n);
+    boxes.forEach((box, p) => {
+      let total = 0; const s = [0, 0, 0];
+      for (let i = box.a; i < box.b; i++) {
+        const j = order[i], w = cnt[j]; assign[j] = p; total += w;
+        for (let ch = 0; ch < 3; ch++) s[ch] += mean[j * 3 + ch] * w;
+      }
+      for (let ch = 0; ch < 3; ch++) pal[p * 3 + ch] = s[ch] / total;
+    });
+    for (let pass = 0, passes = n * size <= 1.5e7 ? 2 : n * size <= 4e7 ? 1 : 0; pass < passes; pass++) {
+      for (let j = 0; j < n; j++) {
+        let best = assign[j], bestD = Infinity;
+        for (let p = 0; p < size; p++) {
+          const dr = mean[j * 3] - pal[p * 3], dg = mean[j * 3 + 1] - pal[p * 3 + 1], db = mean[j * 3 + 2] - pal[p * 3 + 2];
+          const d = WR * dr * dr + WG * dg * dg + WB * db * db;
+          if (d < bestD) { bestD = d; best = p; }
+        }
+        assign[j] = best;
+      }
+      const acc = new Float64Array(size * 4);
+      for (let j = 0; j < n; j++) {
+        const p = assign[j], w = cnt[j]; acc[p * 4] += w;
+        for (let ch = 0; ch < 3; ch++) acc[p * 4 + 1 + ch] += mean[j * 3 + ch] * w;
+      }
+      for (let p = 0; p < size; p++) if (acc[p * 4] > 0) for (let ch = 0; ch < 3; ch++) pal[p * 3 + ch] = acc[p * 4 + 1 + ch] / acc[p * 4];
+    }
+    const colors = new Uint8Array(size * 3);
+    for (let i = 0; i < size * 3; i++) colors[i] = Math.round(pal[i]);
+    for (let j = 0; j < n; j++) lut[ids[j]] = assign[j];
+    return {colors, size, index: rgb => lut[bucketKey(rgb)]};
+  }
+
+  // ---- LZW ------------------------------------------------------------------------------------------------------
+
+  const codeAt = new Uint16Array(1 << 20), stampAt = new Uint32Array(1 << 20);   // key = prefix << 8 | index
+  let generation = 0;
+  const fresh = () => { if (++generation === 0xFFFFFFFF) { stampAt.fill(0); generation = 1; } };
+
+  /** GIF LZW of indices (< 2**minCodeSize) as sub-blocks + terminator: widen when the next code reaches 2**width,
+   *  clear when the table reaches 4096 — the rules every decoder follows. */
+  function lzw(indices, minCodeSize) {
+    const clear = 1 << minCodeSize, eoi = clear + 1, stream = new Bytes(Math.max(64, indices.length >> 1));
+    let width = minCodeSize + 1, next = eoi + 1, acc = 0, bits = 0;
+    const emit = code => { acc |= code << bits; bits += width; while (bits >= 8) { stream.byte(acc & 255); acc >>>= 8; bits -= 8; } };
+    fresh(); emit(clear);
+    let prefix = indices[0] || 0;
+    for (let i = 1; i < indices.length; i++) {
+      const k = indices[i], key = (prefix << 8) | k;
+      if (stampAt[key] === generation) { prefix = codeAt[key]; continue; }
+      emit(prefix);
+      if (next === 4096) { emit(clear); width = minCodeSize + 1; next = eoi + 1; fresh(); }
+      else { if (next >= 1 << width) width++; stampAt[key] = generation; codeAt[key] = next++; }
+      prefix = k;
+    }
+    emit(prefix); emit(eoi);
+    if (bits > 0) stream.byte(acc & 255);
+    const data = stream.done(), out = new Bytes(data.length + (data.length / 255 | 0) + 4);
+    out.byte(minCodeSize);
+    for (let i = 0; i < data.length; i += 255) { const n = Math.min(255, data.length - i); out.byte(n); out.put(data.subarray(i, i + n)); }
+    out.byte(0);
+    return out.done();
+  }
+
+  const bitsFor = entries => { let b = 2; while ((1 << b) < entries) b++; return b; };
+
+  /** GIF89a bytes: global palette (size colours + one transparent slot), loop forever, frames {x,y,w,h,transparent,delayCs,lzw}. */
+  function assemble(width, height, pal, frames, comment) {
+    const tableBits = bitsFor(pal.size + 1), out = new Bytes(1 << 20);
+    out.ascii("GIF89a"); out.u16(width); out.u16(height); out.byte(0x80 | 0x70 | (tableBits - 1)); out.byte(0); out.byte(0);
+    const table = new Uint8Array((1 << tableBits) * 3); table.set(pal.colors.subarray(0, pal.size * 3)); out.put(table);
+    out.put([0x21, 0xFF, 0x0B]); out.ascii("NETSCAPE2.0"); out.put([3, 1, 0, 0, 0]);
+    if (comment) { const text = String(comment).replace(/[^\x20-\x7e]/g, "?").slice(0, 255); out.put([0x21, 0xFE, text.length]); out.ascii(text); out.byte(0); }
+    for (const f of frames) {
+      out.put([0x21, 0xF9, 4, 4 | (f.transparent ? 1 : 0)]); out.u16(Math.max(MIN_DELAY_CS, Math.min(65535, f.delayCs)));
+      out.byte(f.transparent ? pal.size : 0); out.byte(0);
+      out.byte(0x2C); out.u16(f.x); out.u16(f.y); out.u16(f.w); out.u16(f.h); out.byte(0); out.put(f.lzw);
+    }
+    out.byte(0x3B);
+    return out.done();
+  }
+
+  // ---- encoder --------------------------------------------------------------------------------------------------
+
+  /** Frames in, one GIF out. add() takes RGBA (ImageData or {data}) of width x height; consecutive frames that look
+   *  the same merge into one longer frame; only the changed rectangle is kept. group > 0 marks a burst whose inner
+   *  frames may be dropped to meet a byte budget. */
+  class Encoder {
+    constructor(opts) {
+      const o = opts || {};
+      this.width = o.width; this.height = o.height; this.pixels = o.width * o.height;
+      this.count = new Uint32Array(KEYS); this.sum = new Float64Array(KEYS * 3); this.used = 0;
+      this.current = null; this.frames = []; this.merged = 0; this.exact = new Map();
+    }
+
+    add(image, delayMs, opts) {
+      const rgba = image.data || image, W = this.width, H = this.height, keys = new Uint32Array(this.pixels);
+      for (let i = 0, p = 0; i < this.pixels; i++, p += 4) keys[i] = (rgba[p] << 16) | (rgba[p + 1] << 8) | rgba[p + 2];
+      let x0 = 0, y0 = 0, x1 = W - 1, y1 = H - 1;
+      if (this.current) {
+        x0 = W; y0 = H; x1 = -1; y1 = -1;
+        for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) if (keys[i] !== this.current[i]) {
+          if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        }
+        if (x1 < 0) { this.frames[this.frames.length - 1].delay += delayMs || 0; this.merged++; return false; }
+      }
+      const w = x1 - x0 + 1, h = y1 - y0 + 1, part = new Uint32Array(w * h);
+      for (let y = 0; y < h; y++) {
+        const row = (y0 + y) * W + x0;
+        part.set(keys.subarray(row, row + w), y * w);
+        for (let x = 0; x < w; x++) {
+          const rgb = keys[row + x], k = bucketKey(rgb), p = (row + x) * 4;
+          if (this.exact) {
+            this.exact.set(rgb, true);
+            if (this.exact.size > 255) this.exact = null; // bounded exact path; retain the bucket fallback
+          }
+          if (this.count[k]++ === 0) this.used++;
+          this.sum[k * 3] += rgba[p]; this.sum[k * 3 + 1] += rgba[p + 1]; this.sum[k * 3 + 2] += rgba[p + 2];
+        }
+      }
+      this.frames.push({x: x0, y: y0, w, h, keys: part, delay: delayMs || 0, group: (opts && opts.group) || 0});
+      this.current = keys;
+      return true;
+    }
+
+    _once(colors, thin, comment) {
+      const W = this.width, H = this.height, N = this.pixels, pal = palette(this, colors), index = pal.index;
+      const minCode = bitsFor(pal.size + 1), T = pal.size, state = new Uint32Array(N), shown = new Uint8Array(N), out = [];
+      let ux0 = W, uy0 = H, ux1 = -1, uy1 = -1, pos = 0, last = 0, t = 0, shownCs = 0;
+      const close = endMs => { if (out.length) { const f = out[out.length - 1]; f.delayCs = Math.max(MIN_DELAY_CS, Math.round(endMs / 10) - shownCs); shownCs += f.delayCs; } };
+      for (let j = 0; j < this.frames.length; j++) {
+        const f = this.frames[j];
+        for (let y = 0; y < f.h; y++) state.set(f.keys.subarray(y * f.w, (y + 1) * f.w), (f.y + y) * W + f.x);
+        ux0 = Math.min(ux0, f.x); uy0 = Math.min(uy0, f.y); ux1 = Math.max(ux1, f.x + f.w - 1); uy1 = Math.max(uy1, f.y + f.h - 1);
+        pos = f.group && f.group === last ? pos + 1 : 0; last = f.group;
+        const end = !f.group || j + 1 === this.frames.length || this.frames[j + 1].group !== f.group;
+        const start = t; t += f.delay;
+        if (out.length && thin > 0 && f.group && !end && pos % (1 << thin) !== 0) continue;
+        if (!out.length) {
+          const idx = new Uint8Array(N);
+          for (let i = 0; i < N; i++) idx[i] = index(state[i]);
+          shown.set(idx);
+          out.push({x: 0, y: 0, w: W, h: H, transparent: false, lzw: lzw(idx, minCode)});
+        } else {
+          let x0 = W, y0 = H, x1 = -1, y1 = -1;
+          for (let y = uy0; y <= uy1; y++) for (let x = ux0, i = y * W + ux0; x <= ux1; x++, i++) if (index(state[i]) !== shown[i]) {
+            if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+          }
+          ux0 = W; uy0 = H; ux1 = -1; uy1 = -1;
+          if (x1 < 0) continue;                       // the same picture under this palette: the previous frame lasts longer
+          close(start);
+          const w = x1 - x0 + 1, h = y1 - y0 + 1, solid = new Uint8Array(w * h), holes = new Uint8Array(w * h);
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            const i = (y0 + y) * W + x0 + x, v = index(state[i]);
+            solid[y * w + x] = v; holes[y * w + x] = v === shown[i] ? T : v; shown[i] = v;
+          }
+          const a = lzw(solid, minCode), b = lzw(holes, minCode);
+          out.push({x: x0, y: y0, w, h, transparent: b.length < a.length, lzw: b.length < a.length ? b : a});
+          continue;
+        }
+        ux0 = W; uy0 = H; ux1 = -1; uy1 = -1;
+      }
+      close(t);
+      // GIF stores at most 65535 cs per image. Repeating the same disposal-1 rectangle is idempotent,
+      // including transparent pixels. Avoid a 1 cs remainder, which browsers would inflate.
+      const timed = [];
+      for (const f of out) {
+        if (!Number.isSafeInteger(f.delayCs)) throw new RangeError("GIF duration must be finite and safely representable in centiseconds");
+        let remaining = f.delayCs;
+        while (remaining > 65535) {
+          const delayCs = remaining === 65536 ? 65534 : 65535;
+          timed.push({...f, delayCs}); remaining -= delayCs;
+        }
+        timed.push({...f, delayCs: remaining});
+      }
+      return {bytes: assemble(W, H, pal, timed, comment), frames: timed.length, colors: pal.size, thin};
+    }
+
+    /** {colors ≤ 255, maxBytes, comment} → {bytes, report}. Over maxBytes: colours halve down to 16, then burst frames
+     *  thin (every 2nd, 4th, 8th); the smallest attempt comes back with overBudget when nothing fits. */
+    encode(opts) {
+      const o = opts || {}, t0 = Date.now(), colors = Math.max(2, Math.min(255, o.colors || 255));
+      if (!this.frames.length) throw new Error("no frames");
+      const ladder = [];
+      for (let c = colors; ; c = Math.max(16, c >> 1)) { ladder.push(c); if (c <= 16) break; }
+      const thinMax = this.frames.some(f => f.group) ? 3 : 0;
+      let best = null, attempts = 0;
+      search: for (let thin = 0; thin <= thinMax; thin++) for (const c of ladder) {
+        const r = this._once(c, thin, o.comment); attempts++;
+        if (!best || r.bytes.length < best.bytes.length) best = r;
+        if (!o.maxBytes || r.bytes.length <= o.maxBytes) { best = r; break search; }
+      }
+      return {bytes: best.bytes, report: {
+        bytes: best.bytes.length, frames: best.frames, colors: best.colors, thin: best.thin, attempts, stored: this.frames.length,
+        merged: this.merged, buckets: this.used, overBudget: !!o.maxBytes && best.bytes.length > o.maxBytes, encodeMs: Date.now() - t0,
+      }};
+    }
+  }
+
+  // ---- canvas composition (browser) -------------------------------------------------------------------------------
+
+  function canvas(w, h) {
+    if (typeof OffscreenCanvas === "function") return new OffscreenCanvas(w, h);
+    const c = document.createElement("canvas"); c.width = w; c.height = h; return c;
+  }
+
+  /** Frames of width x (caption + height): an image (or a rectangle of it) fitted under a caption bar. */
+  class Composer {
+    constructor(opts) {
+      const o = opts || {};
+      this.width = o.width || 720; this.height = o.height || 480; this.caption = o.caption === undefined ? 32 : o.caption;
+      this.background = o.background || "#eceff1"; this.font = o.font || `14px ${FONT}`;
+      this.ok = o.okColor || "#1b5e20"; this.fail = o.failColor || "#b71c1c"; this.outline = o.outlineColor || "#ff6f00";
+      this.surface = canvas(this.width, this.height + this.caption);
+      this.ctx = this.surface.getContext("2d", {willReadFrequently: true});
+    }
+
+    /** A decoded image from PNG bytes or base64 — the browser's own decoder. */
+    image(png) { return createImageBitmap(new Blob([typeof png === "string" ? fromBase64(png) : png], {type: "image/png"})); }
+
+    /** base with patch drawn at (x, y) in base pixels — a burst that captured only part of the page. */
+    patched(base, patch, x, y) {
+      const c = canvas(base.width, base.height), g = c.getContext("2d");
+      g.drawImage(base, 0, 0); g.drawImage(patch, x, y);
+      return c;
+    }
+
+    /** Step-halving before the final draw, so a large reduction stays smooth on engines without high-quality scaling. */
+    _source(img, rect, dw, dh) {
+      let src = img, r = rect;
+      while (r.w / dw > 2.5 && r.h / dh > 2.5) {
+        const w = Math.max(1, Math.round(r.w / 2)), h = Math.max(1, Math.round(r.h / 2)), c = canvas(w, h), g = c.getContext("2d");
+        g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+        g.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, w, h);
+        src = c; r = {x: 0, y: 0, w, h};
+      }
+      return {src, r};
+    }
+
+    /** ImageData of one frame: rect of img (default all of it) fitted into the area — enlarged only up to maxScale —
+     *  centred on the background under the caption; outline (image px) drawn as a 2 px frame. */
+    frame(img, opts) {
+      const o = opts || {}, W = this.width, H = this.height, C = this.caption, g = this.ctx;
+      const rect = o.rect || {x: 0, y: 0, w: img.width, h: img.height};
+      const scale = Math.min(W / rect.w, H / rect.h, o.maxScale || 1);
+      const dw = Math.max(1, Math.min(W, Math.round(rect.w * scale))), dh = Math.max(1, Math.min(H, Math.round(rect.h * scale)));
+      const ox = (W - dw) >> 1, oy = C + ((H - dh) >> 1);
+      g.fillStyle = this.background; g.fillRect(0, C, W, H);
+      if (C) {
+        g.fillStyle = o.ok === false ? this.fail : this.ok; g.fillRect(0, 0, W, C);
+        g.font = this.font; g.fillStyle = "#fff"; g.textBaseline = "middle";
+        let chars = Array.from(String(o.caption || ""));
+        if (g.measureText(chars.join("")).width > W - 16) {
+          while (chars.length && g.measureText(chars.join("") + "…").width > W - 16) chars.pop();
+          chars.push("…");
+        }
+        g.fillText(chars.join(""), 8, C / 2 + 1);
+      }
+      const {src, r} = this._source(img, rect, dw, dh);
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+      g.drawImage(src, r.x, r.y, r.w, r.h, ox, oy, dw, dh);
+      if (o.outline) {
+        const k = dw / rect.w, b = o.outline;
+        g.save(); g.beginPath(); g.rect(ox, oy, dw, dh); g.clip();
+        g.strokeStyle = this.outline; g.lineWidth = 2;
+        g.strokeRect(ox + (b.x - rect.x) * k - 1, oy + (b.y - rect.y) * k - 1, b.w * k + 2, b.h * k + 2);
+        g.restore();
+      }
+      return g.getImageData(0, 0, W, H + C);
+    }
+
+    /** Rectangles from the whole image to target (eased), the last one held — a zoom made from one capture. */
+    zoomPath(img, target, steps) {
+      const aspect = this.width / this.height, out = [];
+      let w = target.w, h = target.h;
+      if (w / h < aspect) w = h * aspect; else h = w / aspect;
+      w = Math.min(w, img.width); h = Math.min(h, img.height);
+      const cx = target.x + target.w / 2, cy = target.y + target.h / 2;
+      const end = {x: Math.max(0, Math.min(img.width - w, cx - w / 2)), y: Math.max(0, Math.min(img.height - h, cy - h / 2)), w, h};
+      for (let s = 1; s <= steps; s++) {
+        const t = s / steps, e = t * t * (3 - 2 * t);
+        out.push({x: end.x * e, y: end.y * e, w: img.width + (end.w - img.width) * e, h: img.height + (end.h - img.height) * e});
+      }
+      return out;
+    }
+  }
+
+  /** Composer + Encoder behind one call per batch: items are
+   *   {png?, cssWidth?, patch?: {png, x, y}, caption, ok, delay, group}            a frame (no png: the last image again)
+   *   {zoom: {x, y, w, h} or {x, y, width, height}, png?, cssWidth?, steps, ms, hold, pad, maxScale, caption, ok}   a zoom onto a CSS-px rectangle
+   * so a caller that saw an identical screenshot sends no image at all. */
+  class Recorder {
+    constructor(opts) {
+      const o = opts || {};
+      this.composer = new Composer(o);
+      this.encoder = new Encoder({width: this.composer.width, height: this.composer.height + this.composer.caption});
+      this.base = null; this.css = 0;
+      this.stats = {images: 0, reused: 0, patches: 0, synthesized: 0};
+    }
+
+    async add(items) {
+      for (const it of items) {
+        if (it.png) { this.base = await this.composer.image(it.png); this.css = it.cssWidth || this.base.width; this.stats.images++; }
+        else if (!this.base) throw new Error("the first item needs a png");
+        else if (!it.patch) this.stats.reused++;
+        const dpr = this.base.width / this.css;
+        if (it.zoom) { this._zoom(it, dpr); continue; }
+        let img = this.base;
+        if (it.patch) {
+          img = this.composer.patched(this.base, await this.composer.image(it.patch.png), Math.round(it.patch.x * dpr), Math.round(it.patch.y * dpr));
+          this.stats.patches++;
+        }
+        this.encoder.add(this.composer.frame(img, {caption: it.caption, ok: it.ok}), it.delay || 0, {group: it.group || 0});
+      }
+      return {stored: this.encoder.frames.length, merged: this.encoder.merged, ...this.stats};
+    }
+
+    _zoom(it, dpr) {
+      const pad = (it.pad === undefined ? 16 : it.pad) * dpr, z = it.zoom, maxScale = it.maxScale || 3;
+      const zw = z.w === undefined ? z.width : z.w, zh = z.h === undefined ? z.height : z.h;   // {w, h} or a bounding box {width, height}
+      if (![z.x, z.y, zw, zh].every(Number.isFinite)) throw new Error("zoom needs a finite {x, y, w, h}");
+      const el = {x: z.x * dpr, y: z.y * dpr, w: Math.max(1, zw * dpr), h: Math.max(1, zh * dpr)};
+      const minW = this.composer.width / maxScale, grow = Math.max(0, minW - (el.w + 2 * pad)) / 2;
+      const target = {x: el.x - pad - grow, y: el.y - pad, w: el.w + 2 * pad + 2 * grow, h: el.h + 2 * pad};
+      const steps = Math.max(1, it.steps || 6), ms = it.ms === undefined ? 900 : it.ms, path = this.composer.zoomPath(this.base, target, steps);
+      path.forEach((rect, s) => {
+        const delay = s + 1 === steps ? (it.hold === undefined ? 1200 : it.hold) : ms / steps;
+        this.encoder.add(this.composer.frame(this.base, {rect, caption: it.caption, ok: it.ok, maxScale, outline: el}), delay, {group: 0});
+      });
+      this.stats.synthesized += steps - 1;
+    }
+
+    encode(opts) { return this.encoder.encode(opts); }
+    encodeBase64(opts) { const r = this.encode(opts); return {gif: toBase64(r.bytes), report: {...r.report, ...this.stats}}; }
+  }
+
+  const api = {MIN_DELAY_CS, FONT, Encoder, Composer, Recorder, palette, lzw, assemble, bitsFor, fromBase64, toBase64};
+  if (typeof module === "object" && module.exports) module.exports = api;
+  root.UiGif = api;
+})(typeof globalThis === "object" ? globalThis : this);
+""",
 }
 EMBEDDED_UI_JS = _JS["ui.js"]
 
-SHARED_SCRIPT_NAMES = ("ui.js", "stub.js", "repository-diagnostics.js", "navigation.js", "controls.js")
+SHARED_SCRIPT_NAMES = ("ui.js", "stub.js", "repository-diagnostics.js", "navigation.js", "controls.js", "records.js")
 # Pinned browser bundle for PptxGenJS 4.0.1, including its JSZip dependency.
 # sha384 covers the exact bytes of that jsDelivr URL (immutable npm version).
 _PPTXGENJS_URL = "https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js"
@@ -413,10 +909,10 @@ _CSS = {
         "@media(prefers-reduced-motion:reduce){.ui-shell-main{scroll-behavior:auto}}"
         "}"
     ),
-    "tokens.css": r""":root{--ui-bg:#0d1117;--ui-panel:#101820;--ui-fg:#d1f7c4;--ui-muted:#8b949e;--ui-border:#58a6ff;--ui-accent:#7ee787;--ui-danger:#cf222e;--ui-radius:0;--ui-space:1rem;--ui-max:960px;--ui-font:Meiryo,メイリオ,sans-serif;--ui-font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+    "tokens.css": r""":root{--ui-bg:#0d1117;--ui-panel:#101820;--ui-fg:#d1f7c4;--ui-muted:#8b949e;--ui-border:#58a6ff;--ui-accent:#7ee787;--ui-danger:#cf222e;--ui-radius:0;--ui-text:16px;--ui-space:1rem;--ui-max:960px;--ui-font:Meiryo,メイリオ,sans-serif;--ui-font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
 """,
-    "base.css": r"""@layer base{*{box-sizing:border-box}body{margin:0;background:var(--ui-bg);color:var(--ui-fg);font:16px/1.6 var(--ui-font)}pre,code,kbd,samp{font-family:var(--ui-font-mono)!important}.ui-page{max-width:var(--ui-max);margin:auto;padding:1.25rem}a{color:inherit}}""",
-    "components.css": r"""@layer components{.ui-panel,.ui-card{background:var(--ui-panel);border:1px solid var(--ui-border);padding:1rem;margin:1rem 0;border-radius:var(--ui-radius)}.ui-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}.ui-tag{display:inline-block;border:1px solid var(--ui-border);padding:.1rem .4rem}.ui-button,.ui-input{font:inherit;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);padding:.6rem;border-radius:var(--ui-radius)}.ui-muted{color:var(--ui-muted)}.ui-output{font:inherit;white-space:pre-wrap;overflow:auto;background:#d8dee4;color:#161b22;border:1px solid #8c959f;border-radius:4px;padding:.75rem}pre code,.ui-output code{font-family:inherit;color:inherit}pre.ui-output code{background:transparent}@media(max-width:480px){.ui-page{padding:.75rem}.ui-grid{grid-template-columns:1fr}.ui-card,.ui-panel{margin:.75rem 0;padding:.75rem}}.ui-lightbox{border:1px solid var(--ui-border);background:var(--ui-panel);color:var(--ui-fg);padding:1rem;max-width:min(96vw,960px);max-height:96vh;border-radius:var(--ui-radius)}.ui-lightbox::backdrop{background:rgba(0,0,0,.72)}.ui-lightbox img{display:block;max-width:100%;max-height:calc(96vh - 8rem);margin:auto}.ui-lightbox-bar{display:flex;gap:.5rem;justify-content:space-between;margin-top:.75rem}body:has(.ui-lightbox[open]){overflow:hidden}}""",
+    "base.css": r"""@layer base{*{box-sizing:border-box}body{margin:0;background:var(--ui-bg);color:var(--ui-fg);font:var(--ui-text)/1.6 var(--ui-font)}pre,code,kbd,samp{font-family:var(--ui-font-mono)!important}.ui-page{max-width:var(--ui-max);margin:auto;padding:var(--ui-space)}a{color:inherit}.ui-print-only{display:none}@media print{body{background:#fff;color:#000}.ui-page{max-width:none;padding:0}.ui-no-print{display:none}.ui-print-only{display:block}a{text-decoration:none}}@media(prefers-reduced-motion:reduce){*,::before,::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}}""",
+    "components.css": r"""@layer components{.ui-panel,.ui-card{background:var(--ui-panel);border:1px solid var(--ui-border);padding:var(--ui-space);margin:var(--ui-space) 0;border-radius:var(--ui-radius)}.ui-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}.ui-tag{display:inline-block;border:1px solid var(--ui-border);padding:.1rem .4rem}.ui-button,.ui-input,.ui-elements button,.ui-elements select,.ui-elements textarea,.ui-elements input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file]){font:inherit;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);padding:.6rem;border-radius:var(--ui-radius)}.ui-button,.ui-elements button{cursor:pointer}.ui-button:hover,.ui-elements button:hover{border-color:var(--ui-accent)}.ui-button:disabled,.ui-elements button:disabled{opacity:.4;cursor:default}.ui-elements input[type=range],.ui-elements input[type=checkbox],.ui-elements input[type=radio]{accent-color:var(--ui-accent)}.ui-elements label{color:var(--ui-muted)}.ui-muted{color:var(--ui-muted)}.ui-output{font:inherit;white-space:pre-wrap;overflow:auto;background:#d8dee4;color:#161b22;border:1px solid #8c959f;border-radius:4px;padding:.75rem}pre code,.ui-output code{font-family:inherit;color:inherit}pre.ui-output code{background:transparent}@media(max-width:480px){.ui-page{padding:.75rem}.ui-grid{grid-template-columns:1fr}.ui-card,.ui-panel{margin:.75rem 0;padding:.75rem}}.ui-lightbox{border:1px solid var(--ui-border);background:var(--ui-panel);color:var(--ui-fg);padding:1rem;max-width:min(96vw,960px);max-height:96vh;border-radius:var(--ui-radius)}.ui-lightbox::backdrop{background:rgba(0,0,0,.72)}.ui-lightbox img{display:block;max-width:100%;max-height:calc(96vh - 8rem);margin:auto}.ui-lightbox-bar{display:flex;gap:.5rem;justify-content:space-between;margin-top:.75rem}body:has(.ui-lightbox[open]){overflow:hidden}.ui-table,.ui-elements table{border-collapse:collapse;width:100%}.ui-table th,.ui-table td,.ui-elements th,.ui-elements td{border-bottom:1px solid var(--ui-border);padding:.25rem .5rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}.ui-table th,.ui-elements th{color:var(--ui-muted);font-weight:500}.ui-table caption,.ui-elements caption{text-align:left;color:var(--ui-muted);padding:.25rem 0}.ui-pass{color:var(--ui-accent)}.ui-fail{color:var(--ui-danger)}.ui-changed{background:color-mix(in srgb,var(--ui-accent) 18%,transparent)}.ui-tag.ui-pass{border-color:var(--ui-accent)}.ui-tag.ui-fail{border-color:var(--ui-danger)}}""",
     "matrix.css": r"""@layer components{.ui-matrix:has(>section:target)>section:not(:target){display:none}.ui-matrix>section{scroll-margin-top:16px}.ui-matrix-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--ui-matrix-col,160px),1fr));gap:var(--ui-matrix-gap,8px);padding:0;list-style:none}.ui-matrix-tiles li{border:1px solid var(--ui-border);padding:var(--ui-matrix-pad,8px);font-size:.8rem;overflow-wrap:anywhere}.ui-matrix-tiles img{display:block;width:100%;height:auto;margin:var(--ui-matrix-pad,8px) 0;background:#fff}.ui-matrix-tiles .is-missing{border-style:dashed;color:var(--ui-muted)}.ui-matrix-tiles .is-fail{outline:2px solid var(--ui-danger)}.ui-matrix-tiles .is-reference{outline:2px solid var(--ui-accent)}.ui-matrix-page>nav{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.ui-matrix-page>nav .ui-button{white-space:nowrap;text-decoration:none}.ui-matrix a{overflow-wrap:anywhere}}
 """,
     "repository-diagnostics.css": r""".repo-diagnostics{box-sizing:border-box;border:1px solid var(--ui-border,#c9c9cf);border-radius:1rem;padding:1.25rem;background:var(--ui-surface,#fff);color:var(--ui-text,#222)}.repo-diagnostics h2{margin:0 0 .75rem;font-size:1.25rem}.repo-diagnostics__commit{overflow-wrap:anywhere}.repo-diagnostics__measurements{display:grid;grid-template-columns:minmax(8rem,1fr) 1fr;gap:.45rem 1rem;margin:1rem 0 0}.repo-diagnostics__measurements dt,.repo-diagnostics__measurements dd{margin:0}.repo-diagnostics__measurements dd{font-variant-numeric:tabular-nums}@media(max-width:30rem){.repo-diagnostics__measurements{grid-template-columns:1fr}.repo-diagnostics__measurements dd{margin-bottom:.35rem}}
@@ -468,8 +964,16 @@ body[data-ui-theme="github-like"] .ui-tag{
 }
 }
 """,
-    "themes/modern.css": r"""@layer theme{body[data-ui-theme="modern"]{color-scheme:dark}body[data-ui-theme="modern"] .ui-title::before,body[data-ui-theme="modern"] .ui-card>h2::before{content:"> ";color:var(--ui-accent)}body[data-ui-theme="modern"] .ui-panel,body[data-ui-theme="modern"] .ui-card{background:var(--ui-panel);box-shadow:4px 4px 0 rgba(88,166,255,.16)}body[data-ui-theme="modern"] .ui-tag::before{content:"#";color:var(--ui-accent)}}""",
+    "themes/terminal.css": r"""/* terminal: glyphs for the token-only terminal palette in tokens.css (# titles, [tags], > buttons, dark output). */
+@layer theme{body[data-ui-theme="terminal"] .ui-title::before{content:"# ";color:var(--ui-accent)}body[data-ui-theme="terminal"] .ui-tag:not(.ui-pass,.ui-fail)::before{content:"["}body[data-ui-theme="terminal"] .ui-tag:not(.ui-pass,.ui-fail)::after{content:"]"}body[data-ui-theme="terminal"] .ui-button::before{content:"> ";color:var(--ui-accent)}body[data-ui-theme="terminal"] .ui-button:hover{border-color:var(--ui-accent)}body[data-ui-theme="terminal"] .ui-output{background:#05080a;color:var(--ui-fg);border:1px solid var(--ui-border);border-radius:0}body[data-ui-theme="terminal"] .ui-panel,body[data-ui-theme="terminal"] .ui-card{box-shadow:none}}""",
+    "themes/modern.css": r"""@layer theme{body[data-ui-theme="modern"]{color-scheme:dark}body[data-ui-theme="modern"] .ui-title::before,body[data-ui-theme="modern"] .ui-card>h2::before{content:"> ";color:var(--ui-accent)}body[data-ui-theme="modern"] .ui-panel,body[data-ui-theme="modern"] .ui-card{background:var(--ui-panel);box-shadow:4px 4px 0 rgba(88,166,255,.16)}body[data-ui-theme="modern"] .ui-tag:not(.ui-pass,.ui-fail)::before{content:"#";color:var(--ui-accent)}}""",
 }
+_CSS["records.css"] = ("@layer components{.ui-records table.ui-table{border-collapse:collapse;width:100%;margin:8px 0}.ui-records .ui-table th,.ui-records .ui-table td{border:thin solid var(--ui-border);padding:8px;text-align:left;vertical-align:top;overflow-wrap:anywhere}"
+                       ".ui-records .ui-table caption{text-align:left;font-weight:600;padding:8px 0}.ui-records .ui-table tr[hidden]{display:none}.ui-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin:8px 0}"
+                       ".ui-stat .ui-stat-value{display:block;font-size:32px;line-height:40px}.ui-stat .ui-stat-label{display:block;color:var(--ui-muted)}.ui-stat .ui-stat-hint{display:block;font-size:.75rem;color:var(--ui-muted)}"
+                       ".ui-records-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}.ui-records-bar .ui-input{flex:1 1 240px}.ui-records-io{display:inline-flex;gap:8px}.ui-records [data-ui-draft]{width:100%;box-sizing:border-box}}")
+
+
 _CSS_CORE = ("tokens.css", "base.css", "components.css")
 
 
@@ -498,6 +1002,109 @@ def bundled_css() -> str:
     for name in order:
         parts.append(f"/* css/{name} */\n{css_source(name).replace(chr(13) + chr(10), chr(10)).strip(chr(10))}\n")
     return "".join(parts)
+
+
+AUTO_THEME = "auto"  # the :root (modern) palette, or github-like when the browser prefers light; tokens.css carries it
+
+
+REGISTERED_THEMES: set[str] = set()  # consumers' palettes, registered by theme_css() in this process
+_REGISTERED_THEME_CSS: dict[str, str] = {}  # their CSS, so page_document can embed a brand it was told about
+
+
+def _theme_name(theme: Any) -> bool:
+    """A theme the page may name: one of ours, ``auto``, or a consumer's own registered with ``theme_css``."""
+    return isinstance(theme, str) and (theme in THEMES or theme in CANDIDATE_THEMES or theme == AUTO_THEME
+                                       or theme in REGISTERED_THEMES)
+
+
+def core_css(theme: str = "modern") -> str:
+    """The small bundle for a consumer's report page: tokens, base, components and one theme (about 4 KB),
+    against ``bundled_css()``'s every stylesheet (tens of KB). ``theme`` is a ``themes/<name>.css`` source or a
+    ``CANDIDATE_THEMES`` palette (those live in tokens.css already); ``render_document(theme=...)`` must name
+    the same theme for it to apply."""
+    source = f"themes/{theme}.css"
+    if source not in _CSS and theme not in CANDIDATE_THEMES and theme != AUTO_THEME:
+        raise ValueError(f"unknown theme: {theme!r}")
+    order = [*_CSS_CORE, *([source] if source in _CSS else [])]
+    parts = ["@layer base,components,theme;\n"]
+    for name in order:
+        parts.append(f"/* css/{name} */\n{css_source(name).replace(chr(13) + chr(10), chr(10)).strip(chr(10))}\n")
+    return "".join(parts)
+
+
+def source_commit() -> str | None:
+    """The git commit this module came from: pip's install record when installed from git (the consumers' pinned
+    dependency), else the checkout's HEAD when run from the repository, else None. Stdlib only, no subprocess."""
+    commit = installed_commit()
+    if commit:
+        return commit
+    git = Path(__file__).resolve().parent / ".git"
+    try:
+        head = (git / "HEAD").read_text(encoding="utf-8").strip()
+        if head.startswith("ref: "):
+            ref = head[5:]
+            if (git / ref).is_file():
+                head = (git / ref).read_text(encoding="utf-8").strip()
+            else:
+                head = next((line.split()[0] for line in (git / "packed-refs").read_text(encoding="utf-8").splitlines()
+                             if line.endswith(" " + ref)), "")
+        return head if re.fullmatch(r"[0-9a-f]{40}", head) else None
+    except OSError:
+        return None
+
+
+BUNDLE_SCHEMA = "web-ui-bundle/1"
+_BUNDLE_HEADER = re.compile(r"^/\* (web-ui-bundle/\d+) commit=([0-9a-f]{40}|unknown) sha256=([0-9a-f]{64}) ([^\n]*)\*/\n")
+
+
+def bundle_css(*, theme: str | None = "modern", brand: tuple[str, dict[str, str]] | None = None, extra_css: str = "",
+               layouts: Any = None) -> str:
+    """The stylesheet a consumer ships: ``core_css(theme)``, then the consumer's own palette (``theme_css``), then
+    switchable layout presets (``layout_presets_css``; ``EXAMPLES["page-layouts"]`` or the consumer's own), then its
+    layout rules. ``brand`` is ``(name, tokens)``; render the pages with ``theme=name`` so the palette applies.
+    ``theme=None`` leaves the core out, for a second sheet loaded after the first."""
+    body = core_css(theme) if theme is not None else ""
+    if brand is not None:
+        body += theme_css(*brand)
+    if layouts is not None:
+        body += layout_presets_css(layouts)
+    return body + extra_css
+
+
+def write_bundle(path: Path | str, *, theme: str | None = "modern", brand: tuple[str, dict[str, str]] | None = None,
+                 extra_css: str = "", layouts: Any = None, note: str = "") -> dict[str, str]:
+    """Write ``bundle_css(...)`` to ``path`` under a one-line provenance header (schema, this module's commit, the
+    sha256 of the body, ``note``). The file is meant to be committed, so stdlib-only consumers can serve it without
+    web_ui installed; ``check_bundle`` with the same arguments says when it is stale. Returns the header fields."""
+    body = bundle_css(theme=theme, brand=brand, extra_css=extra_css, layouts=layouts)
+    if "*/" in note or "\n" in note:
+        raise ValueError("note must be one line without */")
+    fields = {"schema": BUNDLE_SCHEMA, "commit": source_commit() or "unknown",
+              "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(), "note": note}
+    text = f"/* {fields['schema']} commit={fields['commit']} sha256={fields['sha256']} {note}*/\n" + body
+    Path(path).write_text(text, encoding="utf-8")
+    return fields
+
+
+def check_bundle(path: Path | str, *, theme: str | None = "modern", brand: tuple[str, dict[str, str]] | None = None,
+                 extra_css: str = "", layouts: Any = None) -> list[str]:
+    """Problems with a committed bundle (empty when it is current): missing, no header, body edited by hand
+    (sha256), or stale against ``bundle_css(...)`` from this module (including a moved pin)."""
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"{path}: {exc.strerror or exc}"]
+    match = _BUNDLE_HEADER.match(text)
+    if not match:
+        return [f"{path}: no {BUNDLE_SCHEMA} header; run write_bundle"]
+    body = text[match.end():]
+    problems = []
+    if hashlib.sha256(body.encode("utf-8")).hexdigest() != match.group(3):
+        problems.append(f"{path}: body does not match its sha256 (edited by hand?)")
+    if body != bundle_css(theme=theme, brand=brand, extra_css=extra_css, layouts=layouts):
+        problems.append(f"{path}: stale against web_ui {(source_commit() or 'unknown')[:8]} (header commit {match.group(2)[:8]}); run write_bundle")
+    return problems
 
 
 def _require_local_script_path(value: str, *, label: str) -> None:
@@ -695,6 +1302,16 @@ def module_asset(name: str = "ui.js") -> tuple[bytes, str]:
     return (EMBEDDED_UI_JS if name == "ui.js" else WORLD_JS).encode("utf-8"), "text/javascript; charset=utf-8"
 
 
+def gif_recorder_document(*, title: str = "web_ui GIF recorder") -> str:
+    """A blank page carrying ``gif.js`` (``window.UiGif``) for a browser driver to build animated GIFs in.
+
+    The driver opens it in a context of its own (no routes, no network), creates ``new UiGif.Recorder({width, height,
+    caption})``, sends screenshots as base64 PNG with ``add([...])`` — the browser decodes, fits, zooms and captions
+    them on a canvas — and reads the GIF back once with ``encodeBase64({colors, maxBytes, comment})``. Screenshots go
+    in once each; pixels never come back. BrowserTestKit's ``evidence_gif.py`` is the reference driver."""
+    return render_document(trusted_html="<main></main>" + classic_script(js_source("gif.js")), title=title, css="")
+
+
 def classic_script(source: str, *, nonce: str | None = None) -> str:
     """Emit trusted classic JavaScript without fetching or evaluating it in Python.
 
@@ -768,7 +1385,7 @@ def render_document(
     base element); it must only contain caller-audited HTML. This is an HTML
     emitter, not a general HTML/CSS/JS sanitizer or provenance verifier.
     """
-    if theme not in THEMES + CANDIDATE_THEMES:
+    if not _theme_name(theme):
         raise ValueError("unknown theme")
     if re.search(r"</style(?=[\s/>])", css, re.IGNORECASE):
         raise ValueError("CSS must not contain a style end tag")
@@ -797,9 +1414,74 @@ def render_document(
     return (
         '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f'{generator_meta()}'
         f'<title>{escape(title)}</title>{"".join(links)}{style}{"".join(head_remote_scripts)}</head>'
         f'<body data-ui-theme="{theme}">{body}{"".join(script_tags)}</body></html>\n'
     )
+
+
+GENERATOR_META = re.compile(r'<meta name="generator" content="web_ui ([0-9a-f]{40}|checkout)">')
+
+
+def generator_meta() -> str:
+    """The ``<meta name="generator">`` every rendered page carries: which web_ui commit drew it, so a screenshot or
+    a GIF receipt (BrowserTestKit's evidence_gif reads it as ``generator``) says what it is evidence of. The commit
+    is the installed module's (pip's install record); a checkout says ``checkout``, because a page committed from a
+    checkout cannot name the commit that will contain it."""
+    return f'<meta name="generator" content="web_ui {installed_commit() or "checkout"}">'
+
+
+def installed_commit() -> str | None:
+    """The git commit the installed module came from (pip's install record), or None in a checkout."""
+    try:
+        import importlib.metadata
+        raw = importlib.metadata.distribution("pysaiyanweboo").read_text("direct_url.json")
+        commit = (json.loads(raw).get("vcs_info") or {}).get("commit_id") if raw else None
+        return commit if isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit) else None
+    except Exception:  # not installed, or not from git
+        return None
+
+
+def repository_diagnostics_page(
+    repository: str,
+    *,
+    theme: str = "modern",
+    json_name: str = "repository-diagnostics.json",
+    jsonl_name: str = "repository-diagnostics.jsonl",
+    icon: str | None = "./icon.png",
+    favicon: str | None = "./favicon.png",
+    description: str = "Canonical metadata plus anonymous public GitHub observations.",
+) -> str:
+    """The single-file repository-diagnostics page every repository publishes on Pages.
+
+    The page is self-contained: ``bundled_css()`` and ``repository-diagnostics.js`` are embedded, so
+    nothing is fetched from a CDN and the page looks the same wherever it is served. In the browser,
+    ``RepositoryDiagnostics.mount`` reads ``json_name`` (the ``{"metadata", "resolver"}`` payload the
+    repository writes next to the page) and fills ``#metadata``, ``#summary`` and ``#observations``;
+    ``jsonl_name`` is linked as the raw metadata record. Consumers produce the JSON with their own
+    gh_identity / resolver data and call this for the HTML, so one renderer serves every repository.
+    """
+    if not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("repository must be owner/name")
+    for name, label in ((json_name, "json_name"), (jsonl_name, "jsonl_name")):
+        _require_local_script_path(name, label=label)
+    if icon is not None:
+        _require_local_or_https(icon, label="icon", allow_query=False)
+    title = f"{repository} repository diagnostics"
+    picture = f'<img src="{escape(icon, quote=True)}" width="80" height="80" alt="{escape(repository, quote=True)} icon">' if icon else ""
+    body = (
+        '<main class="ui-page">' + picture
+        + f'<h1 class="ui-title">{escape(title)}</h1><p class="ui-muted">{escape(description)}</p>'
+        + '<div id="metadata"></div>'
+        + '<section class="ui-panel"><h2>Public URL observations</h2>'
+        + '<p id="summary" class="ui-muted">Loading\u2026</p><div id="observations" class="ui-grid"></div></section>'
+        + f'<p><a href="./{escape(json_name, quote=True)}">JSON</a> \u00b7 <a href="./{escape(jsonl_name, quote=True)}">JSONL</a></p>'
+        + "</main>"
+        + classic_script(js_source("repository-diagnostics.js"))
+        + classic_script(f'RepositoryDiagnostics.mount(document, "./{json_name}");')
+    )
+    return render_document(trusted_html=body, title=title, theme=theme, css=bundled_css(),
+                           favicon=favicon, touch_icon=icon)
 
 
 def _element_id(value: str) -> str:
@@ -831,6 +1513,200 @@ def card(
 
 
 
+def _spec_text(value: Any, label: str, *, limit: int = 4000, required: bool = False) -> str:
+    """Plain text from a consumer's spec: bounded, no control characters or lone surrogates; never HTML."""
+    if (not isinstance(value, str) or len(value) > limit
+            or any(ord(c) < 32 and c not in "\n\t" for c in value)
+            or any(0xD800 <= ord(c) <= 0xDFFF for c in value)
+            or required and not value.strip()):
+        raise ValueError(f"invalid {label}")
+    return value
+
+
+def _spec_href(value: Any) -> str:
+    """A link from a consumer's spec: a path relative to the generated page, or HTTPS without credentials."""
+    value = _spec_text(value, "link href", limit=2048, required=True)
+    # Do not let browser URL preprocessing turn whitespace/backslashes into
+    # an executable scheme or a protocol-relative external destination.
+    if any(c.isspace() for c in value) or "\\" in value:
+        raise ValueError("link href must not contain whitespace or backslashes")
+    parsed = urlsplit(value)
+    if parsed.scheme:
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username is not None or parsed.password is not None:
+            raise ValueError("external links must be HTTPS without credentials")
+        try:
+            parsed.port
+        except ValueError:
+            raise ValueError("invalid HTTPS port") from None
+    elif parsed.netloc or value.startswith("/") or ":" in parsed.path.split("/", 1)[0]:
+        raise ValueError("local links must be relative to the generated page")
+    return value
+
+
+PAGE_SCHEMA = "web-ui-page/1"
+PAGE_BLOCKS = ("heading", "text", "output", "table", "card", "links", "image", "kv", "badges", "section")
+
+
+def _page_block(block: Any, *, depth: int) -> str:
+    """One block of a ``web-ui-page/1`` spec as HTML; every string is escaped, links go through ``_spec_href``."""
+    if not isinstance(block, dict) or block.get("type") not in PAGE_BLOCKS:
+        raise ValueError(f"a block is an object with type in {', '.join(PAGE_BLOCKS)}")
+    kind = block["type"]
+    allowed = {"heading": {"text", "level"}, "text": {"text", "muted"}, "output": {"text"}, "table": {"headers", "rows", "caption"},
+               "card": {"title", "text", "blocks"}, "links": {"items"}, "image": {"src", "alt", "width", "height"},
+               "kv": {"rows"}, "badges": {"items"}, "section": {"title", "blocks"}}[kind] | {"type"}
+    if block.keys() - allowed:
+        raise ValueError(f"{kind}: unknown field {sorted(block.keys() - allowed)}")
+    if kind == "heading":
+        level = block.get("level", 2)
+        if type(level) is not int or not 1 <= level <= 6:
+            raise ValueError("heading level is 1..6")
+        classes = ' class="ui-title"' if level == 1 else ""
+        return f'<h{level}{classes}>{escape(_spec_text(block.get("text"), "heading", limit=300, required=True))}</h{level}>'
+    if kind == "text":
+        classes = ' class="ui-muted"' if block.get("muted") is True else ""
+        return "".join(f"<p{classes}>{escape(line)}</p>" for line in _spec_text(block.get("text"), "text", required=True).split("\n\n"))
+    if kind == "output":
+        return f'<pre class="ui-output">{escape(_spec_text(block.get("text"), "output", limit=64000))}</pre>'
+    if kind == "table":
+        headers, rows = block.get("headers"), block.get("rows")
+        if not isinstance(headers, list) or not isinstance(rows, list) or len(rows) > 2000:
+            raise ValueError("table has headers and up to 2000 rows")
+        headers = [_spec_text(h, "table header", limit=200) for h in headers]
+        rows = [[_spec_text("" if c is None else (str(c) if isinstance(c, (int, float)) else c), "table cell", limit=2000) for c in r]
+                if isinstance(r, list) else _raise("a table row is a list") for r in rows]
+        caption = _spec_text(block["caption"], "caption", limit=300) if "caption" in block else None
+        return table(headers, rows, caption=caption)
+    if kind == "card":
+        inner = "".join(_page_block(b, depth=depth + 1) for b in _blocks(block.get("blocks", []), depth))
+        body = f"<p>{escape(_spec_text(block['text'], 'card text'))}</p>" if "text" in block else ""
+        title = f"<h3>{escape(_spec_text(block['title'], 'card title', limit=300, required=True))}</h3>" if "title" in block else ""
+        return f'<section class="ui-card">{title}{body}{inner}</section>'
+    if kind == "links":
+        items = block.get("items")
+        if not isinstance(items, list) or not items or len(items) > 200:
+            raise ValueError("links has 1..200 items")
+        parts = []
+        for item in items:
+            if not isinstance(item, dict) or item.keys() - {"label", "href"} or "href" not in item:
+                raise ValueError("a link has label and href")
+            href = _spec_href(item["href"])
+            label = _spec_text(item.get("label", href), "link label", limit=300, required=True)
+            parts.append(f'<a href="{escape(href, quote=True)}">{escape(label)}</a>')
+        return f'<p class="ui-links">{" · ".join(parts)}</p>'
+    if kind == "image":
+        src = _spec_href(block.get("src"))
+        alt = _spec_text(block.get("alt", ""), "image alt", limit=300)
+        size = ""
+        for key in ("width", "height"):
+            if key in block:
+                if type(block[key]) is not int or not 1 <= block[key] <= 8192:
+                    raise ValueError(f"image {key} is 1..8192")
+                size += f' {key}="{block[key]}"'
+        return f'<img src="{escape(src, quote=True)}" alt="{escape(alt, quote=True)}"{size}>'
+    if kind == "kv":
+        rows = block.get("rows")
+        if not isinstance(rows, list) or not rows or len(rows) > 500 or any(not isinstance(r, list) or len(r) != 2 for r in rows):
+            raise ValueError("kv rows are [key, value] pairs")
+        return ('<dl class="ui-kv">' + "".join(f"<dt>{escape(_spec_text(k, 'key', limit=300, required=True))}</dt>"
+                                              f"<dd>{escape(_spec_text(str(v) if isinstance(v, (int, float)) else v, 'value', limit=4000))}</dd>"
+                                              for k, v in rows) + "</dl>")
+    if kind == "badges":
+        items = block.get("items")
+        if not isinstance(items, list) or not items or len(items) > 100:
+            raise ValueError("badges has 1..100 items")
+        parts = []
+        for item in items:
+            status = ""
+            if isinstance(item, dict):
+                if item.keys() - {"text", "status"} or item.get("status") not in (None, "pass", "fail"):
+                    raise ValueError("a badge is text or {text, status: pass|fail}")
+                status = f' ui-{item["status"]}' if item.get("status") else ""
+                item = item.get("text")
+            parts.append(f'<span class="ui-tag{status}">{escape(_spec_text(item, "badge", limit=100, required=True))}</span>')
+        return f'<p class="ui-badges">{" ".join(parts)}</p>'
+    # section
+    title = _spec_text(block.get("title"), "section title", limit=300, required=True)
+    inner = "".join(_page_block(b, depth=depth + 1) for b in _blocks(block.get("blocks", []), depth))
+    return f'<section class="ui-panel"><h2>{escape(title)}</h2>{inner}</section>'
+
+
+def _raise(message: str) -> Any:
+    raise ValueError(message)
+
+
+def _blocks(value: Any, depth: int) -> list:
+    if depth >= 4:
+        raise ValueError("blocks nest at most 4 deep")
+    if not isinstance(value, list) or len(value) > 500:
+        raise ValueError("blocks is a list of at most 500 entries")
+    return value
+
+
+def page_document(spec: Any, *, layouts: Any = None) -> str:
+    """One self-contained page from a ``web-ui-page/1`` spec — the consumer owns the data, web_ui the HTML and CSS.
+
+    ``{"schema", "title", "theme"?, "description"?, "icon"?, "favicon"?, "blocks": [...]}``; blocks are ``heading``,
+    ``text`` (paragraphs; ``muted``), ``output`` (preformatted), ``table`` (headers, rows, caption), ``card`` /
+    ``section`` (title, text, nested blocks), ``links``, ``image``, ``kv`` (key–value rows) and ``badges``
+    (``{text, status: pass|fail}``). Text is never HTML; links and images are relative paths or HTTPS. The theme is one
+    of ours, ``auto`` or a brand registered with ``theme_css`` (its CSS is appended when registered in this process);
+    ``layouts`` adds switchable presets. The same from the shell or Node: ``python -S web_ui.py --page spec.json``.
+    """
+    if not isinstance(spec, dict) or spec.get("schema") != PAGE_SCHEMA:
+        raise ValueError(f"expected schema {PAGE_SCHEMA}")
+    if spec.keys() - {"schema", "title", "theme", "description", "icon", "favicon", "blocks"}:
+        raise ValueError("page has schema, title, blocks and optional theme, description, icon, favicon")
+    title = _spec_text(spec.get("title"), "title", limit=200, required=True)
+    theme = spec.get("theme", "modern")
+    if not _theme_name(theme):
+        raise ValueError("unknown theme")
+    body = [f'<main class="ui-page">']
+    if "icon" in spec:
+        body.append(f'<img src="{escape(_spec_href(spec["icon"]), quote=True)}" width="80" height="80" alt="">')
+    body.append(f'<h1 class="ui-title">{escape(title)}</h1>')
+    if "description" in spec:
+        body.append(f'<p class="ui-muted">{escape(_spec_text(spec["description"], "description", limit=2000))}</p>')
+    if layouts is not None:
+        body.append(layout_switch_html(layouts))
+    body += [_page_block(block, depth=1) for block in _blocks(spec.get("blocks"), 0)]
+    body.append("</main>")
+    css = core_css(theme if theme in THEMES or theme in CANDIDATE_THEMES or theme == AUTO_THEME else "modern")
+    css += _REGISTERED_THEME_CSS.get(theme, "") + (layout_presets_css(layouts) if layouts is not None else "")
+    css += ".ui-kv{display:grid;grid-template-columns:max-content 1fr;gap:.25rem var(--ui-space)}.ui-kv dt{color:var(--ui-muted)}.ui-kv dd{margin:0}.ui-badges .ui-tag{margin-right:.25rem}"
+    return render_document(trusted_html="".join(body), title=title, theme=theme, css=css,
+                           favicon=_spec_href(spec["favicon"]) if "favicon" in spec else None,
+                           touch_icon=_spec_href(spec["icon"]) if "icon" in spec else None)
+
+
+PARTS_THEMES = (*THEMES, *CANDIDATE_THEMES, AUTO_THEME)
+
+
+def parts_document(*, spec: Any = None, layouts: Any = None, themes: Sequence[str] = PARTS_THEMES) -> str:
+    """The visual-regression baseline: one page showing every block of a ``web-ui-page/1`` spec (default: the ``page``
+    example, which uses every block kind) under every theme, each in its own sandboxed ``srcdoc`` frame with the
+    layout presets (default: ``page-layouts``) switchable inside. BrowserTestKit screenshots it per commit and a
+    consumer compares its own page against the frame that uses its theme. No network, no scripts."""
+    spec = EXAMPLES["page"] if spec is None else spec
+    layouts = EXAMPLES["page-layouts"] if layouts is None else layouts
+    frames = []
+    for theme in themes:
+        if theme not in PARTS_THEMES and theme not in REGISTERED_THEMES:
+            raise ValueError(f"unknown theme: {theme!r}")
+        inner = page_document({**spec, "theme": theme}, layouts=layouts)
+        frames.append(f'<section class="ui-parts-frame" id="theme-{theme}"><h2>{escape(theme)}</h2>'
+                      f'<iframe title="{escape(theme, quote=True)}" sandbox="allow-same-origin" loading="lazy" '
+                      f'srcdoc="{escape(inner, quote=True)}"></iframe></section>')
+    nav = " · ".join(f'<a href="#theme-{escape(theme, quote=True)}">{escape(theme)}</a>' for theme in themes)
+    body = ('<main class="ui-page ui-parts"><h1 class="ui-title">Parts × themes × layouts</h1>'
+            f'<p class="ui-muted">Every block of <code>web-ui-page/1</code> under every theme; the layout radios inside each frame '
+            f'switch its presets. Screenshot this page to see a change before it reaches a consumer.</p><p>{nav}</p>'
+            + "".join(frames) + "</main>")
+    css = (bundled_css() + ".ui-parts{--ui-max:1280px}.ui-parts-frame{margin:var(--ui-space) 0}.ui-parts-frame h2{margin:0 0 .25rem}"
+           ".ui-parts-frame iframe{width:100%;height:720px;border:1px solid var(--ui-border);background:#fff}")
+    return render_document(trusted_html=body, title="PySaiyanWeBoo parts", css=css)
+
+
 def catalog_document(spec: Any, *, theme: str = "modern") -> str:
     """Build a self-contained, script-free catalog from consumer-owned data.
 
@@ -844,31 +1720,7 @@ def catalog_document(spec: Any, *, theme: str = "modern") -> str:
             raise ValueError(f"invalid {label} fields")
         return value
 
-    def text(value: Any, label: str, *, limit: int = 4000, required: bool = False) -> str:
-        if (not isinstance(value, str) or len(value) > limit
-                or any(ord(c) < 32 and c not in "\n\t" for c in value)
-                or any(0xD800 <= ord(c) <= 0xDFFF for c in value)
-                or required and not value.strip()):
-            raise ValueError(f"invalid {label}")
-        return value
-
-    def href(value: Any) -> str:
-        value = text(value, "link href", limit=2048, required=True)
-        # Do not let browser URL preprocessing turn whitespace/backslashes into
-        # an executable scheme or a protocol-relative external destination.
-        if any(c.isspace() for c in value) or "\\" in value:
-            raise ValueError("link href must not contain whitespace or backslashes")
-        parsed = urlsplit(value)
-        if parsed.scheme:
-            if parsed.scheme != "https" or not parsed.hostname or parsed.username is not None or parsed.password is not None:
-                raise ValueError("external links must be HTTPS without credentials")
-            try:
-                parsed.port
-            except ValueError:
-                raise ValueError("invalid HTTPS port") from None
-        elif parsed.netloc or value.startswith("/") or ":" in parsed.path.split("/", 1)[0]:
-            raise ValueError("local links must be relative to the generated page")
-        return value
+    text, href = _spec_text, _spec_href
 
     mapping(spec, {"schema", "title", "items"}, {"description"}, "catalog")
     if spec["schema"] != "web-ui-catalog/1":
@@ -915,6 +1767,26 @@ def catalog_document(spec: Any, *, theme: str = "modern") -> str:
     css = "@layer base,components,theme;" + "".join(css_source(name) for name in names)
     css += ".ui-catalog{overflow-wrap:anywhere}.ui-catalog section{scroll-margin-top:1rem}"
     return render_document(title=title, theme=theme, css=css, trusted_html=body)
+
+def table(headers: Sequence[str], rows: Sequence[Sequence[Any]], *, caption: str | None = None, id: str | None = None,
+          trusted_html: bool = False, row_classes: Sequence[str | None] | None = None) -> str:
+    """A ``.ui-table``: header cells and rows, every cell escaped unless ``trusted_html`` (then cells are HTML the
+    caller already built, e.g. an ``<img>``). ``row_classes`` gives one class (or None) per row, such as ``ui-pass`` /
+    ``ui-fail``; the status classes ``ui-changed`` / ``ui-pass`` / ``ui-fail`` are styled by components.css on any element (a cell, a row, a ``.ui-tag`` badge)."""
+    if row_classes is not None and len(row_classes) != len(rows):
+        raise ValueError("row_classes must have one entry per row")
+    cell = (lambda value: str(value)) if trusted_html else (lambda value: escape("" if value is None else str(value)))
+    head = "".join(f"<th scope=\"col\">{escape(str(h))}</th>" for h in headers)
+    body = []
+    for index, row in enumerate(rows):
+        if len(row) != len(headers):
+            raise ValueError(f"row {index} has {len(row)} cells, expected {len(headers)}")
+        cls = row_classes[index] if row_classes else None
+        body.append((f'<tr class="{escape(cls, quote=True)}">' if cls else "<tr>") + "".join(f"<td>{cell(v)}</td>" for v in row) + "</tr>")
+    attrs = f' id="{_element_id(id)}"' if id else ""
+    return (f'<table class="ui-table"{attrs}>' + (f"<caption>{escape(caption)}</caption>" if caption else "")
+            + f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>")
+
 
 def button(label: str, *, id: str | None = None, type: str = "button", disabled: bool = False) -> str:
     """An escaped native button; custom actions remain consumer-owned."""
@@ -968,6 +1840,88 @@ def details(summary: str, text: str = "", *, open: bool = False, trusted_html: s
     """Native disclosure, without JS. Pass renderer output via trusted_html explicitly."""
     body = f'<pre class="ui-output">{escape(text)}</pre>' if trusted_html is None else trusted_html
     return f'<details class="ui-panel"{" open" if open else ""}><summary>{escape(summary)}</summary>{body}</details>'
+
+
+def stat_tiles(items: tuple[tuple[str, object], ...] | tuple[tuple[str, object, str], ...]) -> str:
+    """Escaped grid of (label, value[, hint]) tiles using .ui-card; values are shown as text."""
+    tiles = []
+    for item in items:
+        if len(item) not in (2, 3):
+            raise ValueError("a stat tile is (label, value) or (label, value, hint)")
+        label, value, *rest = item
+        hint = f'<span class="ui-stat-hint">{escape(rest[0])}</span>' if rest else ""
+        tiles.append(f'<article class="ui-card ui-stat"><b class="ui-stat-value">{escape(str(value))}</b>'
+                     f'<span class="ui-stat-label">{escape(label)}</span>{hint}</article>')
+    return f'<div class="ui-grid ui-stats">{"".join(tiles)}</div>'
+
+
+def data_table(columns: tuple[str, ...], rows, *, id: str, caption: str | None = None,
+               trusted_cells: bool = False, row_ids: tuple[str, ...] | None = None) -> str:
+    """Escaped table (.ui-table) for records.js filtering; every row needs one cell per column.
+
+    ``trusted_cells`` inserts cell strings verbatim (caller-audited HTML such as ``badge()`` output).
+    ``row_ids`` sets ``data-ui-row`` on each body row so scripts can address one record.
+    """
+    identity = _element_id(id)
+    if not columns:
+        raise ValueError("columns must not be empty")
+    rows = [tuple(row) for row in rows]
+    if any(len(row) != len(columns) for row in rows):
+        raise ValueError("every row needs one cell per column")
+    if row_ids is not None and len(row_ids) != len(rows):
+        raise ValueError("row_ids must match rows")
+    cell = (lambda text: str(text)) if trusted_cells else (lambda text: escape(str(text)))
+    head = "".join(f"<th scope=\"col\">{escape(column)}</th>" for column in columns)
+    body = []
+    for index, row in enumerate(rows):
+        marker = f' data-ui-row="{escape(row_ids[index], quote=True)}"' if row_ids is not None else ""
+        body.append(f"<tr{marker}>" + "".join(f"<td>{cell(text)}</td>" for text in row) + "</tr>")
+    title = f"<caption>{escape(caption)}</caption>" if caption else ""
+    return (f'<table class="ui-table" id="{identity}">{title}<thead><tr>{head}</tr></thead>'
+            f'<tbody>{"".join(body)}</tbody></table>')
+
+
+def filter_input(table_id: str, *, id: str = "filter", label: str = "絞り込み",
+                 count_id: str | None = None) -> str:
+    """Search box that records.js binds to ``#table_id``; ``count_id`` names an element that shows the row count."""
+    target = _element_id(table_id)
+    identity = _element_id(id)
+    count = f' data-ui-filter-count="#{_element_id(count_id)}"' if count_id else ""
+    return (f'<label for="{identity}">{escape(label)}</label> '
+            f'<input class="ui-input" id="{identity}" name="{identity}" type="search" data-ui-filter="#{target}"{count}>')
+
+
+def _draft_key(key: str) -> str:
+    if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_.:/#@-]{1,200}", key):
+        raise ValueError("draft key must be a short ASCII identifier")
+    return key
+
+
+def draft_textarea(*, key: str, id: str, label: str, value: str = "", rows: int = 3) -> str:
+    """textarea() whose value records.js keeps as a browser-local draft under ``key``."""
+    return textarea(id=id, label=label, value=value, rows=rows).replace(
+        "<textarea ", f'<textarea data-ui-draft="{_draft_key(key)}" ', 1)
+
+
+def draft_select(options: tuple[tuple[str, str], ...], *, key: str, id: str, label: str,
+                 selected: str | None = None) -> str:
+    """select() whose choice records.js keeps as a browser-local draft under ``key``."""
+    return select(options, id=id, label=label, selected=selected).replace(
+        "<select ", f'<select data-ui-draft="{_draft_key(key)}" ', 1)
+
+
+def records_io(*, export_label: str = "↓ JSON", import_label: str = "↑ JSON", filename: str = "records.json") -> str:
+    """Export/import controls for the drafts on a records board (records.js)."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+\.json", filename):
+        raise ValueError("filename must be a plain .json name")
+    return (f'<span class="ui-records-io"><button class="ui-button" type="button" data-ui-export="{escape(filename, quote=True)}">'
+            f'{escape(export_label)}</button><label class="ui-button">{escape(import_label)}'
+            f'<input type="file" accept="application/json" data-ui-import hidden></label></span>')
+
+
+def records_board(trusted_html: str, *, id: str = "records") -> str:
+    """Section marked data-ui-records so that loading records.js binds its filters, drafts and JSON controls."""
+    return f'<section class="ui-records" id="{_element_id(id)}" data-ui-records>{trusted_html}</section>'
 
 
 def plotly_figure(
@@ -1781,7 +2735,7 @@ def adopt_document(page: str, *, asset_base: str | None = None, class_aliases: d
     hashes and label the transformed publication separately. The shared CSS is
     embedded (bundled_css()); ``asset_base`` is accepted for old callers and unused.
     """
-    if theme not in THEMES + CANDIDATE_THEMES:
+    if not _theme_name(theme):
         raise ValueError("unknown theme")
     aliases = class_aliases or {}
     if any(not re.fullmatch(r"[A-Za-z_][\w-]*", key) or
@@ -3803,11 +4757,169 @@ def theme_palettes() -> dict[str, dict[str, str]]:
         "green": {"--ui-bg": "#edf0ec", "--ui-panel": "#ffffff", "--ui-fg": "#163b3b", "--ui-muted": "#546a61",
                   "--ui-border": "#ccdcd4", "--ui-accent": "#126d66", "--ui-danger": "#a73528", "--ui-radius": ".5rem"},
         "red": theme_palette(0.0), "blue": theme_palette(0.6),
+        # terminal: mcp-toolcall-lab's terminal-lite (dark ASCII presentation, borders instead of shadows), returned here
+        # so every repository can pick it; it also sets the body font to the mono stack.
+        "terminal": {"--ui-bg": "#0a0e10", "--ui-panel": "#11171a", "--ui-fg": "#d5dee0", "--ui-muted": "#7c8a8d",
+                     "--ui-border": "#2b3436", "--ui-accent": "#5fd7a7", "--ui-danger": "#ff8080", "--ui-radius": "0",
+                     "--ui-font": "var(--ui-font-mono)"},
     }
 
 
+def theme_css(name: str, tokens: dict[str, str]) -> str:
+    """A consumer's own palette as one ``@layer theme`` block for ``body[data-ui-theme=NAME]`` — the same shape
+    as the candidate themes in tokens.css, so ``render_document(theme=name, css=core_css() + theme_css(name, …))``
+    gives a brand its colours without a stylesheet of its own. ``tokens`` are ``--ui-*`` custom properties
+    (``--ui-bg`` is required: it decides ``color-scheme``). Calling it registers ``name`` for ``render_document``
+    in this process (a page renderer calls it once, even if the bundle was written elsewhere)."""
+    if not re.fullmatch(r"[a-z][a-z0-9-]*", name):
+        raise ValueError("theme name must be lowercase letters, digits and hyphens")
+    if "--ui-bg" not in tokens or any(not key.startswith("--ui-") for key in tokens):
+        raise ValueError("tokens are --ui-* custom properties and include --ui-bg")
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", tokens["--ui-bg"]):
+        raise ValueError("--ui-bg must be #rrggbb (it decides color-scheme)")
+    scheme = "dark" if _luminance(tokens["--ui-bg"]) < 0.18 else "light"
+    declarations = ";".join(f"{k}:{v}" for k, v in tokens.items())
+    REGISTERED_THEMES.add(name)  # render_document(theme=name) is now accepted in this process
+    css = f'@layer theme{{body[data-ui-theme="{name}"]{{{declarations};color-scheme:{scheme}}}}}\n'
+    _REGISTERED_THEME_CSS[name] = css
+    return css
+
+
+TEXT_TOKENS = ("--ui-fg", "--ui-muted", "--ui-accent", "--ui-danger")
+
+
+def check_theme(tokens: dict[str, str], *, minimum: float = 4.5, border_minimum: float = 1.2) -> list[str]:
+    """Why a palette would not read (empty when it does): every text token (``TEXT_TOKENS``) must reach ``minimum``
+    contrast (WCAG AA 4.5) on both grounds, ``--ui-bg`` and ``--ui-panel``; ``--ui-border`` must be visible against
+    them (``border_minimum``); colours are ``#rrggbb``. Palettes from ``theme_palette()`` pass by construction; a
+    hand-picked brand is checked here before ``theme_css`` / ``write_bundle`` ship it — run it in the consumer's tests."""
+    problems = []
+    for key in ("--ui-bg", "--ui-panel", *TEXT_TOKENS, "--ui-border"):
+        if key not in tokens:
+            problems.append(f"{key}: missing")
+        elif not re.fullmatch(r"#[0-9a-fA-F]{6}", tokens[key]):
+            problems.append(f"{key}: {tokens[key]!r} is not #rrggbb")
+    if problems:
+        return problems
+    grounds = {"--ui-bg": tokens["--ui-bg"], "--ui-panel": tokens["--ui-panel"]}
+    for key in TEXT_TOKENS:
+        for ground, colour in grounds.items():
+            ratio = contrast_ratio(tokens[key], colour)
+            if ratio < minimum:
+                problems.append(f"{key} {tokens[key]} on {ground} {colour}: contrast {ratio:.2f} < {minimum}")
+    for ground, colour in grounds.items():
+        ratio = contrast_ratio(tokens["--ui-border"], colour)
+        if ratio < border_minimum:
+            problems.append(f"--ui-border {tokens['--ui-border']} on {ground} {colour}: contrast {ratio:.2f} < {border_minimum}")
+    return problems
+
+
+LAYOUT_PRESETS_SCHEMA = "web-ui-layout-presets/1"
+LAYOUT_CANDIDATES_SCHEMA = "web-ui-layout-candidates/1"
+_LAYOUT_ID = re.compile(r"[a-z][a-z0-9-]{0,31}")
+_LAYOUT_VAR = re.compile(r"--ui-[a-z][a-z0-9-]{0,47}")
+_LAYOUT_VALUE = re.compile(r"(?:0|\d{1,4}(?:\.\d{1,3})?(?:px|rem|em|%|vw|fr))")
+MAX_LAYOUT_PRESETS = 12
+
+
+def validate_layout_presets(spec: Any) -> dict[str, Any]:
+    """Checked ``web-ui-layout-presets/1``: ``{"default", "presets": [{"id", "label", "vars", "note"?}]}``; every preset
+    sets the same ``--ui-*`` variables and values are plain lengths only (the core reads ``--ui-text``, ``--ui-space``
+    and ``--ui-max``; see ``EXAMPLES["page-layouts"]``)."""
+    if not isinstance(spec, dict) or spec.get("schema") != LAYOUT_PRESETS_SCHEMA:
+        raise ValueError(f"expected schema {LAYOUT_PRESETS_SCHEMA}")
+    presets = spec.get("presets")
+    if not isinstance(presets, list) or not 1 <= len(presets) <= MAX_LAYOUT_PRESETS:
+        raise ValueError(f"presets must list 1..{MAX_LAYOUT_PRESETS} entries")
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    names = None
+    for preset in presets:
+        if not isinstance(preset, dict) or set(preset) - {"id", "label", "vars", "note"}:
+            raise ValueError("a preset has id, label, vars and an optional note")
+        pid, label, values = preset.get("id"), preset.get("label"), preset.get("vars")
+        if not isinstance(pid, str) or not _LAYOUT_ID.fullmatch(pid) or pid in seen:
+            raise ValueError(f"preset id must be a unique lowercase token: {pid!r}")
+        if not isinstance(label, str) or not label.strip() or len(label) > 60:
+            raise ValueError(f"preset {pid}: label must be 1..60 characters")
+        if not isinstance(values, dict) or not values:
+            raise ValueError(f"preset {pid}: vars must be a nonempty object")
+        for name, value in values.items():
+            if not _LAYOUT_VAR.fullmatch(name) or not isinstance(value, str) or not _LAYOUT_VALUE.fullmatch(value):
+                raise ValueError(f"preset {pid}: {name}: {value!r} is not a --ui-* length")
+        if names is not None and set(values) != names:
+            raise ValueError(f"preset {pid}: every preset must set the same variables")
+        names = set(values)
+        note = preset.get("note", "")
+        if not isinstance(note, str) or len(note) > 120:
+            raise ValueError(f"preset {pid}: note must be at most 120 characters")
+        seen.add(pid)
+        out.append({"id": pid, "label": label, "vars": dict(values), "note": note})
+    default = spec.get("default", out[0]["id"])
+    if default not in seen:
+        raise ValueError(f"default preset {default!r} is not listed")
+    return {"default": default, "presets": out}
+
+
+def layout_presets_css(spec: Any) -> str:
+    """CSS for switchable presets: the default on ``:root``, then one
+    ``body:has(input[name=ui-layout][value=ID]:checked)`` rule per preset, so choosing a radio re-lays the page at
+    once with no reload and no JavaScript, also from ``file://``. Put it after ``core_css()``; the switch itself is
+    ``layout_switch_html(spec)``."""
+    data = validate_layout_presets(spec)
+    default = next(p for p in data["presets"] if p["id"] == data["default"])
+    decls = lambda values: ";".join(f"{name}:{value}" for name, value in values.items())  # noqa: E731
+    rules = [":root{" + decls(default["vars"]) + "}"]
+    rules += [f'body:has(input[name="ui-layout"][value="{p["id"]}"]:checked){{{decls(p["vars"])}}}' for p in data["presets"]]
+    rules.append(".ui-layout-switch{display:flex;flex-wrap:wrap;gap:8px;border:1px solid var(--ui-border);"
+                 "padding:8px;margin:16px 0}.ui-layout-switch label{display:inline-flex;gap:4px;align-items:center}"
+                 ".ui-layout-switch small{color:var(--ui-muted)}")
+    return "\n".join(rules) + "\n"
+
+
+def _layout_note(preset: dict[str, Any], candidates: dict[str, Any] | None) -> str:
+    if candidates is None:
+        return preset["note"]
+    row = candidates.get("presets", {}).get(preset["id"])
+    if not row:
+        return "not checked"
+    passed, failed = row.get("passed", []), row.get("failed", [])
+    parts = []
+    if passed:
+        parts.append("ok at " + ", ".join(f"{w}px" for w in passed))
+    if failed:
+        parts.append("check at " + ", ".join(f"{w}px" for w in failed))
+    return "; ".join(parts)
+
+
+def layout_switch_html(spec: Any, candidates: dict[str, Any] | None = None, *, legend: str = "Layout") -> str:
+    """Radio buttons, one per preset, the default checked; with a ``web-ui-layout-candidates/1`` sweep result
+    (tool/layout_presets.py sweep) each is labelled with the widths where it held — none is disabled."""
+    data = validate_layout_presets(spec)
+    if candidates is not None and (not isinstance(candidates, dict) or candidates.get("schema") != LAYOUT_CANDIDATES_SCHEMA):
+        raise ValueError(f"candidates must be {LAYOUT_CANDIDATES_SCHEMA}")
+    items = []
+    for p in data["presets"]:
+        checked = " checked" if p["id"] == data["default"] else ""
+        note = _layout_note(p, candidates)
+        items.append(f'<label><input type="radio" name="ui-layout" value="{p["id"]}"{checked}> '
+                     f'{escape(p["label"])}' + (f" <small>{escape(note)}</small>" if note else "") + "</label>")
+    return f'<fieldset class="ui-layout-switch"><legend>{escape(legend)}</legend>' + "".join(items) + "</fieldset>"
+
+
+def _auto_theme_css() -> str:
+    """``data-ui-theme="auto"``: the dark :root palette (modern) unless the browser prefers light, then the
+    github-like palette — the token block of themes/github-like.css, so the two never drift."""
+    source = _CSS["themes/github-like.css"]
+    block = re.search(r'body\[data-ui-theme="github-like"\]\{([^}]*)\}', source).group(1)
+    tokens = ";".join(line.strip().rstrip(";") for line in block.strip().splitlines() if line.strip())
+    return ('/* auto: dark (the :root palette) unless the browser prefers light, then the github-like palette. */\n'
+            'body[data-ui-theme="auto"]{color-scheme:dark light}'
+            f'@media(prefers-color-scheme:light){{body[data-ui-theme="auto"]{{{tokens}}}}}\n')
+
+
 def _token_theme_css() -> str:
-    blocks = ["/* Candidate themes, token-only: palettes, no theme files (see theme_palettes()). */"]
+    blocks = [_auto_theme_css() + "/* Candidate themes, token-only: palettes, no theme files (see theme_palettes()). */"]
     for name in CANDIDATE_THEMES:
         tokens = theme_palettes()[name]
         scheme = "dark" if _luminance(tokens["--ui-bg"]) < 0.18 else "light"
@@ -16801,7 +17913,7 @@ def _example_cards() -> str:
     return ('<section class="ui-grid"><article class="ui-card"><h2>Components</h2><p>Tokens, panels, cards, tags, controls and output surfaces.</p>'
             '<span class="ui-tag">modern</span> <span class="ui-tag">static</span></article>'
             '<article class="ui-card"><h2>Stub examples</h2><p><a href="./mcp-stub.html">MCP Stub</a> · <a href="./api-stub.html">API Stub</a></p></article>'
-            '<article class="ui-card"><h2>Themes</h2><p><a href="./github-like.html">GitHub-like theme</a></p></article>'
+            '<article class="ui-card"><h2>Themes</h2><p><a href="./github-like.html">GitHub-like theme</a> · <a href="./parts.html">Parts × themes × layouts</a>: every block under every theme, the regression baseline.</p></article>'
             '<article class="ui-card"><h2>App shell</h2><p><a href="./showcase.html">Showcase</a>: header, rail or bottom bar, sections.</p></article>'
             '<article class="ui-card"><h2>Clipboard shelf</h2><p><a href="./clipboard-shelf.html">Shelf and prompt workbench</a>: paste, filter, copy a bundle.</p></article>'
             '<article class="ui-card"><h2>Door-to-Door</h2><p><a href="./door.html">Pull-down and emoji transitions</a>: A → B, A ↔ B.</p></article>'
@@ -16857,6 +17969,7 @@ def example_pages() -> dict[str, str]:
         "examples/patterns.html": patterns_document(),
         "examples/screens.html": screens_document(),
         "examples/image-studio.html": imagestudio_document(),
+        "examples/parts.html": parts_document(),
         "contract/v1/example.html": page(contract, "web-ui HTML contract v1 fixture"),
         "index.html": _index_page(),
     }
@@ -16912,6 +18025,27 @@ EXAMPLES: dict[str, Any] = {'flutter-pages': {'schema': 'web-ui-flutter-pages/1'
                               'label': 'Screen 1',
                               'adapter': 'flutter-screen1',
                               'url': 'https://myon-bioinformatics.github.io/flutter_navigation_basic/#/screen1'}]},
+ 'page': {'schema': 'web-ui-page/1',
+          'title': 'Run report',
+          'description': 'A page built from data: the consumer owns the JSON, web_ui the HTML and CSS.',
+          'blocks': [{'type': 'badges', 'items': ['chromium', {'text': '12 pass', 'status': 'pass'}, {'text': '1 fail', 'status': 'fail'}]},
+                     {'type': 'kv', 'rows': [['commit', 'abc1234'], ['recorded', '2026-11-08']]},
+                     {'type': 'table', 'headers': ['environment', 'verdict'], 'caption': 'per environment',
+                      'rows': [['Linux-chromium-desktop', 'pass'], ['Linux-chromium-pixel', 'fail']]},
+                     {'type': 'section', 'title': 'Detail',
+                      'blocks': [{'type': 'text', 'text': 'Two paragraphs,\n\nseparated by a blank line.', 'muted': True},
+                                 {'type': 'output', 'text': '$ run\nok'},
+                                 {'type': 'links', 'items': [{'label': 'receipt', 'href': './receipt.json'}]}]}]},
+ 'page-layouts': {'schema': 'web-ui-layout-presets/1',
+                  'default': 'comfortable',
+                  'presets': [{'id': 'comfortable', 'label': 'Comfortable', 'note': 'default: 16px text, 16px spacing, 960px page',
+                               'vars': {'--ui-text': '16px', '--ui-space': '16px', '--ui-max': '960px'}},
+                              {'id': 'compact', 'label': 'Compact', 'note': '14px text, 8px spacing: dense tables and tools',
+                               'vars': {'--ui-text': '14px', '--ui-space': '8px', '--ui-max': '960px'}},
+                              {'id': 'wide', 'label': 'Wide', 'note': '1280px page for side-by-side panels',
+                               'vars': {'--ui-text': '16px', '--ui-space': '16px', '--ui-max': '1280px'}},
+                              {'id': 'device', 'label': 'Device width', 'note': 'full width, 8px spacing: phones and embedded frames',
+                               'vars': {'--ui-text': '15px', '--ui-space': '8px', '--ui-max': '100%'}}]},
  'layout-presets': {'schema': 'web-ui-layout-presets/1',
                     'default': 'grid8',
                     'presets': [{'id': 'grid8',
@@ -17481,7 +18615,7 @@ def _index_page() -> str:
 
 
 def js_modules() -> dict[str, str]:
-    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, world.js)."""
+    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, world.js)."""
     return {**_JS, "world.js": WORLD_JS}
 
 
@@ -17608,6 +18742,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--css", type=Path, help="trusted CSS file to embed")
     parser.add_argument("--catalog", type=Path, metavar="FILE",
                         help="print a script-free page for a web-ui-catalog/1 JSON spec and exit")
+    parser.add_argument("--parts", action="store_true", help="print the parts × themes × layouts page (see parts_document; --brand adds a registered theme) and exit")
+    parser.add_argument("--page", type=Path, metavar="FILE",
+                        help="print a self-contained page for a web-ui-page/1 JSON spec (see page_document; --brand registers its theme, --layouts adds presets) and exit")
     parser.add_argument("--world", type=Path, metavar="FILE",
                         help="print a single-file page for a web-ui-world/1 JSON spec and exit; `-` reads the spec from stdin")
     parser.add_argument("--example", metavar="NAME", help="print one example spec as JSON and exit (including catalog-report, catalog-projects)")
@@ -17623,6 +18760,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="print a page showing N seeded random themes side by side and exit")
     parser.add_argument("--css-bundle", action="store_true",
                         help="embed every web-ui stylesheet and theme (see bundled_css) in the page")
+    bundle = parser.add_argument_group("📦 consumer stylesheet (see write_bundle, check_bundle)")
+    bundle.add_argument("--bundle", type=Path, metavar="FILE", help="write core_css(--theme) + --brand + --extra-css to FILE under a provenance header and exit")
+    bundle.add_argument("--bundle-check", type=Path, metavar="FILE", help="exit 1 if FILE is not what --bundle would write now")
+    bundle.add_argument("--brand", type=Path, metavar="FILE", help="with --bundle: a JSON {\"name\": ..., \"tokens\": {\"--ui-bg\": ...}} palette appended as theme_css")
+    bundle.add_argument("--extra-css", type=Path, metavar="FILE", help="with --bundle: the consumer's own rules appended after the theme")
+    bundle.add_argument("--layouts", type=Path, metavar="FILE", help="with --bundle: a web-ui-layout-presets/1 JSON (python -S web_ui.py --example page-layouts) made switchable in the sheet")
+    bundle.add_argument("--note", default="", help="with --bundle: one line kept in the header (who generated it)")
+    bundle.add_argument("--check-theme", type=Path, metavar="FILE", help="exit 1 listing why the --brand-shaped JSON palette in FILE would not read (see check_theme)")
     parser.add_argument("--asset-base", help="local or pinned HTTPS shared asset directory")
     parser.add_argument(
         "--with-scripts",
@@ -17682,6 +18827,55 @@ def main(argv: list[str] | None = None) -> int:
         return _reports_main(parser, args)
     if args.command:
         parser.error("unexpected arguments: " + " ".join(args.command))
+    if args.parts:
+        try:
+            themes = list(PARTS_THEMES)
+            if args.brand:
+                brand = json.loads(args.brand.read_text(encoding="utf-8"))
+                theme_css(str(brand["name"]), dict(brand["tokens"]))
+                themes.append(str(brand["name"]))
+            sys.stdout.write(parts_document(themes=themes))
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            parser.error(str(exc))
+        return 0
+    if args.page:
+        try:
+            spec = json.loads(args.page.read_text(encoding="utf-8"))
+            if args.brand:
+                brand = json.loads(args.brand.read_text(encoding="utf-8"))
+                theme_css(str(brand["name"]), dict(brand["tokens"]))
+            layouts = json.loads(args.layouts.read_text(encoding="utf-8")) if args.layouts else None
+            sys.stdout.write(page_document(spec, layouts=layouts))
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            parser.error(str(exc))
+        return 0
+    if args.check_theme:
+        try:
+            spec = json.loads(args.check_theme.read_text(encoding="utf-8"))
+            problems = check_theme(dict(spec["tokens"] if "tokens" in spec else spec))
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            parser.error(str(exc))
+        for problem in problems:
+            sys.stderr.write(problem + "\n")
+        return 1 if problems else 0
+    if args.bundle or args.bundle_check:
+        try:
+            brand = None
+            if args.brand:
+                spec = json.loads(args.brand.read_text(encoding="utf-8"))
+                brand = (str(spec["name"]), dict(spec["tokens"]))
+            extra = args.extra_css.read_text(encoding="utf-8") if args.extra_css else ""
+            layouts = json.loads(args.layouts.read_text(encoding="utf-8")) if args.layouts else None
+            options = {"theme": args.theme, "brand": brand, "extra_css": extra, "layouts": layouts}
+            if args.bundle:
+                fields = write_bundle(args.bundle, note=args.note, **options)
+                sys.stdout.write(f"{args.bundle} commit={fields['commit'][:8]} sha256={fields['sha256'][:8]}\n")
+            problems = check_bundle(args.bundle_check, **options) if args.bundle_check else []
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            parser.error(str(exc))
+        for problem in problems:
+            sys.stderr.write(problem + "\n")
+        return 1 if problems else 0
     if args.sri:
         try:
             raw = args.sri.read_bytes()

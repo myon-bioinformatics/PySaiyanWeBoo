@@ -11,6 +11,26 @@ jobs:
       contents: read
     uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-change-detection.yml@9e3da7ae1846e9604ebc24bb5178f7de094a4e77
 
+  python311-page-contract:
+    if: needs.changes.outputs.product_changed == 'true'
+    needs: changes
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "latest"
+          python-version: "3.11"
+          activate-environment: true
+          enable-cache: false
+      - name: Verify minimum Python page syntax and rendering
+        run: python -S -m unittest discover -s tests -p test_page_heading_compat.py -v
+
   resolve-vendor:
     if: needs.changes.outputs.product_changed == 'true'
     needs: changes
@@ -164,7 +184,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  test-locked:
+  vendor-locked:
     if: needs.changes.outputs.product_changed == 'true'
     needs: changes
     permissions:
@@ -249,11 +269,11 @@ jobs:
         path: build/vendor-evidence-locked
         if-no-files-found: error
         retention-days: 14
-    name: Locked baseline
+    name: Vendor locked baseline
     timeout-minutes: 20
 
 
-  junit-identity:
+  failure-identity:
     needs: [changes, tooling]
     if: (always()) && needs.changes.outputs.product_changed == 'true'
     permissions:

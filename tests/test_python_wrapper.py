@@ -80,6 +80,7 @@ class PythonWrapperTests(unittest.TestCase):
                             stylesheets=('https://example.test/main.css?v=1',)),
             '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'{web_ui.generator_meta()}'
             '<title>Title</title><link rel="stylesheet" href="https://example.test/main.css?v=1">'
             '<style>body{color:red}</style></head><body data-ui-theme="modern">'
             '<main class="ui-page"><section class="ui-panel"><h1 class="ui-title">Title</h1>'
@@ -227,8 +228,10 @@ class BundledCssTests(unittest.TestCase):
         tokens = web_ui.css_source("tokens.css")
         for name in web_ui.CANDIDATE_THEMES:
             self.assertIn(f'body[data-ui-theme="{name}"]', tokens)
-            self.assertNotIn(f"themes/{name}.css", web_ui._CSS)
-        self.assertEqual(web_ui.CANDIDATE_THEMES, ("green", "red", "blue"))
+            # A candidate may still ship a glyph sheet (terminal does); its palette never moves out of tokens.css.
+            if f"themes/{name}.css" in web_ui._CSS:
+                self.assertNotIn("--ui-bg:", web_ui.css_source(f"themes/{name}.css"))
+        self.assertEqual(web_ui.CANDIDATE_THEMES, ("green", "red", "blue", "terminal"))
         for hue in (0.0, 0.08, 0.33, 0.6, 0.83):
             for dark in (False, True):
                 theme = web_ui.theme_palette(hue, dark=dark)

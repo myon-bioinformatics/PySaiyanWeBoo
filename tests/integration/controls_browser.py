@@ -6549,6 +6549,73 @@ class MockAuthBrowserTests(unittest.TestCase):
             self.assertLessEqual(bounds['x']+bounds['width'],320.5)
 
 
+class GifBrowserTests(unittest.TestCase):
+    """gif.js in this engine (WEBUI_BROWSER): the browser decodes, fits, captions, patches and zooms screenshots on a canvas,
+    the encoder writes one GIF89a, and both this browser and Pillow (an independent decoder) read it back."""
+
+    def test_recorder_builds_a_gif_every_decoder_opens(self):
+        import io
+        from PIL import Image, ImageSequence
+        from web_ui import gif_recorder_document
+        near = lambda pixel, rgb, tolerance=24: sum(abs(a - b) for a, b in zip(pixel, rgb)) < tolerance  # noqa: E731
+        with sync_playwright() as playwright:
+            browser = photo_engine(playwright).launch()
+            try:
+                shot = browser.new_page(viewport={'width': 400, 'height': 300})
+                shot.set_content("<body style='margin:0;background:#fff'><div id=a style='position:absolute;left:40px;top:40px;width:120px;height:80px;background:#1565c0'></div>"
+                                 "<div id=b style='position:absolute;left:240px;top:160px;width:60px;height:60px;background:#2e7d32'></div></body>")
+                first = shot.screenshot(type='png')
+                shot.evaluate("document.getElementById('b').style.background = '#c62828'")
+                second = shot.screenshot(type='png')
+                patch = shot.screenshot(type='png', clip={'x': 240, 'y': 160, 'width': 60, 'height': 60})
+                box = shot.locator('#a').bounding_box()
+                page = browser.new_page()
+                errors = []
+                page.on('pageerror', lambda error: errors.append(str(error)))
+                page.set_content(gif_recorder_document())
+                b64 = lambda data: base64.b64encode(data).decode('ascii')  # noqa: E731
+                stats = page.evaluate("""async items => {
+                    window.rec = new UiGif.Recorder({width: 200, height: 150, caption: 24});
+                    return rec.add(items);
+                }""", [{'png': b64(first), 'cssWidth': 400, 'caption': '✅ one', 'delay': 500},
+                       {'caption': '✅ same picture, new caption', 'delay': 300},
+                       {'png': b64(second), 'cssWidth': 400, 'caption': '✅ two', 'delay': 400},
+                       {'patch': {'png': b64(patch), 'x': 240, 'y': 160}, 'caption': '⏺ patch', 'delay': 100, 'group': 1},
+                       {'zoom': box, 'caption': '🔍 #a', 'steps': 4, 'ms': 400, 'hold': 800, 'ok': False}])
+                result = page.evaluate("() => rec.encodeBase64({comment: 'web_ui gif.js browser test'})")
+                gif = base64.b64decode(result['gif'])
+                if os.environ.get('WEBUI_EVIDENCE_DIR'):
+                    Path(os.environ['WEBUI_EVIDENCE_DIR']).mkdir(parents=True, exist_ok=True)
+                    (Path(os.environ['WEBUI_EVIDENCE_DIR']) / 'gif-recorder.gif').write_bytes(gif)
+                opened = page.evaluate("""async src => {
+                    const img = new Image(); img.src = src; await img.decode();
+                    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+                    const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+                    return {w: img.naturalWidth, h: img.naturalHeight, caption: Array.from(g.getImageData(190, 2, 1, 1).data)};
+                }""", 'data:image/gif;base64,' + result['gif'])
+            finally:
+                browser.close()
+        self.assertEqual(errors, [])
+        self.assertEqual((stats['images'], stats['reused'], stats['patches'], stats['synthesized']), (2, 2, 1, 3))   # the repeat and the zoom reuse a screenshot
+        report = result['report']
+        self.assertEqual(report['bytes'], len(gif))
+        self.assertTrue(gif.startswith(b'GIF89a') and gif.endswith(b';') and report['colors'] <= 255)
+        self.assertEqual((opened['w'], opened['h']), (200, 174))                        # this browser opens it
+        self.assertTrue(near(opened['caption'], (0x1b, 0x5e, 0x20)), opened['caption'])
+        image = Image.open(io.BytesIO(gif))                                              # and so does Pillow
+        self.assertEqual(image.info.get('loop'), 0)
+        durations = [f.info.get('duration', 0) for f in ImageSequence.Iterator(image)]
+        frames = [f.convert('RGB') for f in ImageSequence.Iterator(Image.open(io.BytesIO(gif)))]
+        self.assertEqual(len(frames), report['frames'])
+        self.assertGreaterEqual(min(durations), 20)
+        self.assertTrue(near(frames[0].getpixel((50, 24 + 40)), (0x15, 0x65, 0xc0)))   # 400x300 fitted into 200x150
+        self.assertTrue(near(frames[2].getpixel((135, 24 + 95)), (0xc6, 0x28, 0x28)))   # frame 1 changed only its caption
+        last = frames[-1]
+        self.assertTrue(near(last.getpixel((2, 2)), (0xb7, 0x1c, 0x1c)))               # ok False: red caption
+        pixels = [last.getpixel((x, y)) for x in range(200) for y in range(24, 174)]
+        self.assertGreater(sum(near(p, (0x15, 0x65, 0xc0)) for p in pixels), 200 * 150 // 4)   # zoomed in: #a fills the frame
+        self.assertGreater(sum(near(p, (0xff, 0x6f, 0x00), 48) for p in pixels), 100)          # and is outlined
+
 if __name__ == '__main__':
     unittest.main()
 
