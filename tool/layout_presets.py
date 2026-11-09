@@ -17,12 +17,8 @@ are candidates. Node reaches this tool through vendor/py_launch.cjs (no Node twi
 """
 from __future__ import annotations
 
-import argparse
-from html import escape
-import json
-from pathlib import Path
-import re
-import sys
+import argparse, json, re, sys
+from html import escape; from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import web_ui  # noqa: E402  (the presets API lives in the installable module; this tool keeps the sweep)
