@@ -5256,6 +5256,143 @@ def theme_switch_html(*, legend: str = "Theme") -> str:
 _CSS["dial.css"] = "@layer components{" + DIAL_CSS + "}"
 
 
+# --- Scroll regions: a row or a table wider than its place gets ‹ › buttons, edge fades and (tables) a second scrollbar on top.
+# Lifted from the parent repository's observatory (site/ui/scroll-controls.js and its rules), so no page keeps its own copy.
+_CSS["scroll.css"] = (
+    "@layer components{.ui-scroll{min-width:0;max-width:100%;position:relative}.ui-scroll-row{display:flex;align-items:center;gap:8px;width:100%}"
+    '.ui-scroll-row>[data-ui-scroll]{display:flex;flex:1 1 auto;min-width:0;max-width:100%;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;gap:8px;white-space:nowrap;'
+    "overscroll-behavior-x:contain;scrollbar-width:thin;scrollbar-color:var(--ui-muted) var(--ui-bg)}.ui-scroll-row>[data-ui-scroll]>*{flex:0 0 auto}"
+    ".ui-scroll-arrow{flex:0 0 32px;width:32px;height:40px;min-height:40px;padding:0;font-size:24px;line-height:1;color:var(--ui-accent);background:var(--ui-panel);"
+    "border:1px solid var(--ui-border);border-radius:var(--ui-radius);cursor:pointer}.ui-scroll-arrow:disabled{opacity:.35;cursor:default}"
+    '.ui-scroll-row.ui-scroll-left::before,.ui-scroll-row.ui-scroll-right::after{content:"";pointer-events:none;position:absolute;top:0;bottom:0;width:16px;z-index:1}'
+    ".ui-scroll-row.ui-scroll-left::before{left:40px;background:linear-gradient(to right,var(--ui-bg),transparent)}"
+    ".ui-scroll-row.ui-scroll-right::after{right:40px;background:linear-gradient(to left,var(--ui-bg),transparent)}"
+    ".ui-scroll-table>[data-ui-scroll]{max-height:64vh;max-height:64dvh;overflow:auto;overscroll-behavior-x:contain;scrollbar-gutter:stable}"
+    ".ui-scroll-table>[data-ui-scroll] thead th{position:sticky;top:0;z-index:2;box-shadow:0 1px 0 var(--ui-border)}"
+    ".ui-scroll-bar{display:flex;align-items:center;gap:8px;padding:8px;background:var(--ui-panel);border:1px solid var(--ui-border);border-bottom:0;"
+    "border-radius:var(--ui-radius) var(--ui-radius) 0 0}.ui-scroll-over>[data-ui-scroll]{border-top-left-radius:0;border-top-right-radius:0}"
+    ".ui-scroll-bar .ui-scroll-arrow{height:32px;min-height:32px}.ui-scroll-hint{font-size:.75rem;white-space:nowrap;color:var(--ui-muted)}"
+    ".ui-scroll-top{flex:1 1 auto;min-width:0;height:24px;overflow-x:scroll;overflow-y:hidden;overscroll-behavior-x:contain;scrollbar-color:var(--ui-muted) var(--ui-bg)}"
+    ".ui-scroll-spacer{height:1px}.ui-scroll :focus-visible{outline:2px solid var(--ui-accent);outline-offset:-2px}"
+    "@media(max-width:700px){.ui-scroll-hint{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}"
+    "@media(prefers-reduced-motion:reduce){[data-ui-scroll],.ui-scroll-top{scroll-behavior:auto}}}")
+
+_JS["scroll.js"] = r"""/* web-ui scroll: ‹ › buttons, edge fades and (tables) a top scrollbar for every [data-ui-scroll="row"|"table"] (scroll_html). No dependencies, nothing stored or sent; scroll.css draws it. */
+const mounted=new WeakSet(),states=new Set();
+let identity=0,scheduled=false,watching=false;
+const LABELS={row:"横スクロール",table:"表",suffix:"（横スクロール）",hint:"表を横に移動",top:"表ヘッダーの横スクロール",left:"を左へスクロール",right:"を右へスクロール"};
+export function refreshScroll(){
+  scheduled=false;
+  for(const state of states){
+    if(!state.viewport.isConnected){state.observer?.disconnect();states.delete(state);continue}
+    const {viewport,shell,toolbar,top,spacer,previous,next}=state;
+    const maximum=Math.max(0,viewport.scrollWidth-viewport.clientWidth),overflow=maximum>1;
+    shell.classList.toggle("ui-scroll-over",overflow);
+    shell.classList.toggle("ui-scroll-left",overflow&&viewport.scrollLeft>1);
+    shell.classList.toggle("ui-scroll-right",overflow&&viewport.scrollLeft<maximum-1);
+    previous.disabled=!overflow||viewport.scrollLeft<=1;
+    next.disabled=!overflow||viewport.scrollLeft>=maximum-1;
+    if(previous.hidden!==!overflow)previous.hidden=!overflow;
+    if(next.hidden!==!overflow)next.hidden=!overflow;
+    if(toolbar){
+      if(toolbar.hidden!==!overflow)toolbar.hidden=!overflow;
+      // Both scrollbars need the same range, even though the toolbar also holds the buttons.
+      spacer.style.width=`${maximum+top.clientWidth}px`;
+      if(Math.abs(top.scrollLeft-viewport.scrollLeft)>1)top.scrollLeft=viewport.scrollLeft;
+    }
+  }
+}
+const schedule=()=>{if(!scheduled){scheduled=true;requestAnimationFrame(refreshScroll)}};
+function bindKeys(control,viewport){
+  control.addEventListener("keydown",event=>{
+    // Text fields, selects and other children keep their own arrow / Home / End keys.
+    if(event.target!==control||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;
+    if(event.key==="ArrowLeft"||event.key==="ArrowRight")viewport.scrollLeft+=event.key==="ArrowLeft"?-100:100;
+    else if(event.key==="Home")viewport.scrollLeft=0;
+    else if(event.key==="End")viewport.scrollLeft=viewport.scrollWidth;
+    else return;
+    event.preventDefault();
+    if(control!==viewport)control.scrollLeft=viewport.scrollLeft;
+    schedule();
+  });
+}
+function enhance(viewport,labels){
+  if(mounted.has(viewport))return;
+  mounted.add(viewport);
+  const table=viewport.dataset.uiScroll==="table",label=viewport.dataset.scrollLabel||(table?labels.table:labels.row);
+  const shell=document.createElement("div");
+  shell.className=table?"ui-scroll ui-scroll-table":"ui-scroll ui-scroll-row";
+  viewport.before(shell);shell.append(viewport);
+  if(!viewport.id)viewport.id=`ui-scroll-${++identity}`;
+  if(!viewport.hasAttribute("tabindex"))viewport.tabIndex=0;
+  if(!viewport.hasAttribute("aria-label"))viewport.setAttribute("aria-label",label+labels.suffix);
+  if(table)viewport.setAttribute("role","region");
+  const state={viewport,shell};
+  const arrow=direction=>{
+    const button=document.createElement("button");
+    button.type="button";button.className="ui-scroll-arrow";button.textContent=direction<0?"‹":"›";
+    button.setAttribute("aria-label",label+(direction<0?labels.left:labels.right));
+    button.setAttribute("aria-controls",viewport.id);
+    button.addEventListener("click",()=>viewport.scrollBy({left:direction*Math.max(120,viewport.clientWidth*.7),behavior:"auto"}));
+    return button;
+  };
+  state.previous=arrow(-1);state.next=arrow(1);
+  if(table){
+    const toolbar=document.createElement("div"),hint=document.createElement("span"),top=document.createElement("div"),spacer=document.createElement("div");
+    toolbar.className="ui-scroll-bar";hint.className="ui-scroll-hint";hint.textContent=labels.hint;
+    top.className="ui-scroll-top";top.tabIndex=0;top.setAttribute("role","region");top.setAttribute("aria-label",labels.top);top.setAttribute("aria-controls",viewport.id);
+    spacer.className="ui-scroll-spacer";top.append(spacer);
+    toolbar.append(hint,state.previous,top,state.next);shell.prepend(toolbar);
+    Object.assign(state,{toolbar,top,spacer});
+    top.addEventListener("scroll",()=>{if(Math.abs(viewport.scrollLeft-top.scrollLeft)>1)viewport.scrollLeft=top.scrollLeft;schedule()},{passive:true});
+    bindKeys(top,viewport);
+  }else{shell.prepend(state.previous);shell.append(state.next)}
+  viewport.addEventListener("scroll",schedule,{passive:true});
+  viewport.addEventListener("focusin",event=>{
+    if(event.target===viewport)return;
+    const bounds=viewport.getBoundingClientRect(),target=event.target.getBoundingClientRect();
+    if(target.left<bounds.left)viewport.scrollLeft+=target.left-bounds.left;
+    else if(target.right>bounds.right)viewport.scrollLeft+=target.right-bounds.right;
+    schedule();
+  });
+  bindKeys(viewport,viewport);
+  if(typeof ResizeObserver!=="undefined"){
+    state.observer=new ResizeObserver(schedule);state.observer.observe(viewport);
+    for(const child of viewport.children)state.observer.observe(child);
+  }
+  states.add(state);
+}
+/* Enhance every region under root, now and as the page adds more (one observer per page). labels overrides LABELS (another language). */
+export function bindScroll(root=document,options={}){
+  const labels={...LABELS,...(options.labels||{})};
+  const mount=()=>{root.querySelectorAll('[data-ui-scroll="row"],[data-ui-scroll="table"]').forEach(v=>enhance(v,labels));schedule()};
+  if(!watching){
+    watching=true;
+    new MutationObserver(mutations=>{if(mutations.some(m=>m.type==="childList"))mount();else schedule()})
+      .observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["open","hidden"]});
+    window.addEventListener("resize",schedule,{passive:true});
+    document.addEventListener("toggle",schedule,true);
+    document.addEventListener("load",schedule,true);
+  }
+  mount();
+  return {mount,refresh:refreshScroll};
+}
+if(typeof document!=="undefined")bindScroll();
+"""
+
+
+def scroll_html(trusted_html: str, *, label: str, kind: str = "row", id: str | None = None) -> str:
+    """A scroll region around trusted HTML: ``kind`` "row" (buttons, chips: one line that scrolls sideways) or "table" (a wide table, with a
+    second scrollbar on top). scroll.js adds the ‹ › buttons and edge fades when the content is wider than its place; without it the region
+    still scrolls. ``label`` names the region for screen readers and the buttons."""
+    if kind not in ("row", "table"):
+        raise ValueError('a scroll region is a "row" or a "table"')
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("a scroll region needs a label")
+    identity = f' id="{_element_id(id)}"' if id is not None else ""
+    return f'<div class="ui-shell-scroll" data-ui-scroll="{kind}" data-scroll-label="{escape(label, quote=True)}"{identity}>{trusted_html}</div>'
+
+
 def dial_html(name: str, *, minimum: float = 0, maximum: float = 100, step: float = 1, value: float = 0, label: str = "", attrs: str = "") -> str:
     """A rotary dial (``bindDial()`` from dial.js turns it) over a range input named ``name``; DIAL_CSS draws it. The input is what forms, keys and screen
     readers see: ``label`` is its aria-label, ``attrs`` any further attributes (already escaped) for it."""
@@ -5309,6 +5446,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     # does not bind itself on load, "spec" when the builder wants a checked spec, and "classic" for a classic script (not an ES module).
     # Specs and keyword arguments pass through to the builder.
     "dial": {"html": "dial_html", "css": ("dial.css",), "js": ("dial.js",)},
+    "scroll": {"html": "scroll_html", "css": ("scroll.css",), "js": ("scroll.js",)},
     "seed-dial": {"html": "seed_dial_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
     "theme-switch": {"html": "theme_switch_html", "css": (), "js": ("theme.js",), "mount": "bindTheme();"},
     "coordinates": {"html": "coordinates_html", "css": ("coordinates.css",), "js": ("coordinates.js",)},
@@ -18958,7 +19096,7 @@ def _index_page() -> str:
 
 
 def js_modules() -> dict[str, str]:
-    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, world.js)."""
+    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, scroll.js, world.js)."""
     return {**_JS, "dial.js": DIAL_JS, "world.js": WORLD_JS}
 
 
