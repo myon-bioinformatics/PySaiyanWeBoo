@@ -17,13 +17,8 @@ A status says what web-ui did, not that the original was reviewed line by line:
 ``archive_ready`` stays false while anything is ``pending`` or ``unreviewed``, or a retirement is not approved.
 """
 from __future__ import annotations
-import argparse
-import hashlib
-import json
+import argparse, hashlib, json, re, subprocess, sys
 from pathlib import Path
-import re
-import subprocess
-import sys
 
 REPOSITORY = 'myon-bioinformatics/flutter_navigation_basic'
 
@@ -177,6 +172,10 @@ WORKFLOWS = {
     'ci-status-label.yml': ('proposed_retirement', None, 'Inactive labelling job of that repository'),
     'claude.yml': ('proposed_retirement', None, 'Assistant workflow of that repository'),
 }
+
+# Flutter #244 renames these roles; retain historical names for pinned inventories.
+WORKFLOWS['ci.yml'] = WORKFLOWS['dart.yml']
+WORKFLOWS['pages.yml'] = WORKFLOWS['flutter-pages.yml']
 
 _TOKEN = re.compile(r'[A-Za-z_$][A-Za-z_0-9$]*|(?:0[xX][0-9a-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|>>>=|===|!==|>>>|<<=|>>=|\?\?=|\.\.\.|=>|==|!=|<=|>=|&&|\|\||\+\+|--|\+=|-=|\*=|/=|~/|%=|<<|>>|\?\?|\?\.|\.\.|[^\s]')
 
@@ -351,12 +350,12 @@ def inventory(root: Path) -> dict:
             'non_catalogue_files': files, 'catalogues': catalogues, 'other_sources': other_sources, 'archive_blockers': blockers}
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('checkout', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--check', action='store_true', help='compare with the file on disk instead of writing it')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     text = json.dumps(inventory(args.checkout), ensure_ascii=False, indent=2) + '\n'
     if args.check:
         if not args.output.is_file() or args.output.read_text(encoding='utf-8') != text:

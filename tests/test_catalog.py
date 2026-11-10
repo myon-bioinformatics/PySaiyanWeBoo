@@ -1,14 +1,6 @@
 """Consumer data stays data: catalog generation needs only the standard library."""
-import copy
-from html.parser import HTMLParser
-import json
-import os
-from pathlib import Path
-import subprocess
-import sys
-import tempfile
-import unittest
-from urllib.parse import urljoin
+import copy, json, os, subprocess, sys, tempfile, unittest
+from html.parser import HTMLParser; from pathlib import Path; from urllib.parse import urljoin
 
 import web_ui as ui
 
@@ -147,7 +139,8 @@ class CatalogTests(unittest.TestCase):
             done = subprocess.run([sys.executable, '-I', '-S', str(root / 'web_ui.py'),
                                    '--catalog', str(root / 'input.json')], capture_output=True, timeout=10)
             self.assertEqual(done.returncode, 0, done.stderr)
-            self.assertEqual(done.stdout.decode('utf-8'), ui.catalog_document(self.spec()))
+            # The copy outside the checkout cannot know its commit; only the generator meta differs.
+            self.assertEqual(ui.GENERATOR_META.sub('', done.stdout.decode('utf-8')), ui.GENERATOR_META.sub('', ui.catalog_document(self.spec())))
             (root / 'input.json').write_text('{"invalid": true}', encoding='utf-8')
             bad = subprocess.run([sys.executable, '-I', '-S', str(root / 'web_ui.py'),
                                   '--catalog', str(root / 'input.json')], capture_output=True, timeout=10)

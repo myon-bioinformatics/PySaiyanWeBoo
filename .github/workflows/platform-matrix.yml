@@ -37,9 +37,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {name: chromium / desktop, browser: chromium, profile: desktop, device: '', tests: 'PhotoBrowserTests PhotoPageBrowserTests ClipboardBrowserTests PlaygroundBrowserTests ReportBrowserTests McpBrowserTests PatternBrowserTests PatternBridgeBrowserTests MockAuthBrowserTests ScreensBrowserTests ImageStudioBrowserTests'}
-          - {name: firefox / desktop, browser: firefox, profile: desktop, device: '', tests: 'PhotoBrowserTests PhotoPageBrowserTests ClipboardBrowserTests PlaygroundBrowserTests ReportBrowserTests McpBrowserTests PatternBrowserTests PatternBridgeBrowserTests MockAuthBrowserTests ScreensBrowserTests ImageStudioBrowserTests'}
-          - {name: webkit / desktop, browser: webkit, profile: desktop, device: '', tests: 'PhotoBrowserTests PhotoPageBrowserTests ClipboardBrowserTests PlaygroundBrowserTests ReportBrowserTests McpBrowserTests PatternBrowserTests PatternBridgeBrowserTests MockAuthBrowserTests ScreensBrowserTests ImageStudioBrowserTests'}
+          - {name: chromium / desktop, browser: chromium, profile: desktop, device: '', tests: 'PhotoBrowserTests PhotoPageBrowserTests ClipboardBrowserTests PlaygroundBrowserTests ReportBrowserTests McpBrowserTests PatternBrowserTests PatternBridgeBrowserTests MockAuthBrowserTests ScreensBrowserTests ImageStudioBrowserTests GifBrowserTests'}
+          - {name: firefox / desktop, browser: firefox, profile: desktop, device: '', tests: 'PhotoBrowserTests PhotoPageBrowserTests ClipboardBrowserTests PlaygroundBrowserTests ReportBrowserTests McpBrowserTests PatternBrowserTests PatternBridgeBrowserTests MockAuthBrowserTests ScreensBrowserTests ImageStudioBrowserTests GifBrowserTests'}
+          - {name: webkit / desktop, browser: webkit, profile: desktop, device: '', tests: 'PhotoBrowserTests PhotoPageBrowserTests ClipboardBrowserTests PlaygroundBrowserTests ReportBrowserTests McpBrowserTests PatternBrowserTests PatternBridgeBrowserTests MockAuthBrowserTests ScreensBrowserTests ImageStudioBrowserTests GifBrowserTests'}
           - {name: chromium / Pixel 7 (emulation), browser: chromium, profile: pixel, device: 'Pixel 7', tests: 'PhotoPageBrowserTests'}
           - {name: webkit / iPhone 13 (emulation), browser: webkit, profile: iphone, device: 'iPhone 13', tests: 'PhotoPageBrowserTests'}
     steps:
@@ -50,7 +50,7 @@ jobs:
       - name: Check out pinned browser-test-kit (the platform probe)
         uses: actions/checkout@v7
         with:
-          repository: myon-bioinformatics/browser-test-kit
+          repository: myon-bioinformatics/BrowserTestKit
           ref: cc7322bc2e0a7c8c28f43380f6417c9e00a819f0
           path: .browser-test-kit
           persist-credentials: false
@@ -58,7 +58,10 @@ jobs:
         with:
           version: 'latest'
           python-version: "3.15"
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: System libraries and the browser (bounded; WebKit needs many packages)
         timeout-minutes: 20
         run: uv run --locked --group gradio python -m playwright install --with-deps --only-shell "${{ matrix.browser }}"
@@ -128,7 +131,7 @@ jobs:
       - name: Check out pinned browser-test-kit (merge and render)
         uses: actions/checkout@v7
         with:
-          repository: myon-bioinformatics/browser-test-kit
+          repository: myon-bioinformatics/BrowserTestKit
           ref: cc7322bc2e0a7c8c28f43380f6417c9e00a819f0
           path: .browser-test-kit
           persist-credentials: false

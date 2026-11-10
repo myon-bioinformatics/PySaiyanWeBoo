@@ -7,10 +7,10 @@ from datetime import datetime, timedelta, timezone
 import io
 import json
 import math
-from pathlib import Path
 import random
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import web_ui as ui

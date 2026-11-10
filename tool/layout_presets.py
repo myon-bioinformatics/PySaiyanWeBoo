@@ -17,100 +17,18 @@ are candidates. Node reaches this tool through vendor/py_launch.cjs (no Node twi
 """
 from __future__ import annotations
 
-import argparse
-from html import escape
-import json
-from pathlib import Path
-import re
-import sys
+import argparse, json, re, sys
+from html import escape; from pathlib import Path
 
-SCHEMA = "web-ui-layout-presets/1"
-CANDIDATES = "web-ui-layout-candidates/1"
-_ID = re.compile(r"[a-z][a-z0-9-]{0,31}")
-_VAR = re.compile(r"--ui-[a-z][a-z0-9-]{0,47}")
-_VALUE = re.compile(r"(?:0|\d{1,4}(?:\.\d{1,3})?(?:px|rem|em|%|vw|fr))")
-MAX_PRESETS = 12
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import web_ui  # noqa: E402  (the presets API lives in the installable module; this tool keeps the sweep)
 
-
-def validate(spec):
-    """Checked ``{"default", "presets": [{"id", "label", "vars"}]}``; values are plain lengths only."""
-    if not isinstance(spec, dict) or spec.get("schema") != SCHEMA:
-        raise ValueError(f"expected schema {SCHEMA}")
-    presets = spec.get("presets")
-    if not isinstance(presets, list) or not 1 <= len(presets) <= MAX_PRESETS:
-        raise ValueError(f"presets must list 1..{MAX_PRESETS} entries")
-    out, seen, names = [], set(), None
-    for preset in presets:
-        if not isinstance(preset, dict) or set(preset) - {"id", "label", "vars", "note"}:
-            raise ValueError("a preset has id, label, vars and an optional note")
-        pid, label, values = preset.get("id"), preset.get("label"), preset.get("vars")
-        if not isinstance(pid, str) or not _ID.fullmatch(pid) or pid in seen:
-            raise ValueError(f"preset id must be a unique lowercase token: {pid!r}")
-        if not isinstance(label, str) or not label.strip() or len(label) > 60:
-            raise ValueError(f"preset {pid}: label must be 1..60 characters")
-        if not isinstance(values, dict) or not values:
-            raise ValueError(f"preset {pid}: vars must be a nonempty object")
-        for name, value in values.items():
-            if not _VAR.fullmatch(name) or not isinstance(value, str) or not _VALUE.fullmatch(value):
-                raise ValueError(f"preset {pid}: {name}: {value!r} is not a --ui-* length")
-        if names is not None and set(values) != names:
-            raise ValueError(f"preset {pid}: every preset must set the same variables")
-        names = set(values)
-        note = preset.get("note", "")
-        if not isinstance(note, str) or len(note) > 120:
-            raise ValueError(f"preset {pid}: note must be at most 120 characters")
-        seen.add(pid)
-        out.append({"id": pid, "label": label, "vars": dict(values), "note": note})
-    default = spec.get("default", out[0]["id"])
-    if default not in seen:
-        raise ValueError(f"default preset {default!r} is not listed")
-    return {"default": default, "presets": out}
-
-
-def _decls(values):
-    return ";".join(f"{name}:{value}" for name, value in values.items())
-
-
-def css(spec):
-    """CSS: the default preset on :root, then one rule per preset keyed on its checked radio."""
-    data = validate(spec)
-    default = next(p for p in data["presets"] if p["id"] == data["default"])
-    rules = [":root{" + _decls(default["vars"]) + "}"]
-    rules += [f'body:has(input[name="ui-layout"][value="{p["id"]}"]:checked){{{_decls(p["vars"])}}}'
-              for p in data["presets"]]
-    rules.append(".ui-layout-switch{display:flex;flex-wrap:wrap;gap:8px;border:1px solid var(--ui-border);"
-                 "padding:8px;margin:16px 0}.ui-layout-switch label{display:inline-flex;gap:4px;align-items:center}"
-                 ".ui-layout-switch small{color:var(--ui-muted)}")
-    return "\n".join(rules) + "\n"
-
-
-def _note(preset, candidates):
-    if candidates is None:
-        return preset["note"]
-    row = candidates.get("presets", {}).get(preset["id"])
-    if not row:
-        return "not checked"
-    passed, failed = row.get("passed", []), row.get("failed", [])
-    parts = []
-    if passed:
-        parts.append("ok at " + ", ".join(f"{w}px" for w in passed))
-    if failed:
-        parts.append("check at " + ", ".join(f"{w}px" for w in failed))
-    return "; ".join(parts)
-
-
-def controls_html(spec, candidates=None, *, legend="Layout"):
-    """Radio buttons, one per preset, the default checked; notes come from sweep candidates if given."""
-    data = validate(spec)
-    if candidates is not None and (not isinstance(candidates, dict) or candidates.get("schema") != CANDIDATES):
-        raise ValueError(f"candidates must be {CANDIDATES}")
-    items = []
-    for p in data["presets"]:
-        checked = " checked" if p["id"] == data["default"] else ""
-        note = _note(p, candidates)
-        items.append(f'<label><input type="radio" name="ui-layout" value="{p["id"]}"{checked}> '
-                     f'{escape(p["label"])}' + (f" <small>{escape(note)}</small>" if note else "") + "</label>")
-    return (f'<fieldset class="ui-layout-switch"><legend>{escape(legend)}</legend>' + "".join(items) + "</fieldset>")
+SCHEMA = web_ui.LAYOUT_PRESETS_SCHEMA
+CANDIDATES = web_ui.LAYOUT_CANDIDATES_SCHEMA
+MAX_PRESETS = web_ui.MAX_LAYOUT_PRESETS
+validate = web_ui.validate_layout_presets
+css = web_ui.layout_presets_css
+controls_html = web_ui.layout_switch_html
 
 
 _CHECK_JS = r"""items => {

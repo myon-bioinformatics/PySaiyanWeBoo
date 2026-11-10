@@ -1,19 +1,13 @@
 """Vendor lock CI workflow regression tests."""
-import hashlib
-import json
-import os
-import shlex
-import shutil
-import subprocess
-import sys
+import hashlib, json, os, shlex, shutil, subprocess, sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW = ".github/workflows/tooling-smoke.yml"
+WORKFLOW = ".github/workflows/ci.yml"
 TEST_JOB = "tooling"
-PIN = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
+PIN = "26c442bc51b8a2837fe2556782b2937f396932af"
 
 
 def _lock_entries(root=ROOT):
@@ -81,14 +75,7 @@ def test_public_vendor_ci_updates_without_repository_writes():
     recreate = next(s for s in resolve if s.get("name") == "Recreate locked vendor files from GitHub")
     assert recreate["shell"] == "bash"
     assert recreate["run"].splitlines() == [
-        "python -S - <<'PY'",
-        "import json",
-        "from pathlib import Path",
-        "for entry in json.loads(Path('vendor.lock.json').read_text(encoding='utf-8'))['files']:",
-        "    Path(entry['destination']).unlink()",
-        "PY",
-        "python -S .vendor-sync-tools/vendor_sync.py materialize --manifest vendor.lock.json",
-        "python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json",
+        "python -S .vendor-sync-tools/vendor_sync.py recreate --manifest vendor.lock.json",
     ]
     needs = jobs[TEST_JOB]["needs"]
     assert "resolve-vendor" in ([needs] if isinstance(needs, str) else needs)
@@ -131,7 +118,7 @@ def test_public_vendor_ci_updates_without_repository_writes():
 
 def test_locked_baseline_runs_automatically_without_candidate_snapshot():
     ci = _workflow()
-    job = ci["jobs"]["test-locked"]
+    job = ci["jobs"]["vendor-locked"]
     assert job["permissions"] == {"contents": "read"}
     assert "continue-on-error" not in job
     assert job.get("needs") == ci["jobs"]["resolve-vendor"].get("needs")
@@ -166,12 +153,12 @@ def test_locked_baseline_runs_automatically_without_candidate_snapshot():
     assert lock["with"]["path"] == "build/vendor-evidence-locked"
 
 
-@pytest.mark.parametrize("job_name", ["resolve-vendor", "tooling", "test-locked"])
+@pytest.mark.parametrize("job_name", ["resolve-vendor", "tooling", "vendor-locked"])
 def test_pinned_parent_staging_command_and_real_payload(tmp_path, job_name):
     """Execute the workflow staging command against real lock bytes."""
     parent_tool = ROOT / ".vendor-sync-tools/vendor_stage.py"
     if not parent_tool.is_file():
-        pytest.skip("pinned parent checkout is supplied by Tooling smoke")
+        pytest.skip("pinned parent checkout is supplied by CI (ci.yml)")
     assert not (ROOT / "tool/stage_vendor_evidence.py").exists()
     _copy_snapshot(tmp_path)
     steps = _workflow()["jobs"][job_name]["steps"]

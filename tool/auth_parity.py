@@ -5,14 +5,8 @@ Requires Dart (and pub access for the original crypto ^3.0.7 dependency).
 No Flutter SDK, application bootstrap, external authentication or network requests.
 Only `dart pub get` obtains test dependencies. Sources must match the pinned hashes.
 """
+import argparse, hashlib, json, shutil, subprocess, sys, tempfile
 from pathlib import Path
-import argparse
-import hashlib
-import json
-import shutil
-import subprocess
-import sys
-import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -69,10 +63,10 @@ def python_answers(corpus):
             'query': [web_ui.auth_query_pairs(p) for p in corpus['query']]}
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('flutter_checkout', type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     corpus_path = ROOT / 'tests/fixtures/mock_auth_contract.json'
     corpus = json.loads(corpus_path.read_text())
     with tempfile.TemporaryDirectory(prefix='web-ui-auth-dart-') as tmp:

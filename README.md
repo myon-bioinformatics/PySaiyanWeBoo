@@ -14,6 +14,12 @@ Shared CSS themes, semantic UI components, and small JavaScript utilities for st
 
 PySaiyanWeBoo combines Py (Python), Saiyan, Web, and Boo. Like Majin Buu in Dragon Ball Z, it absorbs work from many other repositories and makes it its own. And like a Saiyan, who grows stronger through every battle and every round of training, it keeps getting better with each change and test. It serves all of this together as web pages. It was formerly named web-ui.
 
+## Ecosystem concept
+
+[![PySaiyanWeBoo ecosystem concept: Python, web, tools, and related projects](docs/brand/ecosystem.png)](docs/brand/ecosystem.png)
+
+つくる、つながる、広がっていく。小さなツールの積み重ねで、より良い未来の開発体験を。
+
 ## v1 foundation
 
 ```text
@@ -48,7 +54,7 @@ Current themes:
 
 - `modern` — terminal-styled default (text is Meiryo like every theme; code stays monospace)
 - `github-like` — generic light presentation intentionally using familiar GitHub visual cues
-- `green`, `red`, `blue` — candidates, token-only: palettes (green first built by hand in Ironmate's studio; red and blue are `theme_palette(hue)`, and any hue works) whose values are generated into `tokens.css` (no theme files, not in contract v1 yet)
+- `green`, `red`, `blue`, `terminal` — candidates, token-only: palettes (green first built by hand in Ironmate's studio; red and blue are `theme_palette(hue)`, and any hue works; terminal is mcp-toolcall-lab's dark terminal-lite returned here, mono body font) whose values are generated into `tokens.css` (no theme files, not in contract v1 yet)
 
 Single-file pages: `render_document(css=bundled_css())` (or `python -S web_ui.py --css-bundle`) embeds every
 stylesheet and theme, built in memory from the sources in `web_ui.py`; nothing is written to the repository. Because all themes ship
@@ -415,7 +421,7 @@ Pytest lanes, including those contract modules, run with uv:
 uv run pytest -v
 ```
 
-Stagehand is an opt-in dependency group, so the default sync does not install it. The Stagehand tests run in the tooling-smoke lane with `uv run --group stagehand pytest -v`.
+Stagehand is an opt-in dependency group, so the default sync does not install it. The Stagehand tests run in the CI lane (`ci.yml`, job `tooling`) with `uv run --group stagehand pytest -v`.
 
 The `-v` output identifies the failing contract by test name. If a browser screenshot fails in CI, inspect the `UI smoke` job first; successful screenshot runs publish the `web-ui-screenshots` artifact.
 
@@ -427,6 +433,33 @@ GitHub Actions captures Chromium screenshots at two explicit v1 viewports:
 Screenshot filenames follow `web-ui-<viewport-name>.png`. New viewport or locale variants should extend the descriptive suffix rather than replace the existing names, for example `web-ui-tablet-768x1024.png` or `web-ui-mobile-390x844-ja.png`.
 
 The first phase intentionally treats screenshots as observable test evidence rather than a pixel-perfect blocking regression test.
+
+## 🎞️ Browser evidence
+
+![All 20 built pages at 1280×800 plus four at 392×848 in Chromium](docs/evidence/browser.gif)
+
+🗓️ 2026-11-07 · 🧭 Chromium 153 · 🐧 Linux · receipt [`docs/evidence/browser.json`](docs/evidence/browser.json) · tested commit is in the receipt
+
+| 🧪 Suite | ✅ | 📝 |
+| --- | ---: | --- |
+| `tests/integration/school_browser.py` | 18 | |
+| `controls_browser.py` | 162 | |
+| `layout_presets_browser.py` · `route_table_browser.py` · `source_browser.py` | 5 · 1 · 1 | |
+| `plotly_browser.py` | 3 | Plotly.js from npm `plotly.js-dist-min` (CDN unreachable here) |
+| `successor_browser.py` | 3 | audio built; PulseAudio null sink |
+| `tests/integration/test_gradio_dom.py` | 1 | BrowserTestKit main instead of the pinned commit |
+| `tests/world_shared.browser.cjs` | desktop + mobile | |
+| BrowserTestKit `platform_probe` × 17 adapters | 34 | Chromium desktop + Pixel |
+| 🎞️ evidence GIF shots | 24 | |
+
+🚫 Firefox / WebKit not installed here, so only the Chromium lanes ran.
+
+🔁 Re-record:
+
+```sh
+python3 -S web_ui.py --site build/site
+uv run --project ../BrowserTestKit --group pages --group browser python ../BrowserTestKit/tools/evidence_gif.py docs/evidence/browser.gif --serve build/site --plan docs/evidence/browser.json
+```
 
 ## Visual regression
 
@@ -551,6 +584,68 @@ assert run_node("tests/repository_diagnostics.node.js").returncode == 0
 
 Existing `ui.js` text/clipboard helpers, `stub.js` form binding, and
 `repository-diagnostics.js` rendering remain in use by examples or consumers.
+
+📋 `web_ui.table(headers, rows, caption=…, row_classes=…)` renders a `.ui-table` (escaped cells; `trusted_html=True` for
+cells that are already HTML). Consumers' report pages (BrowserTestKit's platform matrix and app digest, markdown's
+real-world report, ascii_artist's captures) build on `render_document` + `core_css()` + this instead of their own CSS.
+`core_css(theme="modern")` is the ~4 KB bundle (tokens, base, components, one theme) for such pages; `bundled_css()` is every
+stylesheet. The status classes `ui-pass` / `ui-fail` / `ui-changed` style any element, including a `.ui-tag` badge.
+`core_css("terminal")` is the dark monospace terminal look (palette in tokens.css, `# ` titles / `[tags]` / `> ` buttons in
+`themes/terminal.css`) that mcp-toolcall-lab's stub pages use instead of a stylesheet of their own. A consumer with a brand
+palette registers it as `theme_css("ironmate", {"--ui-bg": …})` next to `core_css()` and renders with `theme="ironmate"`.
+A page whose forms are plain `<button>` / `<input>` / `<select>` / `<textarea>` / `<table>` elements (hand-written or
+built by its own script) opts them into the component look with `class="ui-elements"` on `<body>` or a container.
+
+📦 A consumer ships one committed stylesheet: `web_ui.write_bundle("static/site.css", theme="terminal", brand=("acme", tokens),
+extra_css=LAYOUT)` writes `core_css` + the brand palette + the consumer's own layout rules under a one-line provenance header
+(`web-ui-bundle/1 commit=… sha256=…`), and `check_bundle(...)` with the same arguments lists why it is stale (moved pin, hand
+edit, changed layout) — a two-line test per repository. The same from the shell or Node: `python -S web_ui.py --bundle FILE
+--theme terminal --brand brand.json --extra-css layout.css` / `--bundle-check FILE`. `source_commit()` is the commit the
+installed module came from (pip's install record, or the checkout's HEAD).
+Before a brand palette ships, `check_theme(tokens)` lists every text token that misses WCAG AA (4.5) on `--ui-bg` or
+`--ui-panel` and a border that would vanish; `theme_palette(hue, dark=…)` builds a palette from one hue that passes by
+construction. CLI: `python -S web_ui.py --check-theme brand.json`.
+Every rendered page carries `<meta name="generator" content="web_ui <commit>">` (`generator_meta()`; the installed commit, `checkout` in a checkout), so a screenshot or a
+GIF receipt says which web_ui drew it; BrowserTestKit's `evidence_gif.py` records it as `generator`.
+Layout is a preset too: the core reads `--ui-text` / `--ui-space` / `--ui-max`, `EXAMPLES["page-layouts"]` names four
+(comfortable, compact, wide, device; 8 px spacing grid) and `write_bundle(..., layouts=spec)` + `layout_switch_html(spec)`
+make them switchable without a reload — people and Playwright try each, and the [sweep](docs/layout-presets.md) keeps every
+one that holds as a candidate.
+📄 A whole page from data: `page_document(spec)` renders a `web-ui-page/1` JSON — title, description, icon and blocks
+(`heading`, `text`, `output`, `table`, `card`, `section`, `links`, `image`, `kv`, `badges`) — as one self-contained page,
+every string escaped and every link relative or HTTPS, with a brand theme (`theme_css`) and switchable layouts
+(`layouts=`). `python -S web_ui.py --example page` prints a spec; `--page spec.json [--brand brand.json --layouts
+page-layouts.json]` renders it from the shell or Node, so a report script owns only its data.
+
+🎞️ `gif.js` (`UiGif`) turns canvas frames into one animated GIF89a with no dependency: the browser decodes, resizes, zooms and
+captions the images it is given (`Composer`), and the module adds only what browsers lack — a bucket histogram while frames arrive,
+one global palette (exact for at most 255 distinct RGB colours when the selected palette fits them, else bucket median cut + refinement), each frame as its tight changed rectangle (transparent where
+unchanged when that is smaller), 12-bit LZW, delays ≥ 2 cs on the real timeline, and a byte budget (`maxBytes`: fewer colours, then
+fewer burst frames). RGB changes are compared before quantization; input alpha is ignored, so composite onto the desired
+background first. Exact colours are not promised when a smaller palette or budget requires quantization. Delays use centiseconds,
+rounded on the timeline with a 20 ms minimum per displayed state; shorter inputs can lengthen playback. Holds over 655350 ms
+split into repeated GIF images without losing duration (`report.frames` counts these physical images).
+`maxBytes` is a best-effort encoded-byte target, not a memory limit or hard output cap: colours halve down to 16 (or start lower
+if requested), then grouped bursts keep every 2nd, 4th or 8th state plus their endpoints. Dropped states donate their time to
+retained states. If none fits, the smallest attempt is returned with `report.overBudget: true`; callers requiring a hard cap must
+check that flag before saving. Timing continuation images also count toward this budget. Non-finite or unsafe-integer centisecond durations are rejected;
+very long finite recordings can still require substantial memory and output.
+`gif_recorder_document()` is the blank page a browser driver opens to use it — screenshots go in once, the GIF
+comes out once; BrowserTestKit's `evidence_gif.py` is that driver. The encoder (`UiGif.Encoder`) also runs in Node from the file
+`--site` writes; `tests/gif.node.js` checks it against an independent decoder, `GifBrowserTests` in each engine with Pillow.
+
+🧩 `parts_document()` (`examples/parts.html`, `--parts`) is the regression baseline: every block of the `page` example under every
+theme (`PARTS_THEMES`, plus a `--brand`), each in its own sandboxed frame with the layout radios inside. BrowserTestKit
+records it in this repository's GIF evidence; a consumer compares its own page against the frame that uses its theme.
+
+The core also carries `@media print` (white page, `.ui-no-print` / `.ui-print-only`), `prefers-reduced-motion` (animations and
+transitions off) and `theme="auto"` (the dark modern palette, or github-like when the browser prefers light).
+
+🩺 The repository-diagnostics page itself is one function: `web_ui.repository_diagnostics_page("owner/repo")`
+returns the self-contained HTML (bundled CSS and `repository-diagnostics.js` embedded, nothing from a CDN) that
+reads `./repository-diagnostics.json` next to it via `RepositoryDiagnostics.mount`. Consumers (markdown,
+ascii_artist, mcp-toolcall-lab) write their own JSON/JSONL with gh_identity and call this for the page, pinning
+this repository as a git dependency (`uv lock --upgrade-package pysaiyanweboo` to move the pin).
 They remain optional browser utilities under the lightweight JS bar in
 [docs/lightweight-js.md](docs/lightweight-js.md). Python cannot replace
 browser-side interaction merely by generating HTML. Live DOM checks of published
@@ -674,6 +769,22 @@ sources are relative paths or http(s) addresses. `python -S web_ui.py --componen
 The GIF comes from the browser test (`WEB_UI_GIFS=docs/demo python -m pytest tests/integration/controls_browser.py -k TableBrowserTests`).
 `WEB_UI_GIFS` takes the recorder's output options too, parsed by the same argparse definitions: `WEB_UI_GIFS="runs --suffix=-chromium --timestamp --git-commit"`
 writes `runs/component-table-chromium-20261108T113412Z-288cbed.gif` (the suffix after the base name, then when the run started, in UTC, and the commit it ran, in the order given), so repeated runs keep every file without `--force`.
+
+### Records boards from Python
+
+`stat_tiles`, `data_table`, `filter_input`, `draft_textarea`, `draft_select`, `records_io` and
+`records_board` build a read-only record board (PR / Issue queues, audit tables) from Python
+data; the optional `records.js` module adds a text filter, browser-local drafts
+(`data-ui-draft`, localStorage, best effort) and JSON export/import of those drafts. No fetch
+and no HTML from data: GitHub or other observations are gathered by the Python producer.
+
+```bash
+python -S -c 'import web_ui as ui
+rows=[("Aoi", "#1", ui.badge("失敗")), ("markdown", "#2", ui.badge("成功"))]
+body=ui.stat_tiles((("PR", len(rows)), ("CI失敗", 1)))+ui.filter_input("prs", count_id="n")+"<span id=n></span>"+ui.data_table(("repo","PR","CI"), rows, id="prs", trusted_cells=True, row_ids=("Aoi#1","markdown#2"))+ui.draft_textarea(key="Aoi#1:notes", id="notes", label="メモ")+ui.records_io()
+print(ui.render_document(trusted_html=ui.records_board(body), css=ui.bundled_css(), scripts=ui.shared_scripts(".", names=("records.js",))))' > board.html
+python -S web_ui.py --site .   # writes js/records.js next to it
+```
 
 ## Focused test discovery
 

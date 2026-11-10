@@ -5,6 +5,17 @@ sets of CSS custom properties in one JSON file (`web-ui-layout-presets/1`, for e
 `web_ui.EXAMPLES["layout-presets"]`; `python -S web_ui.py --example layout-presets` prints it). Any preset may be the right one for a screen; the page
 lets people switch, and tests try them all.
 
+## The page itself is a preset too
+
+The core reads three layout tokens: `--ui-text` (body font size), `--ui-space` (page, panel
+and card padding; the 8 px grid: 8 / 16 px) and `--ui-max` (page width). `EXAMPLES["page-layouts"]`
+(`python -S web_ui.py --example page-layouts`) is the preset file for them — `comfortable`
+(default), `compact`, `wide`, `device` — and the same `css` / radios switch them live. A consumer
+ships them in its stylesheet with `write_bundle(..., layouts=spec)` (CLI `--layouts FILE`) and
+puts `layout_switch_html(spec)` on the page; the sweep below then says which presets hold at
+which widths. The presets API (`validate_layout_presets`, `layout_presets_css`,
+`layout_switch_html`) lives in `web_ui`; `tool/layout_presets.py` delegates to it and keeps the sweep.
+
 ## Switch live, without reloading
 
 ```sh
