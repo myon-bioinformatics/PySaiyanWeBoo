@@ -19,7 +19,8 @@ def args_for(name):
     return {"dial": (("level",), {"maximum": 11, "label": "Level"}), "door": ((ui.example_data("door"),), {}), "world": ((ui.example_data("school"),), {}),
             "stub": ((ui.EXAMPLE_STUBS["api"],), {}), "source": ((SOURCE_SPEC,), {}), "showcase": ((ui.example_data("showcase"),), {}),
             "front": (("<p>main</p>", [ROOM]), {"title": "Front"}), "repository-diagnostics": (("myon-bioinformatics/web-ui",), {}),
-            "table": (({"columns": ["page", "chromium"], "rows": [["index", {"text": "pass", "status": "pass"}]], "row_headers": True},), {})}.get(name, ((), {}))
+            "table": (({"columns": ["page", "chromium"], "rows": [["index", {"text": "pass", "status": "pass"}]], "row_headers": True},), {}),
+            "steps": (({"key": "demo/run", "steps": [{"id": "run", "title": "Run", "command": "python3 -S demo.py", "expect": "42"}]},), {})}.get(name, ((), {}))
 
 
 @pytest.mark.parametrize("name", sorted(ui.COMPONENTS))
@@ -87,11 +88,11 @@ def test_node_reaches_a_component_through_py_launch(tmp_path):
 
 
 def test_the_table_escapes_everything_and_marks_numbers_missing_cells_and_statuses():
-    """table_html(): the hand-built report tables of Ironmate, markdown and browser-test-kit as one escaped builder, no script."""
+    """table_html(spec): the hand-built report tables of Ironmate, markdown and browser-test-kit, through main's table() (one renderer), no script."""
     html = ui.table_html({"columns": ["", "<b>env</b>", "bytes"], "caption": "x < y", "row_headers": True, "missing": "not run", "rows": [
         ["<i>page</i>", {"text": "pass\nMAE 0.1", "status": "pass", "image": {"src": "tiles/a%20b.png", "alt": 'a "b"', "width": 160}}, 1234],
         ["log", {"text": "<script>", "href": "./log.txt?x=1&y=2"}, None], ["f", 0.5, {"text": "9", "num": True}]]})
-    assert html.startswith('<div class="ui-shell-scroll"><table class="ui-shell-table"><caption>x &lt; y</caption><thead><tr><th scope="col"></th>')
+    assert html.startswith('<div class="ui-shell-scroll"><table class="ui-table"><caption>x &lt; y</caption><thead><tr><th scope="col"></th>')
     assert '<th scope="col">&lt;b&gt;env&lt;/b&gt;</th>' in html and '<th scope="row">&lt;i&gt;page&lt;/i&gt;</th>' in html
     assert '<td data-status="pass"><img src="tiles/a%20b.png" alt="a &quot;b&quot;" width="160" loading="lazy">pass\nMAE 0.1</td>' in html
     assert '<td><a href="./log.txt?x=1&amp;y=2">&lt;script&gt;</a></td>' in html and "<td data-missing>not run</td>" in html
@@ -107,12 +108,16 @@ def test_the_table_escapes_everything_and_marks_numbers_missing_cells_and_status
 
 
 def test_the_showcase_section_tables_are_the_same_table():
-    """The showcase rendered its section tables inline; it now calls table_html() and its HTML is what it was."""
+    """The showcase's section tables are table_html() too: one table builder (table()), one stylesheet (.ui-table)."""
     sections = [{"id": "t", "label": "T", "icon": "info", "heading": "H", "table": {"columns": ["a", "b"], "rows": [["1 < 2", "&"]]}},
                 {"id": "u", "label": "U", "icon": "info", "heading": "U"}]
     html = ui.showcase_html({"schema": ui.SHOWCASE_SCHEMA, "id": "demo", "title": "Demo", "sections": sections})
-    assert ('<div class="ui-shell-scroll"><table class="ui-shell-table"><thead><tr><th scope="col">a</th><th scope="col">b</th></tr></thead>'
+    assert ('<div class="ui-shell-scroll"><table class="ui-table"><thead><tr><th scope="col">a</th><th scope="col">b</th></tr></thead>'
             "<tbody><tr><td>1 &lt; 2</td><td>&amp;</td></tr></tbody></table></div>") in html
+    # main's table() renders every existing call as before; the report options are keyword-only additions
+    assert ui.table(("a", "b"), [("x", None), ("y", 2)]) == ('<table class="ui-table"><thead><tr><th scope="col">a</th><th scope="col">b</th></tr></thead>'
+                                                          "<tbody><tr><td>x</td><td></td></tr><tr><td>y</td><td>2</td></tr></tbody></table>")
+    assert '<th scope="row">x</th><td data-missing>—</td>' in ui.table(("a", "b"), [("x", None)], row_headers=True, missing="—")
 
 
 def test_the_table_from_the_shell_and_node():

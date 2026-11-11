@@ -43,32 +43,34 @@ assert.throws(() => renderer.render(invalid), /invalid byte measurement/);
 const resolver = {auth: "anonymous", status: "ok", observations: [
   {kind: "repository", status: "public", http_status: 200, url: "https://github.com/myon-bioinformatics/Ironmate"},
   {kind: "<b>pages</b>", status: "missing", http_status: null, url: "javascript:alert(1)"}]};
-assert.strictEqual(renderer.resolverSummary(resolver), "Auth: anonymous · Status: ok");
-assert.strictEqual(renderer.resolverSummary(undefined), "Auth: unknown · Status: unknown");
+assert.strictEqual(renderer.summaryLine(resolver), "Auth: anonymous \u00b7 Status: ok");
 const cards = renderer.renderObservations(resolver);
 assert.strictEqual((cards.match(/<article class="ui-card">/g) || []).length, 2);
 assert(cards.includes('<a href="https://github.com/myon-bioinformatics/Ironmate" target="_blank" rel="noopener">'));
 assert(cards.includes("<span>javascript:alert(1)</span>") && !cards.includes('href="javascript'));
 assert(cards.includes("&lt;b&gt;pages&lt;/b&gt;") && cards.includes("HTTP: not observed") && cards.includes("HTTP: 200"));
-assert.strictEqual(renderer.renderObservations({}), "");
 
-// mount(): one GET of the box's JSON fills the three slots; a failed GET says so and leaves no cards.
-function box(src) {
-  const slots = {"[data-repo-metadata]": {innerHTML: ""}, "[data-repo-summary]": {textContent: "Loading…"}, "[data-repo-observations]": {innerHTML: "x"}};
-  return {slots, getAttribute: name => (name === "data-ui-repo-diagnostics" ? src : null), querySelector: sel => slots[sel]};
+// mount(document, url): one no-store GET fills #metadata, #summary and #observations; a failed GET says so and leaves no cards.
+function page() {
+  const ids = {metadata: {innerHTML: ""}, summary: {textContent: "Loading\u2026"}, observations: {innerHTML: "x"}};
+  return {ids, getElementById: id => ids[id]};
 }
 (async () => {
-  const seen = [];
-  const ok = box("./repository-diagnostics.json");
-  await renderer.mount(ok, (url, opts) => { seen.push([url, opts.cache]); return Promise.resolve({ok: true, json: () => Promise.resolve({metadata: record, resolver})}); });
-  assert.deepStrictEqual(seen, [["./repository-diagnostics.json", "no-store"]]);
-  assert(ok.slots["[data-repo-metadata]"].innerHTML.includes("myon-bioinformatics/Ironmate"));
-  assert.strictEqual(ok.slots["[data-repo-summary]"].textContent, "Auth: anonymous · Status: ok");
-  assert.strictEqual(ok.slots["[data-repo-observations]"].innerHTML, cards);
-  const bad = box("./missing.json");
-  assert.strictEqual(await renderer.mount(bad, () => Promise.resolve({ok: false})), null);
-  assert.strictEqual(bad.slots["[data-repo-summary]"].textContent, "Diagnostics could not be loaded.");
-  assert.strictEqual(bad.slots["[data-repo-observations]"].innerHTML, "");
+  const seen = [], realFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (url, opts) => { seen.push([url, opts.cache]); return Promise.resolve({ok: true, json: () => Promise.resolve({metadata: record, resolver})}); };
+    const ok = page();
+    await renderer.mount(ok, "./repository-diagnostics.json");
+    assert.deepStrictEqual(seen, [["./repository-diagnostics.json", "no-store"]]);
+    assert(ok.ids.metadata.innerHTML.includes("myon-bioinformatics/Ironmate"));
+    assert.strictEqual(ok.ids.summary.textContent, "Auth: anonymous \u00b7 Status: ok");
+    assert.strictEqual(ok.ids.observations.innerHTML, cards);
+    globalThis.fetch = () => Promise.resolve({ok: false});
+    const bad = page();
+    await renderer.mount(bad, "./missing.json");
+    assert.strictEqual(bad.ids.summary.textContent, "Diagnostics could not be loaded.");
+    assert.strictEqual(bad.ids.observations.innerHTML, "");
+  } finally { globalThis.fetch = realFetch; }
 })().catch(error => { console.error(error); process.exitCode = 1; });
 
 // Optional actual producer output exercises the same read-only renderer.

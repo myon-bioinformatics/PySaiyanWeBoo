@@ -1002,19 +1002,19 @@ class CatalogBrowserTests(unittest.TestCase):
 
 
 class RepositoryDiagnosticsBrowserTests(unittest.TestCase):
-    """repository_diagnostics_document(): the page ascii_artist, markdown and mcp-toolcall-lab each wrote by hand. One GET of the JSON beside it
+    """repository_diagnostics_page(): the page every repository publishes (markdown already calls it). One GET of the JSON beside it
     fills the metadata card, the resolver summary and one card per observation; a javascript: URL stays text; a missing JSON says so."""
 
     def test_the_page_reads_its_json_once_and_fills_three_slots(self):
         import json
-        from web_ui import repository_diagnostics_document
+        from web_ui import repository_diagnostics_page
         record = json.loads((ROOT / 'tests' / 'fixtures' / 'repository_metadata_v1.json').read_text(encoding='utf-8'))
         payload = {'metadata': record, 'resolver': {'auth': 'anonymous', 'status': 'ok', 'observations': [
             {'kind': 'repository', 'status': 'public', 'http_status': 200, 'url': 'https://github.com/myon-bioinformatics/Ironmate'},
             {'kind': 'pages', 'status': 'missing', 'http_status': None, 'url': 'javascript:alert(1)'}]}}
-        page = repository_diagnostics_document('myon-bioinformatics/Ironmate', links=(('JSON', './repository-diagnostics.json'), ('Back', './')))
+        page = repository_diagnostics_page('myon-bioinformatics/Ironmate', icon=None, favicon=None)
         server, origin = WorldBrowserTests.serve({'repository-diagnostics.html': page, 'repository-diagnostics.json': json.dumps(payload),
-                                                  'broken.html': page.replace('./repository-diagnostics.json"', './missing.json"', 1)})
+                                                  'broken.html': page.replace('mount(document, "./repository-diagnostics.json")', 'mount(document, "./missing.json")', 1)})
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
@@ -1024,17 +1024,111 @@ class RepositoryDiagnosticsBrowserTests(unittest.TestCase):
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     page.on('request', lambda request: request.url.endswith('.json') and gets.append(request.url.rsplit('/', 1)[1]))
                     page.goto(origin + '/repository-diagnostics.html')
-                    expect(page.locator('[data-repo-summary]')).to_have_text('Auth: anonymous · Status: ok')
+                    expect(page.locator('#summary')).to_have_text('Auth: anonymous · Status: ok')
                     expect(page.locator('.repo-diagnostics__repository')).to_have_text('myon-bioinformatics/Ironmate')
-                    expect(page.locator('[data-repo-observations] .ui-card')).to_have_count(2)
-                    self.assertEqual(page.locator('[data-repo-observations] a').get_attribute('href'), 'https://github.com/myon-bioinformatics/Ironmate')
-                    expect(page.locator('[data-repo-observations] span')).to_have_text('javascript:alert(1)')
+                    expect(page.locator('#observations .ui-card')).to_have_count(2)
+                    self.assertEqual(page.locator('#observations a').get_attribute('href'), 'https://github.com/myon-bioinformatics/Ironmate')
+                    expect(page.locator('#observations span')).to_have_text('javascript:alert(1)')
                     self.assertEqual(gets, ['repository-diagnostics.json'])
                     self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)
                     page.goto(origin + '/broken.html')
-                    expect(page.locator('[data-repo-summary]')).to_have_text('Diagnostics could not be loaded.')
-                    expect(page.locator('[data-repo-observations] .ui-card')).to_have_count(0)
+                    expect(page.locator('#summary')).to_have_text('Diagnostics could not be loaded.')
+                    expect(page.locator('#observations .ui-card')).to_have_count(0)
                     self.assertEqual(errors, [])
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
+def runbook_showcase():
+    """olnm's guide as PSWB data: one section per way to run it, a runbook in each (the shape Component Ops' steps take too)."""
+    from web_ui import SHOWCASE_SCHEMA
+    fetch = {'id': 'file', 'title': 'olnm.py を用意する', 'command': 'mkdir -p "$HOME/.local/share/olnm"\ncurl -fL https://example.invalid/olnm.py -o "$HOME/.local/share/olnm/olnm.py"',
+             'expect': 'ダウンロードが成功する。', 'needs': 'Python 3.11 以降、curl。', 'trouble': {'seen': 'curl: command not found', 'fix': 'curl を入れて再実行。'}}
+    run = {'id': 'run', 'title': 'uv で実行する', 'command': 'uv run --no-project "$OLNM_PY" calc 6 mul 7', 'expect': '42（終了コード 0）'}
+    call = {'id': 'call', 'title': 'Python から関数を呼ぶ', 'command': "python3 -c 'import olnm, sys; sys.exit(olnm.calculate(\"6\", \"mul\", \"7\"))'", 'expect': '42'}
+    return {'schema': SHOWCASE_SCHEMA, 'id': 'guide', 'title': '利用・検証ガイド', 'themes': True, 'sections': [
+        {'id': 'uvfile', 'label': 'uv run', 'icon': 'info', 'heading': 'uv でファイル実行', 'lead': 'ツール登録せず、保存したファイルを実行します。',
+         'notice': {'text': '記録はこのブラウザ内に保存されます。JSON で控えを保存できます。', 'tone': 'warn', 'title': '記録'},
+         'stats': [['手順', 2], ['方法', 2]], 'steps': {'key': 'guide/uvfile', 'source': 'abc1234', 'steps': [fetch, run]}},
+        {'id': 'python', 'label': 'Python', 'icon': 'info', 'heading': 'Python ワンライナー', 'steps': {'key': 'guide/python', 'source': 'abc1234', 'steps': [call]}}]}
+
+
+class RunbookBrowserTests(unittest.TestCase):
+    """steps_html() in a showcase: sections switch without a reload, 📋 copies a command, a step's state is kept in this browser, shown on
+    its card and filterable, and a JSON from another version comes back with its states reset. ``WEB_UI_GIFS`` keeps component-steps.gif."""
+
+    def test_copy_record_filter_and_reload_on_a_phone(self):
+        sys.path.insert(0, str(ROOT / 'tool'))
+        import json
+        import record_demo
+        from web_ui import showcase_document
+        server, origin = WorldBrowserTests.serve({'guide.html': showcase_document(runbook_showcase())})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    context = browser.new_context(viewport={'width': 392, 'height': 760}, accept_downloads=True)
+                    context.grant_permissions(['clipboard-read', 'clipboard-write'], origin=origin)
+                    page = context.new_page()
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/guide.html')
+                    cam = record_demo.Camera(page)
+                    cards = page.locator('#steps-guide-uvfile-list .ui-step')
+                    expect(cards).to_have_count(2)
+                    expect(page.locator('.ui-notice[data-tone="warn"]')).to_contain_text('記録')
+                    cam.hold(500)
+                    # 📋 copy: the command lands on the clipboard and the button says so
+                    first = cards.nth(0)
+                    first.locator('[data-ui-copy]').click()
+                    expect(first.locator('[data-ui-copy]')).to_have_text('コピー済み')
+                    self.assertEqual(page.evaluate('navigator.clipboard.readText()'), 'mkdir -p "$HOME/.local/share/olnm"\ncurl -fL https://example.invalid/olnm.py -o "$HOME/.local/share/olnm/olnm.py"')
+                    cam.hold(400)
+                    # a record: the state moves to the card's tag and to data-status, the note is kept
+                    first.locator('select[data-ui-status]').select_option('pass')
+                    first.locator('textarea').first.fill('42')
+                    expect(first.locator('[data-ui-status-tag]')).to_have_text('検証済み')
+                    self.assertEqual(first.get_attribute('data-status'), 'pass')
+                    cam.hold(500)
+                    # the state filter and the search
+                    page.locator('#steps-guide-uvfile-state').select_option('pass')
+                    expect(page.locator('#steps-guide-uvfile-list .ui-step:visible')).to_have_count(1)
+                    cam.hold(400)
+                    page.locator('#steps-guide-uvfile-state').select_option('')
+                    page.locator('#steps-guide-uvfile-search').fill('uv run')
+                    expect(page.locator('#steps-guide-uvfile-list .ui-step:visible')).to_have_count(1)
+                    page.locator('#steps-guide-uvfile-search').fill('')
+                    cam.hold(300)
+                    # no horizontal scroll on a phone, also with the long command
+                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)
+                    # another section without a reload, then a reload keeps the record
+                    page.locator('.ui-bottom-nav label', has_text='Python').click()
+                    expect(page.locator('#steps-guide-python-list .ui-step')).to_be_visible()
+                    expect(page.locator('#steps-guide-uvfile-list')).to_be_hidden()
+                    cam.hold(500)
+                    page.reload()
+                    first = page.locator('#steps-guide-uvfile-list .ui-step').nth(0)
+                    expect(first.locator('[data-ui-status-tag]')).to_have_text('検証済み')
+                    expect(first.locator('textarea').first).to_have_value('42')
+                    # JSON out (with the source) and a file from another version back in: states reset, notes kept, the message says so
+                    with page.expect_download() as info:
+                        page.locator('#steps-guide-uvfile [data-ui-export]').click()
+                    saved = json.loads(Path(info.value.path()).read_text(encoding='utf-8'))
+                    self.assertEqual((saved['schema'], saved['source'], saved['drafts']['guide/uvfile:file:status']), ('web-ui-drafts/1', 'abc1234', 'pass'))
+                    other = Path(tempfile.mkdtemp()) / 'other.json'
+                    other.write_text(json.dumps({**saved, 'source': 'fff0000'}), encoding='utf-8')
+                    page.locator('#steps-guide-uvfile input[type=file][data-ui-import]').set_input_files(str(other))
+                    expect(page.locator('#steps-guide-uvfile [data-ui-records-message]')).to_have_text('別の版の記録を読み込み、状態を戻しました。')
+                    expect(first.locator('[data-ui-status-tag]')).to_have_text('未検証')
+                    expect(first.locator('textarea').first).to_have_value('42')
+                    cam.hold(800)
+                    self.assertEqual(errors, [])
+                    gif = record_demo.encode(cam.shots)
+                    self.assertTrue(gif.startswith(b'GIF89a'))
+                    if os.environ.get('WEB_UI_GIFS'):
+                        record_demo.gif_targets_from(os.environ['WEB_UI_GIFS'], ['component-steps'])['component-steps'].write_bytes(gif)
                 finally:
                     browser.close()
         finally:
@@ -1129,7 +1223,7 @@ class ShowcaseBrowserTests(unittest.TestCase):
                     self.assertEqual(page.locator('.ui-rail').bounding_box()['width'], 256)    # wide: the full rail, labels shown
                     page.locator('.ui-rail label', has_text='Data').click()
                     self.assertEqual(visible(), ['data'])
-                    expect(page.locator('.ui-shell-table')).to_be_visible()
+                    expect(page.locator('.ui-shell-section .ui-table')).to_be_visible()
                     # Keyboard: the radios are one group, so the arrow keys move between sections.
                     page.locator('#showcase-sec-data').focus()
                     page.keyboard.press('ArrowRight')

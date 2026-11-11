@@ -22,6 +22,8 @@ export function setText(target,value){const node=typeof target==="string"?docume
 export function prettyJson(value){return JSON.stringify(value,null,2)}
 /** Copy a value as text; falls back to a hidden textarea where the async clipboard is missing (plain http, old WebViews). */
 export async function copyText(value){const text=String(value);try{await navigator.clipboard.writeText(text)}catch(error){const box=document.createElement("textarea");box.value=text;box.setAttribute("readonly","");box.style.cssText="position:fixed;opacity:0";try{document.body.append(box);box.select();if(typeof document.execCommand!=="function"||!document.execCommand("copy"))throw error}finally{box.remove()}}}
+/** [data-ui-copy] copies the <pre> of its .ui-code box with copyText; the button shows data-ui-copied (or data-ui-copy-failed) for a moment. Returns the buttons. */
+export function bindCopy(root=document){const buttons=[...root.querySelectorAll("[data-ui-copy]")];for(const button of buttons){const box=button.closest(".ui-code"),pre=box&&box.querySelector("pre");if(!pre)continue;const label=button.textContent;button.addEventListener("click",async()=>{let ok=true;try{await copyText(pre.textContent)}catch{ok=false}button.textContent=(ok?button.dataset.uiCopied:button.dataset.uiCopyFailed)||label;setTimeout(()=>{button.textContent=label},1600)})}return buttons}
 /** Switch data-ui-theme on <body> with no reload: controls are <select data-ui-theme-switch> or radios named ui-theme. The choice is remembered (localStorage, best effort). Returns the theme in effect. */
 /** Buttons with data-ui-toggle flip aria-pressed on click (memory only: nothing is saved); data-label-on / data-label-off, when present, rename the button. */
 export function bindToggles(root=document){return[...root.querySelectorAll("[data-ui-toggle]")].map(b=>{const sync=()=>{const label=b.getAttribute("aria-pressed")==="true"?b.dataset.labelOn:b.dataset.labelOff;if(label){b.setAttribute("aria-label",label);b.title=label}};b.addEventListener("click",()=>{b.setAttribute("aria-pressed",String(b.getAttribute("aria-pressed")!=="true"));sync()});sync();return b})}
@@ -31,25 +33,33 @@ export function observeLit(targets,{threshold=0.4,root=null}={}){const nodes=typ
 /** Click-to-enlarge for <a href="full.png"><img alt="..."></a> items inside [data-ui-lightbox]: one <dialog>; Esc, the backdrop and the close button shut it, arrows, buttons and a 48px swipe step through. Returns {open, close, dialog}, or null without items or <dialog>. */
 export function bindLightbox(root=document){const items=[...root.querySelectorAll("[data-ui-lightbox] a[href]")];if(!items.length||typeof HTMLDialogElement==="undefined")return null;const dialog=document.createElement("dialog");dialog.className="ui-lightbox";dialog.setAttribute("aria-label","Image viewer");dialog.innerHTML='<img alt=""><p class="ui-muted"></p><div class="ui-lightbox-bar"><button class="ui-button" type="button" data-step="-1" aria-label="Previous">\u2190</button><button class="ui-button" type="button" data-step="1" aria-label="Next">\u2192</button><button class="ui-button" type="button" data-step="0" aria-label="Close">\u00d7</button></div>';const img=dialog.querySelector("img"),note=dialog.querySelector("p");let at=0,x=null;const show=i=>{at=(i+items.length)%items.length;const a=items[at],t=a.querySelector("img");img.src=a.href;img.alt=note.textContent=t?t.alt:""};const open=i=>{show(i);if(!dialog.open)dialog.showModal()};items.forEach((a,i)=>a.addEventListener("click",e=>{e.preventDefault();open(i)}));dialog.addEventListener("click",e=>{const b=e.target.closest("[data-step]");if(b){const s=Number(b.dataset.step);if(s)show(at+s);else dialog.close()}else if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close()}});dialog.addEventListener("keydown",e=>{if(e.key==="ArrowLeft")show(at-1);if(e.key==="ArrowRight")show(at+1)});dialog.addEventListener("pointerdown",e=>{x=e.clientX});dialog.addEventListener("pointerup",e=>{if(x!==null&&Math.abs(e.clientX-x)>=48)show(at+(e.clientX<x?1:-1));x=null});document.body.append(dialog);return{open,close:()=>dialog.close(),dialog}}
 """,
-    "records.js": r"""/** Record boards: a text filter over table rows, per-field drafts kept in localStorage (best effort), and JSON export/import of those drafts. No fetch; values are text, never HTML. */
+    "records.js": r"""/** Record boards: a text and a status filter over table rows or cards, per-field drafts kept in localStorage (best effort), each step's state on its card, and JSON export/import of those drafts (tied to a source version when the board names one). No fetch; values are text, never HTML. */
 const KEY=/^[A-Za-z0-9_.:/#@-]{1,200}$/;
 function storage(){try{const s=globalThis.localStorage;s.getItem("");return s}catch{return null}}
 function value(field){return field.type==="checkbox"?(field.checked?"1":""):field.value}
 function assign(field,text){if(field.type==="checkbox")field.checked=text==="1";else field.value=text;field.dispatchEvent(new Event("input",{bubbles:true}))}
 /** Hide rows whose text does not contain the query (case-insensitive); returns the number still shown. */
-export function filterRows(table,query){const q=String(query||"").trim().toLowerCase();let shown=0;for(const body of table.tBodies)for(const row of body.rows){const hit=!q||row.textContent.toLowerCase().includes(q);row.hidden=!hit;if(hit)shown++}return shown}
-/** input[data-ui-filter="#table"] filters that table as you type; data-ui-filter-count="#out" receives the shown count. */
-export function bindFilter(root=document){return[...root.querySelectorAll("input[data-ui-filter]")].map(input=>{const table=root.querySelector(input.dataset.uiFilter);if(!table)return null;const out=input.dataset.uiFilterCount?root.querySelector(input.dataset.uiFilterCount):null;const run=()=>{const n=filterRows(table,input.value);if(out)out.textContent=String(n)};input.addEventListener("input",run);run();return run}).filter(Boolean)}
+function items(target){return target.tBodies?[...target.tBodies].flatMap(body=>[...body.rows]):[...target.querySelectorAll("[data-ui-item]")]}
+/** Show the items of target (table rows, or its [data-ui-item] elements) whose text contains the query and, when status is given, whose data-status is it; returns the number still shown. */
+export function filterItems(target,query="",status=""){const q=String(query||"").trim().toLowerCase();let shown=0;for(const item of items(target)){const hit=(!q||item.textContent.toLowerCase().includes(q))&&(!status||item.dataset.status===status);item.hidden=!hit;if(hit)shown++}return shown}
+/** Hide rows whose text does not contain the query (case-insensitive); returns the number still shown. */
+export function filterRows(table,query){return filterItems(table,query)}
+/** input[data-ui-filter="#target"] (text) and select[data-ui-filter-status="#target"] (status) filter one target together; data-ui-filter-count="#out" receives the shown count. One run function per target. */
+export function bindFilter(root=document){const targets=new Map();for(const control of[...root.querySelectorAll("input[data-ui-filter]"),...root.querySelectorAll("select[data-ui-filter-status]")]){const target=root.querySelector(control.dataset.uiFilter||control.dataset.uiFilterStatus);if(!target)continue;const t=targets.get(target)||{text:null,status:null,count:null};targets.set(target,t);if(control.dataset.uiFilterStatus!==undefined)t.status=control;else t.text=control;if(control.dataset.uiFilterCount)t.count=root.querySelector(control.dataset.uiFilterCount)}return[...targets].map(([target,t])=>{const run=()=>{const n=filterItems(target,t.text?t.text.value:"",t.status?t.status.value:"");if(t.count)t.count.textContent=String(n)};if(t.text)t.text.addEventListener("input",run);if(t.status)t.status.addEventListener("change",run);target.addEventListener("ui-status",run);run();return run})}
+/** select[data-ui-status] (a step's state) writes its value to the closest [data-ui-item] as data-status and its option's text to that item's [data-ui-status-tag], then tells the filters (event ui-status). */
+export function bindStatus(root=document){const fields=[...root.querySelectorAll("select[data-ui-status]")];for(const field of fields){const item=field.closest?field.closest("[data-ui-item]"):null;if(!item)continue;const tag=item.querySelector("[data-ui-status-tag]");const sync=()=>{item.dataset.status=field.value;const option=field.selectedOptions&&field.selectedOptions[0];if(tag)tag.textContent=option?option.textContent:field.value;item.dispatchEvent(new Event("ui-status",{bubbles:true}))};field.addEventListener("input",sync);field.addEventListener("change",sync);sync()}return fields}
 /** Fields with data-ui-draft="key" restore from and save to localStorage under scope:key. Returns the bound fields. */
 export function bindDrafts(root=document,{scope="web-ui-drafts"}={}){const store=storage();const fields=[...root.querySelectorAll("[data-ui-draft]")].filter(f=>KEY.test(f.dataset.uiDraft));for(const field of fields){const key=scope+":"+field.dataset.uiDraft;const saved=store?store.getItem(key):null;if(saved!==null)assign(field,saved);field.addEventListener("input",()=>{try{if(store)store.setItem(key,value(field))}catch{}})}return fields}
 /** Non-empty draft values keyed by their data-ui-draft name. */
 export function collectDrafts(root=document){const out={};for(const field of root.querySelectorAll("[data-ui-draft]")){const text=value(field);if(text!=="")out[field.dataset.uiDraft]=text}return out}
 /** Apply {key: text} to the matching draft fields; unknown keys are ignored. Returns the number applied. */
 export function applyDrafts(root,drafts){let n=0;if(!drafts||typeof drafts!=="object")return 0;for(const field of root.querySelectorAll("[data-ui-draft]")){const text=drafts[field.dataset.uiDraft];if(typeof text==="string"){assign(field,text);n++}}return n}
-/** [data-ui-export] downloads the drafts as JSON; input[type=file][data-ui-import] reads such a file back. */
-export function bindRecordsIO(root=document,{filename="records.json"}={}){for(const button of root.querySelectorAll("[data-ui-export]"))button.addEventListener("click",()=>{const blob=new Blob([JSON.stringify({schema:"web-ui-drafts/1",exported:new Date().toISOString(),drafts:collectDrafts(root)},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=button.dataset.uiExport||filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)});for(const input of root.querySelectorAll("input[type=file][data-ui-import]"))input.addEventListener("change",async()=>{const file=input.files&&input.files[0];if(!file)return;try{const data=JSON.parse(await file.text());applyDrafts(root,data&&data.drafts?data.drafts:data)}catch{}input.value=""})}
+/** Apply a file's drafts. When the board names its source (data-ui-records-source, a commit) and the file names another, the states (select[data-ui-status]) go back to their first option: records of another version are to be checked again. Returns "loaded", "stale" or "bad". */
+export function importDrafts(root,data){if(!data||typeof data!=="object"||Array.isArray(data))return"bad";const drafts=data.drafts&&typeof data.drafts==="object"?data.drafts:data;const board=root.matches&&root.matches("[data-ui-records-source]")?root:root.querySelector("[data-ui-records-source]");const source=board?board.dataset.uiRecordsSource:"";if(!applyDrafts(root,drafts))return"bad";if(!source||data.source===source)return"loaded";for(const field of root.querySelectorAll("select[data-ui-status][data-ui-draft]"))if(field.options&&field.options.length)assign(field,field.options[0].value);return"stale"}
+/** [data-ui-export] downloads the drafts as JSON (with the board's source when it names one); input[type=file][data-ui-import] reads such a file back; [data-ui-records-message] says how it went. */
+export function bindRecordsIO(root=document,{filename="records.json"}={}){const board=root.matches&&root.matches("[data-ui-records-source]")?root:root.querySelector("[data-ui-records-source]");const source=board?board.dataset.uiRecordsSource:undefined;const say=state=>{for(const out of root.querySelectorAll("[data-ui-records-message]")){const text=out.getAttribute("data-ui-msg-"+state);if(text!==null)out.textContent=text}};for(const button of root.querySelectorAll("[data-ui-export]"))button.addEventListener("click",()=>{const blob=new Blob([JSON.stringify({schema:"web-ui-drafts/1",exported:new Date().toISOString(),...(source?{source}:{}),drafts:collectDrafts(root)},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=button.dataset.uiExport||filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)});for(const input of root.querySelectorAll("input[type=file][data-ui-import]"))input.addEventListener("change",async()=>{const file=input.files&&input.files[0];if(!file)return;let state="bad";try{state=importDrafts(root,JSON.parse(await file.text()))}catch{}say(state);input.value=""})}
 /** Bind everything inside root; pages mark the board with data-ui-records so loading the module is enough. */
-export function mount(root=document,options={}){bindFilter(root);bindDrafts(root,options);bindRecordsIO(root,options);return root}
+export function mount(root=document,options={}){bindDrafts(root,options);bindStatus(root);bindFilter(root);bindRecordsIO(root,options);return root}
 if(typeof document!=="undefined"&&document.querySelector("[data-ui-records]")){const start=()=>mount(document);if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start,{once:true});else start()}
 """,
     "stub.js": r"""import{setText,prettyJson}from"./ui.js";
@@ -357,8 +367,6 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
   }
   function mount(doc, url) {
     // The diagnostics page: metadata, summary line and observation cards from one JSON next to the page.
-    // mount(box, fetchImpl) with a [data-ui-repo-diagnostics] element is the component form (repository_diagnostics_html()).
-    if (!doc || typeof doc.getElementById !== "function") return mountBox(doc, url);
     var root = doc.getElementById("metadata"), summary = doc.getElementById("summary"), list = doc.getElementById("observations");
     return fetch(url, {cache: "no-store"}).then(function (response) {
       if (!response.ok) throw new Error("fetch failed");
@@ -373,39 +381,10 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
     });
   }
 
-  // A page from repository_diagnostics_html(): [data-ui-repo-diagnostics] names the JSON (metadata + resolver); one GET, no retry, no polling.
-  function mountBox(box, fetchImpl) {
-    var get = fetchImpl || global.fetch, src = box.getAttribute("data-ui-repo-diagnostics");
-    var metadata = box.querySelector("[data-repo-metadata]"), summary = box.querySelector("[data-repo-summary]");
-    var observations = box.querySelector("[data-repo-observations]");
-    return Promise.resolve().then(function () { return get(src, {cache: "no-store"}); }).then(function (response) {
-      if (!response.ok) throw new Error("diagnostics fetch failed");
-      return response.json();
-    }).then(function (payload) {
-      metadata.innerHTML = render(payload.metadata);
-      summary.textContent = summaryLine(payload.resolver);
-      observations.innerHTML = renderObservations(payload.resolver);
-      return payload;
-    }).catch(function () {
-      summary.textContent = "Diagnostics could not be loaded.";
-      observations.innerHTML = "";
-      return null;
-    });
-  }
-
-  function mountAll(root) {
-    return Array.prototype.map.call((root || global.document).querySelectorAll("[data-ui-repo-diagnostics]"), function (box) { return mountBox(box); });
-  }
-
   var api = {validate: validate, formatBytes: bytes, commitLine: commitLine, render: render,
-             observationCard: observationCard, summaryLine: summaryLine, resolverSummary: summaryLine, renderObservations: renderObservations,
-             mount: mount, mountBox: mountBox, mountAll: mountAll};
+             observationCard: observationCard, summaryLine: summaryLine, renderObservations: renderObservations, mount: mount};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   global.RepositoryDiagnostics = api;
-  if (global.document) {
-    if (global.document.readyState === "loading") global.document.addEventListener("DOMContentLoaded", function () { mountAll(); }, {once: true});
-    else mountAll();
-  }
 })(typeof globalThis !== "undefined" ? globalThis : this);
 """,
     "gif.js": r"""/* gif.js — animated GIF from canvas frames, for pages and tools built with web_ui. No dependencies.
@@ -929,9 +908,8 @@ _CSS = {
         ".ui-shell-tags{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 24px}"
         ".ui-shell-cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(256px,1fr))}"
         ".ui-shell-card{display:flex;gap:16px;margin:0;min-width:0}.ui-shell-card h3{margin:0 0 8px;font-size:1rem;font-weight:400}.ui-shell-card p{margin:0;overflow-wrap:anywhere}"
-        ".ui-shell-table{width:100%;border-collapse:collapse}.ui-shell-table th,.ui-shell-table td{padding:8px 16px;border-bottom:1px solid var(--ui-border);text-align:left}"
-        ".ui-shell-table caption{padding:0 0 8px;text-align:left;caption-side:top}.ui-shell-table td[data-num]{text-align:right;font-variant-numeric:tabular-nums}"
-        ".ui-shell-table td img{display:block;max-width:none;height:auto;margin:0 0 8px}.ui-shell-table td[data-missing]{color:var(--ui-muted)}.ui-shell-table td{white-space:pre-line}"
+        ".ui-table td[data-num],.ui-table th[data-num]{text-align:right;font-variant-numeric:tabular-nums}.ui-table td img,.ui-table th img{display:block;max-width:none;height:auto;margin:0 0 8px}"
+        ".ui-table td[data-missing]{color:var(--ui-muted)}.ui-table td{white-space:pre-line}"
         ".ui-shell-scroll{overflow-x:auto}.ui-shell-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
         ".ui-bottom-nav{display:flex;border-top:1px solid var(--ui-border);background:var(--ui-panel)}"
         ".ui-bottom-item{flex:1;flex-direction:column;justify-content:center;gap:0;min-height:64px;padding:8px 0;text-align:center}"
@@ -1005,7 +983,14 @@ body[data-ui-theme="github-like"] .ui-tag{
 _CSS["records.css"] = ("@layer components{.ui-records table.ui-table{border-collapse:collapse;width:100%;margin:8px 0}.ui-records .ui-table th,.ui-records .ui-table td{border:thin solid var(--ui-border);padding:8px;text-align:left;vertical-align:top;overflow-wrap:anywhere}"
                        ".ui-records .ui-table caption{text-align:left;font-weight:600;padding:8px 0}.ui-records .ui-table tr[hidden]{display:none}.ui-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin:8px 0}"
                        ".ui-stat .ui-stat-value{display:block;font-size:32px;line-height:40px}.ui-stat .ui-stat-label{display:block;color:var(--ui-muted)}.ui-stat .ui-stat-hint{display:block;font-size:.75rem;color:var(--ui-muted)}"
-                       ".ui-records-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}.ui-records-bar .ui-input{flex:1 1 240px}.ui-records-io{display:inline-flex;gap:8px}.ui-records [data-ui-draft]{width:100%;box-sizing:border-box}}")
+                       ".ui-records-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}.ui-records-bar .ui-input{flex:1 1 240px}.ui-records-io{display:inline-flex;gap:8px}.ui-records [data-ui-draft]{width:100%;box-sizing:border-box}"
+                       ".ui-notice{border-left:8px solid var(--ui-border);padding:8px 16px;margin:8px 0;background:var(--ui-panel)}.ui-notice[data-tone=warn]{border-left-color:var(--ui-accent)}.ui-notice[data-tone=block]{border-left-color:var(--ui-danger)}"
+                       ".ui-code{position:relative;margin:8px 0}.ui-code pre{margin:0;padding:16px;padding-right:112px;white-space:pre-wrap;overflow-wrap:anywhere}.ui-code [data-ui-copy]{position:absolute;top:8px;right:8px}"
+                       ".ui-steps{display:grid;gap:16px}.ui-step[hidden]{display:none}.ui-step-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}.ui-step-head h3{margin:0}"
+                       ".ui-step[data-status=pass] [data-ui-status-tag]{color:var(--ui-accent)}.ui-step[data-status=block] [data-ui-status-tag]{color:var(--ui-danger)}.ui-step[data-status=todo] [data-ui-status-tag]{color:var(--ui-muted)}.ui-step[data-status=hold] [data-ui-status-tag]{border-style:dashed}"
+                       ".ui-facts{display:grid;grid-template-columns:minmax(96px,max-content) 1fr;gap:8px 16px;margin:8px 0}.ui-facts dt{color:var(--ui-muted)}.ui-facts dd{margin:0;white-space:pre-line}"
+                       ".ui-step-record{display:grid;gap:8px;margin-top:8px}.ui-step-record h4{margin:0}"
+                       "@media(max-width:640px){.ui-facts{grid-template-columns:1fr}.ui-code pre{padding-right:16px;padding-top:56px}}}")
 
 
 _CSS_CORE = ("tokens.css", "base.css", "components.css")
@@ -1502,20 +1487,35 @@ def repository_diagnostics_page(
     if icon is not None:
         _require_local_or_https(icon, label="icon", allow_query=False)
     title = f"{repository} repository diagnostics"
-    picture = f'<img src="{escape(icon, quote=True)}" width="80" height="80" alt="{escape(repository, quote=True)} icon">' if icon else ""
-    body = (
-        '<main class="ui-page">' + picture
-        + f'<h1 class="ui-title">{escape(title)}</h1><p class="ui-muted">{escape(description)}</p>'
-        + '<div id="metadata"></div>'
-        + '<section class="ui-panel"><h2>Public URL observations</h2>'
-        + '<p id="summary" class="ui-muted">Loading\u2026</p><div id="observations" class="ui-grid"></div></section>'
-        + f'<p><a href="./{escape(json_name, quote=True)}">JSON</a> \u00b7 <a href="./{escape(jsonl_name, quote=True)}">JSONL</a></p>'
-        + "</main>"
-        + classic_script(js_source("repository-diagnostics.js"))
-        + classic_script(f'RepositoryDiagnostics.mount(document, "./{json_name}");')
-    )
+    body = ('<main class="ui-page">' + repository_diagnostics_body(repository, json_name=json_name, jsonl_name=jsonl_name, icon=icon, description=description)
+            + "</main>" + classic_script(js_source("repository-diagnostics.js")) + classic_script(f'RepositoryDiagnostics.mount(document, "./{json_name}");'))
     return render_document(trusted_html=body, title=title, theme=theme, css=bundled_css(),
                            favicon=favicon, touch_icon=icon)
+
+
+def repository_diagnostics_body(
+    repository: str,
+    *,
+    json_name: str = "repository-diagnostics.json",
+    jsonl_name: str = "repository-diagnostics.jsonl",
+    icon: str | None = "./icon.png",
+    description: str = "Canonical metadata plus anonymous public GitHub observations.",
+) -> str:
+    """The body of ``repository_diagnostics_page()``: icon, title, ``#metadata``, ``#summary`` and ``#observations`` (filled by
+    ``RepositoryDiagnostics.mount(document, "./" + json_name)``) and the JSON / JSONL links. For a page of your own; COMPONENTS calls it too."""
+    if not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("repository must be owner/name")
+    for name, label in ((json_name, "json_name"), (jsonl_name, "jsonl_name")):
+        _require_local_script_path(name, label=label)
+    if icon is not None:
+        _require_local_or_https(icon, label="icon", allow_query=False)
+    title = f"{repository} repository diagnostics"
+    picture = f'<img src="{escape(icon, quote=True)}" width="80" height="80" alt="{escape(repository, quote=True)} icon">' if icon else ""
+    return (picture + f'<h1 class="ui-title">{escape(title)}</h1><p class="ui-muted">{escape(description)}</p>'
+            + '<div id="metadata"></div>'
+            + '<section class="ui-panel"><h2>Public URL observations</h2>'
+            + '<p id="summary" class="ui-muted">Loading\u2026</p><div id="observations" class="ui-grid"></div></section>'
+            + f'<p><a href="./{escape(json_name, quote=True)}">JSON</a> \u00b7 <a href="./{escape(jsonl_name, quote=True)}">JSONL</a></p>')
 
 
 def _element_id(value: str) -> str:
@@ -1803,20 +1803,46 @@ def catalog_document(spec: Any, *, theme: str = "modern") -> str:
     return render_document(title=title, theme=theme, css=css, trusted_html=body)
 
 def table(headers: Sequence[str], rows: Sequence[Sequence[Any]], *, caption: str | None = None, id: str | None = None,
-          trusted_html: bool = False, row_classes: Sequence[str | None] | None = None) -> str:
+          trusted_html: bool = False, row_classes: Sequence[str | None] | None = None, row_headers: bool = False,
+          missing: str | None = None) -> str:
     """A ``.ui-table``: header cells and rows, every cell escaped unless ``trusted_html`` (then cells are HTML the
     caller already built, e.g. an ``<img>``). ``row_classes`` gives one class (or None) per row, such as ``ui-pass`` /
-    ``ui-fail``; the status classes ``ui-changed`` / ``ui-pass`` / ``ui-fail`` are styled by components.css on any element (a cell, a row, a ``.ui-tag`` badge)."""
+    ``ui-fail``; the status classes ``ui-changed`` / ``ui-pass`` / ``ui-fail`` are styled by components.css on any element (a cell, a row, a ``.ui-tag`` badge).
+
+    For report pages (a browser matrix, a parity report): ``row_headers`` makes each row's first cell its ``<th scope="row">``; ``missing`` is
+    the text of a ``None`` cell (marked ``data-missing``, muted; without it a ``None`` cell stays empty); and a cell may be
+    ``{text, href, image: {src, alt, width, height}, status, num}`` (``href`` and ``src`` relative or http(s), ``status`` a token written as
+    ``data-status``, ``num`` right-aligns it). ``table_html(spec)`` is the same table from a JSON spec."""
     if row_classes is not None and len(row_classes) != len(rows):
         raise ValueError("row_classes must have one entry per row")
-    cell = (lambda value: str(value)) if trusted_html else (lambda value: escape("" if value is None else str(value)))
+
+    def cell(value: Any, header: bool = False) -> str:
+        tag = "th" if header else "td"
+        scope = ' scope="row"' if header else ""
+        if trusted_html:
+            return f"<{tag}{scope}>{value}</{tag}>"
+        if value is None and missing is not None and not header:
+            return f"<td data-missing>{escape(missing)}</td>"
+        if not isinstance(value, dict):
+            return f"<{tag}{scope}>{escape('' if value is None else str(value))}</{tag}>"
+        part = _table_cell(value)
+        attrs = (f' data-status="{part["status"]}"' if "status" in part else "") + (" data-num" if part["num"] else "")
+        image = ""
+        if "image" in part:
+            size = "".join(f' {k}="{part["image"][k]}"' for k in ("width", "height") if k in part["image"])
+            image = f'<img src="{escape(part["image"]["src"], quote=True)}" alt="{escape(part["image"]["alt"], quote=True)}"{size} loading="lazy">'
+        inner = image + escape(part["text"])
+        if "href" in part:
+            inner = f'<a href="{escape(part["href"], quote=True)}">{inner}</a>'
+        return f"<{tag}{scope}{attrs}>{inner}</{tag}>"
+
     head = "".join(f"<th scope=\"col\">{escape(str(h))}</th>" for h in headers)
     body = []
     for index, row in enumerate(rows):
         if len(row) != len(headers):
             raise ValueError(f"row {index} has {len(row)} cells, expected {len(headers)}")
         cls = row_classes[index] if row_classes else None
-        body.append((f'<tr class="{escape(cls, quote=True)}">' if cls else "<tr>") + "".join(f"<td>{cell(v)}</td>" for v in row) + "</tr>")
+        body.append((f'<tr class="{escape(cls, quote=True)}">' if cls else "<tr>") + "".join(cell(v, row_headers and i == 0) for i, v in enumerate(row)) + "</tr>")
     attrs = f' id="{_element_id(id)}"' if id else ""
     return (f'<table class="ui-table"{attrs}>' + (f"<caption>{escape(caption)}</caption>" if caption else "")
             + f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>")
@@ -1953,9 +1979,143 @@ def records_io(*, export_label: str = "↓ JSON", import_label: str = "↑ JSON"
             f'<input type="file" accept="application/json" data-ui-import hidden></label></span>')
 
 
-def records_board(trusted_html: str, *, id: str = "records") -> str:
-    """Section marked data-ui-records so that loading records.js binds its filters, drafts and JSON controls."""
-    return f'<section class="ui-records" id="{_element_id(id)}" data-ui-records>{trusted_html}</section>'
+def records_board(trusted_html: str, *, id: str = "records", source: str | None = None) -> str:
+    """Section marked data-ui-records so that loading records.js binds its filters, drafts and JSON controls. ``source`` (a commit or version) goes
+    into every exported file; a file from another source is still read, but its states (``select[data-ui-status]``) go back to their first option."""
+    tag = ""
+    if source is not None:
+        if not isinstance(source, str) or not re.fullmatch(r"[A-Za-z0-9_.:/+-]{1,80}", source):
+            raise ValueError("source is a commit or version of up to 80 plain characters")
+        tag = f' data-ui-records-source="{source}"'
+    return f'<section class="ui-records" id="{_element_id(id)}" data-ui-records{tag}>{trusted_html}</section>'
+
+
+NOTICE_TONES = ("info", "warn", "block")
+STEP_STATUSES = (("todo", "未検証"), ("pass", "検証済み"), ("hold", "保留"), ("block", "ブロッカー"))   # a step's state; the first is where every step starts
+STEP_LABELS = {"expect": "期待される出力", "needs": "前提条件", "trouble": "失敗時の確認", "seen": "失敗例", "check": "確認ポイント", "fix": "対処",
+               "record": "再現記録", "status": "状態", "date": "検証日", "actual": "実際の出力・終了コード", "note": "環境・バージョン・備考",
+               "copy": "コピー", "copied": "コピー済み", "copy_failed": "コピーできませんでした", "search": "検索", "filter": "状態", "all": "すべて",
+               "export": "記録を JSON で保存", "import": "記録を読み込む", "loaded": "記録を読み込みました。", "stale": "別の版の記録を読み込み、状態を戻しました。",
+               "bad": "記録を読み込めません。このページから保存した JSON を選んでください。", "empty": "該当する手順はありません。"}
+
+
+def notice(text: str, *, tone: str = "info", title: str | None = None) -> str:
+    """A callout (``.ui-notice``): plain text with an optional bold title; ``tone`` is ``info``, ``warn`` or ``block`` (the edge's colour)."""
+    if tone not in NOTICE_TONES:
+        raise ValueError("tone is info, warn or block")
+    head = f"<b>{escape(title)}</b> " if title else ""
+    return f'<p class="ui-notice" data-tone="{tone}">{head}{escape(text)}</p>'
+
+
+def code_block(text: str, *, copy_label: str = STEP_LABELS["copy"], copied_label: str = STEP_LABELS["copied"],
+               failed_label: str = STEP_LABELS["copy_failed"]) -> str:
+    """A command or code as escaped text in a ``<pre>``, with a button ui.js's ``bindCopy`` copies it with. Without JS the text stays selectable."""
+    return (f'<div class="ui-code"><pre class="ui-output">{escape(text)}</pre><button class="ui-button" type="button" data-ui-copy '
+            f'data-ui-copied="{escape(copied_label, quote=True)}" data-ui-copy-failed="{escape(failed_label, quote=True)}">{escape(copy_label)}</button></div>')
+
+
+def draft_input(*, key: str, id: str, label: str, value: str = "", type: str = "text") -> str:
+    """input_field() whose value records.js keeps as a browser-local draft under ``key`` (a date, a version, a short note)."""
+    return input_field(id=id, label=label, value=value, type=type).replace("<input ", f'<input data-ui-draft="{_draft_key(key)}" ', 1)
+
+
+def status_filter(target_id: str, statuses: Sequence[tuple[str, str]] = STEP_STATUSES, *, id: str = "status-filter",
+                  label: str = STEP_LABELS["filter"], all_label: str = STEP_LABELS["all"]) -> str:
+    """A select records.js binds to ``#target_id``: only the items (rows or ``[data-ui-item]`` cards) whose ``data-status`` is the chosen one stay shown."""
+    return select((("", all_label), *statuses), id=id, label=label).replace("<select ", f'<select data-ui-filter-status="#{_element_id(target_id)}" ', 1)
+
+
+_STEP_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
+
+
+def _step_text(value: Any, name: str, limit: int = 1000, required: bool = False) -> str:
+    if value is None and not required:
+        return ""
+    if not isinstance(value, str) or (required and not value.strip()) or len(value) > limit:
+        raise ValueError(f"{name} is text of up to {limit} characters" + (" (required)" if required else ""))
+    return value
+
+
+def steps_validate(spec: Any) -> dict[str, Any]:
+    """Checked copy of a runbook: ``key`` (the drafts' prefix, such as ``olnm/uvfile``), ``steps`` (1..32 of ``id``, ``title``, ``command`` and
+    optional ``expect``, ``needs`` and ``trouble: {seen, check, fix}``), optional ``statuses`` (``[[token, label], ...]`` over
+    todo/pass/hold/block, the first is the start), ``source`` (the version the records belong to), ``record`` (default true: a state, a date,
+    the actual output and a note per step), ``toolbar`` (default true: search, state filter, JSON save/load) and ``labels`` (STEP_LABELS keys)."""
+    if not isinstance(spec, dict) or set(spec) - {"key", "steps", "statuses", "source", "record", "toolbar", "labels"}:
+        raise ValueError("a runbook is {key, steps, statuses, source, record, toolbar, labels}")
+    key = _draft_key(spec.get("key", ""))
+    statuses = [tuple(pair) for pair in spec.get("statuses", STEP_STATUSES)]
+    tokens = [t for t, _ in statuses] if all(len(pair) == 2 for pair in statuses) else []
+    if not 2 <= len(statuses) <= 4 or len(set(tokens)) != len(statuses) or set(tokens) - {t for t, _ in STEP_STATUSES} \
+            or any(not isinstance(label, str) or not label or len(label) > 40 for _, label in statuses):
+        raise ValueError("statuses are 2..4 [token, label] pairs over todo, pass, hold and block")
+    flags = {name: spec.get(name, True) for name in ("record", "toolbar")}
+    if any(type(v) is not bool for v in flags.values()):
+        raise ValueError("record and toolbar are true or false")
+    labels = spec.get("labels", {})
+    if not isinstance(labels, dict) or set(labels) - set(STEP_LABELS) or any(not isinstance(v, str) or len(v) > 120 for v in labels.values()):
+        raise ValueError("labels override STEP_LABELS keys with text")
+    steps_in = spec.get("steps")
+    if not isinstance(steps_in, list) or not 1 <= len(steps_in) <= 32:
+        raise ValueError("a runbook has 1..32 steps")
+    steps, seen = [], set()
+    for step in steps_in:
+        if not isinstance(step, dict) or set(step) - {"id", "title", "command", "expect", "needs", "trouble"}:
+            raise ValueError("a step is {id, title, command, expect, needs, trouble}")
+        sid = step.get("id")
+        if not isinstance(sid, str) or not _STEP_ID.fullmatch(sid) or sid in seen:
+            raise ValueError("a step id is a distinct lowercase token")
+        seen.add(sid)
+        trouble = step.get("trouble", {})
+        if not isinstance(trouble, dict) or set(trouble) - {"seen", "check", "fix"}:
+            raise ValueError("trouble is {seen, check, fix}")
+        steps.append({"id": sid, "title": _step_text(step.get("title"), "title", 120, True), "command": _step_text(step.get("command"), "command", 4000, True),
+                      "expect": _step_text(step.get("expect"), "expect"), "needs": _step_text(step.get("needs"), "needs"),
+                      "trouble": {k: _step_text(trouble.get(k), k) for k in ("seen", "check", "fix") if trouble.get(k)}})
+    source = spec.get("source")
+    if source is not None and (not isinstance(source, str) or not re.fullmatch(r"[A-Za-z0-9_.:/+-]{1,80}", source)):
+        raise ValueError("source is a commit or version of up to 80 plain characters")
+    return {"key": key, "steps": steps, "statuses": statuses, "source": source, **flags, "labels": {**STEP_LABELS, **labels}}
+
+
+def steps_html(spec: Any) -> str:
+    """A runbook as a records board: one card per step with its command (copy button), what to expect, what it needs and what to check when it
+    fails (``<details>``), and a record kept in this browser (state, date, actual output, note: drafts under ``key:id:field``). The toolbar
+    searches the cards, filters them by state and saves or loads the records as JSON; with ``source`` a file from another version comes back
+    with its states reset. Everything is escaped; ui.js (``bindCopy``) and records.js bind it, and without JS it is a readable list."""
+    book = steps_validate(spec)
+    text, key = book["labels"], book["key"]
+    eid = "steps-" + re.sub(r"[^A-Za-z0-9_-]", "-", key)
+    first_token, first_label = book["statuses"][0]
+
+    def facts(pairs: Sequence[tuple[str, str]]) -> str:
+        rows = "".join(f"<dt>{escape(text[name])}</dt><dd>{escape(value)}</dd>" for name, value in pairs if value)
+        return f'<dl class="ui-facts">{rows}</dl>' if rows else ""
+
+    cards = []
+    for n, step in enumerate(book["steps"], 1):
+        sid, base = step["id"], f"{eid}-{step['id']}"
+        trouble = facts([(k, step["trouble"].get(k, "")) for k in ("seen", "check", "fix")])
+        record = ""
+        if book["record"]:
+            record = (f'<div class="ui-step-record"><h4>{escape(text["record"])}</h4>'
+                      + draft_select(tuple(book["statuses"]), key=f"{key}:{sid}:status", id=f"{base}-status", label=text["status"]).replace("<select ", "<select data-ui-status ", 1)
+                      + draft_input(key=f"{key}:{sid}:date", id=f"{base}-date", label=text["date"], type="date")
+                      + draft_textarea(key=f"{key}:{sid}:actual", id=f"{base}-actual", label=text["actual"], rows=2)
+                      + draft_textarea(key=f"{key}:{sid}:note", id=f"{base}-note", label=text["note"], rows=2) + "</div>")
+        cards.append(f'<article class="ui-card ui-step" id="{base}" data-ui-item data-status="{first_token}">'
+                     f'<header class="ui-step-head"><h3>{n}. {escape(step["title"])}</h3><span class="ui-tag" data-ui-status-tag>{escape(first_label)}</span></header>'
+                     + code_block(step["command"], copy_label=text["copy"], copied_label=text["copied"], failed_label=text["copy_failed"])
+                     + facts([("expect", step["expect"]), ("needs", step["needs"])])
+                     + (details(text["trouble"], trusted_html=trouble) if trouble else "") + record + "</article>")
+    toolbar = ""
+    if book["toolbar"]:
+        toolbar = ('<div class="ui-records-bar">' + filter_input(f"{eid}-list", id=f"{eid}-search", label=text["search"])
+                   + (status_filter(f"{eid}-list", tuple(book["statuses"]), id=f"{eid}-state", label=text["filter"], all_label=text["all"]) if book["record"] else "")
+                   + (records_io(export_label=text["export"], import_label=text["import"], filename=re.sub(r"[^A-Za-z0-9_.-]", "-", key) + ".json") if book["record"] else "")
+                   + '</div>' + (f'<p class="ui-muted" role="status" data-ui-records-message data-ui-msg-loaded="{escape(text["loaded"], quote=True)}" '
+                                 f'data-ui-msg-stale="{escape(text["stale"], quote=True)}" data-ui-msg-bad="{escape(text["bad"], quote=True)}"></p>' if book["record"] else ""))
+    return records_board(toolbar + f'<div class="ui-steps" id="{eid}-list">' + "".join(cards) + "</div>", id=eid, source=book["source"])
 
 
 def plotly_figure(
@@ -4742,7 +4902,9 @@ SHOWCASE_ICONS: dict[str, str] = {
 
 def showcase_validate(spec: Any) -> dict[str, Any]:
     """Checked copy of a ``web-ui-showcase/1`` spec: ``title``, optional ``emoji``, ``favorite`` and ``themes`` flags, and 2..6 sections, each with
-    ``id``, ``label``, ``icon`` (a ``SHOWCASE_ICONS`` name), ``heading`` and any of ``lead``, ``tags``, ``cards``, ``table``, ``controls``."""
+    ``id``, ``label``, ``icon`` (a ``SHOWCASE_ICONS`` name), ``heading`` and any of ``lead``, ``notice`` (``{text, tone, title}``), ``stats``
+    (up to 8 ``[label, value]`` or ``[label, value, hint]``), ``tags``, ``cards``, ``table``, ``steps`` (a ``steps_validate`` runbook) and ``controls``.
+    With sections as views, a whole operations page (a runbook per method, a guide per tab) is one showcase."""
     if not isinstance(spec, dict) or spec.get("schema") != SHOWCASE_SCHEMA:
         raise ValueError(f"expected schema {SHOWCASE_SCHEMA}")
     if set(spec) - {"schema", "id", "title", "emoji", "favorite", "themes", "sections"}:
@@ -4759,8 +4921,8 @@ def showcase_validate(spec: Any) -> dict[str, Any]:
     seen: set[str] = set()
     sections = []
     for sec in sections_in:
-        if not isinstance(sec, dict) or set(sec) - {"id", "label", "icon", "heading", "lead", "tags", "cards", "table", "controls"}:
-            raise ValueError("a section has id, label, icon, heading, lead, tags, cards, table and controls")
+        if not isinstance(sec, dict) or set(sec) - {"id", "label", "icon", "heading", "lead", "notice", "stats", "tags", "cards", "table", "steps", "controls"}:
+            raise ValueError("a section has id, label, icon, heading, lead, notice, stats, tags, cards, table, steps and controls")
         icon = sec.get("icon", "info")
         if icon not in SHOWCASE_ICONS:
             raise ValueError(f"unknown icon {icon!r} (one of {', '.join(SHOWCASE_ICONS)})")
@@ -4780,6 +4942,19 @@ def showcase_validate(spec: Any) -> dict[str, Any]:
                      "rows": [[_world_text(c, "cell", 80, required=False) for c in r] for r in table["rows"]]}
         if not isinstance(sec.get("controls", False), bool):
             raise ValueError("controls is true or false")
+        note = sec.get("notice")
+        if note is not None:
+            if not isinstance(note, dict) or set(note) - {"text", "tone", "title"}:
+                raise ValueError("a notice is {text, tone, title}")
+            note = {"text": _world_text(note.get("text"), "notice", 400), "tone": note.get("tone", "info"),
+                    "title": _world_text(note["title"], "notice title", 60) if note.get("title") else None}
+            notice(note["text"], tone=note["tone"], title=note["title"])                     # the tone is checked there
+        stats = sec.get("stats", [])
+        if not isinstance(stats, list) or len(stats) > 8 or any(not isinstance(t, list) or len(t) not in (2, 3) for t in stats):
+            raise ValueError("stats is a list of up to 8 [label, value] or [label, value, hint]")
+        stats = [[_world_text(t[0], "stat label", 40), _world_text(str(t[1]), "stat value", 24), *([_world_text(t[2], "stat hint", 80)] if len(t) == 3 else [])]
+                 for t in stats]
+        steps = steps_validate(sec["steps"]) if sec.get("steps") is not None else None
         out_cards = []
         for card in cards:
             if not isinstance(card, dict) or set(card) - {"icon", "title", "body"} or card.get("icon", "info") not in SHOWCASE_ICONS:
@@ -4788,7 +4963,11 @@ def showcase_validate(spec: Any) -> dict[str, Any]:
                               "body": _world_text(card.get("body"), "body", 240)})
         sections.append({"id": _world_id(sec.get("id"), "section id", seen), "label": _world_text(sec.get("label"), "label", 24), "icon": icon,
                          "heading": _world_text(sec.get("heading"), "heading", 80), "lead": _world_text(sec.get("lead", ""), "lead", 240, required=False),
-                         "tags": [_world_text(t, "tag", 40) for t in tags], "cards": out_cards, "table": table, "controls": sec.get("controls", False)})
+                         "notice": note, "stats": stats, "tags": [_world_text(t, "tag", 40) for t in tags], "cards": out_cards, "table": table,
+                         "steps": steps, "controls": sec.get("controls", False)})
+    keys = [s["steps"]["key"] for s in sections if s["steps"]]
+    if len(set(keys)) != len(keys):
+        raise ValueError("each section's steps need their own key")
     return {"schema": SHOWCASE_SCHEMA, "id": sid, "title": _world_text(spec.get("title", "Showcase"), "title", 60),
             "emoji": _world_text(spec.get("emoji", ""), "emoji", 16, required=False), **flags, "sections": sections}
 
@@ -4863,32 +5042,12 @@ def table_validate(spec: Any) -> dict[str, Any]:
 
 
 def table_html(spec: Any) -> str:
-    """An escaped ``<table class="ui-shell-table">`` in its horizontal scroller, styled by shell.css (part of bundled_css()), no script.
-    The report pages of Ironmate, markdown and browser-test-kit each built this by hand; the showcase's section tables come from here too."""
-    table = table_validate(spec)
-
-    def cell(value: Any, header: bool) -> str:
-        if header:
-            text = "" if value is None else value if isinstance(value, str) else value.get("text", "") if isinstance(value, dict) else format(value, "g")
-            return f'<th scope="row">{escape(text)}</th>'
-        if value is None:
-            return f'<td data-missing>{escape(table["missing"])}</td>'
-        if not isinstance(value, dict):
-            return f"<td data-num>{format(value, 'g')}</td>" if not isinstance(value, str) else f"<td>{escape(value)}</td>"
-        attrs = (f' data-status="{value["status"]}"' if "status" in value else "") + (" data-num" if value["num"] else "")
-        image = (f'<img src="{escape(value["image"]["src"], quote=True)}" alt="{escape(value["image"]["alt"], quote=True)}"'
-                 + "".join(f' {k}="{value["image"][k]}"' for k in ("width", "height") if k in value["image"]) + ' loading="lazy">'
-                 if "image" in value else "")
-        text = escape(value["text"])
-        if "href" in value:
-            text = f'<a href="{escape(value["href"], quote=True)}">{image}{text}</a>'
-            image = ""
-        return f"<td{attrs}>{image}{text}</td>"
-
-    head = "".join(f'<th scope="col">{escape(c)}</th>' for c in table["columns"])
-    rows = "".join("<tr>" + "".join(cell(c, table["row_headers"] and i == 0) for i, c in enumerate(r)) + "</tr>" for r in table["rows"])
-    caption = f"<caption>{escape(table['caption'])}</caption>" if table["caption"] else ""
-    return f'<div class="ui-shell-scroll"><table class="ui-shell-table">{caption}<thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table></div>'
+    """``table()`` from a JSON spec (``table_validate``), in its horizontal scroller: for the CLI, Node and the showcase sections. Numbers are
+    right-aligned (``data-num``); everything is escaped and there is no script."""
+    t = table_validate(spec)
+    rows = [[{"text": format(c, "g"), "num": True} if isinstance(c, (int, float)) and not isinstance(c, bool) else c for c in row] for row in t["rows"]]
+    return ('<div class="ui-shell-scroll">' + table(t["columns"], rows, caption=t["caption"] or None, row_headers=t["row_headers"], missing=t["missing"])
+            + "</div>")
 
 
 def showcase_html(spec: Any) -> str:
@@ -4912,6 +5071,10 @@ def showcase_html(spec: Any) -> str:
         out = [f'<h2 id="{sid}-h-{s["id"]}">{escape(s["heading"])}</h2>']
         if s["lead"]:
             out.append(f'<p class="ui-muted">{escape(s["lead"])}</p>')
+        if s["notice"]:
+            out.append(notice(s["notice"]["text"], tone=s["notice"]["tone"], title=s["notice"]["title"]))
+        if s["stats"]:
+            out.append(stat_tiles(tuple(tuple(t) for t in s["stats"])))
         if s["tags"]:
             out.append('<div class="ui-shell-tags">' + "".join(f'<span class="ui-tag">{escape(t)}</span>' for t in s["tags"]) + "</div>")
         if s["cards"]:
@@ -4920,6 +5083,8 @@ def showcase_html(spec: Any) -> str:
                 for c in s["cards"]) + "</div>")
         if s["table"]:
             out.append(table_html(s["table"]))
+        if s["steps"]:
+            out.append(steps_html(s["steps"]))
         if s["controls"]:
             out.append(f'<div class="ui-shell-controls"><label for="{sid}-demo-input">Input</label><input class="ui-input" id="{sid}-demo-input" value="shared semantic HTML"> '
                        '<button class="ui-button" type="button">Button</button><span class="ui-tag">tag</span></div>'
@@ -4936,9 +5101,12 @@ def showcase_html(spec: Any) -> str:
 
 
 def showcase_document(spec: Any, *, theme: str = "modern") -> str:
-    """A single-file page for a showcase: bundled CSS, its section rules, its HTML and the two ui.js helpers it uses."""
+    """A single-file page for a showcase: bundled CSS, its section rules, its HTML and the ui.js helpers it uses (with records.js and the copy
+    buttons when a section holds steps)."""
     show = showcase_validate(spec)
-    return render_document(trusted_html=showcase_html(show) + module_script(EMBEDDED_UI_JS + "\nbindTheme();bindToggles();\n"),
+    steps = any(s["steps"] for s in show["sections"])
+    script = module_script(EMBEDDED_UI_JS + "\nbindTheme();bindToggles();" + ("bindCopy();" if steps else "") + "\n")
+    return render_document(trusted_html=showcase_html(show) + script + (module_script(js_source("records.js")) if steps else ""),
                            title=show["title"], theme=theme, css=bundled_css() + showcase_css(show))
 
 
@@ -5269,40 +5437,6 @@ def dial_html(name: str, *, minimum: float = 0, maximum: float = 100, step: floa
 
 
 # --- Repository diagnostics: the page ascii_artist, markdown and mcp-toolcall-lab each wrote by hand, as one builder ----------------------
-REPO_DIAGNOSTICS_LEAD = "Canonical metadata plus anonymous public GitHub observations."
-
-
-def repository_diagnostics_html(repository: str, *, lead: str = REPO_DIAGNOSTICS_LEAD, source: str = "./repository-diagnostics.json",
-                                links: Any = (("JSON", "./repository-diagnostics.json"), ("JSONL", "./repository-diagnostics.jsonl")),
-                                icon: str | None = None, heading_level: int = 1) -> str:
-    """The repository diagnostics page body that ``repository-diagnostics.js`` fills: the metadata card (``RepositoryDiagnostics.render``), the
-    resolver summary and one card per public URL observation, read from ``source`` (the JSON of metadata + resolver, one GET). ``links`` are
-    ``(label, href)`` pairs under it, ``icon`` an image above the title; hrefs are relative paths or http(s) addresses."""
-    if not isinstance(repository, str) or not 1 <= len(repository) <= 140 or any(ord(c) < 32 for c in repository):
-        raise ValueError("repository is a name of 1 to 140 characters")
-    if not isinstance(lead, str) or len(lead) > 400:
-        raise ValueError("lead is text of up to 400 characters")
-    level = heading_level if type(heading_level) is int and 1 <= heading_level <= 5 else 1
-    pairs = [(str(label), _door_href(href)) for label, href in links]
-    head = (f'<img src="{escape(_door_href(icon), quote=True)}" width="80" height="80" alt="{escape(repository, quote=True)} icon">' if icon else "")
-    return (f'<section class="ui-repo-diagnostics" data-ui-repo-diagnostics="{escape(_door_href(source), quote=True)}">{head}'
-            f'<h{level} class="ui-title">{escape(repository)} repository diagnostics</h{level}>'
-            + (f'<p class="ui-muted">{escape(lead)}</p>' if lead else "") +
-            '<div data-repo-metadata></div>'
-            f'<section class="ui-panel"><h{level + 1}>Public URL observations</h{level + 1}><p class="ui-muted" data-repo-summary>Loading…</p>'
-            '<div class="ui-grid" data-repo-observations></div></section>'
-            + (("<p>" + " · ".join(f'<a href="{escape(h, quote=True)}">{escape(t)}</a>' for t, h in pairs) + "</p>") if pairs else "") +
-            "</section>")
-
-
-def repository_diagnostics_document(repository: str, *, favicon: str | None = None, touch_icon: str | None = None, theme: str = "modern", **kwargs: Any) -> str:
-    """A single-file repository diagnostics page: bundled_css() (repository-diagnostics.css is part of it), the body, the module inline.
-    ``kwargs`` go to repository_diagnostics_html(); write the JSON beside it."""
-    body = repository_diagnostics_html(repository, **kwargs)
-    return render_document(trusted_html='<main class="ui-page">' + body + "</main><script>" + _JS["repository-diagnostics.js"] + "</script>",
-                           title=f"{repository} repository diagnostics", theme=theme, css=bundled_css(), favicon=favicon, touch_icon=touch_icon)
-
-
 # --- Components as a Python wrapper: one name gives the HTML builder, the stylesheet and the module, for pages here and in other repositories ---
 COMPONENTS: dict[str, dict[str, Any]] = {
     # name: html builder, stylesheets (a css_source name, or a builder in _COMPONENT_CSS), module names (js_source), "mount" when the module
@@ -5325,12 +5459,14 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "source": {"html": "source_panel_html", "css": ("source.css",), "js": ("source.js",)},
     "stub": {"html": "stub_html", "css": ("stub.css",), "js": ("stub.js",)},
     "world": {"html": "world_html", "css": ("world_css",), "js": ("world.js",)},
-    "showcase": {"html": "showcase_html", "css": ("showcase_css",), "js": ("ui.js",), "mount": "bindTheme();bindToggles();", "spec": "showcase_validate"},
+    "showcase": {"html": "showcase_html", "css": ("showcase_css",), "js": ("ui.js", "records.js"), "mount": "bindTheme();bindToggles();bindCopy();", "spec": "showcase_validate"},
     "tempclip": {"html": "tempclip_html", "css": ("shelf.css",), "js": ("shelf.js",)},
     "curl": {"html": "curl_panel_html", "css": (), "js": ("curl.js",)},
-    "repository-diagnostics": {"html": "repository_diagnostics_html", "css": ("repository-diagnostics.css",), "js": ("repository-diagnostics.js",), "classic": True},
+    "repository-diagnostics": {"html": "repository_diagnostics_body", "css": ("repository-diagnostics.css",), "js": ("repository-diagnostics.js",),
+                               "mount": 'RepositoryDiagnostics.mount(document, "./repository-diagnostics.json");', "classic": True},
     "front": {"html": "front_html", "css": ("front_css",), "js": ()},
     "table": {"html": "table_html", "css": (), "js": (), "spec": "table_validate"},
+    "steps": {"html": "steps_html", "css": (), "js": ("ui.js", "records.js"), "mount": "bindCopy();", "spec": "steps_validate"},
     "seed-roll": {"html": "seed_roll_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
 }
 # Stylesheets that are built rather than stored: the spec (the first argument) decides them.
