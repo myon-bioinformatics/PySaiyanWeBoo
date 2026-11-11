@@ -18614,7 +18614,7 @@ EXAMPLES: dict[str, Any] = {'flutter-pages': {'schema': 'web-ui-flutter-pages/1'
 # repository metadata. Consumers adapt their existing source of truth to this.
 # Real places in miniature (the `place` floor): latitude and longitude in, tiles out. The coordinates are approximate (about 100 m, read off public
 # maps), which is all a miniature needs; the point is where things stand relative to each other, so nothing here is a facility's exact position.
-_CITY_MARKS = {"exit": "🚪", "station": "🚉", "terminus": "🚆", "famous": "🏛️", "sight": "📷"}   # the mark drawn instead of the dot, by category
+_CITY_MARKS = {"exit": "🚪", "station": "🚉", "terminus": "🚆"}   # the mark drawn instead of the dot, by category: the cities are their transport
 
 
 def _pt(id: str, label: str, lat: float, lon: float, category: str, body: str = "", flip: str = "", sign: str = "") -> dict[str, Any]:
@@ -18683,19 +18683,6 @@ _LONDON_POINTS = [
     _pt("westminster", "ウェストミンスター", 51.501, -0.1254, "station", "チャリング・クロスの南のとなりの駅です。"),
     _pt("green-park", "グリーン・パーク", 51.5067, -0.1428, "station", "ヴィクトリアの北のとなりの駅です。"),
     _pt("pimlico", "ピムリコ", 51.4893, -0.1334, "station", "ヴィクトリアの南東のとなりの駅です。"),
-    _pt("big-ben", "ビッグ・ベン", 51.5007, -0.1246, "sight", "川のほとりに立つ大きな時計塔です。"),
-    _pt("london-eye", "ロンドン・アイ", 51.5033, -0.1195, "sight", "川のそばの大きな観覧車です。"),
-    _pt("buckingham", "バッキンガム宮殿", 51.5014, -0.1419, "sight", "王室の住まいの宮殿です。"),
-    _pt("trafalgar-square", "トラファルガー広場", 51.508, -0.1281, "sight", "噴水と像のある大きな広場です。"),
-    _pt("piccadilly-circus", "ピカデリー・サーカス", 51.51, -0.1347, "sight", "光る看板がならぶ交差点です。"),
-    _pt("british-museum", "大英博物館", 51.5194, -0.127, "sight", "世界中の品々を集めた博物館です。"),
-    _pt("the-shard", "ザ・シャード", 51.5045, -0.0865, "sight", "とがった形の高いビルです。"),
-    _pt("tower-bridge", "タワー・ブリッジ", 51.5055, -0.0754, "sight", "川にかかる、二つの塔のある橋です。"),
-    _pt("downing-street", "首相官邸", 51.5034, -0.1276, "famous", "首相の仕事場と住まいがある通りです。"),
-    _pt("scotland-yard", "警視庁", 51.5012, -0.1229, "famous", "ロンドンの警察の本部です。"),
-    _pt("bank-of-england", "イングランド銀行", 51.5142, -0.0885, "famous", "国の中央銀行です。"),
-    _pt("old-bailey", "中央刑事裁判所", 51.5156, -0.1021, "famous", "大きな裁判が開かれる裁判所です。"),
-    _pt("bbc", "BBC放送会館", 51.5185, -0.1439, "famous", "放送局の本拠地です。"),
     _pt("nogard", "nogard", 51.5024, -0.1118, "sign", "うしろから読んでみて。", "🐉", "wood"),
     _pt("mind-the-gap", "mind the gap", 51.4958, -0.1445, "sign", "駅のホームでよく聞く言葉です。", "", "led"),
     _pt("platform", "◀ 北 | 南 ▶", 51.5290, -0.1270, "sign", "キングス・クロスとセント・パンクラスの前です。", "", "led"),
@@ -18729,18 +18716,6 @@ _PARIS_POINTS = [
     _pt("edgar-quinet", "エドガー・キネ", 48.8409, 2.3252, "station", "モンパルナス駅の東のとなりの駅です。"),
     _pt("vavin", "ヴァヴァン", 48.8421, 2.3282, "station", "モンパルナス駅の北東のとなりの駅です。"),
     _pt("falguiere", "ファルギエール", 48.8444, 2.3098, "station", "モンパルナス駅の西のとなりの駅です。"),
-    _pt("eiffel", "エッフェル塔", 48.8584, 2.2945, "sight", "鉄でできた、パリでいちばん有名な塔です。"),
-    _pt("arc-de-triomphe", "凱旋門", 48.8738, 2.295, "sight", "大きな道が集まる円の真ん中の門です。"),
-    _pt("louvre", "ルーヴル美術館", 48.8606, 2.3376, "sight", "世界でいちばん人が来る美術館です。"),
-    _pt("pompidou", "ポンピドゥー・センター", 48.8606, 2.3522, "sight", "配管が外に出ている、現代美術の建物です。"),
-    _pt("concorde", "コンコルド広場", 48.8656, 2.3212, "sight", "オベリスクが立つ大きな広場です。"),
-    _pt("opera-garnier", "オペラ座", 48.872, 2.3316, "sight", "金色の飾りが目立つ歌劇場です。"),
-    _pt("orsay", "オルセー美術館", 48.86, 2.3266, "sight", "古い駅舎を使った美術館です。"),
-    _pt("elysee", "エリゼ宮", 48.8704, 2.3167, "famous", "大統領の仕事場です。"),
-    _pt("assemblee", "国民議会", 48.8606, 2.3189, "famous", "国の法律を決める議会の建物です。"),
-    _pt("bourse", "ブルス", 48.8693, 2.3411, "famous", "むかし証券取引所だった建物です。"),
-    _pt("banque-de-france", "フランス銀行", 48.8614, 2.3416, "famous", "国の中央銀行です。"),
-    _pt("hotel-de-ville", "パリ市庁舎", 48.8566, 2.3522, "famous", "パリの市役所です。"),
     _pt("to-lyon", "▶ Lyon", 48.8449, 2.3728, "sign", "リヨン駅から、リヨンへ向かう列車が出ます。", "", "led"),
     _pt("rive-gauche", "rive gauche ▼", 48.8530, 2.3440, "sign", "川の南がわ、左岸という意味です。", "", "wood"),
 ]
@@ -18790,8 +18765,9 @@ EXAMPLES.update({
                     "player": {"emoji": "🙂", "x": 192, "y": 288, "speed": 96}}],
     },
     # The overworld's sequel in real space, as its other sides: Parallel Tokyo (Tokyo Station with its six exits and the stations around it, on foot),
-    # Reverse London (the main termini, the stations beside them and famous places, the Thames and its bridges; a sign, nogard, that turns into a dragon)
-    # and Fake Paris (the main stations, the metro beside them, the Seine; a fire in each block). `place` turns latitude/longitude into tiles.
+    # Reverse London (the main termini and the stations beside them, the Thames and its bridges; a sign, nogard, that turns into a dragon)
+    # and Fake Paris (the main stations, the metro beside them, the Seine; a fire in each block). Transport only, no sights or institutions,
+    # so a map stays readable with every name on. `place` turns latitude/longitude into tiles.
     "cities": {
         "schema": WORLD_SCHEMA, "id": "cities", "title": "Parallel cities", "zoom_max": 4, "names": "dots", "mark_scale": [1.5, 1.5],
         "avatars": ["🙂", "🧳", "🚶", "🎒", "🐱", "🐶", "🦊", "🐼", "🚃", "☂️", "🎩", "🗼"],
@@ -18964,8 +18940,8 @@ def _index_page() -> str:
         {"id": "cities", "emoji": "🗼", "title": "Parallel cities", "text": "Parallel Tokyo, Reverse London and Fake Paris from latitude and longitude: walk from station to station.",
          "link": "Open the cities",
          "html": '<section class="ui-panel" id="cities"><h2>🗼 Parallel cities</h2><p class="ui-muted">The overworld\'s sequel: real places as tiles, each the other side of '
-                 'its city. Parallel Tokyo is Tokyo Station (six exits) and the stations within walking distance; Reverse London is the main termini, the stations '
-                 'beside them and famous places, with the Thames, its bridges and a sign that turns into a dragon; Fake Paris is the main stations, the metro beside '
+                 'its city, drawn as its transport. Parallel Tokyo is Tokyo Station (six exits) and the stations within walking distance; Reverse London is the main '
+                 'termini and the stations beside them, with the Thames, its bridges and a sign that turns into a dragon; Fake Paris is the main stations, the metro beside '
                  'them and the Seine, with a fire in each block. Use 🚪 to travel between them. '
                  f'From <code>EXAMPLES["cities"]</code>: each floor is a list of latitude/longitude points (<code>place</code>).</p>{world_html(cities)}</section>'},
         {"id": "wall", "emoji": "🎲", "title": "Random themes", "text": "Seeded palettes side by side; tap one to wear it. Every text pair meets WCAG AA.",

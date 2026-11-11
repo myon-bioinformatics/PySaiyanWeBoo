@@ -756,7 +756,7 @@ def test_a_mark_is_an_emoji_in_place_of_the_dot_scaled_by_the_world():
     """A spot's mark (or its category's, through place_floor marks=) replaces the dot and leads the name; mark_scale sets every mark's width and height."""
     cities = ui.world_validate(ui.example_data("cities"))
     assert cities["mark_scale"] == [1.5, 1.5]
-    assert {s["category"]: s.get("mark") for f in cities["floors"] for s in f["spots"]} == {"exit": "🚪", "station": "🚉", "terminus": "🚆", "famous": "🏛️", "sight": "📷", "sign": None}
+    assert {s["category"]: s.get("mark") for f in cities["floors"] for s in f["spots"]} == {"exit": "🚪", "station": "🚉", "terminus": "🚆", "sign": None}
     html = ui.world_html(ui.example_data("cities"))
     assert 'style="--mark-x:1.5;--mark-y:1.5"' in html
     assert "top:1232px;--mark:'🚪'\"" in html
