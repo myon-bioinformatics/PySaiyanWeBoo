@@ -58,4 +58,22 @@ assert.equal(notes.value, "imported");
 assert.equal(memory.get("web-ui-drafts:r1:notes"), "imported");
 const bad = new Node({ "data-ui-draft": "<bad key>" }); bad.tag = "input"; doc.children.push(bad);
 assert.equal(records.bindDrafts(doc).length, 1, "keys outside the allowed charset are ignored");
+// Cards as well as rows: [data-ui-item] children filtered by text and by data-status.
+const list = new Node({ id: "l" });
+const card = (text, status) => { const c = new Node({ "data-ui-item": "" }); c.textContent = text; c.attrs["data-status"] = status; return c; };
+list.children = [card("uv run calc", "pass"), card("curl -fL", "todo"), card("uv tool install", "todo")];
+assert.equal(records.filterItems(list, "uv"), 2);
+assert.equal(records.filterItems(list, "", "todo"), 2);
+assert.equal(records.filterItems(list, "uv", "todo"), 1);
+assert.equal(list.children[0].hidden, true);
+assert.equal(records.filterItems(list), 3);
+// A file's drafts: loaded when the board names no source or the same one, "bad" for nothing to apply or not an object.
+const board = new Node({ "data-ui-records-source": "abc" }); board.children = [notes];
+board.matches = selector => selector === "[data-ui-records-source]";
+assert.equal(records.importDrafts(board, { source: "abc", drafts: { "r1:notes": "same" } }), "loaded");
+assert.equal(notes.value, "same");
+assert.equal(records.importDrafts(board, { source: "fff", drafts: { "r1:notes": "other" } }), "stale");
+assert.equal(notes.value, "other");
+assert.equal(records.importDrafts(board, { drafts: { unknown: "x" } }), "bad");
+assert.equal(records.importDrafts(board, []), "bad");
 console.log("records.js ok");

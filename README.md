@@ -731,7 +731,7 @@ boundary](docs/python-controls.md).
 
 `COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `coordinates`,
 `door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `stub`, `curl`, `showcase`,
-`front`, `world`, `repository-diagnostics`, `table`; `components()` lists them as data), and two calls wrap them:
+`front`, `world`, `repository-diagnostics`, `table`, `steps`; `components()` lists them as data), and two calls wrap them:
 
 ```python
 import web_ui                                   # the vendored copy (vendor/web_ui.py) in another repository
@@ -750,19 +750,29 @@ mcp-toolcall-lab is the model consumer: it vendors `web_ui.py` through the paren
 and builds its Pokémon panel from `source_panel_html(spec)` + `css_source("source.css")` + `js_source("source.js")`; `component_parts("source", spec)` is the
 same three in one call. `tests/test_components.py` renders every entry.
 
-`repository-diagnostics` is the page ascii_artist, markdown and mcp-toolcall-lab each wrote by hand (one inline script reading
-`repository-diagnostics.json` beside it): `repository_diagnostics_html(repository, icon=, links=, source=)` is the body with three slots
-(`data-repo-metadata`, `data-repo-summary`, `data-repo-observations`), `repository_diagnostics_document(repository, favicon=)` the single-file page.
-`repository-diagnostics.js` stays a classic script (`"classic": true` in the table, so `component_document()` inlines `<script>`, not a module):
-on load it reads the JSON once (`cache: "no-store"`), renders the Ironmate metadata card with `render()`, the resolver summary and one escaped card
-per observation (a link only for an `https://` URL), and shows "Diagnostics could not be loaded." when the GET fails.
+`repository-diagnostics` is `repository_diagnostics_page()`'s body (`repository_diagnostics_body()`, the page ascii_artist, markdown and
+mcp-toolcall-lab each wrote by hand; markdown already calls the page). `repository-diagnostics.js` stays a classic script (`"classic": true` in the
+table, so `component_document()` inlines `<script>`, not a module) and the mount line is `RepositoryDiagnostics.mount(document, "./repository-diagnostics.json")`:
+one `no-store` GET fills `#metadata`, `#summary` and one escaped card per observation (a link only for an `https://` URL), and a failed GET says
+"Diagnostics could not be loaded."
 
 `table` is the report table Ironmate (`browser_matrix.py`, `image_digest.py`), markdown (`real_world_pages_report.py`) and browser-test-kit
 (`app_digest.py`) each build by hand, and the one the showcase sections already used: `table_html({"columns", "rows", "caption", "row_headers",
-"missing"})` gives an escaped `<table class="ui-shell-table">` in its own horizontal scroller, styled by `shell.css` (already in `bundled_css()`),
-no script. A cell is text (line breaks kept), a finite number (right-aligned, `data-num`), `null` (the `missing` text, muted) or
+"missing"})` is `table()` (the one table renderer, `.ui-table`) from a JSON spec, in its own horizontal scroller, no script; `table(headers, rows,
+row_headers=, missing=)` takes the same rich cells from Python. A cell is text (line breaks kept), a finite number (right-aligned, `data-num`), `null` (the `missing` text, muted) or
 `{text, href, image: {src, alt, width, height}, status, num}`; `status` is a token written as `data-status` for the page to color, hrefs and image
 sources are relative paths or http(s) addresses. `python -S web_ui.py --component table --spec table.json --part html` from the shell or Node.
+
+`steps` is a runbook (olnm's guide and Component Ops' operations steps had one each, written by hand): `steps_html({"key", "steps": [{id, title,
+command, expect, needs, trouble: {seen, check, fix}}], "statuses", "source"})` gives one card per step with its command (📋 `code_block()`,
+copied by ui.js's `bindCopy`), what to expect, what it needs and what to check when it fails (`<details>`), and a record kept in this browser
+(state, date, actual output, note: records.js drafts under `key:id:field`). The toolbar searches the cards (`filter_input`), filters them by
+state (`status_filter`) and saves or loads the records as JSON (`records_io`); the board's `source` (a commit) goes into the file, and a file
+from another version comes back with its states reset. States are tokens (`todo`, `pass`, `hold`, `block`) with your labels, coloured by the
+theme. A showcase section takes `steps`, `notice` (`notice(text, tone=)`) and `stats` (`stat_tiles`), so a whole operations page, one view per
+method or tab, is one `showcase_document(spec)`.
+
+<img src="docs/demo/component-steps.gif" width="240" alt="A runbook on a phone: copy a command, record a step as verified, filter by state, switch view, reload, import a record from another version and see its state reset">
 
 <img src="docs/demo/component-table.gif" width="320" alt="A browser matrix table on a phone: the themes change its colors, then it scrolls sideways inside its box while the page stays still">
 
