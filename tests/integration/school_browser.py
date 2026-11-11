@@ -1052,7 +1052,7 @@ class CitiesTests(unittest.TestCase):
             self.assertEqual(sizes.count("0px"), len(sizes) - len(near), "only the spot the player stands by shows its name")
             self.assertEqual(sorted(page.eval_on_selector_all(f"{plain}[data-near]", "els => els.map(e => e.textContent)")), near)
             marks = page.eval_on_selector_all(plain, "els => els.map(e => [e.dataset.category, getComputedStyle(e, '::before').content, getComputedStyle(e, '::before').transform])")
-            self.assertEqual({(c, m) for c, m, _ in marks}, {("terminus", '"🚆"'), ("station", '"🚉"'), ("famous", '"🏛️"'), ("sight", '"📷"')})   # the emoji, not the dot
+            self.assertEqual({(c, m) for c, m, _ in marks}, {("terminus", '"🚆"'), ("station", '"🚉"')})   # the emoji, not the dot; London is its transport
             self.assertEqual({t for _, _, t in marks}, {"matrix(1.5, 0, 0, 1.5, 0, 0)"})                                                           # mark_scale [1.5, 1.5]
             marker = f'{CITY_FLOOR.format("london")} .ui-spot[href="#cities-spot-london-charing-cross"]'
             self.menu(page, "spots")

@@ -102,7 +102,7 @@ plain spots sit, and 🏷️ in ⚙️ switches it without a reload (kept with t
 
 A spot's `mark` (one emoji) is drawn instead of the dot and leads the name when the name shows; `place_floor(marks={category: emoji})` (or `"marks"` in a
 `place`) gives every point of a category its mark, and the world's `mark_scale: [x, y]` (0.5–4, default `[1, 1]`) sets the width and height factor of every mark,
-dots included. The cities use 🚪 exits, 🚉 stations, 🚆 termini, 🏛️ famous places and 📷 sights at `[1.5, 1.5]`.
+dots included. The cities use 🚪 exits, 🚉 stations and 🚆 termini at `[1.5, 1.5]`.
 Signs (`sign`) always sit in the mark layer and keep their own dot → text → face cycle. While a sheet is open, the camera aims a little below the player or the spot,
 so the thing you walked to stays in the view above the sheet.
 
@@ -152,9 +152,9 @@ world uses. A new kind is one line in each.
 ## Places: real space in miniature
 
 A `place` floor lays **real positions** (latitude and longitude) on the same grid, so a world can go on from a village to a real city in its other
-form (`EXAMPLES["cities"]`): **Parallel Tokyo**, Tokyo Station with its six exits and the stations around it; **Reverse London**, the main termini, the stations
-beside them, sights and famous places, the Thames and a wooden `nogard` sign (dragon, backwards) that turns into 🐉 when pressed; **Fake Paris**, the main stations,
-the metro beside them and the Seine, with a 🔥 in each block. Nothing is drawn to look like the place: ground, roads, water and bridges are the same kinds as a land.
+form (`EXAMPLES["cities"]`): **Parallel Tokyo**, Tokyo Station with its six exits and the stations around it; **Reverse London**, the main termini and the
+stations beside them, the Thames and a wooden `nogard` sign (dragon, backwards) that turns into 🐉 when pressed; **Fake Paris**, the main stations,
+the metro beside them and the Seine, with a 🔥 in each block. The cities are their transport only (no sights, no institutions), so every name fits on the map. Nothing is drawn to look like the place: ground, roads, water and bridges are the same kinds as a land.
 
 ```json
 {"schema": "web-ui-world/1", "id": "trip", "floors": [{"id": "tokyo", "label": "TOKYO", "place": {"meters": 32, "points": [
@@ -278,7 +278,7 @@ the browser tests name their GIFs through them from `WEB_UI_GIFS="DIR [--prefix 
 | `overworld-real.gif` | the real floor: ⋯ → 🖼️📷 → 🖼️ choose a photo, walk over it, then 🧹 (the photo is drawn by the recorder) |
 | `cities-tokyo.gif` | Parallel Tokyo: the 🚉 tool (the six exits of Tokyo Station), Marunouchi to Yaesu through the concourse, the electronic board's dot and text, on to Kanda by ☰ |
 | `cities-london.gif` | Reverse London: 🎡 in the header, King's Cross to Waterloo over the Thames bridge, the wooden **nogard** board: dot, text, 🐉, dot |
-| `cities-paris.gif` | Fake Paris: 🥖 in the header, a 🔥 in each block, Gare du Nord down to the Louvre |
+| `cities-paris.gif` | Fake Paris: 🥖 in the header, a 🔥 in each block, west from Gare du Nord to Saint-Lazare |
 | `school-oneliner.gif` | the one command from another repository; the byte count and time shown are that run's real output |
 
 A scene may end with `cam.zoom((x, y))` (or an anchor name or arrow emoji such as `cam.zoom("↘️")`): a smooth zoom toward that point that stays (the easing of Ironmate's `png_zoom_gif.py`, taken into this

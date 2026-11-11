@@ -438,12 +438,12 @@ def _london(page, cam, tmp):
 
 @scene("paris", world="cities", width=560, height=720)
 def _paris(page, cam, tmp):
-    """Fake Paris: 🥖 opens it; a fire burns in each block; walk from Gare du Nord down to the Louvre (one walk keeps the GIF under its 3 MiB bar)."""
+    """Fake Paris: 🥖 opens it; a fire burns in each block; walk west from Gare du Nord to Saint-Lazare, terminus to terminus (one walk keeps the GIF under its 3 MiB bar)."""
     choose(page, "🧳")
     cam.hold(600)
     page.click('.ui-world-tools label[for="cities-floor-paris"]')
     cam.hold(1000)
-    spot(page, cam, "paris", "paris-louvre")
+    spot(page, cam, "paris", "paris-saint-lazare")
     cam.zoom(PLAYER, factor=1.6, hold_ms=1200)
 
 
