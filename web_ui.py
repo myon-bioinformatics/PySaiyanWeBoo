@@ -13,7 +13,7 @@ from collections import Counter, defaultdict; from datetime import date; from de
 
 THEMES = ("modern", "github-like")
 # Token-only candidates: their values live in the Python tokens.css source; not in contract v1 yet.
-CANDIDATE_THEMES = ("green", "red", "blue", "terminal")
+CANDIDATE_THEMES = ("green", "red", "blue", "purple", "terminal")
 # The browser modules, as data: Python is the only source (there are no js/ files). write_js()/--site writes them under DIR/js/.
 _JS = {
     "ui.js": r"""/** Set text-only content. User-controlled values are never interpreted as HTML. */
@@ -57,10 +57,14 @@ export function applyDrafts(root,drafts){let n=0;if(!drafts||typeof drafts!=="ob
 /** Apply a file's drafts. When the board names its source (data-ui-records-source, a commit) and the file names another, the states (select[data-ui-status]) go back to their first option: records of another version are to be checked again. Returns "loaded", "stale" or "bad". */
 export function importDrafts(root,data){if(!data||typeof data!=="object"||Array.isArray(data))return"bad";const drafts=data.drafts&&typeof data.drafts==="object"?data.drafts:data;const board=root.matches&&root.matches("[data-ui-records-source]")?root:root.querySelector("[data-ui-records-source]");const source=board?board.dataset.uiRecordsSource:"";if(!applyDrafts(root,drafts))return"bad";if(!source||data.source===source)return"loaded";for(const field of root.querySelectorAll("select[data-ui-status][data-ui-draft]"))if(field.options&&field.options.length)assign(field,field.options[0].value);return"stale"}
 /** [data-ui-export] downloads the drafts as JSON (with the board's source when it names one); input[type=file][data-ui-import] reads such a file back; [data-ui-records-message] says how it went. */
-export function bindRecordsIO(root=document,{filename="records.json"}={}){const board=root.matches&&root.matches("[data-ui-records-source]")?root:root.querySelector("[data-ui-records-source]");const source=board?board.dataset.uiRecordsSource:undefined;const say=state=>{for(const out of root.querySelectorAll("[data-ui-records-message]")){const text=out.getAttribute("data-ui-msg-"+state);if(text!==null)out.textContent=text}};for(const button of root.querySelectorAll("[data-ui-export]"))button.addEventListener("click",()=>{const blob=new Blob([JSON.stringify({schema:"web-ui-drafts/1",exported:new Date().toISOString(),...(source?{source}:{}),drafts:collectDrafts(root)},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=button.dataset.uiExport||filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)});for(const input of root.querySelectorAll("input[type=file][data-ui-import]"))input.addEventListener("change",async()=>{const file=input.files&&input.files[0];if(!file)return;let state="bad";try{state=importDrafts(root,JSON.parse(await file.text()))}catch{}say(state);input.value=""})}
-/** Bind everything inside root; pages mark the board with data-ui-records so loading the module is enough. */
-export function mount(root=document,options={}){bindDrafts(root,options);bindStatus(root);bindFilter(root);bindRecordsIO(root,options);return root}
-if(typeof document!=="undefined"&&document.querySelector("[data-ui-records]")){const start=()=>mount(document);if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start,{once:true});else start()}
+export function bindRecordsIO(root=document,{filename="records.json"}={}){const board=root.matches&&root.matches("[data-ui-records-source]")?root:root.querySelector("[data-ui-records-source]");const source=board?board.dataset.uiRecordsSource:undefined;const say=state=>{for(const out of root.querySelectorAll("[data-ui-records-message]")){const text=out.getAttribute("data-ui-msg-"+state);if(text!==null)out.textContent=text}};for(const button of root.querySelectorAll("[data-ui-export]"))button.addEventListener("click",()=>downloadText(button.dataset.uiExport||filename,JSON.stringify({schema:"web-ui-drafts/1",exported:new Date().toISOString(),...(source?{source}:{}),drafts:collectDrafts(root)},null,2)));for(const input of root.querySelectorAll("input[type=file][data-ui-import]"))input.addEventListener("change",async()=>{const file=input.files&&input.files[0];if(!file)return;let state="bad";try{state=importDrafts(root,JSON.parse(await file.text()))}catch{}say(state);input.value=""})}
+/** Save text as a file in the browser (a Blob link, revoked after the click). */
+export function downloadText(filename,text,type="application/json"){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+/** [data-ui-download="name.json"] saves the text of its data-ui-download-source (a <script type="application/json">) as that file. Returns the buttons. */
+export function bindDownloads(root=document){const buttons=[...root.querySelectorAll("[data-ui-download]")];for(const button of buttons){const source=root.querySelector(button.dataset.uiDownloadSource||"#none");if(source)button.addEventListener("click",()=>downloadText(button.dataset.uiDownload,source.textContent))}return buttons}
+/** Bind everything inside root; pages mark the board with data-ui-records (or carry a data download) so loading the module is enough. */
+export function mount(root=document,options={}){bindDrafts(root,options);bindStatus(root);bindFilter(root);bindRecordsIO(root,options);bindDownloads(root);return root}
+if(typeof document!=="undefined"&&(document.querySelector("[data-ui-records]")||document.querySelector("[data-ui-download]"))){const start=()=>mount(document);if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start,{once:true});else start()}
 """,
     "stub.js": r"""import{setText,prettyJson}from"./ui.js";
 /**
@@ -990,6 +994,7 @@ _CSS["records.css"] = ("@layer components{.ui-records table.ui-table{border-coll
                        ".ui-step[data-status=doing] [data-ui-status-tag]{border-style:dashed;color:var(--ui-accent)}.ui-step[data-status=pass] [data-ui-status-tag]{color:var(--ui-accent)}.ui-step[data-status=block] [data-ui-status-tag]{color:var(--ui-danger)}.ui-step[data-status=todo] [data-ui-status-tag]{color:var(--ui-muted)}.ui-step[data-status=hold] [data-ui-status-tag]{border-style:dashed}"
                        ".ui-facts{display:grid;grid-template-columns:minmax(96px,max-content) 1fr;gap:8px 16px;margin:8px 0}.ui-facts dt{color:var(--ui-muted)}.ui-facts dd{margin:0;white-space:pre-line}"
                        ".ui-step-record{display:grid;gap:8px;margin-top:8px}.ui-step-record h4{margin:0}"
+                       ".ui-heading{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;justify-content:space-between;margin:8px 0 16px}.ui-heading h1{margin:0}.ui-eyebrow{color:var(--ui-muted);font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;margin:0 0 8px}.ui-heading-lead{margin:8px 0 0;color:var(--ui-muted)}.ui-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.ui-chips>*{border:thin solid var(--ui-border);border-radius:var(--ui-radius);padding:0 8px;color:var(--ui-fg);text-decoration:none}.ui-chips>a:hover{border-color:var(--ui-accent)}.ui-stamp{display:grid;gap:8px;min-width:160px;border:thin dashed var(--ui-border);border-radius:var(--ui-radius);padding:8px 16px;background:var(--ui-panel)}.ui-stamp b{font-size:1.25rem;color:var(--ui-accent)}.ui-stamp small{color:var(--ui-muted);white-space:pre-line}.ui-table tr[hidden]{display:none}"
                        "@media(max-width:640px){.ui-facts{grid-template-columns:1fr}.ui-code pre{padding-right:16px;padding-top:56px}}}")
 
 
@@ -1804,7 +1809,7 @@ def catalog_document(spec: Any, *, theme: str = "modern") -> str:
 
 def table(headers: Sequence[str], rows: Sequence[Sequence[Any]], *, caption: str | None = None, id: str | None = None,
           trusted_html: bool = False, row_classes: Sequence[str | None] | None = None, row_headers: bool = False,
-          missing: str | None = None) -> str:
+          missing: str | None = None, row_statuses: Sequence[str | None] | None = None) -> str:
     """A ``.ui-table``: header cells and rows, every cell escaped unless ``trusted_html`` (then cells are HTML the
     caller already built, e.g. an ``<img>``). ``row_classes`` gives one class (or None) per row, such as ``ui-pass`` /
     ``ui-fail``; the status classes ``ui-changed`` / ``ui-pass`` / ``ui-fail`` are styled by components.css on any element (a cell, a row, a ``.ui-tag`` badge).
@@ -1812,9 +1817,11 @@ def table(headers: Sequence[str], rows: Sequence[Sequence[Any]], *, caption: str
     For report pages (a browser matrix, a parity report): ``row_headers`` makes each row's first cell its ``<th scope="row">``; ``missing`` is
     the text of a ``None`` cell (marked ``data-missing``, muted; without it a ``None`` cell stays empty); and a cell may be
     ``{text, href, image: {src, alt, width, height}, status, num}`` (``href`` and ``src`` relative or http(s), ``status`` a token written as
-    ``data-status``, ``num`` right-aligns it). ``table_html(spec)`` is the same table from a JSON spec."""
+    ``data-status``, ``num`` right-aligns it). ``row_statuses`` gives each row a state token (``data-status`` on its ``<tr>``) for
+    ``status_filter()``. ``table_html(spec)`` is the same table from a JSON spec."""
     if row_classes is not None and len(row_classes) != len(rows):
         raise ValueError("row_classes must have one entry per row")
+    marks = _row_statuses(row_statuses, len(rows))
 
     def cell(value: Any, header: bool = False) -> str:
         tag = "th" if header else "td"
@@ -1842,7 +1849,8 @@ def table(headers: Sequence[str], rows: Sequence[Sequence[Any]], *, caption: str
         if len(row) != len(headers):
             raise ValueError(f"row {index} has {len(row)} cells, expected {len(headers)}")
         cls = row_classes[index] if row_classes else None
-        body.append((f'<tr class="{escape(cls, quote=True)}">' if cls else "<tr>") + "".join(cell(v, row_headers and i == 0) for i, v in enumerate(row)) + "</tr>")
+        body.append(f"<tr{marks[index]}" + (f' class="{escape(cls, quote=True)}">' if cls else ">")
+                    + "".join(cell(v, row_headers and i == 0) for i, v in enumerate(row)) + "</tr>")
     attrs = f' id="{_element_id(id)}"' if id else ""
     return (f'<table class="ui-table"{attrs}>' + (f"<caption>{escape(caption)}</caption>" if caption else "")
             + f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>")
@@ -1915,12 +1923,25 @@ def stat_tiles(items: tuple[tuple[str, object], ...] | tuple[tuple[str, object, 
     return f'<div class="ui-grid ui-stats">{"".join(tiles)}</div>'
 
 
+def _row_statuses(row_statuses: Sequence[str | None] | None, count: int) -> list[str]:
+    """`` data-status="token"`` (or "") per row; tokens are lowercase (a-z, 0-9, -), up to 32 characters."""
+    if row_statuses is None:
+        return [""] * count
+    if len(row_statuses) != count:
+        raise ValueError("row_statuses must have one entry per row")
+    if any(s is not None and (not isinstance(s, str) or not _TABLE_STATUS.fullmatch(s)) for s in row_statuses):
+        raise ValueError("a row status is a lowercase token (a-z, 0-9, -) of up to 32 characters")
+    return [f' data-status="{s}"' if s else "" for s in row_statuses]
+
+
 def data_table(columns: tuple[str, ...], rows, *, id: str, caption: str | None = None,
-               trusted_cells: bool = False, row_ids: tuple[str, ...] | None = None) -> str:
+               trusted_cells: bool = False, row_ids: tuple[str, ...] | None = None,
+               row_statuses: Sequence[str | None] | None = None) -> str:
     """Escaped table (.ui-table) for records.js filtering; every row needs one cell per column.
 
     ``trusted_cells`` inserts cell strings verbatim (caller-audited HTML such as ``badge()`` output).
     ``row_ids`` sets ``data-ui-row`` on each body row so scripts can address one record.
+    ``row_statuses`` gives each row a state token (``data-status``) for ``status_filter()``.
     """
     identity = _element_id(id)
     if not columns:
@@ -1933,8 +1954,9 @@ def data_table(columns: tuple[str, ...], rows, *, id: str, caption: str | None =
     cell = (lambda text: str(text)) if trusted_cells else (lambda text: escape(str(text)))
     head = "".join(f"<th scope=\"col\">{escape(column)}</th>" for column in columns)
     body = []
+    marks = _row_statuses(row_statuses, len(rows))
     for index, row in enumerate(rows):
-        marker = f' data-ui-row="{escape(row_ids[index], quote=True)}"' if row_ids is not None else ""
+        marker = (f' data-ui-row="{escape(row_ids[index], quote=True)}"' if row_ids is not None else "") + marks[index]
         body.append(f"<tr{marker}>" + "".join(f"<td>{cell(text)}</td>" for text in row) + "</tr>")
     title = f"<caption>{escape(caption)}</caption>" if caption else ""
     return (f'<table class="ui-table" id="{identity}">{title}<thead><tr>{head}</tr></thead>'
@@ -2005,6 +2027,49 @@ def notice(text: str, *, tone: str = "info", title: str | None = None) -> str:
         raise ValueError("tone is info, warn or block")
     head = f"<b>{escape(title)}</b> " if title else ""
     return f'<p class="ui-notice" data-tone="{tone}">{head}{escape(text)}</p>'
+
+
+def page_heading(title: str, *, eyebrow: str | None = None, lead: str | None = None, chips: Sequence[str | tuple[str, str]] = (),
+                 stamp: dict[str, str] | None = None, level: int = 1, id: str | None = None) -> str:
+    """A page or view heading (``.ui-heading``): an ``eyebrow`` line above the title, a ``lead`` below, ``chips`` (plain labels, or
+    ``(label, href)`` links: relative or http(s)) and a ``stamp`` beside it, ``{"label", "value", "note"}`` such as the date the evidence
+    was checked (``note`` keeps its line breaks). Everything is escaped. The Observatory and Component Ops headings, without their CSS."""
+    if level not in (1, 2, 3):
+        raise ValueError("level is 1, 2 or 3")
+    ident = f' id="{_element_id(id)}"' if id else ""
+    parts = [f'<p class="ui-eyebrow">{escape(eyebrow)}</p>' if eyebrow else "", f"<h{level}{ident}>{escape(title)}</h{level}>",
+             f'<p class="ui-heading-lead">{escape(lead)}</p>' if lead else ""]
+    links = []
+    for chip in chips:
+        if isinstance(chip, str):
+            links.append(f"<span>{escape(chip)}</span>")
+        elif isinstance(chip, (tuple, list)) and len(chip) == 2 and all(isinstance(x, str) for x in chip):
+            links.append(f'<a href="{escape(_door_href(chip[1]), quote=True)}">{escape(chip[0])}</a>')
+        else:
+            raise ValueError("a chip is a label or a (label, href) pair")
+    if links:
+        parts.append('<div class="ui-chips">' + "".join(links) + "</div>")
+    aside = ""
+    if stamp is not None:
+        if not isinstance(stamp, dict) or set(stamp) - {"label", "value", "note"} or not isinstance(stamp.get("value"), str) or not stamp["value"] \
+                or any(not isinstance(v, str) or len(v) > 200 for v in stamp.values()):
+            raise ValueError("a stamp is {label, value, note} of text, with a value")
+        aside = ('<aside class="ui-stamp">' + (f'<small>{escape(stamp["label"])}</small>' if stamp.get("label") else "")
+                 + f'<b>{escape(stamp["value"])}</b>' + (f'<small>{escape(stamp["note"])}</small>' if stamp.get("note") else "") + "</aside>")
+    return '<header class="ui-heading"><div>' + "".join(parts) + "</div>" + aside + "</header>"
+
+
+def download_json(data: Any, *, id: str, filename: str, label: str = "JSON を保存 ↓") -> str:
+    """A button that saves ``data`` (anything ``json.dumps`` takes) as ``filename``: the data travels inside the page as
+    ``<script type="application/json">`` (every ``<`` written as ``\\u003c``, so it can neither close the tag nor open a comment)
+    and records.js downloads it.
+    For data the page was built from (an audit snapshot, the decisions shown); what a reader types is ``records_io()``'s."""
+    if not isinstance(filename, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}\.json", filename):
+        raise ValueError("filename is a plain name ending in .json")
+    text = json.dumps(data, ensure_ascii=False, indent=2).replace("<", "\\u003c")
+    source = _element_id(id)
+    return (f'<script type="application/json" id="{source}">{text}</script>'
+            f'<button class="ui-button" type="button" data-ui-download="{filename}" data-ui-download-source="#{source}">{escape(label)}</button>')
 
 
 def code_block(text: str, *, copy_label: str = STEP_LABELS["copy"], copied_label: str = STEP_LABELS["copied"],
@@ -4902,7 +4967,8 @@ SHOWCASE_ICONS: dict[str, str] = {
 
 def showcase_validate(spec: Any) -> dict[str, Any]:
     """Checked copy of a ``web-ui-showcase/1`` spec: ``title``, optional ``emoji``, ``favorite`` and ``themes`` flags, and 2..6 sections, each with
-    ``id``, ``label``, ``icon`` (a ``SHOWCASE_ICONS`` name), ``heading`` and any of ``lead``, ``notice`` (``{text, tone, title}``), ``stats``
+    ``id``, ``label``, ``icon`` (a ``SHOWCASE_ICONS`` name), ``heading`` and any of ``eyebrow``, ``lead``, ``links`` (``[label, href]`` chips),
+    ``stamp`` (``{label, value, note}``, see ``page_heading``), ``notice`` (``{text, tone, title}``), ``stats``
     (up to 8 ``[label, value]`` or ``[label, value, hint]``), ``tags``, ``cards``, ``table``, ``steps`` (a ``steps_validate`` runbook) and ``controls``.
     With sections as views, a whole operations page (a runbook per method, a guide per tab) is one showcase."""
     if not isinstance(spec, dict) or spec.get("schema") != SHOWCASE_SCHEMA:
@@ -4921,8 +4987,9 @@ def showcase_validate(spec: Any) -> dict[str, Any]:
     seen: set[str] = set()
     sections = []
     for sec in sections_in:
-        if not isinstance(sec, dict) or set(sec) - {"id", "label", "icon", "heading", "lead", "notice", "stats", "tags", "cards", "table", "steps", "controls"}:
-            raise ValueError("a section has id, label, icon, heading, lead, notice, stats, tags, cards, table, steps and controls")
+        if not isinstance(sec, dict) or set(sec) - {"id", "label", "icon", "heading", "eyebrow", "lead", "links", "stamp", "notice", "stats", "tags", "cards",
+                                                    "table", "steps", "controls"}:
+            raise ValueError("a section has id, label, icon, heading, eyebrow, lead, links, stamp, notice, stats, tags, cards, table, steps and controls")
         icon = sec.get("icon", "info")
         if icon not in SHOWCASE_ICONS:
             raise ValueError(f"unknown icon {icon!r} (one of {', '.join(SHOWCASE_ICONS)})")
@@ -4955,6 +5022,15 @@ def showcase_validate(spec: Any) -> dict[str, Any]:
         stats = [[_world_text(t[0], "stat label", 40), _world_text(str(t[1]), "stat value", 24), *([_world_text(t[2], "stat hint", 80)] if len(t) == 3 else [])]
                  for t in stats]
         steps = steps_validate(sec["steps"]) if sec.get("steps") is not None else None
+        links = sec.get("links", [])
+        if not isinstance(links, list) or len(links) > 8 or any(not isinstance(x, list) or len(x) != 2 for x in links):
+            raise ValueError("links is a list of up to 8 [label, href]")
+        links = [[_world_text(x[0], "link", 40), _door_href(x[1])] for x in links]
+        stamp = sec.get("stamp")
+        if stamp is not None:
+            page_heading("x", stamp=stamp)                                                       # checked there
+            stamp = {k: _world_text(v, "stamp", 200, required=k == "value") for k, v in stamp.items()}
+        eyebrow = _world_text(sec.get("eyebrow", ""), "eyebrow", 60, required=False)
         out_cards = []
         for card in cards:
             if not isinstance(card, dict) or set(card) - {"icon", "title", "body"} or card.get("icon", "info") not in SHOWCASE_ICONS:
@@ -4963,6 +5039,7 @@ def showcase_validate(spec: Any) -> dict[str, Any]:
                               "body": _world_text(card.get("body"), "body", 240)})
         sections.append({"id": _world_id(sec.get("id"), "section id", seen), "label": _world_text(sec.get("label"), "label", 24), "icon": icon,
                          "heading": _world_text(sec.get("heading"), "heading", 80), "lead": _world_text(sec.get("lead", ""), "lead", 240, required=False),
+                         "eyebrow": eyebrow, "links": links, "stamp": stamp,
                          "notice": note, "stats": stats, "tags": [_world_text(t, "tag", 40) for t in tags], "cards": out_cards, "table": table,
                          "steps": steps, "controls": sec.get("controls", False)})
     keys = [s["steps"]["key"] for s in sections if s["steps"]]
@@ -5068,9 +5145,13 @@ def showcase_html(spec: Any) -> str:
               + "</select>" if show["themes"] else "")
 
     def body(s: dict[str, Any]) -> str:
-        out = [f'<h2 id="{sid}-h-{s["id"]}">{escape(s["heading"])}</h2>']
-        if s["lead"]:
-            out.append(f'<p class="ui-muted">{escape(s["lead"])}</p>')
+        if s["eyebrow"] or s["links"] or s["stamp"]:
+            out = [page_heading(s["heading"], eyebrow=s["eyebrow"] or None, lead=s["lead"] or None, chips=[tuple(x) for x in s["links"]],
+                                stamp=s["stamp"], level=2, id=f'{sid}-h-{s["id"]}')]
+        else:
+            out = [f'<h2 id="{sid}-h-{s["id"]}">{escape(s["heading"])}</h2>']
+            if s["lead"]:
+                out.append(f'<p class="ui-muted">{escape(s["lead"])}</p>')
         if s["notice"]:
             out.append(notice(s["notice"]["text"], tone=s["notice"]["tone"], title=s["notice"]["title"]))
         if s["stats"]:
@@ -5144,11 +5225,16 @@ def theme_palette(hue: float, *, dark: bool = False, sat: float = 0.3, radius: s
 
 def theme_palettes() -> dict[str, dict[str, str]]:
     """The token-only themes by name. ``green`` is the one first built by hand in Ironmate's studio (measured against its
-    palette); the others are theme_palette(hue). Add a theme by adding its name to CANDIDATE_THEMES and a line here."""
+    palette), ``purple`` is flutter_navigation_basic's Material 3 baseline; red and blue are theme_palette(hue). Add a theme by adding
+    its name to CANDIDATE_THEMES and a line here."""
     return {
         "green": {"--ui-bg": "#edf0ec", "--ui-panel": "#ffffff", "--ui-fg": "#163b3b", "--ui-muted": "#546a61",
                   "--ui-border": "#ccdcd4", "--ui-accent": "#126d66", "--ui-danger": "#a73528", "--ui-radius": ".5rem"},
         "red": theme_palette(0.0), "blue": theme_palette(0.6),
+        # purple: flutter_navigation_basic's Material 3 baseline (seed #6750A4: surface, on-surface, outline variant, error),
+        # kept here before that repository is archived.
+        "purple": {"--ui-bg": "#fffbfe", "--ui-panel": "#f7f2fa", "--ui-fg": "#1c1b1f", "--ui-muted": "#49454f",
+                   "--ui-border": "#cac4d0", "--ui-accent": "#6750a4", "--ui-danger": "#b3261e", "--ui-radius": ".5rem"},
         # terminal: mcp-toolcall-lab's terminal-lite (dark ASCII presentation, borders instead of shadows), returned here
         # so every repository can pick it; it also sets the body font to the mono stack.
         "terminal": {"--ui-bg": "#0a0e10", "--ui-panel": "#11171a", "--ui-fg": "#d5dee0", "--ui-muted": "#7c8a8d",

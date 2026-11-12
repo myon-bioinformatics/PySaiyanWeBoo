@@ -180,3 +180,57 @@ class RunbookTests(unittest.TestCase):
         self.assertNotIn("export function bindStatus", plain)
         with self.assertRaises(ValueError):
             ui.showcase_validate({**spec, "sections": [spec["sections"][0], {**spec["sections"][1], "steps": spec["sections"][0]["steps"]}]})
+
+
+class OperationsPageTests(unittest.TestCase):
+    """page_heading(), download_json() and rows with a state: the Observatory and Component Ops parts that were left."""
+    hostile = '"><script>alert(1)</script>&'
+
+    def test_the_heading_escapes_and_links_chips(self):
+        html = ui.page_heading(self.hostile, eyebrow="OPS " + self.hostile, lead=self.hostile, chips=[self.hostile, ("親", "../"), ("GitHub", "https://github.com/x")],
+                               stamp={"label": "確認日", "value": "2026.11.11", "note": "README\n未実施"}, level=2, id="ops-title")
+        self.assertNotIn("<script>alert", html)
+        self.assertIn('<h2 id="ops-title">&quot;&gt;&lt;script&gt;', html)
+        self.assertIn('<p class="ui-eyebrow">OPS &quot;', html)
+        self.assertIn('<a href="../">親</a><a href="https://github.com/x">GitHub</a>', html)
+        self.assertIn('<aside class="ui-stamp"><small>確認日</small><b>2026.11.11</b><small>README\n未実施</small></aside>', html)
+        self.assertEqual(ui.page_heading("T"), '<header class="ui-heading"><div><h1>T</h1></div></header>')
+        for bad in ({"chips": [("x", "javascript:alert(1)")]}, {"chips": [1]}, {"stamp": {"label": "x"}}, {"stamp": {"value": "v", "extra": "e"}}, {"level": 4}):
+            with self.assertRaises(ValueError):
+                ui.page_heading("T", **bad)
+
+    def test_the_data_travels_in_the_page_and_cannot_close_its_tag(self):
+        import json
+        data = {"repo": "</script><script>alert(1)</script>", "note": "<!-- x", "n": 3}
+        html = ui.download_json(data, id="audit-data", filename="audit-2026-11-12.json", label="↓ 監査データ")
+        self.assertEqual(html.count("</script>"), 1)                                   # only the tag's own end
+        self.assertNotIn("<!--", html)
+        source = html[html.index(">") + 1:html.index("</script>")]
+        self.assertEqual(json.loads(source), data)
+        self.assertIn('data-ui-download="audit-2026-11-12.json" data-ui-download-source="#audit-data">↓ 監査データ</button>', html)
+        for bad in ("audit.txt", "../a.json", "a b.json"):
+            with self.assertRaises(ValueError):
+                ui.download_json(data, id="d", filename=bad)
+
+    def test_rows_carry_a_state_for_the_state_filter(self):
+        rows = [("a", "失敗"), ("b", "成功"), ("c", "—")]
+        html = ui.data_table(("repo", "CI"), rows, id="audit", row_statuses=("fail", "pass", None))
+        self.assertIn('<tr data-status="fail"><td>a</td>', html)
+        self.assertIn("<tr><td>c</td>", html)
+        self.assertIn('<tr data-status="pass" class="ui-pass"><td>b</td>', ui.table(("repo", "CI"), rows, row_statuses=("fail", "pass", None), row_classes=(None, "ui-pass", None)))
+        self.assertEqual(ui.table(("a",), [("x",)]), '<table class="ui-table"><thead><tr><th scope="col">a</th></tr></thead><tbody><tr><td>x</td></tr></tbody></table>')
+        for bad in (("fail",), ("Fail", "pass", None), ("x y", None, None)):
+            with self.assertRaises(ValueError):
+                ui.data_table(("repo", "CI"), rows, id="audit", row_statuses=bad)
+        state = ui.status_filter("audit", (("fail", "失敗"), ("pass", "成功")), id="ci", all_label="すべての CI")
+        self.assertIn('data-ui-filter-status="#audit"', state)
+
+    def test_a_showcase_section_has_an_eyebrow_links_and_a_stamp(self):
+        spec = {"schema": ui.SHOWCASE_SCHEMA, "id": "ops", "title": "Ops", "sections": [
+            {"id": "a", "label": "A", "icon": "info", "heading": "判断へ", "eyebrow": "GUIDE", "links": [["← 親", "../"]], "stamp": {"value": "2026.11.11"}},
+            {"id": "b", "label": "B", "icon": "info", "heading": "B", "lead": "plain"}]}
+        html = ui.showcase_html(spec)
+        self.assertIn('<header class="ui-heading"><div><p class="ui-eyebrow">GUIDE</p><h2 id="ops-h-a">判断へ</h2>', html)
+        self.assertIn('<h2 id="ops-h-b">B</h2><p class="ui-muted">plain</p>', html)        # a section without them renders as before
+        with self.assertRaises(ValueError):
+            ui.showcase_validate({**spec, "sections": [{**spec["sections"][0], "links": [["x", "javascript:x"]]}, spec["sections"][1]]})

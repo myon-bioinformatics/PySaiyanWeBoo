@@ -231,7 +231,9 @@ class BundledCssTests(unittest.TestCase):
             # A candidate may still ship a glyph sheet (terminal does); its palette never moves out of tokens.css.
             if f"themes/{name}.css" in web_ui._CSS:
                 self.assertNotIn("--ui-bg:", web_ui.css_source(f"themes/{name}.css"))
-        self.assertEqual(web_ui.CANDIDATE_THEMES, ("green", "red", "blue", "terminal"))
+        self.assertEqual(web_ui.CANDIDATE_THEMES, ("green", "red", "blue", "purple", "terminal"))
+        for hand in ("green", "purple"):                     # Ironmate's green and flutter_navigation_basic's purple, measured by hand
+            self.assertEqual(web_ui.check_theme(web_ui.theme_palettes()[hand]), [], hand)
         for hue in (0.0, 0.08, 0.33, 0.6, 0.83):
             for dark in (False, True):
                 theme = web_ui.theme_palette(hue, dark=dark)

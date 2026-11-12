@@ -247,10 +247,10 @@ def test_page_document_builds_a_page_from_a_spec(tmp_path):
 def test_parts_document_shows_every_theme_in_its_own_frame():
     import pytest
     page = web_ui.parts_document()
-    assert page.count("<iframe") == len(web_ui.PARTS_THEMES) == 7 and 'sandbox="allow-same-origin"' in page
+    assert page.count("<iframe") == len(web_ui.PARTS_THEMES) == 8 and 'sandbox="allow-same-origin"' in page   # purple joined the candidates
     for theme in web_ui.PARTS_THEMES:
         assert f'id="theme-{theme}"' in page and f'data-ui-theme=&quot;{theme}&quot;' in page
-    assert "<script" not in page and page.count("type=&quot;radio&quot; name=&quot;ui-layout&quot;") == 7 * 4
+    assert "<script" not in page and page.count("type=&quot;radio&quot; name=&quot;ui-layout&quot;") == len(web_ui.PARTS_THEMES) * 4
     web_ui.theme_css("acme", {"--ui-bg": "#ffffff", "--ui-fg": "#000000"})
     assert web_ui.parts_document(themes=("modern", "acme")).count("<iframe") == 2
     with pytest.raises(ValueError):

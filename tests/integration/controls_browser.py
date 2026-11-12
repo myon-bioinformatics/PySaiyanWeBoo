@@ -1138,6 +1138,86 @@ class RunbookBrowserTests(unittest.TestCase):
             server.shutdown()
 
 
+AUDIT_ROWS = [('Aoi', '失敗', 'pins'), ('Ironmate', '成功', '—'), ('markdown', '実行中', 'pages'), ('olnm', '成功', 'guide'), ('xprobe', '失敗', 'lock')]
+AUDIT_STATES = (('fail', '失敗'), ('pass', '成功'), ('running', '実行中'))
+
+
+def operations_page():
+    """The Observatory's audit view as PSWB parts: heading with a stamp, a notice, a table whose rows carry a state, a state filter and
+    the page's data as a JSON download. No script of its own: records.js binds the filter and the download."""
+    from web_ui import (bundled_css, data_table, download_json, filter_input, module_script, js_source, notice, page_heading, records_board,
+                        render_document, status_filter)
+    state = {label: token for token, label in AUDIT_STATES}
+    data = {'schema': 'audit-demo/1', 'rows': [dict(zip(('repo', 'ci', 'issue'), r)) for r in AUDIT_ROWS]}
+    body = ('<main class="ui-page">'
+            + page_heading('親子リポジトリ監査', eyebrow='ENGINEERING HEALTH', lead='気づく。揃える。次の週へつなぐ。',
+                           chips=[('利用導線・責務移管 ↗', './component-ops/'), '自動更新なし'],
+                           stamp={'label': '観測日 / JST', 'value': '2026.11.12', 'note': 'gh_identity の匿名観測\nGitHub への書込みなし'})
+            + notice('失敗が 2 件あります。固定 SHA の更新を先に。', tone='block', title='優先')
+            + records_board('<div class="ui-records-bar">' + filter_input('audit', id='audit-search', label='検索')
+                            + status_filter('audit', AUDIT_STATES, id='audit-ci', label='CI', all_label='すべての CI')
+                            + download_json(data, id='audit-data', filename='audit-2026-11-12.json', label='↓ 監査データ') + '</div>'
+                            + data_table(('リポジトリ', 'CI', '課題'), AUDIT_ROWS, id='audit', row_statuses=[state[r[1]] for r in AUDIT_ROWS]), id='audit-board')
+            + '</main>' + module_script(js_source('records.js')))
+    return render_document(trusted_html=body, title='監査', css=bundled_css()), data
+
+
+class OperationsPageBrowserTests(unittest.TestCase):
+    """page_heading() + notice() + a table with row states + status_filter() + download_json(), switched to the purple theme without a
+    reload: the parts the Observatory and Component Ops drew by hand. ``WEB_UI_GIFS`` keeps component-operations.gif."""
+
+    def test_filter_rows_by_state_download_the_data_and_switch_to_purple(self):
+        sys.path.insert(0, str(ROOT / 'tool'))
+        import json
+        import record_demo
+        html, data = operations_page()
+        server, origin = WorldBrowserTests.serve({'audit.html': html})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_context(viewport={'width': 392, 'height': 760}, accept_downloads=True).new_page()
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/audit.html')
+                    cam = record_demo.Camera(page)
+                    expect(page.locator('.ui-stamp b')).to_have_text('2026.11.12')
+                    expect(page.locator('.ui-eyebrow')).to_have_text('ENGINEERING HEALTH')
+                    rows = page.locator('#audit tbody tr')
+                    expect(rows).to_have_count(5)
+                    cam.hold(500)
+                    page.locator('#audit-ci').select_option('fail')
+                    expect(page.locator('#audit tbody tr:visible')).to_have_count(2)
+                    self.assertEqual(page.locator('#audit tbody tr:visible td:first-child').all_inner_texts(), ['Aoi', 'xprobe'])
+                    cam.hold(500)
+                    page.locator('#audit-search').fill('xprobe')
+                    expect(page.locator('#audit tbody tr:visible')).to_have_count(1)
+                    cam.hold(400)
+                    page.locator('#audit-search').fill('')
+                    page.locator('#audit-ci').select_option('')
+                    expect(page.locator('#audit tbody tr:visible')).to_have_count(5)
+                    with page.expect_download() as info:
+                        page.locator('[data-ui-download]').click()
+                    self.assertEqual(info.value.suggested_filename, 'audit-2026-11-12.json')
+                    self.assertEqual(json.loads(Path(info.value.path()).read_text(encoding='utf-8')), data)
+                    accent = lambda: page.evaluate("getComputedStyle(document.body).getPropertyValue('--ui-accent').trim()")
+                    before = accent()
+                    for theme in ('green', 'purple'):
+                        page.evaluate('t => document.body.dataset.uiTheme = t', theme)
+                        cam.hold(600)
+                    self.assertEqual((before != accent(), accent()), (True, '#6750a4'))      # flutter's Material 3 primary, no reload
+                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)
+                    self.assertEqual(errors, [])
+                    gif = record_demo.encode(cam.shots)
+                    self.assertTrue(gif.startswith(b'GIF89a'))
+                    if os.environ.get('WEB_UI_GIFS'):
+                        record_demo.gif_targets_from(os.environ['WEB_UI_GIFS'], ['component-operations'])['component-operations'].write_bytes(gif)
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
 TABLE_TILE = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="40"><rect width="64" height="40" fill="#3fb950"/></svg>'
 
 

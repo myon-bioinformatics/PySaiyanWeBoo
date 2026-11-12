@@ -54,7 +54,7 @@ Current themes:
 
 - `modern` — terminal-styled default (text is Meiryo like every theme; code stays monospace)
 - `github-like` — generic light presentation intentionally using familiar GitHub visual cues
-- `green`, `red`, `blue`, `terminal` — candidates, token-only: palettes (green first built by hand in Ironmate's studio; red and blue are `theme_palette(hue)`, and any hue works; terminal is mcp-toolcall-lab's dark terminal-lite returned here, mono body font) whose values are generated into `tokens.css` (no theme files, not in contract v1 yet)
+- `green`, `red`, `blue`, `purple`, `terminal` — candidates, token-only: palettes (green first built by hand in Ironmate's studio; purple is flutter_navigation_basic's Material 3 baseline, kept before that repository is archived; red and blue are `theme_palette(hue)`, and any hue works; terminal is mcp-toolcall-lab's dark terminal-lite returned here, mono body font) whose values are generated into `tokens.css` (no theme files, not in contract v1 yet)
 
 Single-file pages: `render_document(css=bundled_css())` (or `python -S web_ui.py --css-bundle`) embeds every
 stylesheet and theme, built in memory from the sources in `web_ui.py`; nothing is written to the repository. Because all themes ship
@@ -773,6 +773,13 @@ theme. A showcase section takes `steps`, `notice` (`notice(text, tone=)`) and `s
 method or tab, is one `showcase_document(spec)`.
 
 <img src="docs/demo/component-steps.gif" width="240" alt="A runbook on a phone: copy a command, record a step as verified, filter by state, switch view, reload, import a record from another version and see its state reset">
+
+The rest of an operations page is parts too: `page_heading(title, eyebrow=, lead=, chips=[label | (label, href)], stamp={label, value, note})`
+(the dated stamp beside a heading, such as the day the evidence was checked; a showcase section takes `eyebrow`, `links` and `stamp`),
+`download_json(data, id=, filename=)` (the data the page was built from, carried in the page with every `<` escaped, saved by records.js),
+and `row_statuses=` on `table()` / `data_table()` so `status_filter()` narrows table rows as it does runbook cards.
+
+<img src="docs/demo/component-operations.gif" width="240" alt="An audit view on a phone: a heading with its stamp, a notice, the table narrowed to failed rows by the state filter and by search, then the green and purple themes without a reload">
 
 <img src="docs/demo/component-table.gif" width="320" alt="A browser matrix table on a phone: the themes change its colors, then it scrolls sideways inside its box while the page stays still">
 
