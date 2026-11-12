@@ -95,8 +95,8 @@ site explicitly:
 
 ```sh
 python -S web_ui.py --site build/site
-npm ci --prefix tool/studio-audio --ignore-scripts
-node tool/studio-audio/build.mjs build/site/vendor
+npm ci --prefix tool/build/studio-audio --ignore-scripts
+node tool/build/studio-audio/build.mjs build/site/vendor
 python -m http.server 8000 --directory build/site
 ```
 
