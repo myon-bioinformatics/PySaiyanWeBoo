@@ -106,12 +106,13 @@ renderers do not download packages or assemble Office XML.
 
 ## Node wrapping for pytest
 
-Browser protocol behavior stays outside web-ui. Existing Node checks (for
-example `tests/repository_diagnostics.node.js`) are wrapped for pytest as:
+Browser protocol behavior stays outside web-ui. There are no .js test files: like the
+modules in web_ui.py, the Node side of a test is a Python string, and `node_js()` in
+`tests/support.py` writes web_ui's modules beside it and runs it through `run_node`:
 
 ```python
-from web_ui import run_node
-assert run_node("tests/repository_diagnostics.node.js").returncode == 0
+from support import node_js
+assert "repository-diagnostics.js ok" in node_js(DIAGNOSTICS_JS).stdout
 ```
 
 `run_node` is a thin stdlib subprocess helper. It does not start Playwright, CUA,

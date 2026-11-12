@@ -450,7 +450,6 @@ The first phase intentionally treats screenshots as observable test evidence rat
 | `plotly_browser.py` | 3 | Plotly.js from npm `plotly.js-dist-min` (CDN unreachable here) |
 | `successor_browser.py` | 3 | audio built; PulseAudio null sink |
 | `tests/integration/test_gradio_dom.py` | 1 | BrowserTestKit main instead of the pinned commit |
-| `tests/world_shared.browser.cjs` | desktop + mobile | |
 | BrowserTestKit `platform_probe` × 17 adapters | 34 | Chromium desktop + Pixel |
 | 🎞️ evidence GIF shots | 24 | |
 
@@ -580,7 +579,7 @@ and imports; the wrapper checks path syntax, not file identity. Authored
 from web_ui import bundled_css, render_document, run_node, shared_scripts
 print(render_document("Hello", title="Demo", css=bundled_css()))
 print(render_document("Hello", scripts=shared_scripts("./vendor/web-ui")))
-assert run_node("tests/repository_diagnostics.node.js").returncode == 0
+assert run_node("-e", "console.log(1 + 1)").stdout == "2\n"   # Node 26+; a test keeps its Node side as a Python string
 # Caller-supplied CSS can also be passed directly: render_document("Hello", css="body {color:#000}")
 ```
 
@@ -634,7 +633,7 @@ check that flag before saving. Timing continuation images also count toward this
 very long finite recordings can still require substantial memory and output.
 `gif_recorder_document()` is the blank page a browser driver opens to use it — screenshots go in once, the GIF
 comes out once; BrowserTestKit's `evidence_gif.py` is that driver. The encoder (`UiGif.Encoder`) also runs in Node from the file
-`--site` writes; `tests/gif.node.js` checks it against an independent decoder, `GifBrowserTests` in each engine with Pillow.
+`--site` writes; `tests/test_gif.py` runs it in Node and reads every GIF back in Python (its own block walk, Pillow's LZW), `GifBrowserTests` in each engine with Pillow.
 
 🧩 `parts_document()` (`examples/parts.html`, `--parts`) is the regression baseline: every block of the `page` example under every
 theme (`PARTS_THEMES`, plus a `--brand`), each in its own sandboxed frame with the layout radios inside. BrowserTestKit

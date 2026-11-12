@@ -58,8 +58,8 @@ Primary references (checked 2026-11-03):
 `PYTHONPATH=. python -m pytest -q tests/test_world_shared.py tests/test_world_motion.py`
 checks validation, opt-in compatibility, Node 26 projection and interaction,
 text-only comments, malformed API payloads, cooldown and failure retention.
-`NODE_PATH=build/shared/node_modules node tests/world_shared.browser.cjs` uses
-Playwright Chromium at 390 and 1280 px, with mocked API responses only. It checks
+`python tests/integration/school_browser.py SharedBoardTests` uses
+Playwright Chromium at 320, 390 and 1280 px, with mocked API responses only. It checks
 no automatic fetch, anonymous GET, HTML injection, posting link, local notes,
 rate limit failures, retained shared display and reload cleanup. The dedicated
 Shared world board workflow provisions Node 26 and runs both commands.

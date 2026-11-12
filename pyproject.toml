@@ -11,8 +11,8 @@ dependencies = []
 
 [dependency-groups]
 # Optional focused test profile; default/full CI remains unchanged.
-# Browser lanes (world-shared, successor-studios) add the Python Playwright client; its
-# version must match the npm playwright in package.json, since they share one browser build.
+# Browser lanes (world-shared, successor-studios) add the Python Playwright client, which installs
+# its own browser; the npm playwright in package.json serves only the ui-smoke screenshots.
 world-test = ["pytest>=8", "anyio>=4.15.1", "playwright>=1.64.0", "pillow>=13.0.0"]
 # Default sync: pytest and PyYAML only. Stagehand is browser tooling, opt-in via --group stagehand.
 dev = [

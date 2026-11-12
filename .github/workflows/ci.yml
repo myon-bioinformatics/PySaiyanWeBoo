@@ -152,10 +152,6 @@ jobs:
           path: build/controlled-failure/
           if-no-files-found: error
           retention-days: 14
-      - name: Run the Node tests of the browser modules (web_ui.py writes the modules; there are no js/ files)
-        run: node --test tests/collection.node.cjs
-      - name: Execute repository diagnostics renderer
-        run: node tests/repository_diagnostics.node.js
       - name: Generate canonical repository metadata (stdlib only)
         run: python -S tool/repository_metadata.py repo-metadata --format v1 --repository ${{ github.repository }} --root . --output-dir .
       - name: Capture advisory tooling metadata
@@ -238,8 +234,6 @@ jobs:
         sparse-checkout-cone-mode: false
     - name: Run pytest
       run: uv run --group stagehand pytest -v
-    - name: Execute repository diagnostics renderer
-      run: node tests/repository_diagnostics.node.js
     - name: Generate canonical repository metadata (stdlib only)
       run: python -S tool/repository_metadata.py repo-metadata --format v1 --repository ${{ github.repository }} --root . --output-dir .
     - name: Capture advisory tooling metadata

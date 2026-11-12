@@ -348,10 +348,11 @@ def test_explicit_missing_node_path_raises_file_not_found(tmp_path):
     assert str(missing) in (new_exc.value.filename or "")
 
 
-def test_node_not_on_path_raises_runtime_error(monkeypatch):
+def test_node_not_on_path_raises_runtime_error(tmp_path, monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda name, **kw: None)
     ui._node_launch_module().clear_probe_cache()
-    script = ROOT / "tests" / "navigation.node.js"
+    script = tmp_path / "check.mjs"
+    script.write_text("", encoding="utf-8")
 
     with pytest.raises(FileNotFoundError, match="node executable not found on PATH"):
         _legacy_run_node(script, timeout=30)
@@ -368,7 +369,7 @@ def test_node_v20_on_path_names_found_version(tmp_path, monkeypatch):
     )
     ui._node_launch_module().clear_probe_cache()
     with pytest.raises(RuntimeError, match=r"Node 26 or newer.*found Node 20"):
-        ui.run_node(ROOT / "tests" / "navigation.node.js")
+        ui.run_node(tmp_path / "check.mjs")
 
 
 def test_node_v20_rejected_while_legacy_would_run(tmp_path):
@@ -393,7 +394,7 @@ def test_below_node_26_names_found_version(tmp_path, monkeypatch, major, explici
     ui._node_launch_module().clear_probe_cache()
     kwargs = {"node": script} if explicit else {}
     with pytest.raises(RuntimeError, match=rf"Node 26 or newer.*found Node {major}"):
-        ui.run_node(ROOT / "tests" / "navigation.node.js", **kwargs)
+        ui.run_node(tmp_path / "check.mjs", **kwargs)
 
 
 def test_nonzero_exit_preserves_stderr(tmp_path):

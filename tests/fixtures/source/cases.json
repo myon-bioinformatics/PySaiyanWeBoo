@@ -1,5 +1,5 @@
 {
- "_note": "Shared by tests/test_source_panel.py (web_ui.source_extract / source_markdown) and tests/source.node.js (source.js): both must give the same Markdown or the same error text.",
+ "_note": "Shared by tests/test_source_panel.py (web_ui.source_extract / source_markdown) and SOURCE_JS in the same file (source.js in Node): both must give the same Markdown or the same error text.",
  "extract": [
   {
    "name": "scalars",
