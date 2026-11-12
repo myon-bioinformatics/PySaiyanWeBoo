@@ -3,7 +3,7 @@
 The emoji picker comes first, then the player walks by tap, arrow keys / WASD and the on-screen pad.
 Solid props (desks, board, shelves) are never entered, whichever way the player moves.
 Invoked explicitly by the browser CI job; missing Playwright/browser is an error. WEB_UI_CHROME may name a local Chrome.
-``CitiesTests`` sweeps the three cities (every spot, sign, tool, width and language); with WEB_UI_SHOTS=DIR it also keeps a
+``SharedBoardTests`` checks the opt-in shared board against a mocked GitHub API. ``CitiesTests`` sweeps the three cities (every spot, sign, tool, width and language); with WEB_UI_SHOTS=DIR it also keeps a
 screenshot of each check, a manifest.json and one index.html in DIR (Pillow writes them as WebP).
 """
 import copy
@@ -530,6 +530,72 @@ class SchoolTests(unittest.TestCase):
             box = page.evaluate(f"() => {{ const r = document.querySelector('{CLASSROOM} .ui-player').getBoundingClientRect(); return [r.left, r.right]; }}")
             self.assertGreaterEqual(box[0], 0)
             self.assertLessEqual(box[1], width)
+
+
+
+class SharedBoardTests(unittest.TestCase):
+    """The opt-in shared board at phone and desktop widths with every GitHub API answer mocked (nothing is posted): no fetch until asked, one anonymous
+    GET per cooldown, comments as text, the posting link, local notes, a rate limit that keeps the last lines, and nothing kept across a reload."""
+
+    @classmethod
+    def setUpClass(cls):
+        spec = web_ui.example_data("world")
+        spec["board"]["shared_issue"] = "myon-bioinformatics/PySaiyanWeBoo/123"
+        cls.html = web_ui.world_document(spec)
+        cls.pw = sync_playwright().start()
+        cls.browser = record_demo.launch(cls.pw)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.browser.close()
+        cls.pw.stop()
+
+    def test_refresh_cooldown_text_only_comments_and_rate_limit(self):
+        for width in (320, 390, 1280):
+            with self.subTest(width=width):
+                page = self.browser.new_page(viewport={"width": width, "height": 844})
+                self.addCleanup(page.close)
+                calls, errors, answer = [], [], {"fail": False}
+                page.on("pageerror", lambda error: errors.append(str(error)))
+
+                def github(route):
+                    calls.append((route.request.method, route.request.headers.get("authorization")))
+                    if answer["fail"]:
+                        return route.fulfill(status=429, json={"message": "rate limited"}, headers={"retry-after": "300"})
+                    return route.fulfill(json=[{"body": "<img src=x onerror=alert(1)> 駅で集合", "user": {"login": "alice"}, "created_at": "2026-11-03T00:00:00Z"}])
+
+                page.route("https://api.github.com/**", github)
+                page.route("http://world.test/", lambda route: route.fulfill(content_type="text/html", body=self.html))
+                page.goto("http://world.test/")
+                self.assertEqual(calls, [])
+                comments, refresh = page.locator("[data-shared-comments]"), page.locator("[data-shared-refresh]")
+                page.locator(".ui-board-shared summary").click()
+                refresh.click()
+                page.locator("[data-shared-comments] li").first.wait_for()
+                self.assertRegex(comments.inner_text(), r"alice.*駅で集合")
+                self.assertEqual(page.locator("[data-shared-comments] img").count(), 0)
+                refresh.click()
+                self.assertEqual(calls, [("GET", None)])
+                link = page.locator(".ui-board-shared a")
+                self.assertRegex(link.get_attribute("href"), r"issues/123#new_comment_field$")
+                self.assertEqual(link.get_attribute("target"), "_blank")
+                page.locator(".ui-board-post input").fill("端末だけ")
+                page.locator(".ui-board-post button").click()
+                self.assertEqual(page.locator(".ui-board-note").count(), 2)
+                self.assertIn("駅で集合", comments.inner_text())
+                page.clock.install()
+                page.clock.fast_forward(121000)
+                answer["fail"] = True
+                refresh.click()
+                page.wait_for_function("() => document.querySelector('[data-shared-status]').textContent.includes('取得できません')")
+                self.assertIn("駅で集合", comments.inner_text())
+                refresh.click()
+                self.assertEqual(calls, [("GET", None)] * 2)
+                self.assertEqual(page.evaluate("() => localStorage.length"), 0)
+                page.reload()
+                self.assertEqual(page.locator(".ui-board-note").count(), 0)
+                self.assertEqual(len(calls), 2)
+                self.assertEqual(errors, [])
 
 
 # --- The three cities: every spot, sign, tool, width and language, with an optional screenshot per check ---

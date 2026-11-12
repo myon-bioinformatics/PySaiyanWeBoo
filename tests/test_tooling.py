@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from support import node_js
 from tool.web_ui_tooling_meta import collect
 
 
@@ -42,12 +43,13 @@ def test_canonical_repository_metadata_and_separate_tooling(tmp_path, monkeypatc
     assert record["head"]["short_sha"] == sha[:8]
     assert record["head"]["branch"] == "topic/canonical"
     assert all(value is None for value in record["measurements"].values())
-    import web_ui
-    web_ui.write_js(output)  # the Node test loads the browser module from here
-    subprocess.run(
-        ["node", str(ROOT / "tests/repository_diagnostics.node.js"), str(record_path)],
-        check=True, capture_output=True, text=True, env={**os.environ, "WEB_UI_JS_DIR": str(output / "js")},
-    )
+    # The browser renderer on that record: the commit line as the producer wrote it, three unmeasured sizes, the subject escaped.
+    shown = json.loads(node_js("const r=require('./js/repository-diagnostics.js'),c=JSON.parse(require('fs').readFileSync(process.argv[2],'utf8'));"
+                               "console.log(JSON.stringify({line:r.commitLine(c),html:r.render(c)}))", str(record_path)).stdout)
+    head = record["head"]
+    assert shown["line"] == f"Commit {head['short_sha']} · {head['branch']} · {head['timestamp']} · {head['subject']}"
+    assert record["repository"]["full_name"] in shown["html"] and shown["html"].count("not measured") == 3
+    assert "<script>" not in shown["html"] and "&lt;script&gt;fixture&lt;/script&gt;" in shown["html"]
 
     # Advisory collection reports tooling versions only; never head/branch identity.
     from tool import web_ui_tooling_meta

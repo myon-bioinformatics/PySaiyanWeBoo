@@ -164,14 +164,15 @@ class PythonWrapperTests(unittest.TestCase):
         self.assertEqual(linked.returncode, 0, linked.stderr)
         self.assertIn('<script type="module" src="./js/ui.js"></script>', linked.stdout)
 
-    def test_run_node_wraps_diagnostics_script(self):
+    def test_run_node_passes_the_environment_to_the_script(self):
         if not node26():
             self.skipTest('node 26+ not available')
         with tempfile.TemporaryDirectory() as out:
-            web_ui.write_js(out)
-            result = run_node(ROOT / 'tests' / 'repository_diagnostics.node.js', env={'WEB_UI_JS_DIR': str(Path(out) / 'js')})
+            script = Path(out) / 'env.mjs'
+            script.write_text('console.log(process.env.WEB_UI_PROBE)', encoding='utf-8')
+            result = run_node(script, env={**os.environ, 'WEB_UI_PROBE': 'seen'})
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, '')
+        self.assertEqual(result.stdout, 'seen\n')
 
     def test_run_node_reports_missing_executable(self):
         node_launch = _node_launch_module()

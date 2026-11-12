@@ -27,4 +27,4 @@ error behavior, validate external URLs, preserve UI selection state, and
 render results. The portfolio keeps repository membership in `api/repos.json`,
 not this generic module. Browser-test-kit keeps browser/platform semantics.
 
-Run: `node tests/collection.node.cjs`.
+Run: `python -m pytest tests/test_collection_filter.py -k collection_js` (Node 26+).

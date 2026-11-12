@@ -4,10 +4,101 @@ import json
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import web_ui  # noqa: E402
+import pytest  # noqa: E402
+from support import node26, node_js  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 JS = web_ui.js_source("repository-diagnostics.js")
 CSS = web_ui.css_source("repository-diagnostics.css")
+
+
+# repository-diagnostics.js in Node: commit line, escaped render, observation cards (https links only) and mount() with a fake fetch.
+DIAGNOSTICS_JS = r"""const fs = require("fs");
+const path = require("path");
+const assert = require("assert");
+const renderer = require("./js/repository-diagnostics.js");
+
+const fixturePath = path.join(REPO, "tests", "fixtures", "repository_metadata_v1.json");
+const record = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
+
+assert.strictEqual(
+  renderer.commitLine(record),
+  "Commit 1376c703 · main · 2026-09-27T19:09:22+09:00 · chore: refresh metadata"
+);
+
+const html = renderer.render(record);
+assert(html.includes("myon-bioinformatics/Ironmate"));
+assert(html.includes("not measured"));
+assert(html.includes("1.12 MiB"));
+
+const hostile = JSON.parse(JSON.stringify(record));
+hostile.repository.full_name = "<img src=x onerror=alert(1)>";
+hostile.head.subject = "<script>alert(1)</script>";
+const escaped = renderer.render(hostile);
+assert(!escaped.includes("<script>"));
+assert(!escaped.includes("<img src=x"));
+assert(escaped.includes("&lt;script&gt;"));
+assert(escaped.includes("&lt;img src=x onerror=alert(1)&gt;"));
+
+const invalid = JSON.parse(JSON.stringify(record));
+invalid.measurements.working_tree_bytes = -5;
+assert.throws(() => renderer.render(invalid), /invalid byte measurement/);
+
+// The resolver part: a card per observation, values escaped, a link only for https:// (never javascript:).
+const resolver = {auth: "anonymous", status: "ok", observations: [
+  {kind: "repository", status: "public", http_status: 200, url: "https://github.com/myon-bioinformatics/Ironmate"},
+  {kind: "<b>pages</b>", status: "missing", http_status: null, url: "javascript:alert(1)"}]};
+assert.strictEqual(renderer.summaryLine(resolver), "Auth: anonymous \u00b7 Status: ok");
+const cards = renderer.renderObservations(resolver);
+assert.strictEqual((cards.match(/<article class="ui-card">/g) || []).length, 2);
+assert(cards.includes('<a href="https://github.com/myon-bioinformatics/Ironmate" target="_blank" rel="noopener">'));
+assert(cards.includes("<span>javascript:alert(1)</span>") && !cards.includes('href="javascript'));
+assert(cards.includes("&lt;b&gt;pages&lt;/b&gt;") && cards.includes("HTTP: not observed") && cards.includes("HTTP: 200"));
+
+// mount(document, url): one no-store GET fills #metadata, #summary and #observations; a failed GET says so and leaves no cards.
+function page() {
+  const ids = {metadata: {innerHTML: ""}, summary: {textContent: "Loading\u2026"}, observations: {innerHTML: "x"}};
+  return {ids, getElementById: id => ids[id]};
+}
+(async () => {
+  const seen = [], realFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (url, opts) => { seen.push([url, opts.cache]); return Promise.resolve({ok: true, json: () => Promise.resolve({metadata: record, resolver})}); };
+    const ok = page();
+    await renderer.mount(ok, "./repository-diagnostics.json");
+    assert.deepStrictEqual(seen, [["./repository-diagnostics.json", "no-store"]]);
+    assert(ok.ids.metadata.innerHTML.includes("myon-bioinformatics/Ironmate"));
+    assert.strictEqual(ok.ids.summary.textContent, "Auth: anonymous \u00b7 Status: ok");
+    assert.strictEqual(ok.ids.observations.innerHTML, cards);
+    globalThis.fetch = () => Promise.resolve({ok: false});
+    const bad = page();
+    await renderer.mount(bad, "./missing.json");
+    assert.strictEqual(bad.ids.summary.textContent, "Diagnostics could not be loaded.");
+    assert.strictEqual(bad.ids.observations.innerHTML, "");
+  } finally { globalThis.fetch = realFetch; }
+  console.log("repository-diagnostics.js ok");
+})().catch(error => { console.error(error); process.exitCode = 1; });
+
+// Observation cards and the summary line are rendered by the same module, escaped the same way.
+{
+  const resolver = {auth: "anonymous", status: "observed", observations: [
+    {kind: "pages", status: "#reachable", http_status: 200, url: "https://example.test/<x>"},
+    {kind: "api", status: "#unverified", http_status: null, url: "https://example.test/api"},
+  ]};
+  assert.strictEqual(renderer.summaryLine(resolver), "Auth: anonymous \u00b7 Status: observed");
+  assert.strictEqual(renderer.summaryLine(null), "Auth: unknown \u00b7 Status: unknown");
+  const cards = renderer.renderObservations(resolver);
+  assert.strictEqual((cards.match(/<article class="ui-card">/g) || []).length, 2);
+  assert(cards.includes("HTTP: 200") && cards.includes("HTTP: not observed"));
+  assert(cards.includes("https://example.test/&lt;x&gt;") && !cards.includes("<x>"));
+  assert.strictEqual(renderer.renderObservations({}), "");
+  assert.strictEqual(typeof renderer.mount, "function");
+}"""
+
+
+@pytest.mark.skipif(not node26(), reason="run_node requires Node 26+")
+def test_renderer_contract_in_node():
+    assert "repository-diagnostics.js ok" in node_js(DIAGNOSTICS_JS).stdout
 
 
 def test_renderer_is_reusable_and_schema_gated():
