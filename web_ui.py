@@ -1941,10 +1941,11 @@ def data_table(columns: tuple[str, ...], rows, *, id: str, caption: str | None =
                trusted_cells: bool = False, row_ids: tuple[str, ...] | None = None,
                row_statuses: Sequence[str | None] | None = None) -> str:
     """``table()`` for records.js filtering: an ``id`` is required, ``rows`` may be any iterable and
+    Cells retain their legacy ``str()`` representation, including None and dictionaries.
     ``trusted_cells`` is ``trusted_html`` (caller-audited HTML such as ``badge()`` output)."""
     if not columns:
         raise ValueError("columns must not be empty")
-    return table(columns, [tuple(row) for row in rows], id=_element_id(id), caption=caption, trusted_html=trusted_cells,
+    return table(columns, [tuple(str(cell) for cell in row) for row in rows], id=_element_id(id), caption=caption, trusted_html=trusted_cells,
                  row_ids=row_ids, row_statuses=row_statuses)
 
 
