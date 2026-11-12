@@ -987,7 +987,7 @@ _CSS["records.css"] = ("@layer components{.ui-records table.ui-table{border-coll
                        ".ui-notice{border-left:8px solid var(--ui-border);padding:8px 16px;margin:8px 0;background:var(--ui-panel)}.ui-notice[data-tone=warn]{border-left-color:var(--ui-accent)}.ui-notice[data-tone=block]{border-left-color:var(--ui-danger)}"
                        ".ui-code{position:relative;margin:8px 0}.ui-code pre{margin:0;padding:16px;padding-right:112px;white-space:pre-wrap;overflow-wrap:anywhere}.ui-code [data-ui-copy]{position:absolute;top:8px;right:8px}"
                        ".ui-steps{display:grid;gap:16px}.ui-step[hidden]{display:none}.ui-step-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}.ui-step-head h3{margin:0}"
-                       ".ui-step[data-status=pass] [data-ui-status-tag]{color:var(--ui-accent)}.ui-step[data-status=block] [data-ui-status-tag]{color:var(--ui-danger)}.ui-step[data-status=todo] [data-ui-status-tag]{color:var(--ui-muted)}.ui-step[data-status=hold] [data-ui-status-tag]{border-style:dashed}"
+                       ".ui-step[data-status=doing] [data-ui-status-tag]{border-style:dashed;color:var(--ui-accent)}.ui-step[data-status=pass] [data-ui-status-tag]{color:var(--ui-accent)}.ui-step[data-status=block] [data-ui-status-tag]{color:var(--ui-danger)}.ui-step[data-status=todo] [data-ui-status-tag]{color:var(--ui-muted)}.ui-step[data-status=hold] [data-ui-status-tag]{border-style:dashed}"
                        ".ui-facts{display:grid;grid-template-columns:minmax(96px,max-content) 1fr;gap:8px 16px;margin:8px 0}.ui-facts dt{color:var(--ui-muted)}.ui-facts dd{margin:0;white-space:pre-line}"
                        ".ui-step-record{display:grid;gap:8px;margin-top:8px}.ui-step-record h4{margin:0}"
                        "@media(max-width:640px){.ui-facts{grid-template-columns:1fr}.ui-code pre{padding-right:16px;padding-top:56px}}}")
@@ -1991,7 +1991,7 @@ def records_board(trusted_html: str, *, id: str = "records", source: str | None 
 
 
 NOTICE_TONES = ("info", "warn", "block")
-STEP_STATUSES = (("todo", "未検証"), ("pass", "検証済み"), ("hold", "保留"), ("block", "ブロッカー"))   # a step's state; the first is where every step starts
+STEP_STATUSES = (("todo", "調査中"), ("doing", "着手中"), ("pass", "完了"), ("hold", "保留"), ("block", "ブロッカー"))   # a step's state; the first is where every step starts
 STEP_LABELS = {"expect": "期待される出力", "needs": "前提条件", "trouble": "失敗時の確認", "seen": "失敗例", "check": "確認ポイント", "fix": "対処",
                "record": "再現記録", "status": "状態", "date": "検証日", "actual": "実際の出力・終了コード", "note": "環境・バージョン・備考",
                "copy": "コピー", "copied": "コピー済み", "copy_failed": "コピーできませんでした", "search": "検索", "filter": "状態", "all": "すべて",
@@ -2039,16 +2039,16 @@ def _step_text(value: Any, name: str, limit: int = 1000, required: bool = False)
 def steps_validate(spec: Any) -> dict[str, Any]:
     """Checked copy of a runbook: ``key`` (the drafts' prefix, such as ``olnm/uvfile``), ``steps`` (1..32 of ``id``, ``title``, ``command`` and
     optional ``expect``, ``needs`` and ``trouble: {seen, check, fix}``), optional ``statuses`` (``[[token, label], ...]`` over
-    todo/pass/hold/block, the first is the start), ``source`` (the version the records belong to), ``record`` (default true: a state, a date,
+    todo/doing/pass/hold/block, the first is the start), ``source`` (the version the records belong to), ``record`` (default true: a state, a date,
     the actual output and a note per step), ``toolbar`` (default true: search, state filter, JSON save/load) and ``labels`` (STEP_LABELS keys)."""
     if not isinstance(spec, dict) or set(spec) - {"key", "steps", "statuses", "source", "record", "toolbar", "labels"}:
         raise ValueError("a runbook is {key, steps, statuses, source, record, toolbar, labels}")
     key = _draft_key(spec.get("key", ""))
     statuses = [tuple(pair) for pair in spec.get("statuses", STEP_STATUSES)]
     tokens = [t for t, _ in statuses] if all(len(pair) == 2 for pair in statuses) else []
-    if not 2 <= len(statuses) <= 4 or len(set(tokens)) != len(statuses) or set(tokens) - {t for t, _ in STEP_STATUSES} \
+    if not 2 <= len(statuses) <= len(STEP_STATUSES) or len(set(tokens)) != len(statuses) or set(tokens) - {t for t, _ in STEP_STATUSES} \
             or any(not isinstance(label, str) or not label or len(label) > 40 for _, label in statuses):
-        raise ValueError("statuses are 2..4 [token, label] pairs over todo, pass, hold and block")
+        raise ValueError("statuses are 2..5 [token, label] pairs over todo, doing, pass, hold and block")
     flags = {name: spec.get(name, True) for name in ("record", "toolbar")}
     if any(type(v) is not bool for v in flags.values()):
         raise ValueError("record and toolbar are true or false")
