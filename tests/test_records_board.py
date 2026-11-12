@@ -111,6 +111,22 @@ class RecordsBoardTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ui.data_table(("A",), [], id="bad id")
 
+    def test_data_table_preserves_legacy_cell_text(self):
+        from html import escape
+        values = (None, {"a": "<script>&"}, {"text": "link", "href": "https://example.com"},
+                  False, 0, 3.5, "<b>trusted</b>")
+        for trusted in (False, True):
+            with self.subTest(trusted=trusted):
+                html = ui.data_table(("Value",), ((value,) for value in values), id="legacy",
+                                     trusted_cells=trusted, row_ids=tuple(str(i) for i in range(len(values))))
+                for i, value in enumerate(values):
+                    text = str(value) if trusted else escape(str(value))
+                    self.assertIn(f'<tr data-ui-row="{i}"><td>{text}</td></tr>', html)
+                self.assertNotIn('<a href=', html)
+        # Rich cells remain available through table(), not the legacy records wrapper.
+        self.assertIn('<a href="https://example.com">link</a>',
+                      ui.table(("Value",), [({"text": "link", "href": "https://example.com"},)]))
+
     def test_stat_tiles_render_text_values(self):
         html = ui.stat_tiles((("PR", 12), ("CI失敗", 2, self.hostile)))
         self.assertEqual(html.count('class="ui-card ui-stat"'), 2)
