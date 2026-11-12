@@ -109,7 +109,7 @@ class RunbookTests(unittest.TestCase):
         self.assertIn('<section class="ui-records" id="steps-olnm-uvfile" data-ui-records data-ui-records-source="8f8932e">', html)
         self.assertEqual(html.count('class="ui-card ui-step"'), 2)
         self.assertIn('<article class="ui-card ui-step" id="steps-olnm-uvfile-run" data-ui-item data-status="todo">', html)
-        self.assertIn('<span class="ui-tag" data-ui-status-tag>未検証</span>', html)
+        self.assertIn('<span class="ui-tag" data-ui-status-tag>調査中</span>', html)
         self.assertIn('<pre class="ui-output">echo &quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;&amp;</pre>', html)
         self.assertIn("<dt>期待される出力</dt><dd>42</dd><dt>前提条件</dt><dd>uv</dd>", html)
         self.assertIn("<summary>失敗時の確認</summary>", html)
@@ -132,6 +132,15 @@ class RunbookTests(unittest.TestCase):
         self.assertNotIn("data-ui-draft", bare)
         self.assertNotIn("ui-records-bar", bare)
 
+    def test_five_states_are_shared_by_filter_and_record_and_old_tokens_still_work(self):
+        html = ui.steps_html(self.spec())
+        self.assertEqual([label for _, label in ui.STEP_STATUSES], ["調査中", "着手中", "完了", "保留", "ブロッカー"])
+        self.assertEqual(html.count('<option value="doing">着手中</option>'), 3)
+        for token in ("todo", "pass", "hold", "block"):
+            self.assertIn(f'value="{token}"', html)
+        reduced = ui.steps_html(self.spec(statuses=[["todo", "調査中"], ["doing", "着手中"], ["pass", "完了"]]))
+        self.assertNotIn('value="hold"', reduced)
+
     def test_bad_runbooks_are_refused(self):
         good = self.spec()
         for bad in ({**good, "steps": []}, {**good, "steps": good["steps"] * 2}, {**good, "statuses": [["todo", "a"], ["done", "b"]]},
@@ -151,7 +160,7 @@ class RunbookTests(unittest.TestCase):
         self.assertIn('data-ui-draft="k:date"', ui.draft_input(key="k:date", id="d", label="日", type="date"))
         status = ui.status_filter("list", id="state")
         self.assertIn('<select data-ui-filter-status="#list" class="ui-input" id="state"', status)
-        self.assertIn('<option value="">すべて</option><option value="todo">未検証</option>', status)
+        self.assertIn('<option value="">すべて</option><option value="todo">調査中</option>', status)
         self.assertIn('data-ui-records-source="v1.2"', ui.records_board("x", source="v1.2"))
         with self.assertRaises(ValueError):
             ui.records_board("x", source="<bad>")
