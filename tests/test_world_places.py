@@ -274,17 +274,16 @@ def test_tokyo_has_no_facility_names_and_the_stations_are_where_they_are(cities)
     assert stations["nihombashi"]["x"] > centre["x"] > stations["nijubashimae"]["x"]               # east of the station, and west of it
 
 
-def test_london_has_the_main_termini_the_stations_beside_them_and_famous_places(cities):
+def test_london_is_its_main_termini_and_the_stations_beside_them(cities):
     floor = cities["london"]
     spots = by_id(floor)
     kinds = {}
     for key, spot in spots.items():
         kinds.setdefault(spot["category"], []).append(key)
-    assert sorted(kinds) == ["famous", "sight", "sign", "station", "terminus"]
+    assert sorted(kinds) == ["sign", "station", "terminus"]                                          # transport only: no sights, no institutions
     assert len(kinds["terminus"]) == 13
     for key in ("kings-cross", "paddington", "waterloo", "victoria", "liverpool-street", "london-bridge", "euston", "charing-cross"):
         assert key in kinds["terminus"]
-    assert {"downing-street", "bank-of-england", "old-bailey"} <= set(kinds["famous"])          # well known, not for the tourists
     assert spots["paddington"]["x"] < spots["kings-cross"]["x"] < spots["liverpool-street"]["x"]   # west to east
     assert spots["waterloo"]["y"] > spots["charing-cross"]["y"]                                    # south of the river
     assert spots["london-bridge"]["y"] > spots["cannon-street"]["y"]
@@ -308,15 +307,20 @@ def test_fake_paris_has_its_stations_a_seine_with_bridges_and_a_fire_in_each_blo
     kinds = {}
     for key, spot in spots.items():
         kinds.setdefault(spot["category"], []).append(key)
-    assert sorted(kinds) == ["famous", "sight", "sign", "station", "terminus"] and len(kinds["terminus"]) == 6
+    assert sorted(kinds) == ["sign", "station", "terminus"] and len(kinds["terminus"]) == 6                    # transport only
     assert spots["gare-du-nord"]["y"] < spots["gare-de-lyon"]["y"] < spots["montparnasse"]["y"] + 1              # north to south
     assert spots["saint-lazare"]["x"] < spots["gare-du-nord"]["x"] < spots["gare-de-lyon"]["x"]                  # west to east
-    assert spots["eiffel"]["x"] < spots["notre-dame"]["x"] < spots["bastille"]["x"]
+    assert spots["montparnasse"]["x"] < spots["jussieu"]["x"] < spots["bastille"]["x"]                          # west to east, south of the river
     assert {"water", "bridge", "fire"} <= {p["kind"] for p in floor["props"]}
     fires = [p for p in floor["props"] if p["kind"] == "fire"]
     assert 20 <= len(fires) <= 40
     tile = floor["tile"]
     assert len({(p["x"] // tile // 8, p["y"] // tile // 8) for p in fires}) == len(fires)                         # one per block of eight tiles
+
+
+def test_no_city_lists_a_religious_building(cities):
+    words = ("大聖堂", "寺院", "教会", "聖堂", "神社", "寺", "モスク", "霊廟")
+    assert not [s["id"] for floor in cities.values() for s in floor["spots"] if any(w in s["label"] + s["body"] for w in words)]
 
 
 def test_the_nogard_sign_stands_by_a_station_and_turns_into_a_dragon(cities):
@@ -340,4 +344,5 @@ def test_the_front_page_and_the_cli_carry_the_cities():
     spec = subprocess.run([sys.executable, str(ROOT / "web_ui.py"), "--example", "cities"], capture_output=True, text=True, check=True, encoding="utf-8").stdout
     assert json.loads(spec)["floors"][0]["place"]["points"][0]["id"] == "marunouchi-c"
     html = subprocess.run([sys.executable, str(ROOT / "web_ui.py"), "--world", "-"], input=spec, capture_output=True, text=True, check=True, encoding="utf-8").stdout
-    assert "八重洲北口" in html and "タワー・ブリッジ" in html and "エッフェル塔" in html
+    assert "八重洲北口" in html and "ウォータールー" in html and "サン・ラザール駅" in html          # a spot of each city from the CLI
+    assert "タワー・ブリッジ" not in html and "エッフェル塔" not in html                               # transport only

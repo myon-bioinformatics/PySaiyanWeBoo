@@ -39,6 +39,40 @@ const invalid = JSON.parse(JSON.stringify(record));
 invalid.measurements.working_tree_bytes = -5;
 assert.throws(() => renderer.render(invalid), /invalid byte measurement/);
 
+// The resolver part: a card per observation, values escaped, a link only for https:// (never javascript:).
+const resolver = {auth: "anonymous", status: "ok", observations: [
+  {kind: "repository", status: "public", http_status: 200, url: "https://github.com/myon-bioinformatics/Ironmate"},
+  {kind: "<b>pages</b>", status: "missing", http_status: null, url: "javascript:alert(1)"}]};
+assert.strictEqual(renderer.summaryLine(resolver), "Auth: anonymous \u00b7 Status: ok");
+const cards = renderer.renderObservations(resolver);
+assert.strictEqual((cards.match(/<article class="ui-card">/g) || []).length, 2);
+assert(cards.includes('<a href="https://github.com/myon-bioinformatics/Ironmate" target="_blank" rel="noopener">'));
+assert(cards.includes("<span>javascript:alert(1)</span>") && !cards.includes('href="javascript'));
+assert(cards.includes("&lt;b&gt;pages&lt;/b&gt;") && cards.includes("HTTP: not observed") && cards.includes("HTTP: 200"));
+
+// mount(document, url): one no-store GET fills #metadata, #summary and #observations; a failed GET says so and leaves no cards.
+function page() {
+  const ids = {metadata: {innerHTML: ""}, summary: {textContent: "Loading\u2026"}, observations: {innerHTML: "x"}};
+  return {ids, getElementById: id => ids[id]};
+}
+(async () => {
+  const seen = [], realFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (url, opts) => { seen.push([url, opts.cache]); return Promise.resolve({ok: true, json: () => Promise.resolve({metadata: record, resolver})}); };
+    const ok = page();
+    await renderer.mount(ok, "./repository-diagnostics.json");
+    assert.deepStrictEqual(seen, [["./repository-diagnostics.json", "no-store"]]);
+    assert(ok.ids.metadata.innerHTML.includes("myon-bioinformatics/Ironmate"));
+    assert.strictEqual(ok.ids.summary.textContent, "Auth: anonymous \u00b7 Status: ok");
+    assert.strictEqual(ok.ids.observations.innerHTML, cards);
+    globalThis.fetch = () => Promise.resolve({ok: false});
+    const bad = page();
+    await renderer.mount(bad, "./missing.json");
+    assert.strictEqual(bad.ids.summary.textContent, "Diagnostics could not be loaded.");
+    assert.strictEqual(bad.ids.observations.innerHTML, "");
+  } finally { globalThis.fetch = realFetch; }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+
 // Optional actual producer output exercises the same read-only renderer.
 if (process.argv[2]) {
   const canonical = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
@@ -53,15 +87,17 @@ if (process.argv[2]) {
 }
 
 // Observation cards and the summary line are rendered by the same module, escaped the same way.
-const resolver = {auth: "anonymous", status: "observed", observations: [
-  {kind: "pages", status: "#reachable", http_status: 200, url: "https://example.test/<x>"},
-  {kind: "api", status: "#unverified", http_status: null, url: "https://example.test/api"},
-]};
-assert.strictEqual(renderer.summaryLine(resolver), "Auth: anonymous \u00b7 Status: observed");
-assert.strictEqual(renderer.summaryLine(null), "Auth: unknown \u00b7 Status: unknown");
-const cards = renderer.renderObservations(resolver);
-assert.strictEqual((cards.match(/<article class="ui-card">/g) || []).length, 2);
-assert(cards.includes("HTTP: 200") && cards.includes("HTTP: not observed"));
-assert(cards.includes("https://example.test/&lt;x&gt;") && !cards.includes("<x>"));
-assert.strictEqual(renderer.renderObservations({}), "");
-assert.strictEqual(typeof renderer.mount, "function");
+{
+  const resolver = {auth: "anonymous", status: "observed", observations: [
+    {kind: "pages", status: "#reachable", http_status: 200, url: "https://example.test/<x>"},
+    {kind: "api", status: "#unverified", http_status: null, url: "https://example.test/api"},
+  ]};
+  assert.strictEqual(renderer.summaryLine(resolver), "Auth: anonymous \u00b7 Status: observed");
+  assert.strictEqual(renderer.summaryLine(null), "Auth: unknown \u00b7 Status: unknown");
+  const cards = renderer.renderObservations(resolver);
+  assert.strictEqual((cards.match(/<article class="ui-card">/g) || []).length, 2);
+  assert(cards.includes("HTTP: 200") && cards.includes("HTTP: not observed"));
+  assert(cards.includes("https://example.test/&lt;x&gt;") && !cards.includes("<x>"));
+  assert.strictEqual(renderer.renderObservations({}), "");
+  assert.strictEqual(typeof renderer.mount, "function");
+}

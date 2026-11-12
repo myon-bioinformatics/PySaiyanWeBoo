@@ -1001,6 +1001,286 @@ class CatalogBrowserTests(unittest.TestCase):
                 thread.join(timeout=5)
 
 
+class RepositoryDiagnosticsBrowserTests(unittest.TestCase):
+    """repository_diagnostics_page(): the page every repository publishes (markdown already calls it). One GET of the JSON beside it
+    fills the metadata card, the resolver summary and one card per observation; a javascript: URL stays text; a missing JSON says so."""
+
+    def test_the_page_reads_its_json_once_and_fills_three_slots(self):
+        import json
+        from web_ui import repository_diagnostics_page
+        record = json.loads((ROOT / 'tests' / 'fixtures' / 'repository_metadata_v1.json').read_text(encoding='utf-8'))
+        payload = {'metadata': record, 'resolver': {'auth': 'anonymous', 'status': 'ok', 'observations': [
+            {'kind': 'repository', 'status': 'public', 'http_status': 200, 'url': 'https://github.com/myon-bioinformatics/Ironmate'},
+            {'kind': 'pages', 'status': 'missing', 'http_status': None, 'url': 'javascript:alert(1)'}]}}
+        page = repository_diagnostics_page('myon-bioinformatics/Ironmate', icon=None, favicon=None)
+        server, origin = WorldBrowserTests.serve({'repository-diagnostics.html': page, 'repository-diagnostics.json': json.dumps(payload),
+                                                  'broken.html': page.replace('mount(document, "./repository-diagnostics.json")', 'mount(document, "./missing.json")', 1)})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={'width': 390, 'height': 844})
+                    errors, gets = [], []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.on('request', lambda request: request.url.endswith('.json') and gets.append(request.url.rsplit('/', 1)[1]))
+                    page.goto(origin + '/repository-diagnostics.html')
+                    expect(page.locator('#summary')).to_have_text('Auth: anonymous · Status: ok')
+                    expect(page.locator('.repo-diagnostics__repository')).to_have_text('myon-bioinformatics/Ironmate')
+                    expect(page.locator('#observations .ui-card')).to_have_count(2)
+                    self.assertEqual(page.locator('#observations a').get_attribute('href'), 'https://github.com/myon-bioinformatics/Ironmate')
+                    expect(page.locator('#observations span')).to_have_text('javascript:alert(1)')
+                    self.assertEqual(gets, ['repository-diagnostics.json'])
+                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)
+                    page.goto(origin + '/broken.html')
+                    expect(page.locator('#summary')).to_have_text('Diagnostics could not be loaded.')
+                    expect(page.locator('#observations .ui-card')).to_have_count(0)
+                    self.assertEqual(errors, [])
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
+def runbook_showcase():
+    """olnm's guide as PSWB data: one section per way to run it, a runbook in each (the shape Component Ops' steps take too)."""
+    from web_ui import SHOWCASE_SCHEMA
+    fetch = {'id': 'file', 'title': 'olnm.py を用意する', 'command': 'mkdir -p "$HOME/.local/share/olnm"\ncurl -fL https://example.invalid/olnm.py -o "$HOME/.local/share/olnm/olnm.py"',
+             'expect': 'ダウンロードが成功する。', 'needs': 'Python 3.11 以降、curl。', 'trouble': {'seen': 'curl: command not found', 'fix': 'curl を入れて再実行。'}}
+    run = {'id': 'run', 'title': 'uv で実行する', 'command': 'uv run --no-project "$OLNM_PY" calc 6 mul 7', 'expect': '42（終了コード 0）'}
+    call = {'id': 'call', 'title': 'Python から関数を呼ぶ', 'command': "python3 -c 'import olnm, sys; sys.exit(olnm.calculate(\"6\", \"mul\", \"7\"))'", 'expect': '42'}
+    return {'schema': SHOWCASE_SCHEMA, 'id': 'guide', 'title': '利用・検証ガイド', 'themes': True, 'sections': [
+        {'id': 'uvfile', 'label': 'uv run', 'icon': 'info', 'heading': 'uv でファイル実行', 'lead': 'ツール登録せず、保存したファイルを実行します。',
+         'notice': {'text': '記録はこのブラウザ内に保存されます。JSON で控えを保存できます。', 'tone': 'warn', 'title': '記録'},
+         'stats': [['手順', 2], ['方法', 2]], 'steps': {'key': 'guide/uvfile', 'source': 'abc1234', 'steps': [fetch, run]}},
+        {'id': 'python', 'label': 'Python', 'icon': 'info', 'heading': 'Python ワンライナー', 'steps': {'key': 'guide/python', 'source': 'abc1234', 'steps': [call]}}]}
+
+
+class RunbookBrowserTests(unittest.TestCase):
+    """steps_html() in a showcase: sections switch without a reload, 📋 copies a command, a step's state is kept in this browser, shown on
+    its card and filterable, and a JSON from another version comes back with its states reset. ``WEB_UI_GIFS`` keeps component-steps.gif."""
+
+    def test_copy_record_filter_and_reload_on_a_phone(self):
+        sys.path.insert(0, str(ROOT / 'tool'))
+        import json
+        import record_demo
+        from web_ui import showcase_document
+        server, origin = WorldBrowserTests.serve({'guide.html': showcase_document(runbook_showcase())})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    context = browser.new_context(viewport={'width': 392, 'height': 760}, accept_downloads=True)
+                    context.grant_permissions(['clipboard-read', 'clipboard-write'], origin=origin)
+                    page = context.new_page()
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/guide.html')
+                    cam = record_demo.Camera(page)
+                    cards = page.locator('#steps-guide-uvfile-list .ui-step')
+                    expect(cards).to_have_count(2)
+                    expect(page.locator('.ui-notice[data-tone="warn"]')).to_contain_text('記録')
+                    cam.hold(500)
+                    # 📋 copy: the command lands on the clipboard and the button says so
+                    first = cards.nth(0)
+                    first.locator('[data-ui-copy]').click()
+                    expect(first.locator('[data-ui-copy]')).to_have_text('コピー済み')
+                    self.assertEqual(page.evaluate('navigator.clipboard.readText()'), 'mkdir -p "$HOME/.local/share/olnm"\ncurl -fL https://example.invalid/olnm.py -o "$HOME/.local/share/olnm/olnm.py"')
+                    cam.hold(400)
+                    # a record: the state moves to the card's tag and to data-status, the note is kept
+                    first.locator('select[data-ui-status]').select_option('doing')
+                    expect(first.locator('[data-ui-status-tag]')).to_have_text('着手中')
+                    expect(first).to_have_attribute('data-status', 'doing')
+                    first.locator('select[data-ui-status]').select_option('pass')
+                    first.locator('textarea').first.fill('42')
+                    expect(first.locator('[data-ui-status-tag]')).to_have_text('完了')
+                    self.assertEqual(first.get_attribute('data-status'), 'pass')
+                    cam.hold(500)
+                    # the state filter and the search
+                    page.locator('#steps-guide-uvfile-state').select_option('pass')
+                    expect(page.locator('#steps-guide-uvfile-list .ui-step:visible')).to_have_count(1)
+                    cam.hold(400)
+                    page.locator('#steps-guide-uvfile-state').select_option('')
+                    page.locator('#steps-guide-uvfile-search').fill('uv run')
+                    expect(page.locator('#steps-guide-uvfile-list .ui-step:visible')).to_have_count(1)
+                    page.locator('#steps-guide-uvfile-search').fill('')
+                    cam.hold(300)
+                    # no horizontal scroll on a phone, also with the long command
+                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)
+                    # another section without a reload, then a reload keeps the record
+                    page.locator('.ui-bottom-nav label', has_text='Python').click()
+                    expect(page.locator('#steps-guide-python-list .ui-step')).to_be_visible()
+                    expect(page.locator('#steps-guide-uvfile-list')).to_be_hidden()
+                    cam.hold(500)
+                    page.reload()
+                    first = page.locator('#steps-guide-uvfile-list .ui-step').nth(0)
+                    expect(first.locator('[data-ui-status-tag]')).to_have_text('完了')
+                    expect(first.locator('textarea').first).to_have_value('42')
+                    # JSON out (with the source) and a file from another version back in: states reset, notes kept, the message says so
+                    with page.expect_download() as info:
+                        page.locator('#steps-guide-uvfile [data-ui-export]').click()
+                    saved = json.loads(Path(info.value.path()).read_text(encoding='utf-8'))
+                    self.assertEqual((saved['schema'], saved['source'], saved['drafts']['guide/uvfile:file:status']), ('web-ui-drafts/1', 'abc1234', 'pass'))
+                    other = Path(tempfile.mkdtemp()) / 'other.json'
+                    other.write_text(json.dumps({**saved, 'source': 'fff0000'}), encoding='utf-8')
+                    page.locator('#steps-guide-uvfile input[type=file][data-ui-import]').set_input_files(str(other))
+                    expect(page.locator('#steps-guide-uvfile [data-ui-records-message]')).to_have_text('別の版の記録を読み込み、状態を戻しました。')
+                    expect(first.locator('[data-ui-status-tag]')).to_have_text('調査中')
+                    expect(first.locator('textarea').first).to_have_value('42')
+                    cam.hold(800)
+                    self.assertEqual(errors, [])
+                    gif = record_demo.encode(cam.shots)
+                    self.assertTrue(gif.startswith(b'GIF89a'))
+                    if os.environ.get('WEB_UI_GIFS'):
+                        record_demo.gif_targets_from(os.environ['WEB_UI_GIFS'], ['component-steps'])['component-steps'].write_bytes(gif)
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
+AUDIT_ROWS = [('Aoi', '失敗', 'pins'), ('Ironmate', '成功', '—'), ('markdown', '実行中', 'pages'), ('olnm', '成功', 'guide'), ('xprobe', '失敗', 'lock')]
+AUDIT_STATES = (('fail', '失敗'), ('pass', '成功'), ('running', '実行中'))
+
+
+def operations_page():
+    """The Observatory's audit view as PSWB parts: heading with a stamp, a notice, a table whose rows carry a state, a state filter and
+    the page's data as a JSON download. No script of its own: records.js binds the filter and the download."""
+    from web_ui import (bundled_css, data_table, download_json, filter_input, module_script, js_source, notice, page_heading, records_board,
+                        render_document, status_filter)
+    state = {label: token for token, label in AUDIT_STATES}
+    data = {'schema': 'audit-demo/1', 'rows': [dict(zip(('repo', 'ci', 'issue'), r)) for r in AUDIT_ROWS]}
+    body = ('<main class="ui-page">'
+            + page_heading('親子リポジトリ監査', eyebrow='ENGINEERING HEALTH', lead='気づく。揃える。次の週へつなぐ。',
+                           chips=[('利用導線・責務移管 ↗', './component-ops/'), '自動更新なし'],
+                           stamp={'label': '観測日 / JST', 'value': '2026.11.12', 'note': 'gh_identity の匿名観測\nGitHub への書込みなし'})
+            + notice('失敗が 2 件あります。固定 SHA の更新を先に。', tone='block', title='優先')
+            + records_board('<div class="ui-records-bar">' + filter_input('audit', id='audit-search', label='検索')
+                            + status_filter('audit', AUDIT_STATES, id='audit-ci', label='CI', all_label='すべての CI')
+                            + download_json(data, id='audit-data', filename='audit-2026-11-12.json', label='↓ 監査データ') + '</div>'
+                            + data_table(('リポジトリ', 'CI', '課題'), AUDIT_ROWS, id='audit', row_statuses=[state[r[1]] for r in AUDIT_ROWS]), id='audit-board')
+            + '</main>' + module_script(js_source('records.js')))
+    return render_document(trusted_html=body, title='監査', css=bundled_css()), data
+
+
+class OperationsPageBrowserTests(unittest.TestCase):
+    """page_heading() + notice() + a table with row states + status_filter() + download_json(), switched to the purple theme without a
+    reload: the parts the Observatory and Component Ops drew by hand. ``WEB_UI_GIFS`` keeps component-operations.gif."""
+
+    def test_filter_rows_by_state_download_the_data_and_switch_to_purple(self):
+        sys.path.insert(0, str(ROOT / 'tool'))
+        import json
+        import record_demo
+        html, data = operations_page()
+        server, origin = WorldBrowserTests.serve({'audit.html': html})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_context(viewport={'width': 392, 'height': 760}, accept_downloads=True).new_page()
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/audit.html')
+                    cam = record_demo.Camera(page)
+                    expect(page.locator('.ui-stamp b')).to_have_text('2026.11.12')
+                    expect(page.locator('.ui-eyebrow')).to_have_text('ENGINEERING HEALTH')
+                    rows = page.locator('#audit tbody tr')
+                    expect(rows).to_have_count(5)
+                    cam.hold(500)
+                    page.locator('#audit-ci').select_option('fail')
+                    expect(page.locator('#audit tbody tr:visible')).to_have_count(2)
+                    self.assertEqual(page.locator('#audit tbody tr:visible td:first-child').all_inner_texts(), ['Aoi', 'xprobe'])
+                    cam.hold(500)
+                    page.locator('#audit-search').fill('xprobe')
+                    expect(page.locator('#audit tbody tr:visible')).to_have_count(1)
+                    cam.hold(400)
+                    page.locator('#audit-search').fill('')
+                    page.locator('#audit-ci').select_option('')
+                    expect(page.locator('#audit tbody tr:visible')).to_have_count(5)
+                    with page.expect_download() as info:
+                        page.locator('[data-ui-download]').click()
+                    self.assertEqual(info.value.suggested_filename, 'audit-2026-11-12.json')
+                    self.assertEqual(json.loads(Path(info.value.path()).read_text(encoding='utf-8')), data)
+                    accent = lambda: page.evaluate("getComputedStyle(document.body).getPropertyValue('--ui-accent').trim()")
+                    before = accent()
+                    for theme in ('green', 'purple'):
+                        page.evaluate('t => document.body.dataset.uiTheme = t', theme)
+                        cam.hold(600)
+                    self.assertEqual((before != accent(), accent()), (True, '#6750a4'))      # flutter's Material 3 primary, no reload
+                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)
+                    self.assertEqual(errors, [])
+                    gif = record_demo.encode(cam.shots)
+                    self.assertTrue(gif.startswith(b'GIF89a'))
+                    if os.environ.get('WEB_UI_GIFS'):
+                        record_demo.gif_targets_from(os.environ['WEB_UI_GIFS'], ['component-operations'])['component-operations'].write_bytes(gif)
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
+TABLE_TILE = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="40"><rect width="64" height="40" fill="#3fb950"/></svg>'
+
+
+def table_spec():
+    """A browser-matrix shaped table, the kind Ironmate, markdown and browser-test-kit write by hand: wider than a phone on purpose."""
+    envs = ['chromium', 'firefox', 'webkit', 'Pixel 7', 'iPhone 13']
+    rows = [[page] + [{'text': 'pass', 'status': 'pass', 'image': {'src': 'tile.svg', 'alt': f'{page} on {env}', 'width': 64, 'height': 40}} if env != 'webkit' or page != 'about' else None
+                      for env in envs] + [1234 * (i + 1), 0.987654 - i / 10] for i, page in enumerate(['index', 'about', 'log'])]
+    rows[2][1] = {'text': 'log <b>', 'href': './log.txt'}
+    return {'columns': ['', *envs, 'bytes', 'score'], 'rows': rows, 'row_headers': True, 'caption': 'Screenshots per browser', 'missing': 'not run'}
+
+
+class TableBrowserTests(unittest.TestCase):
+    """component_document("table", spec): an escaped table in its own scroller, styled by shell.css under every theme, no script.
+    The GIF walks the themes and scrolls the table sideways on a phone; ``WEB_UI_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"``
+    keeps it as DIR/<P>component-table<S>[-<run detail>...].gif through record_demo.gif_targets_from (the recorder's own naming rules)."""
+
+    def test_the_table_scrolls_inside_its_box_on_a_phone_and_follows_every_theme(self):
+        sys.path.insert(0, str(ROOT / 'tool'))
+        import record_demo
+        from PIL import Image
+        from web_ui import CANDIDATE_THEMES, THEMES, component_document
+        server, origin = WorldBrowserTests.serve({'table.html': component_document('table', table_spec(), document_title='Table'), 'tile.svg': TABLE_TILE})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={'width': 392, 'height': 560})
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/table.html')
+                    page.wait_for_function("[...document.images].every(i => i.complete && i.naturalWidth > 0)")
+                    expect(page.locator('th[scope="row"]')).to_have_count(3)
+                    expect(page.locator('td[data-missing]')).to_have_text('not run')
+                    expect(page.locator('td a[href="./log.txt"]')).to_have_text('log <b>')
+                    self.assertEqual(page.locator('td[data-num]').first.evaluate('e => getComputedStyle(e).textAlign'), 'right')
+                    self.assertEqual(set(page.evaluate("[...document.images].map(i => i.getBoundingClientRect().width)")), {64})   # no shrinking in narrow columns
+                    box = page.locator('.ui-shell-scroll')
+                    self.assertGreater(box.evaluate('e => e.scrollWidth - e.clientWidth'), 0)        # the table scrolls in its box...
+                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)   # ...not the page
+                    cam, borders = record_demo.Camera(page, crop='.ui-shell-scroll'), set()
+                    for theme in (*THEMES, *CANDIDATE_THEMES):
+                        page.evaluate('t => document.body.dataset.uiTheme = t', theme)
+                        borders.add(page.locator('td').first.evaluate('e => getComputedStyle(e).borderBottomColor'))
+                        cam.hold(400)
+                    page.evaluate("document.body.dataset.uiTheme = 'modern'")
+                    for step in range(1, 9):
+                        box.evaluate('(e, f) => e.scrollLeft = (e.scrollWidth - e.clientWidth) * f', step / 8)
+                        cam.hold(120)
+                    cam.hold(600)
+                    self.assertGreater(len(borders), 1)                                  # the border follows the theme tokens
+                    self.assertEqual(errors, [])
+                    gif = record_demo.encode(cam.shots)
+                    frames = Image.open(__import__('io').BytesIO(gif))
+                    self.assertTrue(gif.startswith(b'GIF89a') and getattr(frames, 'n_frames', 1) > 1)
+                    if os.environ.get('WEB_UI_GIFS'):
+                        record_demo.gif_targets_from(os.environ['WEB_UI_GIFS'], ['component-table'])['component-table'].write_bytes(gif)
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
 class ShowcaseBrowserTests(unittest.TestCase):
     """The app shell in Chromium: sections switch with no reload, the rail gives way to the bottom bar, nothing overflows, every theme reads."""
 
@@ -1026,7 +1306,7 @@ class ShowcaseBrowserTests(unittest.TestCase):
                     self.assertEqual(page.locator('.ui-rail').bounding_box()['width'], 256)    # wide: the full rail, labels shown
                     page.locator('.ui-rail label', has_text='Data').click()
                     self.assertEqual(visible(), ['data'])
-                    expect(page.locator('.ui-shell-table')).to_be_visible()
+                    expect(page.locator('.ui-shell-section .ui-table')).to_be_visible()
                     # Keyboard: the radios are one group, so the arrow keys move between sections.
                     page.locator('#showcase-sec-data').focus()
                     page.keyboard.press('ArrowRight')

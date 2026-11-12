@@ -54,7 +54,7 @@ Current themes:
 
 - `modern` — terminal-styled default (text is Meiryo like every theme; code stays monospace)
 - `github-like` — generic light presentation intentionally using familiar GitHub visual cues
-- `green`, `red`, `blue`, `terminal` — candidates, token-only: palettes (green first built by hand in Ironmate's studio; red and blue are `theme_palette(hue)`, and any hue works; terminal is mcp-toolcall-lab's dark terminal-lite returned here, mono body font) whose values are generated into `tokens.css` (no theme files, not in contract v1 yet)
+- `green`, `red`, `blue`, `purple`, `terminal` — candidates, token-only: palettes (green first built by hand in Ironmate's studio; purple is flutter_navigation_basic's Material 3 baseline, kept before that repository is archived; red and blue are `theme_palette(hue)`, and any hue works; terminal is mcp-toolcall-lab's dark terminal-lite returned here, mono body font) whose values are generated into `tokens.css` (no theme files, not in contract v1 yet)
 
 Single-file pages: `render_document(css=bundled_css())` (or `python -S web_ui.py --css-bundle`) embeds every
 stylesheet and theme, built in memory from the sources in `web_ui.py`; nothing is written to the repository. Because all themes ship
@@ -69,12 +69,12 @@ through `:target`. `random_theme(seed)` and `--theme-wall N` show seeded random 
 
 Seed dial: `theme.js` is Python's own generator written out for the page (CPython's Mersenne Twister seeded as `random.Random(int)` seeds it, the same steps), so
 `randomTheme(seed)` gives exactly the tokens `random_theme(seed)` gives (checked on thousands of seeds, negative and 2^53 ones included) and `bindSeed()` wears any seed
-live with no reload: `seed_dial_html()` (a dial), `seed_roll_html()` (🎲), a tap on any `[data-seed]` cell of the wall, ✖️ or a named theme (`theme_switch_html()`) to go back.
+live with no reload: `seed_dial_html()` (a slider), `seed_roll_html()` (🎲), a tap on any `[data-seed]` cell of the wall, ✖️ or a named theme (`theme_switch_html()`) to go back.
 The seed is remembered in this browser. Python stays the reference; the page never invents a palette of its own.
 
 Front page layout: `front_document(main, rooms, title=...)` is one view that fills the viewport under a 48px bar, and a 🚪 menu of rooms that open over it through `:target`
 (no script; ✖️ closes). A room is `{"id", "emoji", "title", "text", "html"}`: add one to put something on the page, improve a builder to improve the page.
-`index.html` is exactly that call over the library's builders (`world_html`, `stub_html`, `curl_panel_html`, `theme_switch_html`, `seed_dial_html`, `theme_wall`), and a test
+`index.html` is exactly that call over the library's builders (`world_html`, `stub_html`, `curl_panel_html`, `theme_switch_html`, `seed_dial_html`, `theme_wall`; `dial_html` + `dial.js` is the rotary dial the map's 🔍 uses), and a test
 requires every one of their outputs to be in it. `render_document` takes optional `favicon` / `touch_icon` PNG links for such pages.
 [Motion and clock ownership](docs/world-motion.md) explains Python-generated plans, the browser
 projection, keyboard/reduced-motion controls, and daily countdown/timezone semantics.
@@ -83,7 +83,9 @@ world `avatars` (pick an emoji, a short text or both first) and walking by tap, 
 `land` floors (`land_floor()`, `EXAMPLES["overworld"]`; themes meadow, forest, mountain, desert, coast, castle) make a Dragon Quest-style map of several lands from the same grid by swapping prop kinds (`WORLD_PROPS`, `WORLD_GROUND`, `WORLD_LOOK`). `place` floors (`place_floor()`, `EXAMPLES["cities"]`: Parallel Tokyo, Reverse London, Fake Paris) lay latitude/longitude points on the same grid with roads, a river and its bridges, using the coordinates tool's projection; a spot can `flip` to a second face when pressed or be a `sign` (an electronic or wooden board: a bold dot at a tile corner until touched) ([Places](docs/world-classroom.md#places-real-space-in-miniature)). `"real": true` floors let a visitor put a photo or the camera behind the props (🖼️📷, shown in the page only: not stored, not sent), through the same `ask()` dialog the page exposes. 🌐 speaks the 11 languages of flutter_navigation_basic; the starred places and the language are a light `localStorage` cache (`ui-world:<id>`), nothing else is stored.
 From another repository: `echo '{"schema":"web-ui-world/1","floors":[{"classroom":{}}]}' | python -S web_ui.py --world - > school.html` (`--world -` reads stdin; Node: `node vendor/py_launch.cjs -- web_ui.py --world -`).
 
-Demos, recorded from real Chrome by `python tool/record_demo.py docs/demo --force` ([what each shows](docs/world-classroom.md#demos)):
+`scroll_html(trusted_html, label=, kind="row"|"table")` marks a region that scrolls sideways; `scroll.js` (it binds itself, `bindScroll()`) adds ‹ › buttons, edge fades and, for tables, a second scrollbar on top, and `scroll.css` draws them from the tokens. It came from the parent repository's observatory, so pages do not keep their own copy: `component_parts("scroll", html, label=...)` gives the HTML, the stylesheet and the module from Python.
+
+Demos, recorded from real Chrome by `python tool/record_demo.py docs/demo --force` ([what each shows, and `--timestamp`/`--git-commit`/`--prefix`/`--suffix` for repeated runs](docs/world-classroom.md#demos)):
 
 | Pick a character | Type your own | Arrow keys / WASD |
 |---|---|---|
@@ -92,8 +94,10 @@ Demos, recorded from real Chrome by `python tool/record_demo.py docs/demo --forc
 | <img src="docs/demo/school-tap.gif" width="240" alt="Tapping a chair; the player walks around the desks"> | <img src="docs/demo/school-phone.gif" width="240" alt="On a phone: the pad, dragging the map, 自分の場所 in the ⋯ menu"> | <img src="docs/demo/school-menu.gif" width="240" alt="The ☰ list shows an arrow to each place; tapping 黒板 walks there and the arrow becomes 📍"> |
 | **Header (🏠 ⭐ ⚙️ 🗺️ 🌐)** | **Door to door (footer)** | **Lands (🌱 🌲 ⛰️ 🏜️ 🌊 🏰)** |
 | <img src="docs/demo/school-header.gif" width="240" alt="Star two places on two floors, open the star list, the map tool, the language, home"> | <img src="docs/demo/school-floors.gif" width="240" alt="The footer pulldown moves to the schoolyard and back"> | <img src="docs/demo/overworld-lands.gif" width="240" alt="The pulldown travels across forest, mountain, desert, coast and castle lands; the player walks to the castle town"> |
-| **Real × virtual (🖼️📷)** | | |
-| <img src="docs/demo/overworld-real.gif" width="240" alt="Choosing a photo in the ⋯ menu puts it behind the floor; the player walks over it; 🧹 takes it away"> | | |
+| **Real × virtual (🖼️📷)** | **Parallel Tokyo (🗼 🚉)** | **Reverse London (🎡 🐉)** |
+| <img src="docs/demo/overworld-real.gif" width="240" alt="Choosing a photo in the ⋯ menu puts it behind the floor; the player walks over it; 🧹 takes it away"> | <img src="docs/demo/cities-tokyo.gif" width="240" alt="The 🚉 tool lists the six exits of Tokyo Station; the player walks from Marunouchi to Yaesu, touches the electronic board in the concourse, then walks to Kanda"> | <img src="docs/demo/cities-london.gif" width="240" alt="🎡 opens Reverse London; the player walks from King's Cross over the Thames bridge to Waterloo; the wooden nogard board shows a dot, its text, a dragon, the dot"> |
+| **Fake Paris (🥖 🔥)** | | |
+| <img src="docs/demo/cities-paris.gif" width="240" alt="🥖 opens Fake Paris with a fire in each block; the player walks west from Gare du Nord to Saint-Lazare"> | | |
 
 <img src="docs/demo/school-oneliner.gif" width="320" alt="One command writes the school page; the page opens with the picker">
 
@@ -725,6 +729,66 @@ explicitly loaded `controls.js` binds section selection to text output; native
 controls and disclosure work without JS. See [one-liners and the Markdown
 boundary](docs/python-controls.md).
 
+### Components from Python, in this repository or another
+
+`COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `coordinates`,
+`door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `stub`, `curl`, `showcase`,
+`front`, `world`, `repository-diagnostics`, `table`, `steps`, `scroll`; `components()` lists them as data), and two calls wrap them:
+
+```python
+import web_ui                                   # the vendored copy (vendor/web_ui.py) in another repository
+parts = web_ui.component_parts("dial", "volume", maximum=11, label="Volume")   # {"html", "css", "js"}: place them where your page wants them
+page = web_ui.component_document("dial", "volume", maximum=11, document_title="Volume")  # or one single-file page: bundled_css() + the stylesheet, the HTML, the module inline
+```
+
+`parts["css"]` is what the component needs beyond `bundled_css()`; `parts["js"]` is the module source, which binds its own elements when the page loads it
+(`[data-ui-dial]`, `[data-ui-door]`, …), so a page lists it once with `module_script()` or `render_document(embedded_modules=...)`. A spec goes first for the
+components that take one (`door`, `source`, `stub`, `world`); keyword arguments reach the builder (`heading_level=`, a dial's `minimum=`/`maximum=`/`step=`).
+From Node or a shell, the same calls by name: `python -S web_ui.py --component dial --set name=volume --set maximum=11 --part json` prints the three as
+JSON (`--part page|html|css|js|json`, `--spec FILE` or `--spec -` for a spec, `--set KEY=VALUE` with JSON values, `--component list` for the table);
+from Node, `require("./vendor/py_launch.cjs").run("vendor/web_ui.py", ["--component", ...], {noSite: true}).stdout`.
+`css_source(name)` and `js_source(name)` stay the raw sources by file name; `write_js()` still writes the modules out for pages that link files (`python -S web_ui.py --css-bundle` the stylesheets).
+mcp-toolcall-lab is the model consumer: it vendors `web_ui.py` through the parent repository's `vendor_sync.py` (`vendor-consumers.json`, `vendor.lock.json`)
+and builds its Pokémon panel from `source_panel_html(spec)` + `css_source("source.css")` + `js_source("source.js")`; `component_parts("source", spec)` is the
+same three in one call. `tests/test_components.py` renders every entry.
+
+`repository-diagnostics` is `repository_diagnostics_page()`'s body (`repository_diagnostics_body()`, the page ascii_artist, markdown and
+mcp-toolcall-lab each wrote by hand; markdown already calls the page). `repository-diagnostics.js` stays a classic script (`"classic": true` in the
+table, so `component_document()` inlines `<script>`, not a module) and the mount line is `RepositoryDiagnostics.mount(document, "./repository-diagnostics.json")`:
+one `no-store` GET fills `#metadata`, `#summary` and one escaped card per observation (a link only for an `https://` URL), and a failed GET says
+"Diagnostics could not be loaded."
+
+`table` is the report table Ironmate (`browser_matrix.py`, `image_digest.py`), markdown (`real_world_pages_report.py`) and browser-test-kit
+(`app_digest.py`) each build by hand, and the one the showcase sections already used: `table_html({"columns", "rows", "caption", "row_headers",
+"missing"})` is `table()` (the one table renderer, `.ui-table`) from a JSON spec, in its own horizontal scroller, no script; `table(headers, rows,
+row_headers=, missing=)` takes the same rich cells from Python. A cell is text (line breaks kept), a finite number (right-aligned, `data-num`), `null` (the `missing` text, muted) or
+`{text, href, image: {src, alt, width, height}, status, num}`; `status` is a token written as `data-status` for the page to color, hrefs and image
+sources are relative paths or http(s) addresses. `python -S web_ui.py --component table --spec table.json --part html` from the shell or Node.
+
+`steps` is a runbook (olnm's guide and Component Ops' operations steps had one each, written by hand): `steps_html({"key", "steps": [{id, title,
+command, expect, needs, trouble: {seen, check, fix}}], "statuses", "source"})` gives one card per step with its command (📋 `code_block()`,
+copied by ui.js's `bindCopy`), what to expect, what it needs and what to check when it fails (`<details>`), and a record kept in this browser
+(state, date, actual output, note: records.js drafts under `key:id:field`). The toolbar searches the cards (`filter_input`), filters them by
+state (`status_filter`) and saves or loads the records as JSON (`records_io`); the board's `source` (a commit) goes into the file, and a file
+from another version comes back with its states reset. States are tokens (`todo`, `pass`, `hold`, `block`) with your labels, coloured by the
+theme. A showcase section takes `steps`, `notice` (`notice(text, tone=)`) and `stats` (`stat_tiles`), so a whole operations page, one view per
+method or tab, is one `showcase_document(spec)`.
+
+<img src="docs/demo/component-steps.gif" width="240" alt="A runbook on a phone: copy a command, record a step as verified, filter by state, switch view, reload, import a record from another version and see its state reset">
+
+The rest of an operations page is parts too: `page_heading(title, eyebrow=, lead=, chips=[label | (label, href)], stamp={label, value, note})`
+(the dated stamp beside a heading, such as the day the evidence was checked; a showcase section takes `eyebrow`, `links` and `stamp`),
+`download_json(data, id=, filename=)` (the data the page was built from, carried in the page with every `<` escaped, saved by records.js),
+and `row_statuses=` on `table()` / `data_table()` so `status_filter()` narrows table rows as it does runbook cards.
+
+<img src="docs/demo/component-operations.gif" width="240" alt="An audit view on a phone: a heading with its stamp, a notice, the table narrowed to failed rows by the state filter and by search, then the green and purple themes without a reload">
+
+<img src="docs/demo/component-table.gif" width="320" alt="A browser matrix table on a phone: the themes change its colors, then it scrolls sideways inside its box while the page stays still">
+
+The GIF comes from the browser test (`WEB_UI_GIFS=docs/demo python -m pytest tests/integration/controls_browser.py -k TableBrowserTests`).
+`WEB_UI_GIFS` takes the recorder's output options too, parsed by the same argparse definitions: `WEB_UI_GIFS="runs --suffix=-chromium --timestamp --git-commit"`
+writes `runs/component-table-chromium-20261108T113412Z-288cbed.gif` (the suffix after the base name, then when the run started, in UTC, and the commit it ran, in the order given), so repeated runs keep every file without `--force`.
+
 ### Records boards from Python
 
 `stat_tiles`, `data_table`, `filter_input`, `draft_textarea`, `draft_select`, `records_io` and
@@ -746,3 +810,8 @@ python -S web_ui.py --site .   # writes js/records.js next to it
 See [standard-library discovery commands](docs/unittest-discovery.md) for
 validated `python -S -m unittest discover` recipes, filename/name filtering,
 and the boundary with the full pytest suite.
+
+
+### 運用ビューの状態
+
+手順カードと状態フィルタは共通の `STEP_STATUSES` を使用します。`todo=調査中`、`doing=着手中`、`pass=完了`、`hold=保留`、`block=ブロッカー` の5種類です。従来JSONの4つのトークンと保存キーは維持し、版が違う記録の状態リセットも維持します。GitHubのopen/closedやCI結果とは別の利用者の作業状態です。

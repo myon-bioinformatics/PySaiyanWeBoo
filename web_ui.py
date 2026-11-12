@@ -13,7 +13,7 @@ from collections import Counter, defaultdict; from datetime import date; from de
 
 THEMES = ("modern", "github-like")
 # Token-only candidates: their values live in the Python tokens.css source; not in contract v1 yet.
-CANDIDATE_THEMES = ("green", "red", "blue", "terminal")
+CANDIDATE_THEMES = ("green", "red", "blue", "purple", "terminal")
 # The browser modules, as data: Python is the only source (there are no js/ files). write_js()/--site writes them under DIR/js/.
 _JS = {
     "ui.js": r"""/** Set text-only content. User-controlled values are never interpreted as HTML. */
@@ -22,6 +22,8 @@ export function setText(target,value){const node=typeof target==="string"?docume
 export function prettyJson(value){return JSON.stringify(value,null,2)}
 /** Copy a value as text; falls back to a hidden textarea where the async clipboard is missing (plain http, old WebViews). */
 export async function copyText(value){const text=String(value);try{await navigator.clipboard.writeText(text)}catch(error){const box=document.createElement("textarea");box.value=text;box.setAttribute("readonly","");box.style.cssText="position:fixed;opacity:0";try{document.body.append(box);box.select();if(typeof document.execCommand!=="function"||!document.execCommand("copy"))throw error}finally{box.remove()}}}
+/** [data-ui-copy] copies the <pre> of its .ui-code box with copyText; the button shows data-ui-copied (or data-ui-copy-failed) for a moment. Returns the buttons. */
+export function bindCopy(root=document){const buttons=[...root.querySelectorAll("[data-ui-copy]")];for(const button of buttons){const box=button.closest(".ui-code"),pre=box&&box.querySelector("pre");if(!pre)continue;const label=button.textContent;button.addEventListener("click",async()=>{let ok=true;try{await copyText(pre.textContent)}catch{ok=false}button.textContent=(ok?button.dataset.uiCopied:button.dataset.uiCopyFailed)||label;setTimeout(()=>{button.textContent=label},1600)})}return buttons}
 /** Switch data-ui-theme on <body> with no reload: controls are <select data-ui-theme-switch> or radios named ui-theme. The choice is remembered (localStorage, best effort). Returns the theme in effect. */
 /** Buttons with data-ui-toggle flip aria-pressed on click (memory only: nothing is saved); data-label-on / data-label-off, when present, rename the button. */
 export function bindToggles(root=document){return[...root.querySelectorAll("[data-ui-toggle]")].map(b=>{const sync=()=>{const label=b.getAttribute("aria-pressed")==="true"?b.dataset.labelOn:b.dataset.labelOff;if(label){b.setAttribute("aria-label",label);b.title=label}};b.addEventListener("click",()=>{b.setAttribute("aria-pressed",String(b.getAttribute("aria-pressed")!=="true"));sync()});sync();return b})}
@@ -31,26 +33,38 @@ export function observeLit(targets,{threshold=0.4,root=null}={}){const nodes=typ
 /** Click-to-enlarge for <a href="full.png"><img alt="..."></a> items inside [data-ui-lightbox]: one <dialog>; Esc, the backdrop and the close button shut it, arrows, buttons and a 48px swipe step through. Returns {open, close, dialog}, or null without items or <dialog>. */
 export function bindLightbox(root=document){const items=[...root.querySelectorAll("[data-ui-lightbox] a[href]")];if(!items.length||typeof HTMLDialogElement==="undefined")return null;const dialog=document.createElement("dialog");dialog.className="ui-lightbox";dialog.setAttribute("aria-label","Image viewer");dialog.innerHTML='<img alt=""><p class="ui-muted"></p><div class="ui-lightbox-bar"><button class="ui-button" type="button" data-step="-1" aria-label="Previous">\u2190</button><button class="ui-button" type="button" data-step="1" aria-label="Next">\u2192</button><button class="ui-button" type="button" data-step="0" aria-label="Close">\u00d7</button></div>';const img=dialog.querySelector("img"),note=dialog.querySelector("p");let at=0,x=null;const show=i=>{at=(i+items.length)%items.length;const a=items[at],t=a.querySelector("img");img.src=a.href;img.alt=note.textContent=t?t.alt:""};const open=i=>{show(i);if(!dialog.open)dialog.showModal()};items.forEach((a,i)=>a.addEventListener("click",e=>{e.preventDefault();open(i)}));dialog.addEventListener("click",e=>{const b=e.target.closest("[data-step]");if(b){const s=Number(b.dataset.step);if(s)show(at+s);else dialog.close()}else if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close()}});dialog.addEventListener("keydown",e=>{if(e.key==="ArrowLeft")show(at-1);if(e.key==="ArrowRight")show(at+1)});dialog.addEventListener("pointerdown",e=>{x=e.clientX});dialog.addEventListener("pointerup",e=>{if(x!==null&&Math.abs(e.clientX-x)>=48)show(at+(e.clientX<x?1:-1));x=null});document.body.append(dialog);return{open,close:()=>dialog.close(),dialog}}
 """,
-    "records.js": r"""/** Record boards: a text filter over table rows, per-field drafts kept in localStorage (best effort), and JSON export/import of those drafts. No fetch; values are text, never HTML. */
+    "records.js": r"""/** Record boards: a text and a status filter over table rows or cards, per-field drafts kept in localStorage (best effort), each step's state on its card, and JSON export/import of those drafts (tied to a source version when the board names one). No fetch; values are text, never HTML. */
 const KEY=/^[A-Za-z0-9_.:/#@-]{1,200}$/;
 function storage(){try{const s=globalThis.localStorage;s.getItem("");return s}catch{return null}}
 function value(field){return field.type==="checkbox"?(field.checked?"1":""):field.value}
 function assign(field,text){if(field.type==="checkbox")field.checked=text==="1";else field.value=text;field.dispatchEvent(new Event("input",{bubbles:true}))}
 /** Hide rows whose text does not contain the query (case-insensitive); returns the number still shown. */
-export function filterRows(table,query){const q=String(query||"").trim().toLowerCase();let shown=0;for(const body of table.tBodies)for(const row of body.rows){const hit=!q||row.textContent.toLowerCase().includes(q);row.hidden=!hit;if(hit)shown++}return shown}
-/** input[data-ui-filter="#table"] filters that table as you type; data-ui-filter-count="#out" receives the shown count. */
-export function bindFilter(root=document){return[...root.querySelectorAll("input[data-ui-filter]")].map(input=>{const table=root.querySelector(input.dataset.uiFilter);if(!table)return null;const out=input.dataset.uiFilterCount?root.querySelector(input.dataset.uiFilterCount):null;const run=()=>{const n=filterRows(table,input.value);if(out)out.textContent=String(n)};input.addEventListener("input",run);run();return run}).filter(Boolean)}
+function items(target){return target.tBodies?[...target.tBodies].flatMap(body=>[...body.rows]):[...target.querySelectorAll("[data-ui-item]")]}
+/** Show the items of target (table rows, or its [data-ui-item] elements) whose text contains the query and, when status is given, whose data-status is it; returns the number still shown. */
+export function filterItems(target,query="",status=""){const q=String(query||"").trim().toLowerCase();let shown=0;for(const item of items(target)){const hit=(!q||item.textContent.toLowerCase().includes(q))&&(!status||item.dataset.status===status);item.hidden=!hit;if(hit)shown++}return shown}
+/** Hide rows whose text does not contain the query (case-insensitive); returns the number still shown. */
+export function filterRows(table,query){return filterItems(table,query)}
+/** input[data-ui-filter="#target"] (text) and select[data-ui-filter-status="#target"] (status) filter one target together; data-ui-filter-count="#out" receives the shown count. One run function per target. */
+export function bindFilter(root=document){const targets=new Map();for(const control of[...root.querySelectorAll("input[data-ui-filter]"),...root.querySelectorAll("select[data-ui-filter-status]")]){const target=root.querySelector(control.dataset.uiFilter||control.dataset.uiFilterStatus);if(!target)continue;const t=targets.get(target)||{text:null,status:null,count:null};targets.set(target,t);if(control.dataset.uiFilterStatus!==undefined)t.status=control;else t.text=control;if(control.dataset.uiFilterCount)t.count=root.querySelector(control.dataset.uiFilterCount)}return[...targets].map(([target,t])=>{const run=()=>{const n=filterItems(target,t.text?t.text.value:"",t.status?t.status.value:"");if(t.count)t.count.textContent=String(n)};if(t.text)t.text.addEventListener("input",run);if(t.status)t.status.addEventListener("change",run);target.addEventListener("ui-status",run);run();return run})}
+/** select[data-ui-status] (a step's state) writes its value to the closest [data-ui-item] as data-status and its option's text to that item's [data-ui-status-tag], then tells the filters (event ui-status). */
+export function bindStatus(root=document){const fields=[...root.querySelectorAll("select[data-ui-status]")];for(const field of fields){const item=field.closest?field.closest("[data-ui-item]"):null;if(!item)continue;const tag=item.querySelector("[data-ui-status-tag]");const sync=()=>{item.dataset.status=field.value;const option=field.selectedOptions&&field.selectedOptions[0];if(tag)tag.textContent=option?option.textContent:field.value;item.dispatchEvent(new Event("ui-status",{bubbles:true}))};field.addEventListener("input",sync);field.addEventListener("change",sync);sync()}return fields}
 /** Fields with data-ui-draft="key" restore from and save to localStorage under scope:key. Returns the bound fields. */
 export function bindDrafts(root=document,{scope="web-ui-drafts"}={}){const store=storage();const fields=[...root.querySelectorAll("[data-ui-draft]")].filter(f=>KEY.test(f.dataset.uiDraft));for(const field of fields){const key=scope+":"+field.dataset.uiDraft;const saved=store?store.getItem(key):null;if(saved!==null)assign(field,saved);field.addEventListener("input",()=>{try{if(store)store.setItem(key,value(field))}catch{}})}return fields}
 /** Non-empty draft values keyed by their data-ui-draft name. */
 export function collectDrafts(root=document){const out={};for(const field of root.querySelectorAll("[data-ui-draft]")){const text=value(field);if(text!=="")out[field.dataset.uiDraft]=text}return out}
 /** Apply {key: text} to the matching draft fields; unknown keys are ignored. Returns the number applied. */
 export function applyDrafts(root,drafts){let n=0;if(!drafts||typeof drafts!=="object")return 0;for(const field of root.querySelectorAll("[data-ui-draft]")){const text=drafts[field.dataset.uiDraft];if(typeof text==="string"){assign(field,text);n++}}return n}
-/** [data-ui-export] downloads the drafts as JSON; input[type=file][data-ui-import] reads such a file back. */
-export function bindRecordsIO(root=document,{filename="records.json"}={}){for(const button of root.querySelectorAll("[data-ui-export]"))button.addEventListener("click",()=>{const blob=new Blob([JSON.stringify({schema:"web-ui-drafts/1",exported:new Date().toISOString(),drafts:collectDrafts(root)},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=button.dataset.uiExport||filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)});for(const input of root.querySelectorAll("input[type=file][data-ui-import]"))input.addEventListener("change",async()=>{const file=input.files&&input.files[0];if(!file)return;try{const data=JSON.parse(await file.text());applyDrafts(root,data&&data.drafts?data.drafts:data)}catch{}input.value=""})}
-/** Bind everything inside root; pages mark the board with data-ui-records so loading the module is enough. */
-export function mount(root=document,options={}){bindFilter(root);bindDrafts(root,options);bindRecordsIO(root,options);return root}
-if(typeof document!=="undefined"&&document.querySelector("[data-ui-records]")){const start=()=>mount(document);if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start,{once:true});else start()}
+/** Apply a file's drafts. When the board names its source (data-ui-records-source, a commit) and the file names another, the states (select[data-ui-status]) go back to their first option: records of another version are to be checked again. Returns "loaded", "stale" or "bad". */
+export function importDrafts(root,data){if(!data||typeof data!=="object"||Array.isArray(data))return"bad";const drafts=data.drafts&&typeof data.drafts==="object"?data.drafts:data;const board=root.matches&&root.matches("[data-ui-records-source]")?root:root.querySelector("[data-ui-records-source]");const source=board?board.dataset.uiRecordsSource:"";if(!applyDrafts(root,drafts))return"bad";if(!source||data.source===source)return"loaded";for(const field of root.querySelectorAll("select[data-ui-status][data-ui-draft]"))if(field.options&&field.options.length)assign(field,field.options[0].value);return"stale"}
+/** [data-ui-export] downloads the drafts as JSON (with the board's source when it names one); input[type=file][data-ui-import] reads such a file back; [data-ui-records-message] says how it went. */
+export function bindRecordsIO(root=document,{filename="records.json"}={}){const board=root.matches&&root.matches("[data-ui-records-source]")?root:root.querySelector("[data-ui-records-source]");const source=board?board.dataset.uiRecordsSource:undefined;const say=state=>{for(const out of root.querySelectorAll("[data-ui-records-message]")){const text=out.getAttribute("data-ui-msg-"+state);if(text!==null)out.textContent=text}};for(const button of root.querySelectorAll("[data-ui-export]"))button.addEventListener("click",()=>downloadText(button.dataset.uiExport||filename,JSON.stringify({schema:"web-ui-drafts/1",exported:new Date().toISOString(),...(source?{source}:{}),drafts:collectDrafts(root)},null,2)));for(const input of root.querySelectorAll("input[type=file][data-ui-import]"))input.addEventListener("change",async()=>{const file=input.files&&input.files[0];if(!file)return;let state="bad";try{state=importDrafts(root,JSON.parse(await file.text()))}catch{}say(state);input.value=""})}
+/** Save text as a file in the browser (a Blob link, revoked after the click). */
+export function downloadText(filename,text,type="application/json"){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+/** [data-ui-download="name.json"] saves the text of its data-ui-download-source (a <script type="application/json">) as that file. Returns the buttons. */
+export function bindDownloads(root=document){const buttons=[...root.querySelectorAll("[data-ui-download]")];for(const button of buttons){const source=root.querySelector(button.dataset.uiDownloadSource||"#none");if(source)button.addEventListener("click",()=>downloadText(button.dataset.uiDownload,source.textContent))}return buttons}
+/** Bind everything inside root; pages mark the board with data-ui-records (or carry a data download) so loading the module is enough. */
+export function mount(root=document,options={}){bindDrafts(root,options);bindStatus(root);bindFilter(root);bindRecordsIO(root,options);bindDownloads(root);return root}
+if(typeof document!=="undefined"&&(document.querySelector("[data-ui-records]")||document.querySelector("[data-ui-download]"))){const start=()=>mount(document);if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start,{once:true});else start()}
 """,
     "stub.js": r"""import{setText,prettyJson}from"./ui.js";
 /**
@@ -345,7 +359,8 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
     return '<article class="ui-card"><h3>' + esc(item && item.kind || "resource") + '</h3>' +
       '<p class="ui-tag">' + esc(item && item.status || "unknown") + '</p>' +
       '<p class="ui-muted">' + status + '</p>' +
-      (url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + '</a>' : '') + '</article>';
+      // A link only for an https:// address; anything else is shown as text.
+      (/^https:\/\//.test(url) ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + '</a>' : url ? '<span>' + esc(url) + '</span>' : '') + '</article>';
   }
   function summaryLine(resolver) {
     return "Auth: " + (resolver && resolver.auth || "unknown") + " \u00b7 Status: " + (resolver && resolver.status || "unknown");
@@ -897,7 +912,8 @@ _CSS = {
         ".ui-shell-tags{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 24px}"
         ".ui-shell-cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(256px,1fr))}"
         ".ui-shell-card{display:flex;gap:16px;margin:0;min-width:0}.ui-shell-card h3{margin:0 0 8px;font-size:1rem;font-weight:400}.ui-shell-card p{margin:0;overflow-wrap:anywhere}"
-        ".ui-shell-table{width:100%;border-collapse:collapse}.ui-shell-table th,.ui-shell-table td{padding:8px 16px;border-bottom:1px solid var(--ui-border);text-align:left}"
+        ".ui-table td[data-num],.ui-table th[data-num]{text-align:right;font-variant-numeric:tabular-nums}.ui-table td img,.ui-table th img{display:block;max-width:none;height:auto;margin:0 0 8px}"
+        ".ui-table td[data-missing]{color:var(--ui-muted)}.ui-table td{white-space:pre-line}"
         ".ui-shell-scroll{overflow-x:auto}.ui-shell-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
         ".ui-bottom-nav{display:flex;border-top:1px solid var(--ui-border);background:var(--ui-panel)}"
         ".ui-bottom-item{flex:1;flex-direction:column;justify-content:center;gap:0;min-height:64px;padding:8px 0;text-align:center}"
@@ -971,7 +987,15 @@ body[data-ui-theme="github-like"] .ui-tag{
 _CSS["records.css"] = ("@layer components{.ui-records table.ui-table{border-collapse:collapse;width:100%;margin:8px 0}.ui-records .ui-table th,.ui-records .ui-table td{border:thin solid var(--ui-border);padding:8px;text-align:left;vertical-align:top;overflow-wrap:anywhere}"
                        ".ui-records .ui-table caption{text-align:left;font-weight:600;padding:8px 0}.ui-records .ui-table tr[hidden]{display:none}.ui-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin:8px 0}"
                        ".ui-stat .ui-stat-value{display:block;font-size:32px;line-height:40px}.ui-stat .ui-stat-label{display:block;color:var(--ui-muted)}.ui-stat .ui-stat-hint{display:block;font-size:.75rem;color:var(--ui-muted)}"
-                       ".ui-records-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}.ui-records-bar .ui-input{flex:1 1 240px}.ui-records-io{display:inline-flex;gap:8px}.ui-records [data-ui-draft]{width:100%;box-sizing:border-box}}")
+                       ".ui-records-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}.ui-records-bar .ui-input{flex:1 1 240px}.ui-records-io{display:inline-flex;gap:8px}.ui-records [data-ui-draft]{width:100%;box-sizing:border-box}"
+                       ".ui-notice{border-left:8px solid var(--ui-border);padding:8px 16px;margin:8px 0;background:var(--ui-panel)}.ui-notice[data-tone=warn]{border-left-color:var(--ui-accent)}.ui-notice[data-tone=block]{border-left-color:var(--ui-danger)}"
+                       ".ui-code{position:relative;margin:8px 0}.ui-code pre{margin:0;padding:16px;padding-right:112px;white-space:pre-wrap;overflow-wrap:anywhere}.ui-code [data-ui-copy]{position:absolute;top:8px;right:8px}"
+                       ".ui-steps{display:grid;gap:16px}.ui-step[hidden]{display:none}.ui-step-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}.ui-step-head h3{margin:0}"
+                       ".ui-step[data-status=doing] [data-ui-status-tag]{border-style:dashed;color:var(--ui-accent)}.ui-step[data-status=pass] [data-ui-status-tag]{color:var(--ui-accent)}.ui-step[data-status=block] [data-ui-status-tag]{color:var(--ui-danger)}.ui-step[data-status=todo] [data-ui-status-tag]{color:var(--ui-muted)}.ui-step[data-status=hold] [data-ui-status-tag]{border-style:dashed}"
+                       ".ui-facts{display:grid;grid-template-columns:minmax(96px,max-content) 1fr;gap:8px 16px;margin:8px 0}.ui-facts dt{color:var(--ui-muted)}.ui-facts dd{margin:0;white-space:pre-line}"
+                       ".ui-step-record{display:grid;gap:8px;margin-top:8px}.ui-step-record h4{margin:0}"
+                       ".ui-heading{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;justify-content:space-between;margin:8px 0 16px}.ui-heading h1{margin:0}.ui-eyebrow{color:var(--ui-muted);font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;margin:0 0 8px}.ui-heading-lead{margin:8px 0 0;color:var(--ui-muted)}.ui-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.ui-chips>*{border:thin solid var(--ui-border);border-radius:var(--ui-radius);padding:0 8px;color:var(--ui-fg);text-decoration:none}.ui-chips>a:hover{border-color:var(--ui-accent)}.ui-stamp{display:grid;gap:8px;min-width:160px;border:thin dashed var(--ui-border);border-radius:var(--ui-radius);padding:8px 16px;background:var(--ui-panel)}.ui-stamp b{font-size:1.25rem;color:var(--ui-accent)}.ui-stamp small{color:var(--ui-muted);white-space:pre-line}.ui-table tr[hidden]{display:none}"
+                       "@media(max-width:640px){.ui-facts{grid-template-columns:1fr}.ui-code pre{padding-right:16px;padding-top:56px}}}")
 
 
 _CSS_CORE = ("tokens.css", "base.css", "components.css")
@@ -1468,20 +1492,35 @@ def repository_diagnostics_page(
     if icon is not None:
         _require_local_or_https(icon, label="icon", allow_query=False)
     title = f"{repository} repository diagnostics"
-    picture = f'<img src="{escape(icon, quote=True)}" width="80" height="80" alt="{escape(repository, quote=True)} icon">' if icon else ""
-    body = (
-        '<main class="ui-page">' + picture
-        + f'<h1 class="ui-title">{escape(title)}</h1><p class="ui-muted">{escape(description)}</p>'
-        + '<div id="metadata"></div>'
-        + '<section class="ui-panel"><h2>Public URL observations</h2>'
-        + '<p id="summary" class="ui-muted">Loading\u2026</p><div id="observations" class="ui-grid"></div></section>'
-        + f'<p><a href="./{escape(json_name, quote=True)}">JSON</a> \u00b7 <a href="./{escape(jsonl_name, quote=True)}">JSONL</a></p>'
-        + "</main>"
-        + classic_script(js_source("repository-diagnostics.js"))
-        + classic_script(f'RepositoryDiagnostics.mount(document, "./{json_name}");')
-    )
+    body = ('<main class="ui-page">' + repository_diagnostics_body(repository, json_name=json_name, jsonl_name=jsonl_name, icon=icon, description=description)
+            + "</main>" + classic_script(js_source("repository-diagnostics.js")) + classic_script(f'RepositoryDiagnostics.mount(document, "./{json_name}");'))
     return render_document(trusted_html=body, title=title, theme=theme, css=bundled_css(),
                            favicon=favicon, touch_icon=icon)
+
+
+def repository_diagnostics_body(
+    repository: str,
+    *,
+    json_name: str = "repository-diagnostics.json",
+    jsonl_name: str = "repository-diagnostics.jsonl",
+    icon: str | None = "./icon.png",
+    description: str = "Canonical metadata plus anonymous public GitHub observations.",
+) -> str:
+    """The body of ``repository_diagnostics_page()``: icon, title, ``#metadata``, ``#summary`` and ``#observations`` (filled by
+    ``RepositoryDiagnostics.mount(document, "./" + json_name)``) and the JSON / JSONL links. For a page of your own; COMPONENTS calls it too."""
+    if not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("repository must be owner/name")
+    for name, label in ((json_name, "json_name"), (jsonl_name, "jsonl_name")):
+        _require_local_script_path(name, label=label)
+    if icon is not None:
+        _require_local_or_https(icon, label="icon", allow_query=False)
+    title = f"{repository} repository diagnostics"
+    picture = f'<img src="{escape(icon, quote=True)}" width="80" height="80" alt="{escape(repository, quote=True)} icon">' if icon else ""
+    return (picture + f'<h1 class="ui-title">{escape(title)}</h1><p class="ui-muted">{escape(description)}</p>'
+            + '<div id="metadata"></div>'
+            + '<section class="ui-panel"><h2>Public URL observations</h2>'
+            + '<p id="summary" class="ui-muted">Loading\u2026</p><div id="observations" class="ui-grid"></div></section>'
+            + f'<p><a href="./{escape(json_name, quote=True)}">JSON</a> \u00b7 <a href="./{escape(jsonl_name, quote=True)}">JSONL</a></p>')
 
 
 def _element_id(value: str) -> str:
@@ -1769,20 +1808,49 @@ def catalog_document(spec: Any, *, theme: str = "modern") -> str:
     return render_document(title=title, theme=theme, css=css, trusted_html=body)
 
 def table(headers: Sequence[str], rows: Sequence[Sequence[Any]], *, caption: str | None = None, id: str | None = None,
-          trusted_html: bool = False, row_classes: Sequence[str | None] | None = None) -> str:
+          trusted_html: bool = False, row_classes: Sequence[str | None] | None = None, row_headers: bool = False,
+          missing: str | None = None, row_statuses: Sequence[str | None] | None = None) -> str:
     """A ``.ui-table``: header cells and rows, every cell escaped unless ``trusted_html`` (then cells are HTML the
     caller already built, e.g. an ``<img>``). ``row_classes`` gives one class (or None) per row, such as ``ui-pass`` /
-    ``ui-fail``; the status classes ``ui-changed`` / ``ui-pass`` / ``ui-fail`` are styled by components.css on any element (a cell, a row, a ``.ui-tag`` badge)."""
+    ``ui-fail``; the status classes ``ui-changed`` / ``ui-pass`` / ``ui-fail`` are styled by components.css on any element (a cell, a row, a ``.ui-tag`` badge).
+
+    For report pages (a browser matrix, a parity report): ``row_headers`` makes each row's first cell its ``<th scope="row">``; ``missing`` is
+    the text of a ``None`` cell (marked ``data-missing``, muted; without it a ``None`` cell stays empty); and a cell may be
+    ``{text, href, image: {src, alt, width, height}, status, num}`` (``href`` and ``src`` relative or http(s), ``status`` a token written as
+    ``data-status``, ``num`` right-aligns it). ``row_statuses`` gives each row a state token (``data-status`` on its ``<tr>``) for
+    ``status_filter()``. ``table_html(spec)`` is the same table from a JSON spec."""
     if row_classes is not None and len(row_classes) != len(rows):
         raise ValueError("row_classes must have one entry per row")
-    cell = (lambda value: str(value)) if trusted_html else (lambda value: escape("" if value is None else str(value)))
+    marks = _row_statuses(row_statuses, len(rows))
+
+    def cell(value: Any, header: bool = False) -> str:
+        tag = "th" if header else "td"
+        scope = ' scope="row"' if header else ""
+        if trusted_html:
+            return f"<{tag}{scope}>{value}</{tag}>"
+        if value is None and missing is not None and not header:
+            return f"<td data-missing>{escape(missing)}</td>"
+        if not isinstance(value, dict):
+            return f"<{tag}{scope}>{escape('' if value is None else str(value))}</{tag}>"
+        part = _table_cell(value)
+        attrs = (f' data-status="{part["status"]}"' if "status" in part else "") + (" data-num" if part["num"] else "")
+        image = ""
+        if "image" in part:
+            size = "".join(f' {k}="{part["image"][k]}"' for k in ("width", "height") if k in part["image"])
+            image = f'<img src="{escape(part["image"]["src"], quote=True)}" alt="{escape(part["image"]["alt"], quote=True)}"{size} loading="lazy">'
+        inner = image + escape(part["text"])
+        if "href" in part:
+            inner = f'<a href="{escape(part["href"], quote=True)}">{inner}</a>'
+        return f"<{tag}{scope}{attrs}>{inner}</{tag}>"
+
     head = "".join(f"<th scope=\"col\">{escape(str(h))}</th>" for h in headers)
     body = []
     for index, row in enumerate(rows):
         if len(row) != len(headers):
             raise ValueError(f"row {index} has {len(row)} cells, expected {len(headers)}")
         cls = row_classes[index] if row_classes else None
-        body.append((f'<tr class="{escape(cls, quote=True)}">' if cls else "<tr>") + "".join(f"<td>{cell(v)}</td>" for v in row) + "</tr>")
+        body.append(f"<tr{marks[index]}" + (f' class="{escape(cls, quote=True)}">' if cls else ">")
+                    + "".join(cell(v, row_headers and i == 0) for i, v in enumerate(row)) + "</tr>")
     attrs = f' id="{_element_id(id)}"' if id else ""
     return (f'<table class="ui-table"{attrs}>' + (f"<caption>{escape(caption)}</caption>" if caption else "")
             + f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>")
@@ -1855,12 +1923,25 @@ def stat_tiles(items: tuple[tuple[str, object], ...] | tuple[tuple[str, object, 
     return f'<div class="ui-grid ui-stats">{"".join(tiles)}</div>'
 
 
+def _row_statuses(row_statuses: Sequence[str | None] | None, count: int) -> list[str]:
+    """`` data-status="token"`` (or "") per row; tokens are lowercase (a-z, 0-9, -), up to 32 characters."""
+    if row_statuses is None:
+        return [""] * count
+    if len(row_statuses) != count:
+        raise ValueError("row_statuses must have one entry per row")
+    if any(s is not None and (not isinstance(s, str) or not _TABLE_STATUS.fullmatch(s)) for s in row_statuses):
+        raise ValueError("a row status is a lowercase token (a-z, 0-9, -) of up to 32 characters")
+    return [f' data-status="{s}"' if s else "" for s in row_statuses]
+
+
 def data_table(columns: tuple[str, ...], rows, *, id: str, caption: str | None = None,
-               trusted_cells: bool = False, row_ids: tuple[str, ...] | None = None) -> str:
+               trusted_cells: bool = False, row_ids: tuple[str, ...] | None = None,
+               row_statuses: Sequence[str | None] | None = None) -> str:
     """Escaped table (.ui-table) for records.js filtering; every row needs one cell per column.
 
     ``trusted_cells`` inserts cell strings verbatim (caller-audited HTML such as ``badge()`` output).
     ``row_ids`` sets ``data-ui-row`` on each body row so scripts can address one record.
+    ``row_statuses`` gives each row a state token (``data-status``) for ``status_filter()``.
     """
     identity = _element_id(id)
     if not columns:
@@ -1873,8 +1954,9 @@ def data_table(columns: tuple[str, ...], rows, *, id: str, caption: str | None =
     cell = (lambda text: str(text)) if trusted_cells else (lambda text: escape(str(text)))
     head = "".join(f"<th scope=\"col\">{escape(column)}</th>" for column in columns)
     body = []
+    marks = _row_statuses(row_statuses, len(rows))
     for index, row in enumerate(rows):
-        marker = f' data-ui-row="{escape(row_ids[index], quote=True)}"' if row_ids is not None else ""
+        marker = (f' data-ui-row="{escape(row_ids[index], quote=True)}"' if row_ids is not None else "") + marks[index]
         body.append(f"<tr{marker}>" + "".join(f"<td>{cell(text)}</td>" for text in row) + "</tr>")
     title = f"<caption>{escape(caption)}</caption>" if caption else ""
     return (f'<table class="ui-table" id="{identity}">{title}<thead><tr>{head}</tr></thead>'
@@ -1919,9 +2001,186 @@ def records_io(*, export_label: str = "↓ JSON", import_label: str = "↑ JSON"
             f'<input type="file" accept="application/json" data-ui-import hidden></label></span>')
 
 
-def records_board(trusted_html: str, *, id: str = "records") -> str:
-    """Section marked data-ui-records so that loading records.js binds its filters, drafts and JSON controls."""
-    return f'<section class="ui-records" id="{_element_id(id)}" data-ui-records>{trusted_html}</section>'
+def records_board(trusted_html: str, *, id: str = "records", source: str | None = None) -> str:
+    """Section marked data-ui-records so that loading records.js binds its filters, drafts and JSON controls. ``source`` (a commit or version) goes
+    into every exported file; a file from another source is still read, but its states (``select[data-ui-status]``) go back to their first option."""
+    tag = ""
+    if source is not None:
+        if not isinstance(source, str) or not re.fullmatch(r"[A-Za-z0-9_.:/+-]{1,80}", source):
+            raise ValueError("source is a commit or version of up to 80 plain characters")
+        tag = f' data-ui-records-source="{source}"'
+    return f'<section class="ui-records" id="{_element_id(id)}" data-ui-records{tag}>{trusted_html}</section>'
+
+
+NOTICE_TONES = ("info", "warn", "block")
+STEP_STATUSES = (("todo", "調査中"), ("doing", "着手中"), ("pass", "完了"), ("hold", "保留"), ("block", "ブロッカー"))   # a step's state; the first is where every step starts
+STEP_LABELS = {"expect": "期待される出力", "needs": "前提条件", "trouble": "失敗時の確認", "seen": "失敗例", "check": "確認ポイント", "fix": "対処",
+               "record": "再現記録", "status": "状態", "date": "検証日", "actual": "実際の出力・終了コード", "note": "環境・バージョン・備考",
+               "copy": "コピー", "copied": "コピー済み", "copy_failed": "コピーできませんでした", "search": "検索", "filter": "状態", "all": "すべて",
+               "export": "記録を JSON で保存", "import": "記録を読み込む", "loaded": "記録を読み込みました。", "stale": "別の版の記録を読み込み、状態を戻しました。",
+               "bad": "記録を読み込めません。このページから保存した JSON を選んでください。", "empty": "該当する手順はありません。"}
+
+
+def notice(text: str, *, tone: str = "info", title: str | None = None) -> str:
+    """A callout (``.ui-notice``): plain text with an optional bold title; ``tone`` is ``info``, ``warn`` or ``block`` (the edge's colour)."""
+    if tone not in NOTICE_TONES:
+        raise ValueError("tone is info, warn or block")
+    head = f"<b>{escape(title)}</b> " if title else ""
+    return f'<p class="ui-notice" data-tone="{tone}">{head}{escape(text)}</p>'
+
+
+def page_heading(title: str, *, eyebrow: str | None = None, lead: str | None = None, chips: Sequence[str | tuple[str, str]] = (),
+                 stamp: dict[str, str] | None = None, level: int = 1, id: str | None = None) -> str:
+    """A page or view heading (``.ui-heading``): an ``eyebrow`` line above the title, a ``lead`` below, ``chips`` (plain labels, or
+    ``(label, href)`` links: relative or http(s)) and a ``stamp`` beside it, ``{"label", "value", "note"}`` such as the date the evidence
+    was checked (``note`` keeps its line breaks). Everything is escaped. The Observatory and Component Ops headings, without their CSS."""
+    if level not in (1, 2, 3):
+        raise ValueError("level is 1, 2 or 3")
+    ident = f' id="{_element_id(id)}"' if id else ""
+    parts = [f'<p class="ui-eyebrow">{escape(eyebrow)}</p>' if eyebrow else "", f"<h{level}{ident}>{escape(title)}</h{level}>",
+             f'<p class="ui-heading-lead">{escape(lead)}</p>' if lead else ""]
+    links = []
+    for chip in chips:
+        if isinstance(chip, str):
+            links.append(f"<span>{escape(chip)}</span>")
+        elif isinstance(chip, (tuple, list)) and len(chip) == 2 and all(isinstance(x, str) for x in chip):
+            links.append(f'<a href="{escape(_door_href(chip[1]), quote=True)}">{escape(chip[0])}</a>')
+        else:
+            raise ValueError("a chip is a label or a (label, href) pair")
+    if links:
+        parts.append('<div class="ui-chips">' + "".join(links) + "</div>")
+    aside = ""
+    if stamp is not None:
+        if not isinstance(stamp, dict) or set(stamp) - {"label", "value", "note"} or not isinstance(stamp.get("value"), str) or not stamp["value"] \
+                or any(not isinstance(v, str) or len(v) > 200 for v in stamp.values()):
+            raise ValueError("a stamp is {label, value, note} of text, with a value")
+        aside = ('<aside class="ui-stamp">' + (f'<small>{escape(stamp["label"])}</small>' if stamp.get("label") else "")
+                 + f'<b>{escape(stamp["value"])}</b>' + (f'<small>{escape(stamp["note"])}</small>' if stamp.get("note") else "") + "</aside>")
+    return '<header class="ui-heading"><div>' + "".join(parts) + "</div>" + aside + "</header>"
+
+
+def download_json(data: Any, *, id: str, filename: str, label: str = "JSON を保存 ↓") -> str:
+    """A button that saves ``data`` (anything ``json.dumps`` takes) as ``filename``: the data travels inside the page as
+    ``<script type="application/json">`` (every ``<`` written as ``\\u003c``, so it can neither close the tag nor open a comment)
+    and records.js downloads it.
+    For data the page was built from (an audit snapshot, the decisions shown); what a reader types is ``records_io()``'s."""
+    if not isinstance(filename, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}\.json", filename):
+        raise ValueError("filename is a plain name ending in .json")
+    text = json.dumps(data, ensure_ascii=False, indent=2).replace("<", "\\u003c")
+    source = _element_id(id)
+    return (f'<script type="application/json" id="{source}">{text}</script>'
+            f'<button class="ui-button" type="button" data-ui-download="{filename}" data-ui-download-source="#{source}">{escape(label)}</button>')
+
+
+def code_block(text: str, *, copy_label: str = STEP_LABELS["copy"], copied_label: str = STEP_LABELS["copied"],
+               failed_label: str = STEP_LABELS["copy_failed"]) -> str:
+    """A command or code as escaped text in a ``<pre>``, with a button ui.js's ``bindCopy`` copies it with. Without JS the text stays selectable."""
+    return (f'<div class="ui-code"><pre class="ui-output">{escape(text)}</pre><button class="ui-button" type="button" data-ui-copy '
+            f'data-ui-copied="{escape(copied_label, quote=True)}" data-ui-copy-failed="{escape(failed_label, quote=True)}">{escape(copy_label)}</button></div>')
+
+
+def draft_input(*, key: str, id: str, label: str, value: str = "", type: str = "text") -> str:
+    """input_field() whose value records.js keeps as a browser-local draft under ``key`` (a date, a version, a short note)."""
+    return input_field(id=id, label=label, value=value, type=type).replace("<input ", f'<input data-ui-draft="{_draft_key(key)}" ', 1)
+
+
+def status_filter(target_id: str, statuses: Sequence[tuple[str, str]] = STEP_STATUSES, *, id: str = "status-filter",
+                  label: str = STEP_LABELS["filter"], all_label: str = STEP_LABELS["all"]) -> str:
+    """A select records.js binds to ``#target_id``: only the items (rows or ``[data-ui-item]`` cards) whose ``data-status`` is the chosen one stay shown."""
+    return select((("", all_label), *statuses), id=id, label=label).replace("<select ", f'<select data-ui-filter-status="#{_element_id(target_id)}" ', 1)
+
+
+_STEP_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
+
+
+def _step_text(value: Any, name: str, limit: int = 1000, required: bool = False) -> str:
+    if value is None and not required:
+        return ""
+    if not isinstance(value, str) or (required and not value.strip()) or len(value) > limit:
+        raise ValueError(f"{name} is text of up to {limit} characters" + (" (required)" if required else ""))
+    return value
+
+
+def steps_validate(spec: Any) -> dict[str, Any]:
+    """Checked copy of a runbook: ``key`` (the drafts' prefix, such as ``olnm/uvfile``), ``steps`` (1..32 of ``id``, ``title``, ``command`` and
+    optional ``expect``, ``needs`` and ``trouble: {seen, check, fix}``), optional ``statuses`` (``[[token, label], ...]`` over
+    todo/doing/pass/hold/block, the first is the start), ``source`` (the version the records belong to), ``record`` (default true: a state, a date,
+    the actual output and a note per step), ``toolbar`` (default true: search, state filter, JSON save/load) and ``labels`` (STEP_LABELS keys)."""
+    if not isinstance(spec, dict) or set(spec) - {"key", "steps", "statuses", "source", "record", "toolbar", "labels"}:
+        raise ValueError("a runbook is {key, steps, statuses, source, record, toolbar, labels}")
+    key = _draft_key(spec.get("key", ""))
+    statuses = [tuple(pair) for pair in spec.get("statuses", STEP_STATUSES)]
+    tokens = [t for t, _ in statuses] if all(len(pair) == 2 for pair in statuses) else []
+    if not 2 <= len(statuses) <= len(STEP_STATUSES) or len(set(tokens)) != len(statuses) or set(tokens) - {t for t, _ in STEP_STATUSES} \
+            or any(not isinstance(label, str) or not label or len(label) > 40 for _, label in statuses):
+        raise ValueError("statuses are 2..5 [token, label] pairs over todo, doing, pass, hold and block")
+    flags = {name: spec.get(name, True) for name in ("record", "toolbar")}
+    if any(type(v) is not bool for v in flags.values()):
+        raise ValueError("record and toolbar are true or false")
+    labels = spec.get("labels", {})
+    if not isinstance(labels, dict) or set(labels) - set(STEP_LABELS) or any(not isinstance(v, str) or len(v) > 120 for v in labels.values()):
+        raise ValueError("labels override STEP_LABELS keys with text")
+    steps_in = spec.get("steps")
+    if not isinstance(steps_in, list) or not 1 <= len(steps_in) <= 32:
+        raise ValueError("a runbook has 1..32 steps")
+    steps, seen = [], set()
+    for step in steps_in:
+        if not isinstance(step, dict) or set(step) - {"id", "title", "command", "expect", "needs", "trouble"}:
+            raise ValueError("a step is {id, title, command, expect, needs, trouble}")
+        sid = step.get("id")
+        if not isinstance(sid, str) or not _STEP_ID.fullmatch(sid) or sid in seen:
+            raise ValueError("a step id is a distinct lowercase token")
+        seen.add(sid)
+        trouble = step.get("trouble", {})
+        if not isinstance(trouble, dict) or set(trouble) - {"seen", "check", "fix"}:
+            raise ValueError("trouble is {seen, check, fix}")
+        steps.append({"id": sid, "title": _step_text(step.get("title"), "title", 120, True), "command": _step_text(step.get("command"), "command", 4000, True),
+                      "expect": _step_text(step.get("expect"), "expect"), "needs": _step_text(step.get("needs"), "needs"),
+                      "trouble": {k: _step_text(trouble.get(k), k) for k in ("seen", "check", "fix") if trouble.get(k)}})
+    source = spec.get("source")
+    if source is not None and (not isinstance(source, str) or not re.fullmatch(r"[A-Za-z0-9_.:/+-]{1,80}", source)):
+        raise ValueError("source is a commit or version of up to 80 plain characters")
+    return {"key": key, "steps": steps, "statuses": statuses, "source": source, **flags, "labels": {**STEP_LABELS, **labels}}
+
+
+def steps_html(spec: Any) -> str:
+    """A runbook as a records board: one card per step with its command (copy button), what to expect, what it needs and what to check when it
+    fails (``<details>``), and a record kept in this browser (state, date, actual output, note: drafts under ``key:id:field``). The toolbar
+    searches the cards, filters them by state and saves or loads the records as JSON; with ``source`` a file from another version comes back
+    with its states reset. Everything is escaped; ui.js (``bindCopy``) and records.js bind it, and without JS it is a readable list."""
+    book = steps_validate(spec)
+    text, key = book["labels"], book["key"]
+    eid = "steps-" + re.sub(r"[^A-Za-z0-9_-]", "-", key)
+    first_token, first_label = book["statuses"][0]
+
+    def facts(pairs: Sequence[tuple[str, str]]) -> str:
+        rows = "".join(f"<dt>{escape(text[name])}</dt><dd>{escape(value)}</dd>" for name, value in pairs if value)
+        return f'<dl class="ui-facts">{rows}</dl>' if rows else ""
+
+    cards = []
+    for n, step in enumerate(book["steps"], 1):
+        sid, base = step["id"], f"{eid}-{step['id']}"
+        trouble = facts([(k, step["trouble"].get(k, "")) for k in ("seen", "check", "fix")])
+        record = ""
+        if book["record"]:
+            record = (f'<div class="ui-step-record"><h4>{escape(text["record"])}</h4>'
+                      + draft_select(tuple(book["statuses"]), key=f"{key}:{sid}:status", id=f"{base}-status", label=text["status"]).replace("<select ", "<select data-ui-status ", 1)
+                      + draft_input(key=f"{key}:{sid}:date", id=f"{base}-date", label=text["date"], type="date")
+                      + draft_textarea(key=f"{key}:{sid}:actual", id=f"{base}-actual", label=text["actual"], rows=2)
+                      + draft_textarea(key=f"{key}:{sid}:note", id=f"{base}-note", label=text["note"], rows=2) + "</div>")
+        cards.append(f'<article class="ui-card ui-step" id="{base}" data-ui-item data-status="{first_token}">'
+                     f'<header class="ui-step-head"><h3>{n}. {escape(step["title"])}</h3><span class="ui-tag" data-ui-status-tag>{escape(first_label)}</span></header>'
+                     + code_block(step["command"], copy_label=text["copy"], copied_label=text["copied"], failed_label=text["copy_failed"])
+                     + facts([("expect", step["expect"]), ("needs", step["needs"])])
+                     + (details(text["trouble"], trusted_html=trouble) if trouble else "") + record + "</article>")
+    toolbar = ""
+    if book["toolbar"]:
+        toolbar = ('<div class="ui-records-bar">' + filter_input(f"{eid}-list", id=f"{eid}-search", label=text["search"])
+                   + (status_filter(f"{eid}-list", tuple(book["statuses"]), id=f"{eid}-state", label=text["filter"], all_label=text["all"]) if book["record"] else "")
+                   + (records_io(export_label=text["export"], import_label=text["import"], filename=re.sub(r"[^A-Za-z0-9_.-]", "-", key) + ".json") if book["record"] else "")
+                   + '</div>' + (f'<p class="ui-muted" role="status" data-ui-records-message data-ui-msg-loaded="{escape(text["loaded"], quote=True)}" '
+                                 f'data-ui-msg-stale="{escape(text["stale"], quote=True)}" data-ui-msg-bad="{escape(text["bad"], quote=True)}"></p>' if book["record"] else ""))
+    return records_board(toolbar + f'<div class="ui-steps" id="{eid}-list">' + "".join(cards) + "</div>", id=eid, source=book["source"])
 
 
 def plotly_figure(
@@ -3314,6 +3573,13 @@ def _world_emoji(value: Any) -> str:
     return value
 
 
+def _world_mark(value: Any) -> str:
+    """A spot's mark: the emoji (or 1..2 characters) drawn instead of the dot, and before the name when the name shows."""
+    if not isinstance(value, str) or not 1 <= len(value) <= 8 or len(value.strip()) != len(value) or any(unicodedata.category(c) in ("Cc", "Cs", "Zl", "Zp", "Zs") or c in "\\\"'" for c in value):
+        raise ValueError("a mark is one emoji or 1..2 characters, without spaces, quotes or control characters")
+    return value
+
+
 def _world_avatar(value: Any) -> str:
     """A visitor's character: an emoji, a short text (an initial, a name), or both, 1..16 characters. One label, never markup (the page sets
     it as text): control and line-separator characters, bidirectional overrides and spaces at either end are refused."""
@@ -3377,8 +3643,14 @@ def world_validate(spec: Any) -> dict[str, Any]:
     """Checked copy of a ``web-ui-world/1`` spec: optional ``shots`` (scroll scenes) and ``floors`` (maps with spots)."""
     if not isinstance(spec, dict) or spec.get("schema") != WORLD_SCHEMA:
         raise ValueError(f"expected schema {WORLD_SCHEMA}")
-    if set(spec) - {"schema", "id", "title", "shots", "floors", "zoom_max", "board", "avatars", "shell", "tools"}:
-        raise ValueError("a world has schema, id, title, shots, floors, zoom_max, board, avatars, shell and tools")
+    if set(spec) - {"schema", "id", "title", "shots", "floors", "zoom_max", "board", "avatars", "shell", "tools", "names", "mark_scale"}:
+        raise ValueError("a world has schema, id, title, shots, floors, zoom_max, board, avatars, shell, tools, names and mark_scale")
+    mark_scale = spec.get("mark_scale", [1, 1])
+    if not isinstance(mark_scale, list) or len(mark_scale) != 2 or any(type(v) not in (int, float) or not .5 <= v <= 4 for v in mark_scale):
+        raise ValueError("mark_scale is [x, y], each from 0.5 to 4: the width and height factor of every mark (dot or emoji)")
+    names = spec.get("names", "names")
+    if names not in WORLD_NAMES:
+        raise ValueError("names is names (every spot shows its name), dots (a dot; the name beside the player, under the pointer or focused) or off (dots only)")
     shell = spec.get("shell", False)
     if not isinstance(shell, bool):
         raise ValueError("shell is true or false")
@@ -3435,8 +3707,8 @@ def world_validate(spec: Any) -> dict[str, Any]:
             raise ValueError("a floor lists 1..64 spots")
         spots = []
         for spot in spots_in:
-            if not isinstance(spot, dict) or set(spot) - {"id", "x", "y", "label", "category", "body", "flip", "sign"}:
-                raise ValueError("a spot has id, x, y, label, category, body, flip and sign")
+            if not isinstance(spot, dict) or set(spot) - {"id", "x", "y", "label", "category", "body", "flip", "sign", "mark"}:
+                raise ValueError("a spot has id, x, y, label, category, body, flip, sign and mark")
             if "sign" in spot and spot["sign"] not in WORLD_SIGNS:
                 raise ValueError(f"sign is one of {', '.join(WORLD_SIGNS)}")
             category = spot.get("category", "")
@@ -3446,7 +3718,8 @@ def world_validate(spec: Any) -> dict[str, Any]:
                           "y": _bounded_int(spot.get("y"), "y", 0, height), "label": _world_text(spot.get("label"), "label", 40),
                           "category": category, "body": _world_text(spot.get("body", ""), "body", 400, required=False),
                           **({"flip": _world_text(spot["flip"], "flip", 16)} if "flip" in spot else {}),
-                          **({"sign": spot["sign"]} if "sign" in spot else {})})
+                          **({"sign": spot["sign"]} if "sign" in spot else {}),
+                          **({"mark": _world_mark(spot["mark"])} if "mark" in spot else {})})
         actors = []
         actors_in = floor.get("actors", [])
         if not isinstance(actors_in, list) or len(actors_in) > 16:
@@ -3550,7 +3823,7 @@ def world_validate(spec: Any) -> dict[str, Any]:
             built["body"] = _world_text(tool["body"], "body", 400)
         tools[emoji] = built
     return {"schema": WORLD_SCHEMA, "id": world_id, "title": _world_text(spec.get("title", "World"), "title", 80),
-            "shots": shots, "floors": floors, "zoom_max": zoom_max, "board": board, **({"avatars": avatars} if avatars else {}),
+            "shots": shots, "floors": floors, "zoom_max": zoom_max, "board": board, "names": names, "mark_scale": [float(v) for v in mark_scale], **({"avatars": avatars} if avatars else {}),
             **({"shell": True} if shell else {}), **({"tools": tools} if tools else {})}
 
 
@@ -3705,14 +3978,14 @@ def land_floor(theme: str = "meadow", cols: int = 24, rows: int = 16, *, seed: i
 # A real place in miniature: points with a latitude and longitude laid on the tile grid (``meters`` of ground per tile), roads between linked
 # points, and rivers as bands of water that roads cross as bridges. The projection and the box come from the coordinate tools below (the same
 # Earth radius and ``tolerance_area``), so a place is only data: a list of points, nothing drawn by hand.
-_PLACE_KEYS = {"points", "meters", "tile", "links", "rivers", "area", "start", "scatter"}
-_PLACE_POINT_KEYS = {"id", "label", "lat", "lon", "maps", "category", "body", "flip", "sign"}
+_PLACE_KEYS = {"points", "meters", "tile", "links", "rivers", "area", "start", "scatter", "marks"}
+_PLACE_POINT_KEYS = {"id", "label", "lat", "lon", "maps", "category", "body", "flip", "sign", "mark"}
 
 
 def _place_point(point: Any, seen: set[str]) -> dict[str, Any]:
     if not isinstance(point, dict) or set(point) - _PLACE_POINT_KEYS or ("maps" in point) == ("lat" in point or "lon" in point) \
             or ("lat" in point) != ("lon" in point):
-        raise ValueError("a point has id, label, category, body, flip, sign and either lat and lon or maps (a Maps URL)")
+        raise ValueError("a point has id, label, category, body, flip, sign, mark and either lat and lon or maps (a Maps URL)")
     if "maps" in point:
         found = try_parse_maps_url(point["maps"]) if isinstance(point["maps"], str) else None
         if found is None:
@@ -3728,7 +4001,7 @@ def _place_point(point: Any, seen: set[str]) -> dict[str, Any]:
     return {"id": _world_id(point.get("id"), "point id", seen), "label": _world_text(point.get("label"), "label", 40), "lat": lat, "lon": lon,
             "category": category, "body": _world_text(point.get("body", ""), "body", 400, required=False),
             **({"flip": _world_text(point["flip"], "flip", 16)} if "flip" in point else {}),
-            **({"sign": point["sign"]} if "sign" in point else {})}
+            **({"sign": point["sign"]} if "sign" in point else {}), **({"mark": _world_mark(point["mark"])} if "mark" in point else {})}
 
 
 def _place_meters(lat: float, lon: float, north: float, west: float, mid: float) -> tuple[float, float]:
@@ -3762,7 +4035,7 @@ def _place_rects(cells: set[tuple[int, int]]) -> list[tuple[int, int, int, int]]
 
 
 def place_floor(points: list[dict[str, Any]], *, meters: int = 64, tile: int = 32, links: Any = (), rivers: Any = (), area: Any = None,
-                start: str | None = None, scatter: Any = None, id: str = "place", label: str = "場所") -> dict[str, Any]:
+                start: str | None = None, scatter: Any = None, marks: Any = None, id: str = "place", label: str = "場所") -> dict[str, Any]:
     """A real place as a floor: each point (``id``, ``label``, ``lat`` and ``lon``, or ``maps`` with a Maps URL; optional ``category`` and ``body``) becomes a
     spot on the tile its position falls on, ``meters`` of ground per tile.
 
@@ -3774,6 +4047,9 @@ def place_floor(points: list[dict[str, Any]], *, meters: int = 64, tile: int = 3
 
     A point with a ``sign`` (``led`` or ``wood``) is a small board on a bold dot at the nearest **tile corner** instead of the middle of a tile, so
     it takes no tile and sits between the stations; two signs on one corner go to the nearest free corner, and it must touch a tile that can be walked on.
+
+    ``marks`` is ``{category: emoji}``: a point without its own ``mark`` gets its category's emoji as the mark drawn instead of the dot
+    (``mark_scale`` on the world sets the marks' width and height factors).
 
     ``scatter`` is ``{"kind": "fire", "every": 8, "seed": 1}``: the map is cut into blocks of ``every`` tiles and one free tile in each gets the kind
     (a decoration such as ``fire``: not ground, not solid), chosen by a small seeded generator, so the same arguments give the same places.
@@ -3894,10 +4170,14 @@ def place_floor(points: list[dict[str, Any]], *, meters: int = 64, tile: int = 3
     lost = [p["id"] for p in pts if p["cell"] not in reach] + [p["id"] for p in signs if not any(t in reach for t in touching(p["corner"]))]
     if lost:
         raise ValueError(f"cut off by water from {first['id']}: {', '.join(lost)} (add a link across the river)")
+    if marks is not None and not (isinstance(marks, dict) and all(isinstance(k, str) and _WORLD_TOKEN.fullmatch(k) for k in marks)):
+        raise ValueError("marks is {category: emoji}")
+    marks = {k: _world_mark(v) for k, v in (marks or {}).items()}
+    mark = lambda p: {"mark": p["mark"]} if "mark" in p else {"mark": marks[p["category"]]} if p["category"] in marks else {}   # noqa: E731
     spots = [{"id": f"{id}-{p['id']}", "x": int((p["cell"][0] + .5) * tile), "y": int((p["cell"][1] + .5) * tile), "label": p["label"],
-              "category": p["category"], "body": p["body"], **({"flip": p["flip"]} if "flip" in p else {})} for p in pts]
+              "category": p["category"], "body": p["body"], **({"flip": p["flip"]} if "flip" in p else {}), **mark(p)} for p in pts]
     spots += [{"id": f"{id}-{p['id']}", "x": p["corner"][0] * tile, "y": p["corner"][1] * tile, "label": p["label"], "category": p["category"],
-               "body": p["body"], "sign": p["sign"], **({"flip": p["flip"]} if "flip" in p else {})} for p in signs]
+               "body": p["body"], "sign": p["sign"], **({"flip": p["flip"]} if "flip" in p else {}), **mark(p)} for p in signs]
     return {"id": id, "label": label, "width": cols * tile, "height": rows * tile, "tile": tile, "props": props, "actors": [], "spots": spots,
             "player": {"emoji": "🙂", "x": int((first["cell"][0] + .5) * tile), "y": int((first["cell"][1] + .5) * tile), "speed": 96}}
 
@@ -3966,6 +4246,7 @@ def _board_html(board: dict[str, Any] | None) -> str:
 
 # The words of a shell world's chrome. The page shows icons; these are the aria-label and tooltip. 🌐 picks the language, the same
 # eleven as flutter_navigation_basic (ja is the page's own, so it is what the markup carries until JS switches it).
+WORLD_NAMES = ("names", "dots", "off")   # the name layer of a map: see docs/world-classroom.md "Layers"
 WORLD_LANGS = (("ja", "日本語"), ("en", "English"), ("fr", "Français"), ("es", "Español"), ("pt", "Português"), ("ar", "العربية"),
                ("zh", "中文"), ("ru", "Русский"), ("id", "Bahasa Indonesia"), ("de", "Deutsch"), ("sw", "Kiswahili"))
 WORLD_TEXT = {
@@ -3978,6 +4259,21 @@ WORLD_TEXT = {
     "pause": ("動きを止める", "Pause motion", "Arrêter le mouvement", "Pausar el movimiento", "Pausar o movimento", "إيقاف الحركة", "暂停动态", "Остановить движение", "Jeda gerakan", "Bewegung anhalten", "Simamisha mwendo"),
     "avatar": ("絵文字を変える", "Change emoji", "Changer d'emoji", "Cambiar emoji", "Mudar emoji", "تغيير الرمز التعبيري", "更换表情", "Сменить эмодзи", "Ganti emoji", "Emoji ändern", "Badilisha emoji"),
     "language": ("言語", "Language", "Langue", "Idioma", "Idioma", "اللغة", "语言", "Язык", "Bahasa", "Sprache", "Lugha"),
+    "zoom": ("ズーム（回して拡大・縮小）", "Zoom (turn to zoom in or out)", "Zoom (tournez pour agrandir ou réduire)", "Zoom (gira para acercar o alejar)",
+             "Zoom (gire para aproximar ou afastar)", "التكبير (أدر للتكبير أو التصغير)", "缩放（旋转以放大或缩小）", "Масштаб (поверните, чтобы приблизить или отдалить)",
+             "Zum (putar untuk memperbesar atau memperkecil)", "Zoom (drehen zum Vergrößern oder Verkleinern)", "Kuza (zungusha kukuza au kupunguza)"),
+    "overlay": ("地図の上の操作類の透け具合", "How see-through the controls over the map are", "Transparence des commandes sur la carte", "Transparencia de los controles sobre el mapa",
+                "Transparência dos controles sobre o mapa", "شفافية عناصر التحكم فوق الخريطة", "地图上控件的透明度", "Прозрачность элементов управления над картой",
+                "Transparansi kontrol di atas peta", "Durchsichtigkeit der Bedienelemente über der Karte", "Uwazi wa vidhibiti juu ya ramani"),
+    "names": ("名前の層: 🏷️ 名前 / ● 点（近く・指先で名前） / ✖️ 点だけ", "Name layer: 🏷️ names / ● dots (names near you or under the pointer) / ✖️ dots only",
+              "Couche des noms : 🏷️ noms / ● points (noms près de vous ou sous le pointeur) / ✖️ points seulement",
+              "Capa de nombres: 🏷️ nombres / ● puntos (nombres cerca de ti o bajo el puntero) / ✖️ solo puntos",
+              "Camada de nomes: 🏷️ nomes / ● pontos (nomes perto de você ou sob o ponteiro) / ✖️ só pontos",
+              "طبقة الأسماء: 🏷️ أسماء / ● نقاط (الأسماء قربك أو تحت المؤشر) / ✖️ نقاط فقط",
+              "名称层：🏷️ 名称 / ● 圆点（靠近或指向时显示名称） / ✖️ 仅圆点", "Слой имён: 🏷️ имена / ● точки (имена рядом или под указателем) / ✖️ только точки",
+              "Lapisan nama: 🏷️ nama / ● titik (nama di dekatmu atau di bawah penunjuk) / ✖️ titik saja",
+              "Namensebene: 🏷️ Namen / ● Punkte (Namen nahe bei dir oder unter dem Zeiger) / ✖️ nur Punkte",
+              "Tabaka ya majina: 🏷️ majina / ● nukta (majina karibu nawe au chini ya kielekezi) / ✖️ nukta tu"),
     "me": ("自分の場所", "Find me", "Où suis-je", "Mi ubicación", "Minha posição", "موقعي", "我的位置", "Где я", "Posisi saya", "Mein Standort", "Nilipo"),
     "walk": ("ここへ歩く", "Walk here", "Aller ici", "Caminar aquí", "Caminhar até aqui", "امشِ إلى هنا", "走到这里", "Идти сюда", "Jalan ke sini", "Hierhin gehen", "Tembea hapa"),
     "close": ("閉じる", "Close", "Fermer", "Cerrar", "Fechar", "إغلاق", "关闭", "Закрыть", "Tutup", "Schließen", "Funga"),
@@ -4036,9 +4332,10 @@ def _world_playable(world: dict[str, Any]) -> bool:
 def _floor_html(wid: str, f: dict[str, Any], close: str) -> tuple[str, list[str]]:
     """One floor's stage (props, spots, actors, player) and the info sheet articles of its spots and actors (``close`` is their closing link)."""
     flip = lambda s: (f' data-flip="{escape(s["flip"], quote=True)}"' if s.get("flip") else "") + (f' data-sign="{s["sign"]}"' if s.get("sign") else "")   # noqa: E731
+    mark = lambda s: f';--mark:\'{escape(s["mark"], quote=True)}\'' if s.get("mark") else ""   # noqa: E731  (the dot's replacement, read by CSS content)
     spots = "".join(
         f'<a class="ui-spot" href="#{wid}-spot-{s["id"]}" data-x="{s["x"]}" data-y="{s["y"]}" data-category="{s["category"]}" '
-        f'style="left:{s["x"]}px;top:{s["y"]}px"{flip(s)}>{escape(s["label"])}</a>' for s in f["spots"])
+        f'style="left:{s["x"]}px;top:{s["y"]}px{mark(s)}"{flip(s)}>{escape(s["label"])}</a>' for s in f["spots"])
     actors = "".join(
         f'<a class="ui-actor" id="{wid}-actor-{a["id"]}" href="#{wid}-spot-{a["id"]}" aria-label="{escape(a["label"], quote=True)}">'
         f'<span>{escape(a["emoji"])}</span></a>' for a in f["actors"])
@@ -4121,14 +4418,19 @@ def _shell_html(world: dict[str, Any], *, head: str, radios: str, view: str, tai
                 (f'<button type="button" data-pick-open {_wt("avatar")}>🙂✏️</button>' if avatars else "") +
                 f'<label class="ui-world-lang">🌐 <select data-lang {_wt("language")}>' +
                 "".join(f'<option value="{code}" lang="{code}"{" selected" if i == 0 else ""}>{name}</option>' for i, (code, name) in enumerate(WORLD_LANGS)) +
-                '</select></label>')
+                '</select></label>' +
+                f'<label class="ui-world-zoom">🔍 {dial_html("zoom", minimum=0.1, maximum=world["zoom_max"], step=0.05, value=1, attrs=_wt("zoom"))}</label>' +
+                f'<label class="ui-world-alpha">🫥 <input type="range" data-alpha min="0.2" max="1" step="0.1" value="0.9" {_wt("overlay")}></label>' +
+                (f'<label class="ui-world-names">🏷️ <select data-names-pick {_wt("names")}>' +
+                 "".join(f'<option value="{v}"{" selected" if v == world["names"] else ""}>{t}</option>' for v, t in zip(WORLD_NAMES, ("🏷️", "●", "✖️"))) +
+                 '</select></label>' if any(f["spots"] for f in floors) else ""))
     header_tools = (f'<a class="ui-world-home" href="#{wid}-map" data-home {_wt("home")}>🏠</a>' +
                     "".join(custom(e, t) for e, t in tools.items() if t["slot"] == "head") +
                     icon("favorites", "⭐", _wt("favorites"), '<p class="ui-world-empty" aria-hidden="true">☆</p><ul class="ui-world-rows ui-world-favs"></ul>', hidden=True) +
                     icon("settings", "⚙️", _wt("settings"), settings, hidden=True))
     steps = "".join(f'<button type="button" data-step="{d}" {_wt(k)}>{g}</button>'
                     for d, k, g in (("0,-1", "up", "▲"), ("-1,0", "left", "◀"), ("1,0", "right", "▶"), ("0,1", "down", "▼")))
-    dpad = f'<div class="ui-world-dpad ui-world-grid-only" role="group" {_wt("move")} hidden>{steps}</div>' if tiled and playable else ""
+    dpad = f'<div class="ui-world-dpad ui-world-grid-only" role="group" data-overlay {_wt("move")} hidden>{steps}</div>' if tiled and playable else ""
     foot = (f'<footer class="ui-world-foot"><nav class="ui-world-bar">{floor_labels}</nav>'
             f'<label class="ui-world-goto-wrap">🚪 <select class="ui-world-goto" {_wt("floor")}>' +
             "".join(f'<option value="{f["id"]}"{" selected" if i == 0 else ""}>{escape(f["label"])}</option>' for i, f in enumerate(floors)) +
@@ -4152,7 +4454,8 @@ def _map_html(world: dict[str, Any]) -> str:
         labels += "".join(f'<label for="{wid}-cat-{"value-" + c if c else "all"}" data-cat="{c}">{escape(c or "all")}</label>' for c in cat_ids)
     close = f'<a class="ui-sheet-close" href="#{wid}-map"' + (f' {_wt("close")}>✖️</a>' if shell else ">Close</a>")          # an icon in a shell world
     built = [_floor_html(wid, f, close) for f in floors]
-    head = (f'<section class="ui-world ui-world-map" id="{wid}-map" data-ui-world="map" data-zoom-max="{world["zoom_max"]}"'
+    scale = "" if world["mark_scale"] == [1, 1] else f' style="--mark-x:{world["mark_scale"][0]:g};--mark-y:{world["mark_scale"][1]:g}"'
+    head = (f'<section class="ui-world ui-world-map" id="{wid}-map" data-ui-world="map" data-zoom-max="{world["zoom_max"]}" data-names="{world["names"]}"{scale}'
             f'{" data-grid" if any(f.get("tile") for f in floors) else ""}{" data-shell" if shell else ""} aria-label="{escape(world["title"], quote=True)}">')
     view = f'<div class="ui-world-view" tabindex="0"><div class="ui-world-cam" style="--fx:0;--fy:0;--z:1">{"".join(stage for stage, _ in built)}</div></div>'
     tail = f'<aside class="ui-sheet" aria-live="polite">{"".join(a for _, articles in built for a in articles)}</aside>{_pick_html(wid, world.get("avatars", []), shell)}</section>'
@@ -4165,6 +4468,33 @@ def world_html(spec: Any) -> str:
     """Semantic HTML for a world; every label and body is escaped. Works without JavaScript (scroll, :target, radios)."""
     world = world_validate(spec)
     return (_shots_html(world) if world["shots"] else "") + (_map_html(world) if world["floors"] else "")
+
+
+DIAL_CSS = (
+    # A rotary dial over a range input: the input keeps the value, the keys, the form and the accessibility; the dial is the drawing and the drag.
+    ".ui-dial{position:relative;display:inline-block;width:48px;height:48px;border-radius:50%;border:2px solid var(--ui-border);background:var(--ui-panel);"
+    "box-sizing:border-box;touch-action:none;cursor:grab;vertical-align:middle}.ui-dial[data-ui-dial-drag]{cursor:grabbing}"
+    ".ui-dial::after{content:\"\";position:absolute;left:50%;top:4px;width:4px;height:16px;border-radius:2px;background:var(--ui-accent);"
+    "transform-origin:50% 18px;transform:translateX(-50%) rotate(var(--ui-dial-angle,-135deg))}"
+    ".ui-dial>input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;pointer-events:none}"
+    ".ui-dial:focus-within{outline:2px solid var(--ui-accent);outline-offset:2px}")
+
+DIAL_JS = r"""/* A rotary dial over a range input (dial_html): drag around its centre, turn the wheel, or use the range's own keys. Value and events stay the input's. */
+export function dialAngle(value,min,max){const span=max-min;const t=span>0?(Number(value)-min)/span:0;return -135+270*Math.min(1,Math.max(0,t))}
+export function dialValue(angle,min,max,step){const t=(Math.min(135,Math.max(-135,angle))+135)/270,raw=min+t*(max-min),s=step>0?step:1;
+ const v=min+Math.round((raw-min)/s)*s;return Math.min(max,Math.max(min,Number(v.toFixed(6))))}
+export function bindDial(root=document){
+ for(const dial of root.querySelectorAll("[data-ui-dial]")){const input=dial.querySelector('input[type="range"]');if(!input||dial.dataset.uiDialBound)continue;dial.dataset.uiDialBound="";
+  const num=k=>Number(input[k])||0,paint=()=>dial.style.setProperty("--ui-dial-angle",dialAngle(input.value,num("min"),num("max"))+"deg");
+  const turn=(x,y)=>{const r=dial.getBoundingClientRect(),a=Math.atan2(x-(r.left+r.width/2),(r.top+r.height/2)-y)*180/Math.PI;
+   const v=dialValue(a,num("min"),num("max"),Number(input.step)||0);if(String(v)===input.value)return;input.value=v;input.dispatchEvent(new Event("input",{bubbles:true}));input.dispatchEvent(new Event("change",{bubbles:true}))};
+  dial.addEventListener("pointerdown",e=>{if(e.button)return;e.preventDefault();dial.setPointerCapture(e.pointerId);dial.dataset.uiDialDrag="";input.focus({preventScroll:true});turn(e.clientX,e.clientY)});
+  dial.addEventListener("pointermove",e=>{if("uiDialDrag"in dial.dataset)turn(e.clientX,e.clientY)});
+  for(const t of["pointerup","pointercancel","lostpointercapture"])dial.addEventListener(t,()=>{delete dial.dataset.uiDialDrag});
+  dial.addEventListener("wheel",e=>{e.preventDefault();e.deltaY<0?input.stepUp():input.stepDown();input.dispatchEvent(new Event("input",{bubbles:true}));input.dispatchEvent(new Event("change",{bubbles:true}))},{passive:false});
+  input.addEventListener("input",paint);paint()}}
+if(typeof document!=="undefined")bindDial();
+"""
 
 
 _WORLD_CSS = (
@@ -4183,13 +4513,27 @@ _WORLD_CSS = (
     ".ui-world[data-js][data-drag] .ui-world-cam{transition:none}"
     ".ui-floor{position:relative;display:none;background-color:var(--ui-panel);background-image:linear-gradient(var(--ui-border) 1px,transparent 1px),"
     "linear-gradient(90deg,var(--ui-border) 1px,transparent 1px);background-size:64px 64px}"
-    ".ui-spot{position:absolute;transform:translate(-50%,-50%) scale(calc(1 / var(--z,1)));white-space:nowrap;border:1px solid var(--ui-accent);"
+    # Layers of a map, back to front, like the z-order of a slide: the ground (props), the names (spot pills), the marks (dots and signs),
+    # the player and actors, the sheet. data-names on .ui-world moves every plain spot between the name layer (names) and the mark layer
+    # (dots: a dot; the one the player stands by, the one under the pointer and the focused one show their names; off: dots only).
+    + DIAL_CSS +
+    ".ui-world-map{--ui-layer-ground:0;--ui-layer-name:1;--ui-layer-mark:2;--ui-layer-player:3;--ui-layer-sheet:4}"
+    ".ui-spot{position:absolute;z-index:var(--ui-layer-name);transform:translate(-50%,-50%) scale(calc(1 / var(--z,1)));white-space:nowrap;border:1px solid var(--ui-accent);"
     "background:var(--ui-bg);color:var(--ui-fg);padding:.2rem .6rem;border-radius:999px;text-decoration:none;font-size:.85rem}"
-    ".ui-spot[data-sign]{padding:.3rem .5rem;border-radius:4px;font-size:0;line-height:1;letter-spacing:.04em}.ui-spot[data-sign]::before{content:\"●\";font-size:.7rem}"
-    ".ui-spot[data-sign][data-show]{padding:.05rem .4rem;font-size:.7rem}.ui-spot[data-sign][data-show]::before{content:\"● \"}"
+    ".ui-spot[data-sign],.ui-world[data-names=dots] .ui-spot:not([data-sign]):not([data-near]):not(:hover):not(:focus-visible),.ui-world[data-names=off] .ui-spot:not([data-sign]):not(:hover):not(:focus-visible)"
+    "{z-index:var(--ui-layer-mark);padding:.3rem .5rem;border-radius:4px;font-size:0;line-height:1;letter-spacing:.04em}"
+    ".ui-spot[data-sign]::before,.ui-world[data-names=dots] .ui-spot:not([data-sign]):not([data-near]):not(:hover):not(:focus-visible)::before,"
+    ".ui-world[data-names=off] .ui-spot:not([data-sign]):not(:hover):not(:focus-visible)::before{content:var(--mark,\"●\");font-size:.7rem}"
+    # A mark (an emoji in --mark) stands in for the dot and leads the name; --mark-x / --mark-y on the world scale every mark's width and height.
+    ".ui-spot::before{display:inline-block;transform:scale(var(--mark-x,1),var(--mark-y,1))}"
+    ".ui-world[data-names=names] .ui-spot:not([data-sign])::before,.ui-world[data-names=dots] .ui-spot[data-near]:not([data-sign])::before,"
+    ".ui-world:not([data-names=names]) .ui-spot:not([data-sign]):hover::before,.ui-world:not([data-names=names]) .ui-spot:not([data-sign]):focus-visible::before{content:var(--mark);margin-right:.3em}"
+    ".ui-world[data-names]:not([data-names=names]) .ui-spot:not([data-sign]){border-radius:999px}"
+    ".ui-world[data-names=dots] .ui-spot[data-near],.ui-world:not([data-names=names]) .ui-spot:hover,.ui-world:not([data-names=names]) .ui-spot:focus-visible{z-index:var(--ui-layer-mark)}"
+    ".ui-spot[data-sign][data-show]{padding:.05rem .4rem;font-size:.7rem}.ui-spot[data-sign][data-show]::before{content:var(--mark,\"●\");margin-right:.3em}"
     ".ui-spot[data-sign=led]{background:#111;color:#ffb000;border-color:#ffb000;font-family:monospace;text-shadow:0 0 4px #ffb000}"
     ".ui-spot[data-sign=wood]{background:#8b5a2b;color:#fff3d6;border:2px solid #5d3a1a}"
-    ".ui-sheet{position:absolute;left:8px;right:8px;bottom:8px;max-height:45%;overflow:auto;border:1px solid var(--ui-border);"
+    ".ui-sheet{position:absolute;z-index:var(--ui-layer-sheet);left:8px;right:8px;bottom:8px;max-height:45%;overflow:auto;border:1px solid var(--ui-border);"
     "background:var(--ui-panel);border-radius:var(--ui-radius);padding:1rem}"
     ".ui-world:not([data-js]) .ui-sheet:not(:has(.ui-sheet-item:target)){display:none}"
     ".ui-world[data-js] .ui-sheet:not(:has(.ui-sheet-item[data-open])){display:none}"
@@ -4203,7 +4547,7 @@ _WORLD_CSS = (
     ".ui-shot-mark{position:absolute;left:0;top:calc(var(--i) * var(--ui-world-h));width:1px;height:var(--ui-world-h);pointer-events:none}"
     ".ui-actor{position:absolute;left:0;top:0;text-decoration:none;color:inherit}"
     ".ui-actor span,.ui-player span{display:block;transform:translate(-50%,-50%) scale(calc(1 / var(--z,1)));font-size:1.5rem;line-height:1}"
-    ".ui-player{position:absolute;left:0;top:0;pointer-events:none;transform:translate(calc(var(--px,0) * 1px),calc(var(--py,0) * 1px));"
+    ".ui-player{position:absolute;z-index:var(--ui-layer-player);left:0;top:0;pointer-events:none;transform:translate(calc(var(--px,0) * 1px),calc(var(--py,0) * 1px));"
     "transition:transform var(--walk,0s) linear}"
     ".ui-board{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:4px 8px;border-bottom:1px solid var(--ui-border);background:var(--ui-panel);"
     "font-family:var(--ui-font-mono);font-size:.85rem;overflow:hidden}"
@@ -4219,7 +4563,7 @@ _WORLD_CSS = (
     ".ui-board-post{display:flex;gap:4px;flex:1 1 13rem}.ui-board-post .ui-input{flex:1;min-width:0;width:auto;padding:.2rem .5rem}.ui-board-post .ui-button{padding:.2rem .6rem}"
     "@keyframes ui-board-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}"
     ".ui-floor[data-tile]{background-size:var(--tile) var(--tile)}"
-    ".ui-prop{position:absolute;box-sizing:border-box;pointer-events:none;border:2px solid var(--ui-border);border-radius:4px}"
+    ".ui-prop{position:absolute;z-index:var(--ui-layer-ground);box-sizing:border-box;pointer-events:none;border:2px solid var(--ui-border);border-radius:4px}"
     ".ui-prop[data-kind=desk]{background:color-mix(in srgb,var(--ui-accent) 24%,var(--ui-panel))}"
     ".ui-prop[data-kind=board]{background:color-mix(in srgb,var(--ui-accent) 55%,#000)}"
     ".ui-prop[data-kind=wall]{background:var(--ui-border)}"
@@ -4239,8 +4583,9 @@ _WORLD_CSS = (
     "font-size:1.25rem;line-height:1;border:1px solid var(--ui-border);background:var(--ui-bg);border-radius:var(--ui-radius)}"
     ".ui-world-head{position:relative;z-index:3;display:flex;align-items:center;border-bottom:1px solid var(--ui-border);background:var(--ui-panel)}"
     ".ui-world-head .ui-board{flex:1;min-width:0;border-bottom:0}.ui-world-head .ui-board-track{flex:4 1 4rem}"
-    ".ui-world-tools{display:flex;gap:8px;padding:4px 8px}"
+    ".ui-world-tools{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;padding:4px 8px}"   # at 320px seven 40px tools wrap into two rows instead of leaving the window
     ".ui-world-tools .ui-world-home,.ui-world-tools .ui-world-tool,.ui-world-tools .ui-world-menu>summary{width:40px;height:40px}"
+    "@media(max-width:600px){.ui-world-head{flex-wrap:wrap}.ui-world-head .ui-board{flex-basis:100%;box-sizing:border-box}.ui-world-head .ui-world-tools{width:100%;box-sizing:border-box}}"
     ".ui-world-panel p{margin:0}.ui-world-panel>button{min-width:48px}.ui-world-panel button[aria-pressed=true]{background:var(--ui-accent);color:var(--ui-bg)}"
     ".ui-world-tools .ui-world-panel{top:100%;right:8px;width:min(320px,calc(100% - 16px));max-height:min(60vh,384px)}"
     ".ui-world-settings,.ui-world-tools .ui-world-panel{display:flex;flex-wrap:wrap;gap:8px}.ui-world-tools .ui-world-panel[hidden]{display:none}"
@@ -4266,7 +4611,9 @@ _WORLD_CSS = (
     ".ui-world-goto-wrap{display:none;align-items:center;gap:8px;flex:1}.ui-world[data-js] .ui-world-goto-wrap{display:flex}.ui-world[data-js] .ui-world-foot .ui-world-bar{display:none}"
     ".ui-world-goto{flex:1;min-width:0;max-width:384px;min-height:40px;font:inherit;color:var(--ui-fg);background:var(--ui-bg);border:1px solid var(--ui-border);border-radius:var(--ui-radius)}"
     ".ui-world[data-shell] .ui-sheet{z-index:3;right:80px;bottom:calc(var(--ui-world-foot) + 8px)}.ui-world[data-shell]:not(:has(.ui-world-foot)) .ui-sheet{bottom:8px}"
-    ".ui-world-body>.ui-world-dpad{position:absolute;left:8px;bottom:8px;z-index:1;opacity:.9}.ui-world-dpad[hidden]{display:none}"
+    # Controls drawn over the map (data-overlay: the pad) share one opacity, --ui-overlay-alpha, that 🫥 in ⚙️ sets from .2 to 1.
+    ".ui-world-body>.ui-world-dpad{position:absolute;left:8px;bottom:8px;z-index:1}.ui-world [data-overlay]{opacity:var(--ui-overlay-alpha,.9)}.ui-world-dpad[hidden]{display:none}"
+    ".ui-world-zoom,.ui-world-alpha{display:inline-flex;align-items:center;gap:8px}.ui-world-alpha input{width:96px;accent-color:var(--ui-accent)}"
     ".ui-world-dpad{display:grid;grid-template-columns:repeat(3,48px);grid-auto-rows:48px;gap:8px}"
     ".ui-world-dpad button{min-width:48px;min-height:48px;font-size:1.25rem;line-height:1;border:1px solid var(--ui-border);background:var(--ui-panel);"
     "color:var(--ui-fg);border-radius:var(--ui-radius);cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}"
@@ -4420,7 +4767,7 @@ export function bindSharedBoard(board){
 }
 """
 
-WORLD_JS = WORLD_MOTION_JS + WORLD_SHARED_JS + WORLD_TEXT_JS + r"""/* web-ui world: one page, a camera. Shots: scroll marks light up (data-lit). Map: drag, wheel and pinch move a camera; spots open a sheet. No page changes. */
+WORLD_JS = WORLD_MOTION_JS + WORLD_SHARED_JS + WORLD_TEXT_JS + DIAL_JS + r"""/* web-ui world: one page, a camera. Shots: scroll marks light up (data-lit). Map: drag, wheel and pinch move a camera; spots open a sheet. No page changes. */
 const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
 export function fitZoom(w,h,vw,vh){return Math.min(vw/w,vh/h)}
 export function travelSeconds(x0,y0,x1,y1,speed){return Math.hypot(x1-x0,y1-y0)/speed}
@@ -4442,18 +4789,31 @@ const shown=()=>el.querySelector('input[name$="-floor"]:checked'),radio=(kind,va
  setFloor=(value,notify)=>{const r=radio('floor',value);if(r){r.checked=true;const select=el.querySelector('.ui-world-goto');if(select)select.value=r.value;if(notify)r.dispatchEvent(new Event('change',{bubbles:true}))}};
 const floor=()=>{const r=shown();return(r&&el.querySelector(`.ui-floor[data-floor="${r.value}"]`))||el.querySelector(".ui-floor")};
 const size=()=>{const f=floor();return[Number(f.dataset.w),Number(f.dataset.h),view.clientWidth,view.clientHeight]};
-const apply=()=>{const[w,h,vw,vh]=size();if(!vw||!vh)return;z=clamp(z,fitZoom(w,h,vw,vh),zmax);[fx,fy]=clampFocus(fx,fy,z,w,h,vw,vh);cam.style.setProperty("--fx",fx);cam.style.setProperty("--fy",fy);cam.style.setProperty("--z",z);onFloor()};
+// Reserve sheet space below the map too: the bottom-edge clamp must not undo the lift.
+const sheetInset=()=>{const s=el.querySelector(".ui-sheet");return s&&el.querySelector(".ui-sheet-item[data-open]")?s.offsetHeight+16:0};
+const zoomDial=el.querySelector('.ui-world-zoom input[type="range"]');
+const apply=()=>{const[w,h,vw,vh]=size();if(!vw||!vh)return;z=clamp(z,fitZoom(w,h,vw,vh),zmax);[fx,fy]=clampFocus(fx,fy,z,w,h+sheetInset()/z,vw,vh);cam.style.setProperty("--fx",fx);cam.style.setProperty("--fy",fy);cam.style.setProperty("--z",z);
+ if(zoomDial&&Math.abs(Number(zoomDial.value)-z)>.001){syncing=true;zoomDial.value=z.toFixed(2);zoomDial.dispatchEvent(new Event("input"));syncing=false}onFloor()};
+// 🔍 the zoom dial (dial.js) turns the camera; the camera turns the dial back (syncing keeps the two from chasing each other across the clamp).
+// 🫥 sets the opacity of the controls over the map (data-overlay).
+let syncing=false;bindDial(el);zoomDial?.addEventListener("input",()=>{if(syncing)return;z=Number(zoomDial.value);apply()});
+const alpha=el.querySelector("[data-alpha]"),setAlpha=v=>{v=Number(v);if(!(v>=.2&&v<=1))return;el.style.setProperty("--ui-overlay-alpha",v);if(alpha)alpha.value=v};
+alpha?.addEventListener("input",()=>{setAlpha(alpha.value);save({alpha:Number(alpha.value)})});
 const go=(x,y,zoom)=>{fx=x;fy=y;z=zoom;apply()};
 const home=()=>{const[w,h,vw,vh]=size();go(w/2,h/2,vw&&vh?fitZoom(w,h,vw,vh):1)};
 const open=id=>{for(const i of el.querySelectorAll(".ui-sheet-item"))i.toggleAttribute("data-open",i.id===id)};
 // Side menus (☰ ⋯), the footer pulldown (door to door) and the arrows from the player to each listed spot.
 const menus=[...el.querySelectorAll('.ui-world-menu')],shut=()=>{for(const m of menus)m.open=false},goto=el.querySelector('.ui-world-goto'),rows='.ui-world-rows a';
 for(const m of menus)m.hidden=false;
-const aim=p=>{for(const a of el.querySelectorAll(rows)){if(!a.offsetParent)continue;const out=a.querySelector('.ui-world-arrow'),f=floor(),g=a.dataset.floor===f.dataset.floor?direction(p,[Number(a.dataset.x),Number(a.dataset.y)],Number(f.dataset.tile)||16):'🚪';if(out.textContent!==g)out.textContent=g}if(goto){const r=shown();if(r&&goto.value!==r.value)goto.value=r.value}};
-let follow=false,lx,ly;const walk=bindPlayer(el,floor,p=>{if(follow&&(p[0]!==lx||p[1]!==ly)){lx=p[0];ly=p[1];go(p[0],p[1],z)}aim(p)});
+// The spot the player stands by (the closest within 1.5 tiles) carries data-near: in the dots layer it alone shows its name.
+const near=p=>{const f=floor(),t=(Number(f.dataset.tile)||16)*1.5;let best=null,bd=Infinity;for(const a of f.querySelectorAll(".ui-spot[data-x]")){const d=Math.max(Math.abs(Number(a.dataset.x)-p[0]),Math.abs(Number(a.dataset.y)-p[1]));if(d<=t&&d<bd){best=a;bd=d}}for(const a of f.querySelectorAll(".ui-spot[data-near]"))if(a!==best)a.removeAttribute("data-near");if(best&&!best.hasAttribute("data-near"))best.setAttribute("data-near","")};
+const aim=p=>{near(p);for(const a of el.querySelectorAll(rows)){if(!a.offsetParent)continue;const out=a.querySelector('.ui-world-arrow'),f=floor(),g=a.dataset.floor===f.dataset.floor?direction(p,[Number(a.dataset.x),Number(a.dataset.y)],Number(f.dataset.tile)||16):'🚪';if(out.textContent!==g)out.textContent=g}if(goto){const r=shown();if(r&&goto.value!==r.value)goto.value=r.value}};
+// While a sheet is open the camera aims below the player or the spot, so they stay in the view above the sheet.
+const lift=()=>sheetInset()/(2*z);
+let follow=false,lx,ly;const walk=bindPlayer(el,floor,p=>{if(follow&&(p[0]!==lx||p[1]!==ly)){lx=p[0];ly=p[1];go(p[0],p[1]+lift(),z)}aim(p)});
 for(const m of menus)m.addEventListener('toggle',()=>{if(m.open)for(const o of menus)if(o!==m)o.open=false});
 view.addEventListener('pointerdown',shut);
-// ⭐ favourites and 🌐 language are all a world keeps, as a small cache in this browser (one key per world, nothing else is written):
+// ⭐ favourites, 🌐 language and 🏷️ the name layer are all a world keeps, as a small cache in this browser (one key per world, nothing else is written):
 // the emoji you pick and the board messages you post stay in the page.
 const slot='ui-world:'+el.id,load=()=>{try{const v=JSON.parse(localStorage.getItem(slot));return v&&typeof v==='object'?v:{}}catch(e){return{}}},
  save=part=>{try{localStorage.setItem(slot,JSON.stringify({...load(),...part}))}catch(e){}};
@@ -4470,6 +4830,11 @@ if(favs)el.addEventListener('click',e=>{const b=e.target.closest('.ui-world-star
 const kept=load();
 if(favs){for(const a of spotRows())if(Array.isArray(kept.fav)&&kept.fav.includes(a.getAttribute('href')))fav.add(a.getAttribute('href'));if(fav.size)showFavs()}
 if(typeof kept.lang==='string'&&kept.lang!=='ja')setLang(kept.lang);
+// 🏷️ the name layer (names / dots / off) switches without a reload and is kept with the language.
+const namesPick=el.querySelector('[data-names-pick]'),setNames=to=>{if(!['names','dots','off'].includes(to))return;el.dataset.names=to;if(namesPick)namesPick.value=to};
+if(typeof kept.names==='string')setNames(kept.names);
+if(typeof kept.alpha==='number')setAlpha(kept.alpha);
+namesPick?.addEventListener('change',()=>{setNames(namesPick.value);save({names:namesPick.value})});
 goto?.addEventListener('change',()=>setFloor(goto.value,true));
 // Emoji picker: shown first (JS only); the choice replaces every floor's player emoji. Dragging the map stops the camera following.
 const pick=el.querySelector('.ui-world-pick'),showPick=on=>{pick.hidden=!on;el.toggleAttribute('data-pick',on)},choose=g=>{for(const s of el.querySelectorAll('.ui-player span'))s.textContent=g;showPick(false);follow=true;view.focus({preventScroll:true})};
@@ -4509,8 +4874,8 @@ const chars=baseChars+notes.reduce((n,note)=>n+[...note.text].length+6,0);board.
 // 🏠 asks first (the shared dialog: 🏠 goes, ✖️ stays): home resets the floor, the filter and the sheet.
 const goHome=()=>{shut();close();follow=false;allCategories();setFloor(el.querySelector('input[name$="-floor"]')?.value,true);home()};
 el.querySelector('[data-home]')?.addEventListener('click',e=>{e.preventDefault();shut();ask('🏠❓',[{glyph:'🏠',t:'home',value:true}],'home').then(v=>{if(v)goHome()})});
-const close=()=>{open(null);if([...el.querySelectorAll(".ui-sheet-item")].some(i=>"#"+i.id===location.hash))history.replaceState(null,"",location.pathname+location.search)};
-const focusSpot=a=>{allCategories();setFloor(a.closest(".ui-floor").dataset.floor);go(Number(a.dataset.x),Number(a.dataset.y),Math.max(z,2))};
+const close=()=>{open(null);apply();if([...el.querySelectorAll(".ui-sheet-item")].some(i=>"#"+i.id===location.hash))history.replaceState(null,"",location.pathname+location.search)};
+const focusSpot=a=>{allCategories();setFloor(a.closest(".ui-floor").dataset.floor);const zoom=Math.max(z,2);go(Number(a.dataset.x),Number(a.dataset.y)+lift()*z/zoom,zoom)};
 view.addEventListener("pointerdown",e=>{if(e.button!==0)return;pts.set(e.pointerId,[e.clientX,e.clientY]);if(pts.size===1)moved=0;else moved=9;el.dataset.drag=""});
 view.addEventListener("pointermove",e=>{const p=pts.get(e.pointerId);if(!p)return;if(pts.size===1){const dx=e.clientX-p[0],dy=e.clientY-p[1];moved+=Math.abs(dx)+Math.abs(dy);if(moved>8){follow=false;if(!view.hasPointerCapture(e.pointerId))view.setPointerCapture(e.pointerId)}fx-=dx/z;fy-=dy/z;apply()}else if(pts.size===2){const q=[...pts].find(([id])=>id!==e.pointerId)[1],d0=Math.hypot(p[0]-q[0],p[1]-q[1]),d1=Math.hypot(e.clientX-q[0],e.clientY-q[1]);moved+=9;if(d0)z*=d1/d0;apply()}p[0]=e.clientX;p[1]=e.clientY});
 const end=e=>{const tapping=pts.has(e.pointerId)&&pts.size===1&&moved<=8&&e.type==="pointerup"&&view.contains(e.target)&&!e.target.closest("a,button,input");pts.delete(e.pointerId);if(!pts.size)delete el.dataset.drag;if(tapping&&walk){const f=floor(),r=f.getBoundingClientRect();walk((e.clientX-r.left)*Number(f.dataset.w)/r.width,(e.clientY-r.top)*Number(f.dataset.h)/r.height)}};
@@ -4602,7 +4967,10 @@ SHOWCASE_ICONS: dict[str, str] = {
 
 def showcase_validate(spec: Any) -> dict[str, Any]:
     """Checked copy of a ``web-ui-showcase/1`` spec: ``title``, optional ``emoji``, ``favorite`` and ``themes`` flags, and 2..6 sections, each with
-    ``id``, ``label``, ``icon`` (a ``SHOWCASE_ICONS`` name), ``heading`` and any of ``lead``, ``tags``, ``cards``, ``table``, ``controls``."""
+    ``id``, ``label``, ``icon`` (a ``SHOWCASE_ICONS`` name), ``heading`` and any of ``eyebrow``, ``lead``, ``links`` (``[label, href]`` chips),
+    ``stamp`` (``{label, value, note}``, see ``page_heading``), ``notice`` (``{text, tone, title}``), ``stats``
+    (up to 8 ``[label, value]`` or ``[label, value, hint]``), ``tags``, ``cards``, ``table``, ``steps`` (a ``steps_validate`` runbook) and ``controls``.
+    With sections as views, a whole operations page (a runbook per method, a guide per tab) is one showcase."""
     if not isinstance(spec, dict) or spec.get("schema") != SHOWCASE_SCHEMA:
         raise ValueError(f"expected schema {SHOWCASE_SCHEMA}")
     if set(spec) - {"schema", "id", "title", "emoji", "favorite", "themes", "sections"}:
@@ -4619,8 +4987,9 @@ def showcase_validate(spec: Any) -> dict[str, Any]:
     seen: set[str] = set()
     sections = []
     for sec in sections_in:
-        if not isinstance(sec, dict) or set(sec) - {"id", "label", "icon", "heading", "lead", "tags", "cards", "table", "controls"}:
-            raise ValueError("a section has id, label, icon, heading, lead, tags, cards, table and controls")
+        if not isinstance(sec, dict) or set(sec) - {"id", "label", "icon", "heading", "eyebrow", "lead", "links", "stamp", "notice", "stats", "tags", "cards",
+                                                    "table", "steps", "controls"}:
+            raise ValueError("a section has id, label, icon, heading, eyebrow, lead, links, stamp, notice, stats, tags, cards, table, steps and controls")
         icon = sec.get("icon", "info")
         if icon not in SHOWCASE_ICONS:
             raise ValueError(f"unknown icon {icon!r} (one of {', '.join(SHOWCASE_ICONS)})")
@@ -4640,6 +5009,28 @@ def showcase_validate(spec: Any) -> dict[str, Any]:
                      "rows": [[_world_text(c, "cell", 80, required=False) for c in r] for r in table["rows"]]}
         if not isinstance(sec.get("controls", False), bool):
             raise ValueError("controls is true or false")
+        note = sec.get("notice")
+        if note is not None:
+            if not isinstance(note, dict) or set(note) - {"text", "tone", "title"}:
+                raise ValueError("a notice is {text, tone, title}")
+            note = {"text": _world_text(note.get("text"), "notice", 400), "tone": note.get("tone", "info"),
+                    "title": _world_text(note["title"], "notice title", 60) if note.get("title") else None}
+            notice(note["text"], tone=note["tone"], title=note["title"])                     # the tone is checked there
+        stats = sec.get("stats", [])
+        if not isinstance(stats, list) or len(stats) > 8 or any(not isinstance(t, list) or len(t) not in (2, 3) for t in stats):
+            raise ValueError("stats is a list of up to 8 [label, value] or [label, value, hint]")
+        stats = [[_world_text(t[0], "stat label", 40), _world_text(str(t[1]), "stat value", 24), *([_world_text(t[2], "stat hint", 80)] if len(t) == 3 else [])]
+                 for t in stats]
+        steps = steps_validate(sec["steps"]) if sec.get("steps") is not None else None
+        links = sec.get("links", [])
+        if not isinstance(links, list) or len(links) > 8 or any(not isinstance(x, list) or len(x) != 2 for x in links):
+            raise ValueError("links is a list of up to 8 [label, href]")
+        links = [[_world_text(x[0], "link", 40), _door_href(x[1])] for x in links]
+        stamp = sec.get("stamp")
+        if stamp is not None:
+            page_heading("x", stamp=stamp)                                                       # checked there
+            stamp = {k: _world_text(v, "stamp", 200, required=k == "value") for k, v in stamp.items()}
+        eyebrow = _world_text(sec.get("eyebrow", ""), "eyebrow", 60, required=False)
         out_cards = []
         for card in cards:
             if not isinstance(card, dict) or set(card) - {"icon", "title", "body"} or card.get("icon", "info") not in SHOWCASE_ICONS:
@@ -4648,7 +5039,12 @@ def showcase_validate(spec: Any) -> dict[str, Any]:
                               "body": _world_text(card.get("body"), "body", 240)})
         sections.append({"id": _world_id(sec.get("id"), "section id", seen), "label": _world_text(sec.get("label"), "label", 24), "icon": icon,
                          "heading": _world_text(sec.get("heading"), "heading", 80), "lead": _world_text(sec.get("lead", ""), "lead", 240, required=False),
-                         "tags": [_world_text(t, "tag", 40) for t in tags], "cards": out_cards, "table": table, "controls": sec.get("controls", False)})
+                         "eyebrow": eyebrow, "links": links, "stamp": stamp,
+                         "notice": note, "stats": stats, "tags": [_world_text(t, "tag", 40) for t in tags], "cards": out_cards, "table": table,
+                         "steps": steps, "controls": sec.get("controls", False)})
+    keys = [s["steps"]["key"] for s in sections if s["steps"]]
+    if len(set(keys)) != len(keys):
+        raise ValueError("each section's steps need their own key")
     return {"schema": SHOWCASE_SCHEMA, "id": sid, "title": _world_text(spec.get("title", "Showcase"), "title", 60),
             "emoji": _world_text(spec.get("emoji", ""), "emoji", 16, required=False), **flags, "sections": sections}
 
@@ -4663,6 +5059,72 @@ def showcase_css(spec: Any) -> str:
         rules.append(f'#{sid}:has({radio}:checked) {label}{{background:var(--ui-accent);color:var(--ui-bg)}}')
         rules.append(f'#{sid}:has({radio}:focus-visible) {label}{{outline:2px solid var(--ui-fg);outline-offset:2px}}')
     return "@layer components{" + "".join(rules) + "}"
+
+
+TABLE_MAX_COLUMNS, TABLE_MAX_ROWS, TABLE_MAX_TEXT = 64, 10000, 1000
+_TABLE_STATUS = re.compile(r"[a-z0-9][a-z0-9-]{0,31}")
+
+
+def _table_cell(cell: Any) -> Any:
+    if cell is None or (isinstance(cell, (int, float)) and not isinstance(cell, bool) and math.isfinite(cell)):
+        return cell
+    if isinstance(cell, str):
+        if len(cell) > TABLE_MAX_TEXT:
+            raise ValueError(f"a cell is text of up to {TABLE_MAX_TEXT} characters")
+        return cell
+    if not isinstance(cell, dict) or not cell or set(cell) - {"text", "href", "image", "status", "num"}:
+        raise ValueError("a cell is text, a finite number, null, or {text, href, image: {src, alt, width, height}, status, num}")
+    out: dict[str, Any] = {"text": cell.get("text", "")}
+    if not isinstance(out["text"], str) or len(out["text"]) > TABLE_MAX_TEXT:
+        raise ValueError(f"a cell's text is up to {TABLE_MAX_TEXT} characters")
+    if "href" in cell:
+        out["href"] = _door_href(cell["href"])
+    if "image" in cell:
+        image = cell["image"]
+        if not isinstance(image, dict) or not {"src", "alt"} <= set(image) <= {"src", "alt", "width", "height"} \
+                or not isinstance(image["alt"], str) or len(image["alt"]) > 200 \
+                or any(type(image.get(k, 1)) is not int or not 1 <= image.get(k, 1) <= 4096 for k in ("width", "height")):
+            raise ValueError("a cell image is {src, alt, width, height}: alt text of up to 200 characters, sizes of 1..4096 px")
+        out["image"] = {"src": _door_href(image["src"]), "alt": image["alt"], **{k: image[k] for k in ("width", "height") if k in image}}
+    if "status" in cell:
+        if not isinstance(cell["status"], str) or not _TABLE_STATUS.fullmatch(cell["status"]):
+            raise ValueError("a cell status is a lowercase token (a-z, 0-9, -) of up to 32 characters")
+        out["status"] = cell["status"]
+    if not isinstance(cell.get("num", False), bool):
+        raise ValueError("a cell's num is true or false")
+    out["num"] = cell.get("num", False)
+    return out
+
+
+def table_validate(spec: Any) -> dict[str, Any]:
+    """Checked copy of a table: ``columns`` (header texts), ``rows`` (lists as wide as ``columns``), optional ``caption``, ``row_headers``
+    (the first cell of each row is its ``<th scope="row">``) and ``missing`` (the text of a null cell, default "—"). A cell is text, a finite
+    number (right-aligned), null (missing) or ``{text, href, image: {src, alt, width, height}, status, num}``; hrefs and image sources are relative paths or
+    http(s) addresses, ``status`` a token written as ``data-status`` for the page to color. The showcase's section tables are its 1..6 × 16 text subset."""
+    if not isinstance(spec, dict) or set(spec) - {"columns", "rows", "caption", "row_headers", "missing"}:
+        raise ValueError("a table is {columns, rows, caption, row_headers, missing}")
+    columns, rows = spec.get("columns"), spec.get("rows")
+    if not isinstance(columns, list) or not 1 <= len(columns) <= TABLE_MAX_COLUMNS \
+            or any(not isinstance(c, str) or len(c) > TABLE_MAX_TEXT for c in columns):
+        raise ValueError(f"columns is a list of 1..{TABLE_MAX_COLUMNS} header texts")
+    if not isinstance(rows, list) or len(rows) > TABLE_MAX_ROWS or any(not isinstance(r, list) or len(r) != len(columns) for r in rows):
+        raise ValueError(f"rows is a list of up to {TABLE_MAX_ROWS} rows, each as wide as columns")
+    caption, missing = spec.get("caption", ""), spec.get("missing", "—")
+    if not isinstance(caption, str) or len(caption) > TABLE_MAX_TEXT or not isinstance(missing, str) or len(missing) > 80:
+        raise ValueError("caption is text, missing is text of up to 80 characters")
+    if not isinstance(spec.get("row_headers", False), bool):
+        raise ValueError("row_headers is true or false")
+    return {"columns": list(columns), "rows": [[_table_cell(c) for c in r] for r in rows], "caption": caption,
+            "row_headers": spec.get("row_headers", False), "missing": missing}
+
+
+def table_html(spec: Any) -> str:
+    """``table()`` from a JSON spec (``table_validate``), in its horizontal scroller: for the CLI, Node and the showcase sections. Numbers are
+    right-aligned (``data-num``); everything is escaped and there is no script."""
+    t = table_validate(spec)
+    rows = [[{"text": format(c, "g"), "num": True} if isinstance(c, (int, float)) and not isinstance(c, bool) else c for c in row] for row in t["rows"]]
+    return ('<div class="ui-shell-scroll">' + table(t["columns"], rows, caption=t["caption"] or None, row_headers=t["row_headers"], missing=t["missing"])
+            + "</div>")
 
 
 def showcase_html(spec: Any) -> str:
@@ -4683,9 +5145,17 @@ def showcase_html(spec: Any) -> str:
               + "</select>" if show["themes"] else "")
 
     def body(s: dict[str, Any]) -> str:
-        out = [f'<h2 id="{sid}-h-{s["id"]}">{escape(s["heading"])}</h2>']
-        if s["lead"]:
-            out.append(f'<p class="ui-muted">{escape(s["lead"])}</p>')
+        if s["eyebrow"] or s["links"] or s["stamp"]:
+            out = [page_heading(s["heading"], eyebrow=s["eyebrow"] or None, lead=s["lead"] or None, chips=[tuple(x) for x in s["links"]],
+                                stamp=s["stamp"], level=2, id=f'{sid}-h-{s["id"]}')]
+        else:
+            out = [f'<h2 id="{sid}-h-{s["id"]}">{escape(s["heading"])}</h2>']
+            if s["lead"]:
+                out.append(f'<p class="ui-muted">{escape(s["lead"])}</p>')
+        if s["notice"]:
+            out.append(notice(s["notice"]["text"], tone=s["notice"]["tone"], title=s["notice"]["title"]))
+        if s["stats"]:
+            out.append(stat_tiles(tuple(tuple(t) for t in s["stats"])))
         if s["tags"]:
             out.append('<div class="ui-shell-tags">' + "".join(f'<span class="ui-tag">{escape(t)}</span>' for t in s["tags"]) + "</div>")
         if s["cards"]:
@@ -4693,9 +5163,9 @@ def showcase_html(spec: Any) -> str:
                 f'<article class="ui-card ui-shell-card">{icon(c["icon"])}<div><h3>{escape(c["title"])}</h3><p>{escape(c["body"])}</p></div></article>'
                 for c in s["cards"]) + "</div>")
         if s["table"]:
-            head = "".join(f'<th scope="col">{escape(c)}</th>' for c in s["table"]["columns"])
-            rows = "".join("<tr>" + "".join(f"<td>{escape(c)}</td>" for c in r) + "</tr>" for r in s["table"]["rows"])
-            out.append(f'<div class="ui-shell-scroll"><table class="ui-shell-table"><thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table></div>')
+            out.append(table_html(s["table"]))
+        if s["steps"]:
+            out.append(steps_html(s["steps"]))
         if s["controls"]:
             out.append(f'<div class="ui-shell-controls"><label for="{sid}-demo-input">Input</label><input class="ui-input" id="{sid}-demo-input" value="shared semantic HTML"> '
                        '<button class="ui-button" type="button">Button</button><span class="ui-tag">tag</span></div>'
@@ -4712,9 +5182,12 @@ def showcase_html(spec: Any) -> str:
 
 
 def showcase_document(spec: Any, *, theme: str = "modern") -> str:
-    """A single-file page for a showcase: bundled CSS, its section rules, its HTML and the two ui.js helpers it uses."""
+    """A single-file page for a showcase: bundled CSS, its section rules, its HTML and the ui.js helpers it uses (with records.js and the copy
+    buttons when a section holds steps)."""
     show = showcase_validate(spec)
-    return render_document(trusted_html=showcase_html(show) + module_script(EMBEDDED_UI_JS + "\nbindTheme();bindToggles();\n"),
+    steps = any(s["steps"] for s in show["sections"])
+    script = module_script(EMBEDDED_UI_JS + "\nbindTheme();bindToggles();" + ("bindCopy();" if steps else "") + "\n")
+    return render_document(trusted_html=showcase_html(show) + script + (module_script(js_source("records.js")) if steps else ""),
                            title=show["title"], theme=theme, css=bundled_css() + showcase_css(show))
 
 
@@ -4752,11 +5225,16 @@ def theme_palette(hue: float, *, dark: bool = False, sat: float = 0.3, radius: s
 
 def theme_palettes() -> dict[str, dict[str, str]]:
     """The token-only themes by name. ``green`` is the one first built by hand in Ironmate's studio (measured against its
-    palette); the others are theme_palette(hue). Add a theme by adding its name to CANDIDATE_THEMES and a line here."""
+    palette), ``purple`` is flutter_navigation_basic's Material 3 baseline; red and blue are theme_palette(hue). Add a theme by adding
+    its name to CANDIDATE_THEMES and a line here."""
     return {
         "green": {"--ui-bg": "#edf0ec", "--ui-panel": "#ffffff", "--ui-fg": "#163b3b", "--ui-muted": "#546a61",
                   "--ui-border": "#ccdcd4", "--ui-accent": "#126d66", "--ui-danger": "#a73528", "--ui-radius": ".5rem"},
         "red": theme_palette(0.0), "blue": theme_palette(0.6),
+        # purple: flutter_navigation_basic's Material 3 baseline (seed #6750A4: surface, on-surface, outline variant, error),
+        # kept here before that repository is archived.
+        "purple": {"--ui-bg": "#fffbfe", "--ui-panel": "#f7f2fa", "--ui-fg": "#1c1b1f", "--ui-muted": "#49454f",
+                   "--ui-border": "#cac4d0", "--ui-accent": "#6750a4", "--ui-danger": "#b3261e", "--ui-radius": ".5rem"},
         # terminal: mcp-toolcall-lab's terminal-lite (dark ASCII presentation, borders instead of shadows), returned here
         # so every repository can pick it; it also sets the body font to the mono stack.
         "terminal": {"--ui-bg": "#0a0e10", "--ui-panel": "#11171a", "--ui-fg": "#d5dee0", "--ui-muted": "#7c8a8d",
@@ -5027,6 +5505,257 @@ def theme_switch_html(*, legend: str = "Theme") -> str:
     return (f'<fieldset class="ui-layout-switch"><legend>{escape(legend)}</legend>'
             + "".join(f'<label><input type="radio" name="ui-theme" value="{t}"{" checked" if t == "modern" else ""}> {t}</label>'
                       for t in (*THEMES, *CANDIDATE_THEMES)) + "</fieldset>")
+
+
+_CSS["dial.css"] = "@layer components{" + DIAL_CSS + "}"
+
+
+# --- Scroll regions: a row or a table wider than its place gets ‹ › buttons, edge fades and (tables) a second scrollbar on top.
+# Lifted from the parent repository's observatory (site/ui/scroll-controls.js and its rules), so no page keeps its own copy.
+_CSS["scroll.css"] = (
+    "@layer components{.ui-scroll{min-width:0;max-width:100%;position:relative}.ui-scroll-row{display:flex;align-items:center;gap:8px;width:100%}"
+    '.ui-scroll-row>[data-ui-scroll]{display:flex;flex:1 1 auto;min-width:0;max-width:100%;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;gap:8px;white-space:nowrap;'
+    "overscroll-behavior-x:contain;scrollbar-width:thin;scrollbar-color:var(--ui-muted) var(--ui-bg)}.ui-scroll-row>[data-ui-scroll]>*{flex:0 0 auto}"
+    ".ui-scroll-arrow{flex:0 0 32px;width:32px;height:40px;min-height:40px;padding:0;font-size:24px;line-height:1;color:var(--ui-accent);background:var(--ui-panel);"
+    "border:1px solid var(--ui-border);border-radius:var(--ui-radius);cursor:pointer}.ui-scroll-arrow:disabled{opacity:.35;cursor:default}"
+    '.ui-scroll-row.ui-scroll-left::before,.ui-scroll-row.ui-scroll-right::after{content:"";pointer-events:none;position:absolute;top:0;bottom:0;width:16px;z-index:1}'
+    ".ui-scroll-row.ui-scroll-left::before{left:40px;background:linear-gradient(to right,var(--ui-bg),transparent)}"
+    ".ui-scroll-row.ui-scroll-right::after{right:40px;background:linear-gradient(to left,var(--ui-bg),transparent)}"
+    ".ui-scroll-table>[data-ui-scroll]{max-height:64vh;max-height:64dvh;overflow:auto;overscroll-behavior-x:contain;scrollbar-gutter:stable}"
+    ".ui-scroll-table>[data-ui-scroll] thead th{position:sticky;top:0;z-index:2;box-shadow:0 1px 0 var(--ui-border)}"
+    ".ui-scroll-bar{display:flex;align-items:center;gap:8px;padding:8px;background:var(--ui-panel);border:1px solid var(--ui-border);border-bottom:0;"
+    "border-radius:var(--ui-radius) var(--ui-radius) 0 0}.ui-scroll-over>[data-ui-scroll]{border-top-left-radius:0;border-top-right-radius:0}"
+    ".ui-scroll-bar .ui-scroll-arrow{height:32px;min-height:32px}.ui-scroll-hint{font-size:.75rem;white-space:nowrap;color:var(--ui-muted)}"
+    ".ui-scroll-top{flex:1 1 auto;min-width:0;height:24px;overflow-x:scroll;overflow-y:hidden;overscroll-behavior-x:contain;scrollbar-color:var(--ui-muted) var(--ui-bg)}"
+    ".ui-scroll-spacer{height:1px}.ui-scroll :focus-visible{outline:2px solid var(--ui-accent);outline-offset:-2px}"
+    "@media(max-width:700px){.ui-scroll-hint{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}"
+    "@media(prefers-reduced-motion:reduce){[data-ui-scroll],.ui-scroll-top{scroll-behavior:auto}}}")
+
+_JS["scroll.js"] = r"""/* web-ui scroll: ‹ › buttons, edge fades and (tables) a top scrollbar for every [data-ui-scroll="row"|"table"] (scroll_html). No dependencies, nothing stored or sent; scroll.css draws it. */
+const mounted=new WeakSet(),states=new Set();
+let identity=0,scheduled=false,watching=false;
+const LABELS={row:"横スクロール",table:"表",suffix:"（横スクロール）",hint:"表を横に移動",top:"表ヘッダーの横スクロール",left:"を左へスクロール",right:"を右へスクロール"};
+export function refreshScroll(){
+  scheduled=false;
+  for(const state of states){
+    if(!state.viewport.isConnected){state.observer?.disconnect();states.delete(state);continue}
+    const {viewport,shell,toolbar,top,spacer,previous,next}=state;
+    const maximum=Math.max(0,viewport.scrollWidth-viewport.clientWidth),overflow=maximum>1;
+    shell.classList.toggle("ui-scroll-over",overflow);
+    shell.classList.toggle("ui-scroll-left",overflow&&viewport.scrollLeft>1);
+    shell.classList.toggle("ui-scroll-right",overflow&&viewport.scrollLeft<maximum-1);
+    previous.disabled=!overflow||viewport.scrollLeft<=1;
+    next.disabled=!overflow||viewport.scrollLeft>=maximum-1;
+    if(previous.hidden!==!overflow)previous.hidden=!overflow;
+    if(next.hidden!==!overflow)next.hidden=!overflow;
+    if(toolbar){
+      if(toolbar.hidden!==!overflow)toolbar.hidden=!overflow;
+      // Both scrollbars need the same range, even though the toolbar also holds the buttons.
+      spacer.style.width=`${maximum+top.clientWidth}px`;
+      if(Math.abs(top.scrollLeft-viewport.scrollLeft)>1)top.scrollLeft=viewport.scrollLeft;
+    }
+  }
+}
+const schedule=()=>{if(!scheduled){scheduled=true;requestAnimationFrame(refreshScroll)}};
+function bindKeys(control,viewport){
+  control.addEventListener("keydown",event=>{
+    // Text fields, selects and other children keep their own arrow / Home / End keys.
+    if(event.target!==control||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;
+    if(event.key==="ArrowLeft"||event.key==="ArrowRight")viewport.scrollLeft+=event.key==="ArrowLeft"?-100:100;
+    else if(event.key==="Home")viewport.scrollLeft=0;
+    else if(event.key==="End")viewport.scrollLeft=viewport.scrollWidth;
+    else return;
+    event.preventDefault();
+    if(control!==viewport)control.scrollLeft=viewport.scrollLeft;
+    schedule();
+  });
+}
+function enhance(viewport,labels){
+  if(mounted.has(viewport))return;
+  mounted.add(viewport);
+  const table=viewport.dataset.uiScroll==="table",label=viewport.dataset.scrollLabel||(table?labels.table:labels.row);
+  const shell=document.createElement("div");
+  shell.className=table?"ui-scroll ui-scroll-table":"ui-scroll ui-scroll-row";
+  viewport.before(shell);shell.append(viewport);
+  if(!viewport.id)viewport.id=`ui-scroll-${++identity}`;
+  if(!viewport.hasAttribute("tabindex"))viewport.tabIndex=0;
+  if(!viewport.hasAttribute("aria-label"))viewport.setAttribute("aria-label",label+labels.suffix);
+  if(table)viewport.setAttribute("role","region");
+  const state={viewport,shell};
+  const arrow=direction=>{
+    const button=document.createElement("button");
+    button.type="button";button.className="ui-scroll-arrow";button.textContent=direction<0?"‹":"›";
+    button.setAttribute("aria-label",label+(direction<0?labels.left:labels.right));
+    button.setAttribute("aria-controls",viewport.id);
+    button.addEventListener("click",()=>viewport.scrollBy({left:direction*Math.max(120,viewport.clientWidth*.7),behavior:"auto"}));
+    return button;
+  };
+  state.previous=arrow(-1);state.next=arrow(1);
+  if(table){
+    const toolbar=document.createElement("div"),hint=document.createElement("span"),top=document.createElement("div"),spacer=document.createElement("div");
+    toolbar.className="ui-scroll-bar";hint.className="ui-scroll-hint";hint.textContent=labels.hint;
+    top.className="ui-scroll-top";top.tabIndex=0;top.setAttribute("role","region");top.setAttribute("aria-label",labels.top);top.setAttribute("aria-controls",viewport.id);
+    spacer.className="ui-scroll-spacer";top.append(spacer);
+    toolbar.append(hint,state.previous,top,state.next);shell.prepend(toolbar);
+    Object.assign(state,{toolbar,top,spacer});
+    top.addEventListener("scroll",()=>{if(Math.abs(viewport.scrollLeft-top.scrollLeft)>1)viewport.scrollLeft=top.scrollLeft;schedule()},{passive:true});
+    bindKeys(top,viewport);
+  }else{shell.prepend(state.previous);shell.append(state.next)}
+  viewport.addEventListener("scroll",schedule,{passive:true});
+  viewport.addEventListener("focusin",event=>{
+    if(event.target===viewport)return;
+    const bounds=viewport.getBoundingClientRect(),target=event.target.getBoundingClientRect();
+    if(target.left<bounds.left)viewport.scrollLeft+=target.left-bounds.left;
+    else if(target.right>bounds.right)viewport.scrollLeft+=target.right-bounds.right;
+    schedule();
+  });
+  bindKeys(viewport,viewport);
+  if(typeof ResizeObserver!=="undefined"){
+    state.observer=new ResizeObserver(schedule);state.observer.observe(viewport);
+    for(const child of viewport.children)state.observer.observe(child);
+  }
+  states.add(state);
+}
+/* Enhance every region under root, now and as the page adds more (one observer per page). labels overrides LABELS (another language). */
+export function bindScroll(root=document,options={}){
+  const labels={...LABELS,...(options.labels||{})};
+  const mount=()=>{root.querySelectorAll('[data-ui-scroll="row"],[data-ui-scroll="table"]').forEach(v=>enhance(v,labels));schedule()};
+  if(!watching){
+    watching=true;
+    new MutationObserver(mutations=>{if(mutations.some(m=>m.type==="childList"))mount();else schedule()})
+      .observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["open","hidden"]});
+    window.addEventListener("resize",schedule,{passive:true});
+    document.addEventListener("toggle",schedule,true);
+    document.addEventListener("load",schedule,true);
+  }
+  mount();
+  return {mount,refresh:refreshScroll};
+}
+if(typeof document!=="undefined")bindScroll();
+"""
+
+
+def scroll_html(trusted_html: str, *, label: str, kind: str = "row", id: str | None = None) -> str:
+    """A scroll region around trusted HTML: ``kind`` "row" (buttons, chips: one line that scrolls sideways) or "table" (a wide table, with a
+    second scrollbar on top). scroll.js adds the ‹ › buttons and edge fades when the content is wider than its place; without it the region
+    still scrolls. ``label`` names the region for screen readers and the buttons."""
+    if kind not in ("row", "table"):
+        raise ValueError('a scroll region is a "row" or a "table"')
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("a scroll region needs a label")
+    identity = f' id="{_element_id(id)}"' if id is not None else ""
+    return f'<div class="ui-shell-scroll" data-ui-scroll="{kind}" data-scroll-label="{escape(label, quote=True)}"{identity}>{trusted_html}</div>'
+
+
+def dial_html(name: str, *, minimum: float = 0, maximum: float = 100, step: float = 1, value: float = 0, label: str = "", attrs: str = "") -> str:
+    """A rotary dial (``bindDial()`` from dial.js turns it) over a range input named ``name``; DIAL_CSS draws it. The input is what forms, keys and screen
+    readers see: ``label`` is its aria-label, ``attrs`` any further attributes (already escaped) for it."""
+    if not isinstance(name, str) or not _WORLD_TOKEN.fullmatch(name):
+        raise ValueError("a dial's name is a token")
+    nums = (minimum, maximum, step, value)
+    if any(type(v) not in (int, float) for v in nums) or not minimum < maximum or step <= 0 or not minimum <= value <= maximum:
+        raise ValueError("a dial has minimum < maximum, a positive step and a value between them")
+    aria = (f' aria-label="{escape(label, quote=True)}"' if label else "") + (f" {attrs}" if attrs else "")
+    return (f'<span class="ui-dial" data-ui-dial><input type="range" name="{name}" min="{minimum:g}" max="{maximum:g}" step="{step:g}" value="{value:g}"{aria}></span>')
+
+
+# --- Repository diagnostics: the page ascii_artist, markdown and mcp-toolcall-lab each wrote by hand, as one builder ----------------------
+# --- Components as a Python wrapper: one name gives the HTML builder, the stylesheet and the module, for pages here and in other repositories ---
+COMPONENTS: dict[str, dict[str, Any]] = {
+    # name: html builder, stylesheets (a css_source name, or a builder in _COMPONENT_CSS), module names (js_source), "mount" when the module
+    # does not bind itself on load, "spec" when the builder wants a checked spec, and "classic" for a classic script (not an ES module).
+    # Specs and keyword arguments pass through to the builder.
+    "dial": {"html": "dial_html", "css": ("dial.css",), "js": ("dial.js",)},
+    "scroll": {"html": "scroll_html", "css": ("scroll.css",), "js": ("scroll.js",)},
+    "seed-dial": {"html": "seed_dial_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
+    "theme-switch": {"html": "theme_switch_html", "css": (), "js": ("theme.js",), "mount": "bindTheme();"},
+    "coordinates": {"html": "coordinates_html", "css": ("coordinates.css",), "js": ("coordinates.js",)},
+    "door": {"html": "door_html", "css": ("door.css",), "js": ("door.js",)},
+    "playground": {"html": "playground_html", "css": ("playground.css",), "js": ("playground.js",)},
+    "report": {"html": "report_html", "css": ("report.css",), "js": ("report.js",)},
+    "mcp": {"html": "mcp_html", "css": ("mcp.css",), "js": ("mcp.js",)},
+    "screens": {"html": "screens_html", "css": ("screens.css",), "js": ("screens.js",)},
+    "patterns": {"html": "patterns_html", "css": ("patterns.css",), "js": ("patterns.js",)},
+    "imagestudio": {"html": "imagestudio_html", "css": ("imagestudio.css",), "js": ("imagestudio.js",)},
+    "shelf": {"html": "shelf_html", "css": ("shelf.css",), "js": ("shelf.js",)},
+    "photo": {"html": "photo_html", "css": ("photo.css",), "js": ("photo.js",)},
+    "studio": {"html": "studio_html", "css": ("studio.css",), "js": ("composition.js", "studio-audio.js")},
+    "source": {"html": "source_panel_html", "css": ("source.css",), "js": ("source.js",)},
+    "stub": {"html": "stub_html", "css": ("stub.css",), "js": ("stub.js",)},
+    "world": {"html": "world_html", "css": ("world_css",), "js": ("world.js",)},
+    "showcase": {"html": "showcase_html", "css": ("showcase_css",), "js": ("ui.js", "records.js"), "mount": "bindTheme();bindToggles();bindCopy();", "spec": "showcase_validate"},
+    "tempclip": {"html": "tempclip_html", "css": ("shelf.css",), "js": ("shelf.js",)},
+    "curl": {"html": "curl_panel_html", "css": (), "js": ("curl.js",)},
+    "repository-diagnostics": {"html": "repository_diagnostics_body", "css": ("repository-diagnostics.css",), "js": ("repository-diagnostics.js",),
+                               "mount": 'RepositoryDiagnostics.mount(document, "./repository-diagnostics.json");', "classic": True},
+    "front": {"html": "front_html", "css": ("front_css",), "js": ()},
+    "table": {"html": "table_html", "css": (), "js": (), "spec": "table_validate"},
+    "steps": {"html": "steps_html", "css": (), "js": ("ui.js", "records.js"), "mount": "bindCopy();", "spec": "steps_validate"},
+    "seed-roll": {"html": "seed_roll_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
+}
+# Stylesheets that are built rather than stored: the spec (the first argument) decides them.
+_COMPONENT_CSS = {"world_css": lambda *a: world_css(a[0], base=False), "showcase_css": lambda *a: showcase_css(showcase_validate(a[0])),
+                  "front_css": lambda *a: front_css()}
+
+
+def component_parts(name: str, /, *args: Any, **kwargs: Any) -> dict[str, str]:
+    """``{"html", "css", "js"}`` of one component of COMPONENTS: the HTML its builder makes from ``args``/``kwargs`` (a spec, a dial's numbers),
+    the stylesheet text it needs beyond bundled_css(), and the module source that binds it (it mounts itself when the page loads).
+    Another repository that vendors web_ui.py calls this from Python and places the three where its page wants them."""
+    try:
+        part = COMPONENTS[name]
+    except KeyError:
+        raise ValueError(f"unknown component: {name}; one of {', '.join(COMPONENTS)}") from None
+    if part.get("spec") and args:
+        args = (globals()[part["spec"]](args[0]), *args[1:])
+    html = globals()[part["html"]](*args, **kwargs)
+    css = "".join(_COMPONENT_CSS[n](*args) if n in _COMPONENT_CSS else css_source(n) for n in part["css"])
+    js = "".join(js_source(n) for n in part["js"])
+    return {"html": html, "css": css, "js": js + ("\n" + part["mount"] + "\n" if part.get("mount") else "")}
+
+
+def components() -> dict[str, dict[str, Any]]:
+    """What each component needs, as plain data (for a listing, or for another language): its builder's name, stylesheets, modules, mount line."""
+    return {name: {"html": part["html"], "css": list(part["css"]), "js": list(part["js"]), "mount": part.get("mount", ""), "classic": bool(part.get("classic"))}
+            for name, part in COMPONENTS.items()}
+
+
+def _component_main(args: Any) -> str:
+    """The --component CLI: the same component_parts()/component_document() calls, for Node (vendor/py_launch.cjs) and the shell."""
+    if args.component == "list":
+        return json.dumps(components(), ensure_ascii=False, indent=2) + "\n"
+    positional: tuple[Any, ...] = ()
+    if args.spec:
+        if args.spec == Path("-"):
+            raw = sys.stdin.buffer.read(PATTERN_MAX_INPUT + 1)
+            if len(raw) > PATTERN_MAX_INPUT:
+                raise ValueError(f"spec is larger than {PATTERN_MAX_INPUT} bytes")
+            text = raw.decode("utf-8")
+        else:
+            text = args.spec.read_text(encoding="utf-8")
+        positional = (json.loads(text),)
+    kwargs: dict[str, Any] = {}
+    for item in args.set:
+        key, sep, value = item.partition("=")
+        if not sep or not key.isidentifier():
+            raise ValueError(f"--set wants KEY=VALUE, got {item!r}")
+        try:
+            kwargs[key] = json.loads(value)
+        except ValueError:
+            kwargs[key] = value
+    if args.part == "page":
+        return component_document(args.component, *positional, theme=args.theme, **kwargs)
+    parts = component_parts(args.component, *positional, **kwargs)
+    return json.dumps(parts, ensure_ascii=False) + "\n" if args.part == "json" else parts[args.part]
+
+
+def component_document(name: str, /, *args: Any, document_title: str | None = None, theme: str = "modern", **kwargs: Any) -> str:
+    """One single-file page around a component: bundled_css() plus its stylesheet, its HTML in ``<main class="ui-page">``, its module inline.
+    ``document_title`` is the tab's title (default: the builder's ``title`` keyword, else the component's name)."""
+    parts = component_parts(name, *args, **kwargs)
+    script = ("<script>" + parts["js"] + "</script>" if COMPONENTS[name].get("classic") else module_script(parts["js"])) if parts["js"] else ""
+    return render_document(trusted_html='<main class="ui-page">' + parts["html"] + "</main>" + script,
+                           title=document_title or kwargs.get("title") or name, theme=theme, css=bundled_css() + parts["css"])
 
 
 def seed_dial_html(*, maximum: int = 99) -> str:
@@ -18245,6 +18974,9 @@ EXAMPLES: dict[str, Any] = {'flutter-pages': {'schema': 'web-ui-flutter-pages/1'
 # repository metadata. Consumers adapt their existing source of truth to this.
 # Real places in miniature (the `place` floor): latitude and longitude in, tiles out. The coordinates are approximate (about 100 m, read off public
 # maps), which is all a miniature needs; the point is where things stand relative to each other, so nothing here is a facility's exact position.
+_CITY_MARKS = {"exit": "🚪", "station": "🚉", "terminus": "🚆"}   # the mark drawn instead of the dot, by category: the cities are their transport
+
+
 def _pt(id: str, label: str, lat: float, lon: float, category: str, body: str = "", flip: str = "", sign: str = "") -> dict[str, Any]:
     return {"id": id, "label": label, "lat": lat, "lon": lon, "category": category, "body": body, **({"flip": flip} if flip else {}),
             **({"sign": sign} if sign else {})}
@@ -18311,21 +19043,6 @@ _LONDON_POINTS = [
     _pt("westminster", "ウェストミンスター", 51.501, -0.1254, "station", "チャリング・クロスの南のとなりの駅です。"),
     _pt("green-park", "グリーン・パーク", 51.5067, -0.1428, "station", "ヴィクトリアの北のとなりの駅です。"),
     _pt("pimlico", "ピムリコ", 51.4893, -0.1334, "station", "ヴィクトリアの南東のとなりの駅です。"),
-    _pt("big-ben", "ビッグ・ベン", 51.5007, -0.1246, "sight", "川のほとりに立つ大きな時計塔です。"),
-    _pt("westminster-abbey", "ウェストミンスター寺院", 51.4994, -0.1273, "sight", "国の儀式が行われてきた大きな教会です。"),
-    _pt("london-eye", "ロンドン・アイ", 51.5033, -0.1195, "sight", "川のそばの大きな観覧車です。"),
-    _pt("buckingham", "バッキンガム宮殿", 51.5014, -0.1419, "sight", "王室の住まいの宮殿です。"),
-    _pt("trafalgar-square", "トラファルガー広場", 51.508, -0.1281, "sight", "噴水と像のある大きな広場です。"),
-    _pt("piccadilly-circus", "ピカデリー・サーカス", 51.51, -0.1347, "sight", "光る看板がならぶ交差点です。"),
-    _pt("british-museum", "大英博物館", 51.5194, -0.127, "sight", "世界中の品々を集めた博物館です。"),
-    _pt("st-pauls-cathedral", "セント・ポール大聖堂", 51.5138, -0.0984, "sight", "大きなドームをのせた大聖堂です。"),
-    _pt("the-shard", "ザ・シャード", 51.5045, -0.0865, "sight", "とがった形の高いビルです。"),
-    _pt("tower-bridge", "タワー・ブリッジ", 51.5055, -0.0754, "sight", "川にかかる、二つの塔のある橋です。"),
-    _pt("downing-street", "首相官邸", 51.5034, -0.1276, "famous", "首相の仕事場と住まいがある通りです。"),
-    _pt("scotland-yard", "警視庁", 51.5012, -0.1229, "famous", "ロンドンの警察の本部です。"),
-    _pt("bank-of-england", "イングランド銀行", 51.5142, -0.0885, "famous", "国の中央銀行です。"),
-    _pt("old-bailey", "中央刑事裁判所", 51.5156, -0.1021, "famous", "大きな裁判が開かれる裁判所です。"),
-    _pt("bbc", "BBC放送会館", 51.5185, -0.1439, "famous", "放送局の本拠地です。"),
     _pt("nogard", "nogard", 51.5024, -0.1118, "sign", "うしろから読んでみて。", "🐉", "wood"),
     _pt("mind-the-gap", "mind the gap", 51.4958, -0.1445, "sign", "駅のホームでよく聞く言葉です。", "", "led"),
     _pt("platform", "◀ 北 | 南 ▶", 51.5290, -0.1270, "sign", "キングス・クロスとセント・パンクラスの前です。", "", "led"),
@@ -18359,28 +19076,13 @@ _PARIS_POINTS = [
     _pt("edgar-quinet", "エドガー・キネ", 48.8409, 2.3252, "station", "モンパルナス駅の東のとなりの駅です。"),
     _pt("vavin", "ヴァヴァン", 48.8421, 2.3282, "station", "モンパルナス駅の北東のとなりの駅です。"),
     _pt("falguiere", "ファルギエール", 48.8444, 2.3098, "station", "モンパルナス駅の西のとなりの駅です。"),
-    _pt("eiffel", "エッフェル塔", 48.8584, 2.2945, "sight", "鉄でできた、パリでいちばん有名な塔です。"),
-    _pt("arc-de-triomphe", "凱旋門", 48.8738, 2.295, "sight", "大きな道が集まる円の真ん中の門です。"),
-    _pt("notre-dame", "ノートルダム大聖堂", 48.853, 2.3499, "sight", "川の中の島に立つ大きな教会です。"),
-    _pt("louvre", "ルーヴル美術館", 48.8606, 2.3376, "sight", "世界でいちばん人が来る美術館です。"),
-    _pt("sacre-coeur", "サクレ・クール寺院", 48.8867, 2.3431, "sight", "丘の上の白い教会です。"),
-    _pt("pompidou", "ポンピドゥー・センター", 48.8606, 2.3522, "sight", "配管が外に出ている、現代美術の建物です。"),
-    _pt("pantheon", "パンテオン", 48.8462, 2.3464, "sight", "ドームをのせた、偉人たちの霊廟です。"),
-    _pt("concorde", "コンコルド広場", 48.8656, 2.3212, "sight", "オベリスクが立つ大きな広場です。"),
-    _pt("opera-garnier", "オペラ座", 48.872, 2.3316, "sight", "金色の飾りが目立つ歌劇場です。"),
-    _pt("orsay", "オルセー美術館", 48.86, 2.3266, "sight", "古い駅舎を使った美術館です。"),
-    _pt("elysee", "エリゼ宮", 48.8704, 2.3167, "famous", "大統領の仕事場です。"),
-    _pt("assemblee", "国民議会", 48.8606, 2.3189, "famous", "国の法律を決める議会の建物です。"),
-    _pt("bourse", "ブルス", 48.8693, 2.3411, "famous", "むかし証券取引所だった建物です。"),
-    _pt("banque-de-france", "フランス銀行", 48.8614, 2.3416, "famous", "国の中央銀行です。"),
-    _pt("hotel-de-ville", "パリ市庁舎", 48.8566, 2.3522, "famous", "パリの市役所です。"),
     _pt("to-lyon", "▶ Lyon", 48.8449, 2.3728, "sign", "リヨン駅から、リヨンへ向かう列車が出ます。", "", "led"),
     _pt("rive-gauche", "rive gauche ▼", 48.8530, 2.3440, "sign", "川の南がわ、左岸という意味です。", "", "wood"),
 ]
 _PARIS_LINKS = [["gare-du-nord", "poissonniere"], ["gare-du-nord", "barbes"], ["gare-de-lest", "chateau-deau"], ["gare-de-lest", "louis-blanc"], ["gare-du-nord",
     "gare-de-lest"], ["saint-lazare", "havre-caumartin"], ["saint-lazare", "europe"], ["gare-de-lyon", "bastille"], ["gare-de-lyon",
     "quai-de-la-rapee"], ["quai-de-la-rapee", "austerlitz"], ["austerlitz", "saint-marcel"], ["austerlitz", "jussieu"], ["montparnasse",
-    "edgar-quinet"], ["montparnasse", "vavin"], ["montparnasse", "falguiere"], ["jussieu", "pantheon"]]
+    "edgar-quinet"], ["montparnasse", "vavin"], ["montparnasse", "falguiere"]]
 _SEINE = {"line": [[48.833, 2.38], [48.8372, 2.3737], [48.845, 2.3668], [48.8506, 2.3622], [48.8545, 2.354], [48.856, 2.349], [48.8573, 2.3413], [48.8585, 2.3377], [48.8609, 2.3306], [48.8637, 2.3203], [48.864, 2.3135], [48.8638, 2.3012], [48.8613, 2.2935], [48.855, 2.2877], [48.848, 2.276]], "width": 1}
 
 
@@ -18423,10 +19125,11 @@ EXAMPLES.update({
                     "player": {"emoji": "🙂", "x": 192, "y": 288, "speed": 96}}],
     },
     # The overworld's sequel in real space, as its other sides: Parallel Tokyo (Tokyo Station with its six exits and the stations around it, on foot),
-    # Reverse London (the main termini, the stations beside them and famous places, the Thames and its bridges; a sign, nogard, that turns into a dragon)
-    # and Fake Paris (the main stations, the metro beside them, the Seine; a fire in each block). `place` turns latitude/longitude into tiles.
+    # Reverse London (the main termini and the stations beside them, the Thames and its bridges; a sign, nogard, that turns into a dragon)
+    # and Fake Paris (the main stations, the metro beside them, the Seine; a fire in each block). Transport only, no sights or institutions,
+    # so a map stays readable with every name on. `place` turns latitude/longitude into tiles.
     "cities": {
-        "schema": WORLD_SCHEMA, "id": "cities", "title": "Parallel cities", "zoom_max": 4,
+        "schema": WORLD_SCHEMA, "id": "cities", "title": "Parallel cities", "zoom_max": 4, "names": "dots", "mark_scale": [1.5, 1.5],
         "avatars": ["🙂", "🧳", "🚶", "🎒", "🐱", "🐶", "🦊", "🐼", "🚃", "☂️", "🎩", "🗼"],
         "tools": {"🗼": {"label": "パラレル東京", "label_en": "Parallel Tokyo", "floor": "tokyo"},
                   "🎡": {"label": "リバースロンドン", "label_en": "Reverse London", "floor": "london"},
@@ -18434,12 +19137,12 @@ EXAMPLES.update({
                   "🚉": {"label": "東京駅", "label_en": "Tokyo Station",
                          "spots": ["tokyo-marunouchi-n", "tokyo-marunouchi-c", "tokyo-marunouchi-s", "tokyo-yaesu-n", "tokyo-yaesu-c", "tokyo-yaesu-s"]}},
         "board": {"title": "PARALLEL", "items": [{"text": "実在の街の、もうひとつの姿"}, {"text": "🚪で3つの街を行き来"}, {"text": "歩いて駅から駅へ"}]},
-        "floors": [{"id": "tokyo", "label": "Parallel Tokyo", "place": {"points": _TOKYO_POINTS, "meters": 32, "links": _TOKYO_LINKS}},
+        "floors": [{"id": "tokyo", "label": "Parallel Tokyo", "place": {"points": _TOKYO_POINTS, "meters": 32, "links": _TOKYO_LINKS, "marks": _CITY_MARKS}},
                    {"id": "london", "label": "Reverse London",
-                    "place": {"points": _LONDON_POINTS, "meters": 150, "links": _LONDON_LINKS, "rivers": [_THAMES]}},
+                    "place": {"points": _LONDON_POINTS, "meters": 150, "links": _LONDON_LINKS, "rivers": [_THAMES], "marks": _CITY_MARKS}},
                    {"id": "paris", "label": "Fake Paris",
                     "place": {"points": _PARIS_POINTS, "meters": 150, "links": _PARIS_LINKS, "rivers": [_SEINE],
-                              "scatter": {"kind": "fire", "every": 8, "seed": 5}}}],
+                              "scatter": {"kind": "fire", "every": 8, "seed": 5}, "marks": _CITY_MARKS}}],
     },
     "catalog-report": {
         "schema": "web-ui-catalog/1", "title": "Analysis report",
@@ -18597,8 +19300,8 @@ def _index_page() -> str:
         {"id": "cities", "emoji": "🗼", "title": "Parallel cities", "text": "Parallel Tokyo, Reverse London and Fake Paris from latitude and longitude: walk from station to station.",
          "link": "Open the cities",
          "html": '<section class="ui-panel" id="cities"><h2>🗼 Parallel cities</h2><p class="ui-muted">The overworld\'s sequel: real places as tiles, each the other side of '
-                 'its city. Parallel Tokyo is Tokyo Station (six exits) and the stations within walking distance; Reverse London is the main termini, the stations '
-                 'beside them and famous places, with the Thames, its bridges and a sign that turns into a dragon; Fake Paris is the main stations, the metro beside '
+                 'its city, drawn as its transport. Parallel Tokyo is Tokyo Station (six exits) and the stations within walking distance; Reverse London is the main '
+                 'termini and the stations beside them, with the Thames, its bridges and a sign that turns into a dragon; Fake Paris is the main stations, the metro beside '
                  'them and the Seine, with a fire in each block. Use 🚪 to travel between them. '
                  f'From <code>EXAMPLES["cities"]</code>: each floor is a list of latitude/longitude points (<code>place</code>).</p>{world_html(cities)}</section>'},
         {"id": "wall", "emoji": "🎲", "title": "Random themes", "text": "Seeded palettes side by side; tap one to wear it. Every text pair meets WCAG AA.",
@@ -18615,8 +19318,8 @@ def _index_page() -> str:
 
 
 def js_modules() -> dict[str, str]:
-    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, world.js)."""
-    return {**_JS, "world.js": WORLD_JS}
+    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, scroll.js, world.js)."""
+    return {**_JS, "dial.js": DIAL_JS, "world.js": WORLD_JS}
 
 
 def js_source(name: str) -> str:
@@ -18747,6 +19450,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="print a self-contained page for a web-ui-page/1 JSON spec (see page_document; --brand registers its theme, --layouts adds presets) and exit")
     parser.add_argument("--world", type=Path, metavar="FILE",
                         help="print a single-file page for a web-ui-world/1 JSON spec and exit; `-` reads the spec from stdin")
+    parser.add_argument("--component", metavar="NAME", help="print one component of COMPONENTS (a page by default; --part html, css, js or json)."
+                        " A spec comes from --spec FILE (- for stdin), keyword arguments from --set KEY=VALUE (JSON values, else text); --component list names them")
+    parser.add_argument("--spec", type=Path, metavar="FILE", help="with --component: the spec, the builder's first argument (- reads stdin)")
+    parser.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="with --component: one keyword argument for the builder")
+    parser.add_argument("--part", choices=("page", "html", "css", "js", "json"), default="page", help="with --component: what to print (default %(default)s)")
     parser.add_argument("--example", metavar="NAME", help="print one example spec as JSON and exit (including catalog-report, catalog-projects)")
     parser.add_argument("--btk-adapter", metavar="ID", help="print one browser-test-kit platform adapter (btk-platform-adapter/1) as JSON and exit; `list` names them")
     parser.add_argument("--pattern", metavar="FAMILY", help="run one pattern reference on the JSON request in stdin and print its JSON result (see PATTERN_RUNNERS); `list` names the families, `catalogue` prints the 792 patterns")
@@ -18882,6 +19590,16 @@ def main(argv: list[str] | None = None) -> int:
         except OSError as exc:
             parser.error(str(exc))
         sys.stdout.write(f"{sri(raw)}\nsha256 {hashlib.sha256(raw).hexdigest()}\n")
+        return 0
+    if args.component:
+        try:
+            result = _component_main(args)
+        except (OSError, ValueError, TypeError) as exc:
+            parser.error(str(exc))
+        if hasattr(sys.stdout, "buffer"):
+            sys.stdout.buffer.write(result.encode("utf-8"))
+        else:
+            sys.stdout.write(result)
         return 0
     if args.example:
         try:

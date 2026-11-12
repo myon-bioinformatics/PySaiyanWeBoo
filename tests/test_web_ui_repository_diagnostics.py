@@ -34,6 +34,22 @@ def test_renderer_requires_repository_identity():
     assert 'class="repo-diagnostics__repository"' in JS
 
 
+def test_the_page_body_is_also_the_component():
+    """repository_diagnostics_body() is the page's body (the page itself is unchanged), so a page of your own or COMPONENTS reuse it."""
+    import pytest
+    body = web_ui.repository_diagnostics_body("myon-bioinformatics/ascii_artist")
+    page = web_ui.repository_diagnostics_page("myon-bioinformatics/ascii_artist")
+    assert '<main class="ui-page">' + body + "</main>" in page and "<script" not in body
+    assert body.startswith('<img src="./icon.png" width="80" height="80"') and 'id="metadata"' in body and 'id="observations"' in body
+    parts = web_ui.component_parts("repository-diagnostics", "x/y")
+    assert parts["html"] == web_ui.repository_diagnostics_body("x/y") and parts["css"] == CSS
+    assert parts["js"] == JS + '\nRepositoryDiagnostics.mount(document, "./repository-diagnostics.json");\n'
+    for bad in ({"icon": "data:image/png;base64,AAAA"}, {"json_name": "../x.json?y"}):
+        with pytest.raises(ValueError):
+            web_ui.repository_diagnostics_body("o/r", **bad)
+    assert "<span>' + esc(url) + '</span>" in JS                                   # a link only for https://, other URLs as text
+
+
 def test_renderer_mounts_the_page_from_one_json():
     assert "function renderObservations(resolver)" in JS and "function mount(doc, url)" in JS
     assert 'summary.textContent = "Diagnostics could not be loaded."' in JS
@@ -231,10 +247,10 @@ def test_page_document_builds_a_page_from_a_spec(tmp_path):
 def test_parts_document_shows_every_theme_in_its_own_frame():
     import pytest
     page = web_ui.parts_document()
-    assert page.count("<iframe") == len(web_ui.PARTS_THEMES) == 7 and 'sandbox="allow-same-origin"' in page
+    assert page.count("<iframe") == len(web_ui.PARTS_THEMES) == 8 and 'sandbox="allow-same-origin"' in page   # purple joined the candidates
     for theme in web_ui.PARTS_THEMES:
         assert f'id="theme-{theme}"' in page and f'data-ui-theme=&quot;{theme}&quot;' in page
-    assert "<script" not in page and page.count("type=&quot;radio&quot; name=&quot;ui-layout&quot;") == 7 * 4
+    assert "<script" not in page and page.count("type=&quot;radio&quot; name=&quot;ui-layout&quot;") == len(web_ui.PARTS_THEMES) * 4
     web_ui.theme_css("acme", {"--ui-bg": "#ffffff", "--ui-fg": "#000000"})
     assert web_ui.parts_document(themes=("modern", "acme")).count("<iframe") == 2
     with pytest.raises(ValueError):

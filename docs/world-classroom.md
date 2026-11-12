@@ -59,8 +59,8 @@ vertical scrolling and nothing changes page. The screen is icons; the words are 
 * **Header** (the whole world): the info board, then 🏠 / ⭐ / ⚙️ and the emoji tools you add.
   * **🏠** home: first floor, everything in view, sheet and menus closed.
   * **⭐** favourites: a ☆ in the ☰ list stars a place; the ⭐ panel lists them (on any floor) and takes you there. They are a light cache: kept in this browser
-    (`localStorage` key `ui-world:<id>`, only the starred places and the language) and restored on the next visit. No dialog, no per-floor favourites, no export.
-  * **⚙️** settings: ⏸️ pause the motion, 🙂✏️ change the emoji, 🌐 pick the language (a `<select>` of native names).
+    (`localStorage` key `ui-world:<id>`, only the starred places, the language and the name layer) and restored on the next visit. No dialog, no per-floor favourites, no export.
+  * **⚙️** settings: ⏸️ pause the motion, 🙂✏️ change the emoji, 🌐 pick the language (a `<select>` of native names), 🏷️ the name layer (names / dots / off), 🔍 a dial for the zoom (turn it, or the wheel on the map turns it), 🫥 a slider for how see-through the controls over the map are (the pad, `data-overlay`; `--ui-overlay-alpha` .2–1, kept with the language).
 * **Side** (this screen): 48px buttons that open a panel over the map (one menu open at a time; Escape, a tap on the map or choosing an item closes it).
   * **☰**: the places of this floor (and the category chips, if any). Each row has an arrow from you to the place (⬆️ ↗️ ➡️ ↘️ ⬇️ ↙️ ⬅️ ↖️, 📍 within one tile,
     🚪 when it is on another floor) that follows you as you walk; tap a row to go there and read its sheet. Works without JavaScript too (the rows are links).
@@ -87,6 +87,31 @@ Adding an icon is adding a key: nothing else in the page changes, and the key is
 How flutter_navigation_basic's header maps here (so it can be archived): Home → 🏠; Favorite this page / Favorites → ☆ and ⭐ (session only); Menu → ☰ ⚙️;
 Language → 🌐 (labels switch, the content stays yours); Door-to-Door selector → 🚪 in the footer; the page's own action row → the emoji `tools`. Not taken over:
 the "leave this page?" confirmation (a world has no unsaved page to lose; 🏠 has its own small ask() dialog) and favouriting a whole floor.
+
+### Layers (🏷️)
+
+A map is drawn in layers, back to front, like the z-order of a slide: the ground (props, `--ui-layer-ground`), the names (spot pills, `--ui-layer-name`),
+the marks (dots and signs, `--ui-layer-mark`), the player and actors (`--ui-layer-player`), the sheet (`--ui-layer-sheet`). The world's `names` picks where
+plain spots sit, and 🏷️ in ⚙️ switches it without a reload (kept with the language):
+
+| `names` | plain spots |
+|---|---|
+| `names` (default) | every spot shows its name pill; crowded places overlap until you zoom |
+| `dots` (the cities) | a dot in the mark layer; the spot the player stands by, the one under the pointer and the focused one show their names |
+| `off` | dots only (the pointer and the focus still show a name) |
+
+A spot's `mark` (one emoji) is drawn instead of the dot and leads the name when the name shows; `place_floor(marks={category: emoji})` (or `"marks"` in a
+`place`) gives every point of a category its mark, and the world's `mark_scale: [x, y]` (0.5–4, default `[1, 1]`) sets the width and height factor of every mark,
+dots included. The cities use 🚪 exits, 🚉 stations and 🚆 termini at `[1.5, 1.5]`.
+Signs (`sign`) always sit in the mark layer and keep their own dot → text → face cycle. While a sheet is open, the camera aims a little below the player or the spot,
+so the thing you walked to stays in the view above the sheet.
+
+### Dial (🔍)
+
+`dial_html(name, minimum=, maximum=, step=, value=, label=, attrs=)` is a rotary dial over an ordinary `<input type="range">`: `DIAL_CSS` draws the knob and its
+pointer (`--ui-dial-angle`, −135° to 135°), `bindDial(root)` from `dial.js` turns it by a drag around its centre or the wheel, and the input keeps the value, the keys,
+the form and the aria-label, so a listener on `input`/`change` sees a dial and a slider the same way. The map's 🔍 is its first use; `dialAngle` and `dialValue` are the
+pure maps between a value and an angle (`tests/test_theme_seed.py` checks them in Node).
 
 ### Languages (🌐)
 
@@ -127,9 +152,9 @@ world uses. A new kind is one line in each.
 ## Places: real space in miniature
 
 A `place` floor lays **real positions** (latitude and longitude) on the same grid, so a world can go on from a village to a real city in its other
-form (`EXAMPLES["cities"]`): **Parallel Tokyo**, Tokyo Station with its six exits and the stations around it; **Reverse London**, the main termini, the stations
-beside them, sights and famous places, the Thames and a wooden `nogard` sign (dragon, backwards) that turns into 🐉 when pressed; **Fake Paris**, the main stations,
-the metro beside them and the Seine, with a 🔥 in each block. Nothing is drawn to look like the place: ground, roads, water and bridges are the same kinds as a land.
+form (`EXAMPLES["cities"]`): **Parallel Tokyo**, Tokyo Station with its six exits and the stations around it; **Reverse London**, the main termini and the
+stations beside them, the Thames and a wooden `nogard` sign (dragon, backwards) that turns into 🐉 when pressed; **Fake Paris**, the main stations,
+the metro beside them and the Seine, with a 🔥 in each block. The cities are their transport only (no sights, no institutions), so every name fits on the map. Nothing is drawn to look like the place: ground, roads, water and bridges are the same kinds as a land.
 
 ```json
 {"schema": "web-ui-world/1", "id": "trip", "floors": [{"id": "tokyo", "label": "TOKYO", "place": {"meters": 32, "points": [
@@ -157,9 +182,12 @@ the metro beside them and the Seine, with a 🔥 in each block. Nothing is drawn
 * Two points on one tile: the earlier keeps it and the other goes to the nearest free tile (never into water). Roads and water are merged into rectangles, so a
   place stays far below the 512-prop limit.
 * The coordinates in `EXAMPLES["cities"]` are approximate (about 100 m, read off public maps): a miniature shows where things stand relative to each other, not exact positions.
-  There are no facility names in TOKYO, only stations and exits.
+  There are no facility names in TOKYO, only stations and exits, and no religious buildings in any of the three cities (`tests/test_world_places.py` keeps it so).
+* Evidence: `tests/integration/school_browser.py` (`CitiesTests`) walks to every spot of the three cities on a phone and a desktop, touches every sign, and checks the
+  tools, keys, categories, favourites, six widths, eleven languages and the page without JavaScript. With `WEB_UI_SHOTS=DIR` it also keeps a WebP of each check with
+  a `manifest.json` and an `index.html`; the reviewed set lives under `docs/evidence/cities-<date>/`. The three `cities-*.gif` demos are the same operations in motion.
 * From Python: `web_ui.place_floor(points, meters=, tile=, links=, rivers=, area=, start=, id=, label=)`; from another repository: `--world -` with `place` as above.
-  At the page's first view the whole floor is shown, so crowded places overlap their names until you zoom (wheel, pinch, or ⭐ and ☰ to go to one).
+  The cities open in the **dots** name layer (below), so the crowded centre is dots, not a pile of names; `"names": "names"` on the world shows every name.
 
 ## Real × virtual (🖼️📷)
 
@@ -222,7 +250,19 @@ time whenever a scene waits; Pillow writes one shared palette and delta frames).
 ```sh
 WEB_UI_CHROME=/path/to/chrome python tool/record_demo.py docs/demo --force            # all scenes
 python tool/record_demo.py docs/demo --only keys tap --force --width 400               # some, smaller
+python tool/record_demo.py runs --prefix ci- --suffix=-chrome --timestamp --git-commit # runs/ci-school-pick-chrome-20261108T113412Z-288cbed.gif …
+python tool/record_demo.py runs --git-commit --timestamp                               # runs/school-pick-288cbed-20261108T113412Z.gif …
 ```
+
+File names are `<prefix><world>-<scene><suffix>`, then the run details. `--prefix` and `--suffix` (letters, digits, `_ . -`; write
+`--suffix=-x` when it starts with `-`) are optional: the prefix is always leftmost and the suffix right after the base name, wherever they are given
+on the command line. The run details are added left to right in
+the order their options are given: `--timestamp` adds when the run started, in UTC as ISO 8601 basic format (`20261108T113412Z` is 20:34:12
+in Tokyo), so names sort in recording order and read the same in any time zone; `--git-commit` adds the git commit the pages were built from
+(`288cbed`, or `288cbed-dirty` when tracked files have uncommitted changes). A repeated option adds nothing. Every scene of one run shares
+the same timestamp and commit. Without `--timestamp` an existing file is refused unless `--force`, so a repeated run by hand or by an agent
+either keeps its own files or says so. `record_demo.add_gif_arguments`, `gif_targets` and `gif_targets_from` are these rules as functions:
+the browser tests name their GIFs through them from `WEB_UI_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"`.
 
 | File | Shows |
 |---|---|
@@ -236,6 +276,9 @@ python tool/record_demo.py docs/demo --only keys tap --force --width 400        
 | `school-floors.gif` | the footer pulldown to the schoolyard, a spot's sheet, back to the classroom, the board spot |
 | `overworld-lands.gif` | six lands by the 🚪 pulldown (forest, mountain, desert, coast, castle), then walking to the castle town from the ☰ list |
 | `overworld-real.gif` | the real floor: ⋯ → 🖼️📷 → 🖼️ choose a photo, walk over it, then 🧹 (the photo is drawn by the recorder) |
+| `cities-tokyo.gif` | Parallel Tokyo: the 🚉 tool (the six exits of Tokyo Station), Marunouchi to Yaesu through the concourse, the electronic board's dot and text, on to Kanda by ☰ |
+| `cities-london.gif` | Reverse London: 🎡 in the header, King's Cross to Waterloo over the Thames bridge, the wooden **nogard** board: dot, text, 🐉, dot |
+| `cities-paris.gif` | Fake Paris: 🥖 in the header, a 🔥 in each block, west from Gare du Nord to Saint-Lazare |
 | `school-oneliner.gif` | the one command from another repository; the byte count and time shown are that run's real output |
 
 A scene may end with `cam.zoom((x, y))` (or an anchor name or arrow emoji such as `cam.zoom("↘️")`): a smooth zoom toward that point that stays (the easing of Ironmate's `png_zoom_gif.py`, taken into this

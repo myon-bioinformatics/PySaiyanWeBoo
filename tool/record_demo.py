@@ -1,11 +1,18 @@
 """Record the school world's (and the overworld's) operations as demo GIFs (for the README).
 
     python tool/record_demo.py docs/demo [--only pick keys ...] [--chrome PATH] [--width 480] [--force]
+    python tool/record_demo.py runs --prefix ci- --suffix=-chrome --timestamp --git-commit   # runs/ci-school-pick-chrome-20261108T113412Z-288cbed.gif
 
 Playwright drives a real Chrome through each scene. The ``Camera`` keeps a screenshot with its real timestamp whenever a scene waits,
 so a GIF plays at the speed the page really moved. Encoding follows Ironmate's ``png_zoom_gif.py``: one shared palette (no dither,
 so frames never flicker), delays in 10 ms units (never below 20 ms, which browsers stretch), the animation loops, and an existing
-output is refused unless ``--force``. Unlike that zoom (every pixel changes), a walking player changes few pixels, so frames are
+output is refused unless ``--force``. File names are ``<prefix><world>-<scene><suffix>`` (the suffix right after the base name), then
+the run's details in the order their options were given, left to right: ``--timestamp`` adds when the run started (UTC, ISO 8601 basic:
+``-20261108T113412Z``), ``--git-commit`` the git commit the pages came from (``-288cbed``, ``-288cbed-dirty`` with uncommitted changes),
+so ``--git-commit --timestamp`` writes ``…-288cbed-20261108T113412Z.gif``. Repeated runs, by hand or by an agent, keep every GIF without
+``--force`` and each name says when and from which code it was recorded. ``add_gif_arguments``, ``gif_targets`` and ``gif_targets_from``
+are those rules as functions, so the browser tests name their GIFs the same way from
+``WEB_UI_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"``. Unlike that zoom (every pixel changes), a walking player changes few pixels, so frames are
 written as deltas (``optimize=True``): about a third of the size, decoding to exactly the same pictures. The zoom step
 (``cam.zoom``) is Ironmate's smooth zoom-in, kept to what the demos need and run through this same encoder, not a second copy of
 that tool; this repository is the canonical home of both. Needs Playwright and Pillow, like the browser tests. Scenes are ordinary functions, so a new
@@ -13,8 +20,19 @@ operation is one ``@scene`` below; ``tests/integration/school_browser.py`` recor
 """
 from __future__ import annotations
 
-import argparse, contextlib, io, os, subprocess, sys, tempfile, time
-from pathlib import Path; from typing import Callable, NamedTuple
+import argparse
+import contextlib
+from datetime import datetime, timezone
+import io
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import sys
+import tempfile
+import time
+from typing import Callable, NamedTuple
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -31,7 +49,7 @@ PICKED = "() => !document.querySelector('.ui-world').hasAttribute('data-pick')"
 SETTLED = ("() => { const f = [...document.querySelectorAll('.ui-floor')].find(f => getComputedStyle(f).display !== 'none'), p = f.querySelector('.ui-player'), s = p.style;"
            "return Math.abs(parseFloat(s.getPropertyValue('--px')) - +p.dataset.targetX) < .01 && Math.abs(parseFloat(s.getPropertyValue('--py')) - +p.dataset.targetY) < .01 }")   # the shown floor's player has arrived
 PLAYER = (0.48, 0.69)                           # where a character standing at the door is on screen: a zoom target
-WORLDS = {"school": SPEC, "overworld": web_ui.example_data("overworld")}       # the specs a scene can open; a GIF is <world>-<scene>.gif
+WORLDS = {"school": SPEC, "overworld": web_ui.example_data("overworld"), "cities": web_ui.example_data("cities")}   # the specs a scene can open; a GIF is <world>-<scene>.gif
 
 
 class Scene(NamedTuple):
@@ -369,6 +387,66 @@ TERMINAL = ('<meta charset="utf-8"><body style="margin:0;background:#0d1117;colo
             '<pre style="margin:0;padding:24px;white-space:pre-wrap;word-break:break-all"></pre>')
 
 
+def spot(page, cam, floor, spot_id, hold_ms=700):
+    """Walk to a spot of a city from its ☰ row: its sheet opens at once (read it, close it), then the walk is watched to the end."""
+    more(page, cam, "spots", 600)
+    page.click(f'.ui-world-spots[data-floor="{floor}"] a[href="#cities-spot-{spot_id}"]')
+    cam.hold(hold_ms)
+    page.click(".ui-sheet-close:visible")
+    cam.until(SETTLED, 40000)
+    cam.hold(500)
+
+
+def sign(page, cam, floor, spot_id, faces):
+    """Touch a sign board: the dot, its text, a second face if it has one, the dot again."""
+    marker = f'.ui-floor[data-floor="{floor}"] .ui-spot[href="#cities-spot-{spot_id}"]'
+    for _ in range(faces):
+        page.eval_on_selector(marker, "e => e.click()")
+        cam.hold(700)
+        page.click(".ui-sheet-close:visible")
+        cam.hold(500)
+
+
+@scene("tokyo", world="cities", width=560, height=720)
+def _tokyo(page, cam, tmp):
+    """Parallel Tokyo: 🚉 lists the six exits of Tokyo Station; walk from Marunouchi to Yaesu through the concourse, then on to Kanda by ☰; the electronic board lights up when touched."""
+    choose(page, "🧳")
+    cam.hold(800)
+    page.click('.ui-world-head .ui-world-menu[data-menu="tool"] > summary')
+    cam.hold(1200)
+    page.click('.ui-world-head .ui-world-menu[data-menu="tool"] a[href="#cities-spot-tokyo-yaesu-c"]')
+    cam.until(SETTLED, 40000)
+    cam.hold(700)
+    page.click(".ui-sheet-close:visible")
+    cam.hold(300)
+    sign(page, cam, "tokyo", "tokyo-concourse", 2)
+    spot(page, cam, "tokyo", "tokyo-kanda")
+    cam.zoom(PLAYER, factor=1.6, hold_ms=1200)
+
+
+@scene("london", world="cities", width=560, height=720)
+def _london(page, cam, tmp):
+    """Reverse London: 🎡 opens it; walk from King's Cross to Waterloo over the Thames bridge, then the wooden nogard board: dot, text, 🐉, dot."""
+    choose(page, "🧳")
+    cam.hold(600)
+    page.click('.ui-world-tools label[for="cities-floor-london"]')
+    cam.hold(1000)
+    spot(page, cam, "london", "london-waterloo")
+    sign(page, cam, "london", "london-nogard", 3)
+    cam.zoom(PLAYER, factor=1.8, hold_ms=1200)
+
+
+@scene("paris", world="cities", width=560, height=720)
+def _paris(page, cam, tmp):
+    """Fake Paris: 🥖 opens it; a fire burns in each block; walk west from Gare du Nord to Saint-Lazare, terminus to terminus (one walk keeps the GIF under its 3 MiB bar)."""
+    choose(page, "🧳")
+    cam.hold(600)
+    page.click('.ui-world-tools label[for="cities-floor-paris"]')
+    cam.hold(1000)
+    spot(page, cam, "paris", "paris-saint-lazare")
+    cam.zoom(PLAYER, factor=1.6, hold_ms=1200)
+
+
 @scene("oneliner", crop=None)
 def _oneliner(page, cam, tmp):
     """From another repository: one command writes the school page. The output shown is the real output of that run."""
@@ -406,8 +484,104 @@ def launch(pw, chrome=None, extra=()):
     return pw.chromium.launch(executable_path=chrome, args=args) if chrome else pw.chromium.launch(args=args)
 
 
-def record(out, names=None, *, chrome=None, width=None, force=False, browser=None):
-    """Record the named scenes (all by default) into out/<world>-<name>.gif (school-keys.gif, overworld-lands.gif); returns the written paths.
+NAME_PART = re.compile(r"[\w.-]{0,64}")
+
+
+def name_part(value):
+    """argparse type for ``--prefix`` / ``--suffix``: letters, digits, ``_``, ``.`` and ``-`` only (up to 64), so the name stays one file name."""
+    if not NAME_PART.fullmatch(value):
+        raise argparse.ArgumentTypeError(f"{value!r}: letters, digits, _ . - only, up to 64 characters")
+    return value
+
+
+RUN_DETAILS = ("timestamp", "git-commit")
+
+
+class _AddRunDetail(argparse.Action):
+    """``--timestamp`` / ``--git-commit``: append that detail to ``run_details`` in the order the options are given (a repeat adds nothing)."""
+
+    def __init__(self, option_strings, dest, detail, **kwargs):
+        super().__init__(option_strings, dest, nargs=0, default=[], **kwargs)
+        self.detail = detail
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        details = list(getattr(namespace, self.dest) or [])
+        if self.detail not in details:
+            details.append(self.detail)
+        setattr(namespace, self.dest, details)
+
+
+def add_gif_arguments(parser):
+    """The output arguments shared by the CLI and ``WEB_UI_GIFS``: ``out``, ``--prefix``, ``--suffix``, ``--timestamp``, ``--git-commit``, ``--force``."""
+    parser.add_argument("out", type=Path, help="directory for <prefix><world>-<scene><suffix>[-<run detail>...].gif")
+    parser.add_argument("--prefix", type=name_part, default="", metavar="TEXT", help="put TEXT before every file name")
+    parser.add_argument("--suffix", type=name_part, default="", metavar="TEXT",
+                        help="put TEXT right after the scene name, before the run details (write --suffix=-x when TEXT starts with -)")
+    parser.add_argument("--timestamp", action=_AddRunDetail, detail="timestamp", dest="run_details",
+                        help="add when this run started, in UTC as ISO 8601 basic format (-20261108T113412Z), so every run keeps its own file;"
+                             " run details follow the order their options are given")
+    parser.add_argument("--git-commit", action=_AddRunDetail, detail="git-commit", dest="run_details",
+                        help="add the git commit the pages were built from (-288cbed, or -288cbed-dirty with uncommitted changes); records nothing in git")
+    parser.add_argument("--force", action="store_true", help="replace existing GIFs")
+    return parser
+
+
+def run_timestamp(now=None):
+    """``now`` (default: the current time) in UTC as ISO 8601 basic format, ``20261108T113412Z``: sorts in recording order, reads the same in any time zone."""
+    now = datetime.now(timezone.utc) if now is None else now
+    if now.tzinfo is None:
+        raise ValueError("now needs a time zone")
+    return now.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def source_commit(root=ROOT):
+    """The checkout's short commit (``git rev-parse --short=7 HEAD``) plus ``-dirty`` when tracked files differ (``git describe --dirty``'s word)."""
+    try:
+        head = subprocess.run(["git", "-C", str(root), "rev-parse", "--short=7", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError(f"--git-commit needs a git checkout at {root}") from exc
+    return head + ("-dirty" if dirty else "")
+
+
+def gif_targets(directory, stems, *, prefix="", suffix="", run_details=(), force=False, now=None, revision=None):
+    """``{stem: directory/<prefix><stem><suffix>[-<run detail>...].gif}``, one timestamp and commit for the whole batch; creates the directory.
+
+    ``run_details`` lists ``RUN_DETAILS`` names in the order they are added, left to right: ``"timestamp"`` is ``run_timestamp(now)``,
+    ``"git-commit"`` is ``revision`` (default ``source_commit()``), so repeated runs get files that say when and from which code they were
+    recorded. Without ``force`` an existing target raises FileExistsError before anything is written.
+    """
+    directory = Path(directory)
+    stems, run_details = list(stems), list(run_details)
+    if len(set(stems)) != len(stems) or not all(NAME_PART.fullmatch(s) and s for s in stems):
+        raise ValueError("stems are distinct file-name parts (letters, digits, _ . -)")
+    if len(set(run_details)) != len(run_details) or set(run_details) - set(RUN_DETAILS):
+        raise ValueError("run_details are distinct names from " + ", ".join(RUN_DETAILS))
+    name_part(prefix), name_part(suffix)
+    value = {"timestamp": lambda: run_timestamp(now), "git-commit": lambda: revision or source_commit()}
+    details = "".join(f"-{value[d]()}" for d in run_details)
+    targets = {stem: directory / f"{prefix}{stem}{suffix}{details}.gif" for stem in stems}
+    if not force and any(p.exists() for p in targets.values()):
+        raise FileExistsError("refusing to overwrite " + ", ".join(str(p) for p in targets.values() if p.exists())
+                              + " (add --force to replace it, or --timestamp to keep each run)")
+    directory.mkdir(parents=True, exist_ok=True)
+    return targets
+
+
+def gif_targets_from(spec, stems, *, now=None, revision=None):
+    """``gif_targets`` from one setting string, ``"DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"`` (``WEB_UI_GIFS`` in the
+    browser tests). The words are split like a shell command line and parsed by the same argparse definitions as the CLI (the run details
+    keep their order), so a bad option raises argparse.ArgumentError here instead of exiting.
+    """
+    parser = add_gif_arguments(argparse.ArgumentParser(prog="WEB_UI_GIFS", add_help=False, allow_abbrev=False, exit_on_error=False))
+    args = parser.parse_args(shlex.split(spec))
+    return gif_targets(args.out, stems, prefix=args.prefix, suffix=args.suffix, run_details=args.run_details,
+                       force=args.force, now=now, revision=revision)
+
+
+def record(out, names=None, *, chrome=None, width=None, force=False, browser=None, prefix="", suffix="", run_details=()):
+    """Record the named scenes (all by default) into out/<prefix><world>-<name><suffix>[-<run detail>...].gif (school-keys.gif,
+    overworld-lands.gif); returns the written paths. ``prefix``, ``suffix`` and ``run_details`` are ``gif_targets``' name parts.
 
     ``browser`` is an already running Playwright Chromium (the browser tests share theirs); otherwise one is launched and closed here.
     """
@@ -416,10 +590,9 @@ def record(out, names=None, *, chrome=None, width=None, force=False, browser=Non
     if unknown:
         raise ValueError("unknown scene: " + ", ".join(unknown) + " (have " + ", ".join(SCENES) + ")")
     out = Path(out)
-    targets = {n: out / f"{SCENES[n].world}-{n}.gif" for n in names}
-    if not force and any(p.exists() for p in targets.values()):
-        raise FileExistsError("refusing to overwrite " + ", ".join(str(p) for p in targets.values() if p.exists()) + " (use --force)")
-    out.mkdir(parents=True, exist_ok=True)
+    stems = {n: f"{SCENES[n].world}-{n}" for n in names}
+    paths = gif_targets(out, stems.values(), prefix=prefix, suffix=suffix, run_details=run_details, force=force)
+    targets = {n: paths[stems[n]] for n in names}
     with tempfile.TemporaryDirectory() as tmp_name, contextlib.ExitStack() as stack:
         tmp = Path(tmp_name)
         for world in {SCENES[n].world for n in names}:
@@ -443,15 +616,14 @@ def record(out, names=None, *, chrome=None, width=None, force=False, browser=Non
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("out", type=Path, help="directory for <world>-<scene>.gif")
-    parser.add_argument("--only", nargs="+", metavar="SCENE", help="scenes to record: " + ", ".join(SCENES))
+    parser = add_gif_arguments(argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False))
+    parser.add_argument("--only", nargs="+", metavar="SCENE", choices=tuple(SCENES), help="scenes to record: " + ", ".join(SCENES))
     parser.add_argument("--chrome", help="Chrome/Chromium executable (default: WEB_UI_CHROME or Playwright's)")
     parser.add_argument("--width", type=int, help="shrink every GIF to this width in pixels")
-    parser.add_argument("--force", action="store_true", help="replace existing GIFs")
     args = parser.parse_args(argv)
     try:
-        for path in record(args.out, args.only, chrome=args.chrome, width=args.width, force=args.force):
+        for path in record(args.out, args.only, chrome=args.chrome, width=args.width, force=args.force,
+                           prefix=args.prefix, suffix=args.suffix, run_details=args.run_details):
             print(f"🎞️ {path}  📦 {path.stat().st_size // 1024} KiB")
     except (ValueError, OSError, ImportError, TimeoutError) as exc:
         parser.exit(1, f"⛔ {exc}\n")
