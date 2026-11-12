@@ -16,7 +16,7 @@ import pytest
 import web_ui as ui
 from support import node26, node_js, node_value, world_js
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tool"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import record_demo  # noqa: E402  (the GIF recorder for the README demos)
 
 GRID = ["00000",
@@ -408,7 +408,7 @@ def test_node26_reaches_the_same_page_through_py_launch():
 
 
 def _png(color, mark=None, size=(64, 48)):
-    from tool.image_support.png import rgb_png
+    from tools.image_support.png import rgb_png
     if isinstance(color, str):
         color = {"black": (0, 0, 0), "white": (255, 255, 255)}[color]
     rectangles = [((8, 8, 24, 24), mark)] if mark else []
@@ -547,7 +547,7 @@ def test_demo_zoom_goes_in_toward_the_anchor_and_stays_on_the_real_clock():
 
     class Page:                                                 # a screenshot of a red corner (bottom left) on blue
         def screenshot(self, type):
-            from tool.image_support.png import rgb_png
+            from tools.image_support.png import rgb_png
             return rgb_png(40, 40, (0, 0, 255), rectangles=[((0, 20, 20, 40), (255, 0, 0))])
 
     camera = record_demo.Camera(Page())

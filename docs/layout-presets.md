@@ -14,14 +14,14 @@ and card padding; the 8 px grid: 8 / 16 px) and `--ui-max` (page width). `EXAMPL
 ships them in its stylesheet with `write_bundle(..., layouts=spec)` (CLI `--layouts FILE`) and
 puts `layout_switch_html(spec)` on the page; the sweep below then says which presets hold at
 which widths. The presets API (`validate_layout_presets`, `layout_presets_css`,
-`layout_switch_html`) lives in `web_ui`; `tool/layout_presets.py` delegates to it and keeps the sweep.
+`layout_switch_html`) lives in `web_ui`; `tools/layout_presets.py` delegates to it and keeps the sweep.
 
 ## Switch live, without reloading
 
 ```sh
 python -S web_ui.py --example layout-presets > layout-presets.json
-python -S tool/layout_presets.py css layout-presets.json   # Node: node vendor/py_launch.cjs -- tool/layout_presets.py css ...
-python -S tool/layout_presets.py html layout-presets.json  # radio buttons, default checked
+python -S tools/layout_presets.py css layout-presets.json   # Node: node vendor/py_launch.cjs -- tools/layout_presets.py css ...
+python -S tools/layout_presets.py html layout-presets.json  # radio buttons, default checked
 ```
 
 `css` writes the default preset on `:root` and one
@@ -36,7 +36,7 @@ citizens: `compact` (4px), `device` (195px, half of a 390px phone, 6px spacing) 
 ## Sweep: every preset that holds is a candidate
 
 ```sh
-python tool/layout_presets.py sweep viewer.html --presets layout-presets.json \
+python tools/layout_presets.py sweep viewer.html --presets layout-presets.json \
   --items ".ui-matrix-tiles li" --widths 320 384 768 1280 --out candidates.json
 ```
 
@@ -55,7 +55,7 @@ and judge for themselves. A machine (Playwright) can do the same by clicking the
 
 ## In the capture viewer
 
-`tool/capture_matrix.py` uses the `layout-presets` example for its tile grid by default
+`tools/capture_matrix.py` uses the `layout-presets` example for its tile grid by default
 (`--layouts` for another file, `--candidates` for sweep labels). the `matrix.css` source reads
 `--ui-matrix-col`, `--ui-matrix-gap` and `--ui-matrix-pad`, falling back to the 8 px defaults.
 
@@ -67,7 +67,7 @@ written by `web_ui.example_pages()` (`front_document()` over the library's build
 to the presets. After changing the presets or the page, run the sweep, update the labels, and regenerate:
 
 ```sh
-python tool/layout_presets.py sweep "file://$PWD/index.html#try" --presets layout-presets.json \
+python tools/layout_presets.py sweep "file://$PWD/index.html#try" --presets layout-presets.json \
   --items ".ui-matrix-tiles li" --widths 320 384 768 1280 --out /tmp/candidates.json
 python -S web_ui.py --site build/site && cp build/site/index.html index.html
 ```

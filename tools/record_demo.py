@@ -1,7 +1,7 @@
 """Record the school world's (and the overworld's) operations as demo GIFs (for the README).
 
-    python tool/record_demo.py docs/demo [--only pick keys ...] [--chrome PATH] [--width 480] [--force]
-    python tool/record_demo.py runs --prefix ci- --suffix=-chrome --timestamp --git-commit   # runs/ci-school-pick-chrome-20261108T113412Z-288cbed.gif
+    python tools/record_demo.py docs/demo [--only pick keys ...] [--chrome PATH] [--width 480] [--force]
+    python tools/record_demo.py runs --prefix ci- --suffix=-chrome --timestamp --git-commit   # runs/ci-school-pick-chrome-20261108T113412Z-288cbed.gif
 
 Playwright drives a real Chrome through each scene. The ``Camera`` keeps a screenshot with its real timestamp whenever a scene waits,
 so a GIF plays at the speed the page really moved. Encoding follows Ironmate's ``png_zoom_gif.py``: one shared palette (no dither,

@@ -244,14 +244,14 @@ asks again. Without JavaScript the picker, the pad and the player controls stay 
 
 ## Demos
 
-Each GIF (`<world>-<scene>.gif`) is a real run of the generated page in Chrome, recorded by `tool/record_demo.py` (Playwright keeps a screenshot with its real
+Each GIF (`<world>-<scene>.gif`) is a real run of the generated page in Chrome, recorded by `tools/record_demo.py` (Playwright keeps a screenshot with its real
 time whenever a scene waits; Pillow writes one shared palette and delta frames). They are regenerated, never edited by hand:
 
 ```sh
-WEB_UI_CHROME=/path/to/chrome python tool/record_demo.py docs/demo --force            # all scenes
-python tool/record_demo.py docs/demo --only keys tap --force --width 400               # some, smaller
-python tool/record_demo.py runs --prefix ci- --suffix=-chrome --timestamp --git-commit # runs/ci-school-pick-chrome-20261108T113412Z-288cbed.gif …
-python tool/record_demo.py runs --git-commit --timestamp                               # runs/school-pick-288cbed-20261108T113412Z.gif …
+WEB_UI_CHROME=/path/to/chrome python tools/record_demo.py docs/demo --force            # all scenes
+python tools/record_demo.py docs/demo --only keys tap --force --width 400               # some, smaller
+python tools/record_demo.py runs --prefix ci- --suffix=-chrome --timestamp --git-commit # runs/ci-school-pick-chrome-20261108T113412Z-288cbed.gif …
+python tools/record_demo.py runs --git-commit --timestamp                               # runs/school-pick-288cbed-20261108T113412Z.gif …
 ```
 
 File names are `<prefix><world>-<scene><suffix>`, then the run details. `--prefix` and `--suffix` (letters, digits, `_ . -`; write

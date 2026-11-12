@@ -208,8 +208,8 @@ def test_every_css_class_is_referenced_by_markup_scripts_or_generators():
     defined = set()
     for path in _css_sources():
         defined |= set(re.findall(r"\.([A-Za-z_][A-Za-z0-9_-]*)", re.sub(r"\{[^{}]*\}", "{}", _css_text(path))))
-    # Classes the Python generators emit (tool/capture_matrix.py, tool/layout_presets.py) count as used.
-    used_in = [*ROOT.glob("*.html"), ROOT / "web_ui.py", *(ROOT / "tool").glob("*.py")]
+    # Classes the Python generators emit (tools/capture_matrix.py, tools/layout_presets.py) count as used.
+    used_in = [*ROOT.glob("*.html"), ROOT / "web_ui.py", *(ROOT / "tools").glob("*.py")]
     corpus = "\n".join(path.read_text(encoding="utf-8") for path in used_in) + "\n".join(PAGES.values()) + "\n".join(web_ui.js_modules().values())
     unused = sorted(name for name in defined
                     if not re.search(rf"(?<![A-Za-z0-9_-]){re.escape(name)}(?![A-Za-z0-9_-])", corpus))
@@ -220,7 +220,7 @@ def test_css_variables_are_defined_generated_or_a_listed_gap():
     css = {name: _css_text(name) for name in _css_sources()}
     defined = {name for text in css.values() for name in re.findall(r"(--ui-[a-z0-9-]+)\s*:", text)}
     used = {name for text in css.values() for name in re.findall(r"var\((--ui-[a-z0-9-]+)", text)}
-    # layout presets (tool/layout_presets.py) set the matrix ones; dial.js sets --ui-dial-angle on each dial; the stylesheets carry the fallbacks.
+    # layout presets (tools/layout_presets.py) set the matrix ones; dial.js sets --ui-dial-angle on each dial; the stylesheets carry the fallbacks.
     generated = {"--ui-matrix-col", "--ui-matrix-gap", "--ui-matrix-pad", "--ui-dial-angle"}
     # repository-diagnostics.css falls back to fixed colors; there is no token for them yet.
     known_gaps = {"--ui-surface", "--ui-text"}

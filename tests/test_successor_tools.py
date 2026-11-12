@@ -152,13 +152,13 @@ def test_the_migration_inventory_is_what_the_tool_writes_from_the_pinned_checkou
     checkout = os.environ.get('FLUTTER_NAVIGATION_BASIC_CHECKOUT')
     if not checkout:
         pytest.skip('set FLUTTER_NAVIGATION_BASIC_CHECKOUT to a clean checkout of the pinned commit')
-    done = subprocess.run([sys.executable, '-S', str(INVENTORY.parents[1] / 'tool' / 'flutter_migration_inventory.py'), checkout, '--output', str(INVENTORY), '--check'], capture_output=True, text=True)
+    done = subprocess.run([sys.executable, '-S', str(INVENTORY.parents[1] / 'tools' / 'flutter_migration_inventory.py'), checkout, '--output', str(INVENTORY), '--check'], capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
 
 
 @pytest.mark.parametrize('status', [None, 'pending', 'unreviewed', 'proposed_retirement', 'successor'])
 def test_catalogue_only_inventory_never_authorizes_archiving(tmp_path, monkeypatch, status):
-    from tool import flutter_migration_inventory as migration
+    from tools import flutter_migration_inventory as migration
 
     # No ordinary file or tool blocker can mask an omitted catalogue group.
     source = tmp_path / 'lib' / 'features' / 'example_patterns' / 'view.dart'
@@ -184,7 +184,7 @@ def test_catalogue_only_inventory_never_authorizes_archiving(tmp_path, monkeypat
 @pytest.mark.parametrize('names', [('dart.yml', 'flutter-pages.yml'), ('ci.yml', 'pages.yml'),
                                    ('dart.yml', 'flutter-pages.yml', 'ci.yml', 'pages.yml')])
 def test_workflow_rename_keeps_disposition_and_actual_identity(tmp_path, names):
-    from tool import flutter_migration_inventory as migration
+    from tools import flutter_migration_inventory as migration
     import hashlib
 
     folder = tmp_path / '.github' / 'workflows'

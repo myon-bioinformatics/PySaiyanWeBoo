@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from support import node_js
-from tool.web_ui_tooling_meta import collect
+from tools.web_ui_tooling_meta import collect
 
 
 def test_required_github_tooling_is_visible():
@@ -30,7 +30,7 @@ def test_canonical_repository_metadata_and_separate_tooling(tmp_path, monkeypatc
            "GITHUB_REF_NAME": "123/merge"}
     output = tmp_path / "metadata"
     subprocess.run(
-        [sys.executable, "-S", str(ROOT / "tool/repository_metadata.py"), "repo-metadata",
+        [sys.executable, "-S", str(ROOT / "tools/repository_metadata.py"), "repo-metadata",
          "--format", "v1", "--repository", "myon-bioinformatics/PySaiyanWeBoo", "--root", str(checkout),
          "--output-dir", str(output)],
         check=True, env=env, capture_output=True, text=True,
@@ -52,7 +52,7 @@ def test_canonical_repository_metadata_and_separate_tooling(tmp_path, monkeypatc
     assert "<script>" not in shown["html"] and "&lt;script&gt;fixture&lt;/script&gt;" in shown["html"]
 
     # Advisory collection reports tooling versions only; never head/branch identity.
-    from tool import web_ui_tooling_meta
+    from tools import web_ui_tooling_meta
     def fake_tool_versions(commands, *, include_python=False, **_):
         observed = {command: "1.2.3" for command in commands}
         if include_python:

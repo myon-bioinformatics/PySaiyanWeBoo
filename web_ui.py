@@ -5358,7 +5358,7 @@ def _layout_note(preset: dict[str, Any], candidates: dict[str, Any] | None) -> s
 
 def layout_switch_html(spec: Any, candidates: dict[str, Any] | None = None, *, legend: str = "Layout") -> str:
     """Radio buttons, one per preset, the default checked; with a ``web-ui-layout-candidates/1`` sweep result
-    (tool/layout_presets.py sweep) each is labelled with the widths where it held — none is disabled."""
+    (tools/layout_presets.py sweep) each is labelled with the widths where it held — none is disabled."""
     data = validate_layout_presets(spec)
     if candidates is not None and (not isinstance(candidates, dict) or candidates.get("schema") != LAYOUT_CANDIDATES_SCHEMA):
         raise ValueError(f"candidates must be {LAYOUT_CANDIDATES_SCHEMA}")
@@ -19159,7 +19159,7 @@ def example_data(name: str) -> Any:
         raise ValueError(f"unknown example: {name} (one of {', '.join(EXAMPLES)})") from None
 
 
-# Sweep result for the layout switch on the front page (python tool/layout_presets.py sweep ... --out candidates.json).
+# Sweep result for the layout switch on the front page (python tools/layout_presets.py sweep ... --out candidates.json).
 _INDEX_LAYOUT_CANDIDATES = {"schema": "web-ui-layout-candidates/1", "presets": {
     name: {"passed": [320, 384, 768, 1280], "failed": []} for name in ("grid8", "compact", "device", "wide")}}
 
@@ -19245,10 +19245,10 @@ def front_document(main: str, rooms: Any, *, title: str, lead: str = "", tags: A
 
 def _index_page() -> str:
     """The front page (index.html): front_document() over the library's own builders and the EXAMPLES specs; nothing in it is written for the page alone.
-    The overworld is the main view; every other example is a room. Needs a checkout (tool/layout_presets.py)."""
+    The overworld is the main view; every other example is a room. Needs a checkout (tools/layout_presets.py)."""
     import importlib
     root = Path(__file__).resolve().parent
-    sys.path.insert(0, str(root / "tool"))
+    sys.path.insert(0, str(root / "tools"))
     try:
         layout_presets = importlib.import_module("layout_presets")
     finally:

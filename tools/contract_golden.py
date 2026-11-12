@@ -2,7 +2,7 @@
 
 Run it against a checkout of the original (read only)::
 
-    python3 tool/contract_golden.py /path/to/flutter_navigation_basic --output tests/fixtures/contract_golden.json
+    python3 tools/contract_golden.py /path/to/flutter_navigation_basic --output tests/fixtures/contract_golden.json
 
 The originals are python/metadata_contracts.py (``validate_screens``, ``validate_locales``), python/header_contracts.py (``validate``) and python/gesture_paint.py
 (``check_swap`` on the vendored Pillow subset). Every case is a seeded mutation of a base document that web-ui keeps next to the fixture (the screens asset, the screen texts) or that

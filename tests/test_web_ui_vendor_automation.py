@@ -34,7 +34,7 @@ def _copy_snapshot(root):
 
 def test_vendor_lock_lists_expected_sources():
     expected = {
-        ("myon-bioinformatics/Ironmate", "LICENSE", "tool/vendor/LICENSE"),
+        ("myon-bioinformatics/Ironmate", "LICENSE", "tools/vendor/LICENSE"),
         (
             "myon-bioinformatics/myon-bioinformatics",
             "node_launch.py",
@@ -159,7 +159,7 @@ def test_pinned_parent_staging_command_and_real_payload(tmp_path, job_name):
     parent_tool = ROOT / ".vendor-sync-tools/vendor_stage.py"
     if not parent_tool.is_file():
         pytest.skip("pinned parent checkout is supplied by CI (ci.yml)")
-    assert not (ROOT / "tool/stage_vendor_evidence.py").exists()
+    assert not (ROOT / "tools/stage_vendor_evidence.py").exists()
     _copy_snapshot(tmp_path)
     steps = _workflow()["jobs"][job_name]["steps"]
     staging = next(step for step in steps if step.get("name") == "Stage canonical vendor evidence")

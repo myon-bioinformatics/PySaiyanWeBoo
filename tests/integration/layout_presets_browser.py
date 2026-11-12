@@ -10,7 +10,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "tool"))
+sys.path.insert(0, str(ROOT / "tools"))
 import capture_matrix  # noqa: E402
 import layout_presets  # noqa: E402
 

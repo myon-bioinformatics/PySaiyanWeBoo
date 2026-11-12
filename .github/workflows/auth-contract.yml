@@ -6,7 +6,7 @@ on:
       - 'web_ui.py'
       - 'tests/test_mock_auth.py'
       - 'tests/fixtures/mock_auth_contract.json'
-      - 'tool/auth_parity.py'
+      - 'tools/auth_parity.py'
       - '.github/workflows/auth-contract.yml'
   push:
     branches: [main]
@@ -14,7 +14,7 @@ on:
       - 'web_ui.py'
       - 'tests/test_mock_auth.py'
       - 'tests/fixtures/mock_auth_contract.json'
-      - 'tool/auth_parity.py'
+      - 'tools/auth_parity.py'
       - '.github/workflows/auth-contract.yml'
 
 permissions:
@@ -50,4 +50,4 @@ jobs:
         with:
           sdk: stable
       - name: Unmodified Dart auth sources versus Python (84 requests and helper vectors)
-        run: python3 -S tool/auth_parity.py .flutter-auth
+        run: python3 -S tools/auth_parity.py .flutter-auth

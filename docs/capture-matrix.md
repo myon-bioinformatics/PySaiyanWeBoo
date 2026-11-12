@@ -10,12 +10,12 @@ route table, so `web_ui.route_table` / `navigation.js` `routeTable` validate the
 `go("🗺️")` resolves by emoji. The adapter ids are the join key with the captures; the
 set is checked against browser-test-kit's list by fixture, not by import.
 
-## Viewer (`tool/capture_matrix.py`)
+## Viewer (`tools/capture_matrix.py`)
 
 ```sh
 # browser-test-kit platform-apps artifacts -> Ironmate sheet -> web-ui viewer
 python -S ../Ironmate/browser_matrix.py app-results --out matrix   # default shot width-384
-python -S tool/capture_matrix.py --pages flutter-pages.json \
+python -S tools/capture_matrix.py --pages flutter-pages.json \
   --report matrix/report.json [--dataset app-matrix/dataset.json] > matrix/viewer.html
 ```
 

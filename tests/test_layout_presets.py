@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tool"))
+sys.path.insert(0, str(ROOT / "tools"))
 import layout_presets as lp  # noqa: E402
 
 import web_ui  # noqa: E402

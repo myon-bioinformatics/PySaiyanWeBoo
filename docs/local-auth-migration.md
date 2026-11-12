@@ -49,7 +49,7 @@ JWT verifier, or production Digest implementation. No external service is used.
 
 - `python -S -m unittest discover -s tests -p test_mock_auth.py -v`
 - Repeat with `python -S -O -m unittest ...`.
-- `python -S tool/auth_parity.py /path/to/flutter_navigation_basic` copies the
+- `python -S tools/auth_parity.py /path/to/flutter_navigation_basic` copies the
   unmodified, hash-checked Dart handler/helper into a temporary Dart-only
   project, pins crypto 3.0.7, and compares complete responses for 84 requests
   plus 20 helper vectors. Requires Dart >=3.12 and pub access, without Flutter.
