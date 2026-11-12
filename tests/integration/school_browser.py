@@ -21,7 +21,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_pla
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "tool"))
+sys.path.insert(0, str(ROOT / "tools"))
 import record_demo  # noqa: E402
 import web_ui  # noqa: E402
 
@@ -109,7 +109,7 @@ class SchoolTests(unittest.TestCase):
         self.assertEqual(self.errors, [])
 
     def test_every_demo_scene_records_a_gif(self):
-        """The README demos (tool/record_demo.py) are real operations; a UI change that breaks one fails here, not in the next README."""
+        """The README demos (tools/record_demo.py) are real operations; a UI change that breaks one fails here, not in the next README."""
         with tempfile.TemporaryDirectory() as out:
             paths = record_demo.record(out, browser=self.browser)
             self.assertEqual({p.name for p in paths}, {f"{sc.world}-{name}.gif" for name, sc in record_demo.SCENES.items()})
@@ -406,7 +406,7 @@ class SchoolTests(unittest.TestCase):
 
     def test_real_floor_shows_a_chosen_photo_or_the_camera_only_in_the_page(self):
         """🖼️📷 on the real floor: ask() offers camera or photo; the picture sits behind the props, is released by 🧹 or by leaving (camera), and is never stored or sent."""
-        from tool.image_support.png import rgb_png
+        from tools.image_support.png import rgb_png
         path = Path(self.tmp.name) / "overworld.html"
         path.write_text(web_ui.world_document(web_ui.example_data("overworld")), encoding="utf-8")
         photo = Path(self.tmp.name) / "room.png"

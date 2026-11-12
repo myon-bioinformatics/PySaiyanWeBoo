@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from PIL import Image
-from tool.image_support.png import rgb_png
+from tools.image_support.png import rgb_png
 
 
 @pytest.mark.parametrize("size,color,rectangles", [
@@ -29,7 +29,7 @@ def test_png_pixels_match_independent_pillow_decode(size, color, rectangles):
 
 def test_png_writer_works_without_site_packages():
     result = subprocess.run([sys.executable, "-S", "-c",
-        "import sys; from tool.image_support.png import rgb_png; "
+        "import sys; from tools.image_support.png import rgb_png; "
         "sys.stdout.buffer.write(rgb_png(64, 48, (200, 80, 40)))"],
         cwd=Path(__file__).resolve().parents[1], check=True, capture_output=True)
     image = Image.open(io.BytesIO(result.stdout))

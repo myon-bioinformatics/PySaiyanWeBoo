@@ -12,8 +12,8 @@ explicitly export/import replay JSON as text.
 `ae3c4cb78cfc9aed15871dfce750d8320a19d1e6`. Reproduce it against a clean checkout, or check that the file on disk is what the tool writes:
 
 ```sh
-python -S tool/flutter_migration_inventory.py /path/to/flutter_navigation_basic --output docs/flutter-migration-inventory.json
-python -S tool/flutter_migration_inventory.py /path/to/flutter_navigation_basic --output docs/flutter-migration-inventory.json --check
+python -S tools/flutter_migration_inventory.py /path/to/flutter_navigation_basic --output docs/flutter-migration-inventory.json
+python -S tools/flutter_migration_inventory.py /path/to/flutter_navigation_basic --output docs/flutter-migration-inventory.json --check
 ```
 
 The inventory lists SHA-256 and a disposition for 178 non-catalogue Dart files, for the 56 Python tools, 8 Dart build tools and
@@ -95,8 +95,8 @@ site explicitly:
 
 ```sh
 python -S web_ui.py --site build/site
-npm ci --prefix tool/studio-audio --ignore-scripts
-node tool/studio-audio/build.mjs build/site/vendor
+npm ci --prefix tools/build/studio-audio --ignore-scripts
+node tools/build/studio-audio/build.mjs build/site/vendor
 python -m http.server 8000 --directory build/site
 ```
 

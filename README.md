@@ -85,7 +85,7 @@ From another repository: `echo '{"schema":"web-ui-world/1","floors":[{"classroom
 
 `scroll_html(trusted_html, label=, kind="row"|"table")` marks a region that scrolls sideways; `scroll.js` (it binds itself, `bindScroll()`) adds ‹ › buttons, edge fades and, for tables, a second scrollbar on top, and `scroll.css` draws them from the tokens. It came from the parent repository's observatory, so pages do not keep their own copy: `component_parts("scroll", html, label=...)` gives the HTML, the stylesheet and the module from Python.
 
-Demos, recorded from real Chrome by `python tool/record_demo.py docs/demo --force` ([what each shows, and `--timestamp`/`--git-commit`/`--prefix`/`--suffix` for repeated runs](docs/world-classroom.md#demos)):
+Demos, recorded from real Chrome by `python tools/record_demo.py docs/demo --force` ([what each shows, and `--timestamp`/`--git-commit`/`--prefix`/`--suffix` for repeated runs](docs/world-classroom.md#demos)):
 
 | Pick a character | Type your own | Arrow keys / WASD |
 |---|---|---|
@@ -268,7 +268,7 @@ Contracts (`pattern_run("contract", ...)`, `python3 web_ui.py --pattern contract
 comparison with changed pixels, ratio, bounding box and largest difference). `operation` is `screens`, `locales`, `layout` or `swap`; the answer is `{ok, failures, ...}` (at most 50 reasons, `truncated`
 counts the rest), and a request that is not a well-formed measurement is a `ValueError`. Python only: a page cannot decode a screenshot the way a Playwright run saved it, and these are checks that a
 test or CI runs. The oracle is the original itself: `tests/fixtures/contract_golden.json` holds the verdict and the messages of the originals on seeded mutations of the real data (and the hash of each
-mutated document), taken at ae3c4cb; `python3 tool/contract_golden.py CHECKOUT --check` (or `FLUTTER_NAVIGATION_BASIC_CHECKOUT=CHECKOUT` with the test suite) regenerates it from a checkout and compares.
+mutated document), taken at ae3c4cb; `python3 tools/contract_golden.py CHECKOUT --check` (or `FLUTTER_NAVIGATION_BASIC_CHECKOUT=CHECKOUT` with the test suite) regenerates it from a checkout and compares.
 Deliberate differences: every failure is listed, not the first; `count` allows a smaller catalogue; locale placeholders must equal English's for every key; the header's title-emoji identity belongs to Flutter's
 shared header and is left out; PNGs are decoded by `studio_png_decode` (8 bits, not interlaced, at most 4 MP); a bool where a number is wanted is refused.
 
@@ -539,7 +539,7 @@ uses `http://127.0.0.1:8000/examples/...` (`--url` overrides it); the page viewe
 ## Multi-browser captures of Flutter pages
 
 `web_ui.EXAMPLES["flutter-pages"]` (`--example flutter-pages`) lists the representative flutter_navigation_basic pages by emoji
-(route table + published URL), and `tool/capture_matrix.py` turns BrowserTestKit captures and
+(route table + published URL), and `tools/capture_matrix.py` turns BrowserTestKit captures and
 Ironmate's comparison sheet into a static viewer opened by emoji. See [capture matrix](docs/capture-matrix.md).
 Its tile layout switches live between presets (8px grid, compact, device width, wide); see [layout presets](docs/layout-presets.md)
 for the JSON, the CSS generator (Python; Node reaches it through `vendor/py_launch.cjs`) and the sweep that lists every preset that holds.

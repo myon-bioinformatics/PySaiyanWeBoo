@@ -11,7 +11,7 @@ Inputs are JSON produced elsewhere; this tool only presents them with web-ui sty
 The page links are a web-ui route table (``#/hub`` style), so the viewer works from
 ``file://`` and needs no JavaScript: CSS ``:target`` shows the chosen page.
 
-    python -S tool/capture_matrix.py --pages flutter-pages.json --report matrix/report.json \
+    python -S tools/capture_matrix.py --pages flutter-pages.json --report matrix/report.json \
         [--dataset app-matrix/dataset.json] --embed-css > matrix/viewer.html
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 import web_ui  # noqa: E402  (route table rules shared with navigation.js)
-sys.path.insert(0, str(ROOT / "tool"))
+sys.path.insert(0, str(ROOT / "tools"))
 import layout_presets  # noqa: E402  (switchable layouts)
 
 

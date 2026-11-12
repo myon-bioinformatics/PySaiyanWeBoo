@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tool"))
+sys.path.insert(0, str(ROOT / "tools"))
 import capture_matrix as cm  # noqa: E402
 import web_ui  # noqa: E402
 
@@ -118,12 +118,12 @@ def test_viewer_rejects_bad_inputs(change):
 def test_cli_writes_a_page_or_exits_2(tmp_path):
     (tmp_path / "report.json").write_text(json.dumps(report()), encoding="utf-8")
     (tmp_path / "pages.json").write_text(json.dumps(PAGES), encoding="utf-8")
-    run = subprocess.run([sys.executable, "-S", str(ROOT / "tool/capture_matrix.py"), "--pages",
+    run = subprocess.run([sys.executable, "-S", str(ROOT / "tools/capture_matrix.py"), "--pages",
                           str(tmp_path / "pages.json"), "--report", str(tmp_path / "report.json")],
                          capture_output=True, text=True, encoding="utf-8", cwd=tmp_path)
     assert run.returncode == 0 and run.stdout.startswith("<!doctype html>") and "<style>" in run.stdout
     (tmp_path / "bad.json").write_text('{"schema": "x"}', encoding="utf-8")
-    bad = subprocess.run([sys.executable, "-S", str(ROOT / "tool/capture_matrix.py"), "--pages",
+    bad = subprocess.run([sys.executable, "-S", str(ROOT / "tools/capture_matrix.py"), "--pages",
                           str(tmp_path / "bad.json"), "--report", str(tmp_path / "report.json")],
                          capture_output=True, text=True, encoding="utf-8")
     assert bad.returncode == 2 and "expected schema web-ui-flutter-pages/1" in bad.stderr

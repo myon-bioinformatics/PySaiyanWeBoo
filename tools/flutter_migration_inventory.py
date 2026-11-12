@@ -1,7 +1,7 @@
 """Read-only, stdlib inventory of a flutter_navigation_basic checkout, with what web-ui did about each file. No network; no archive action.
 
-    python -S tool/flutter_migration_inventory.py /path/to/flutter_navigation_basic --output docs/flutter-migration-inventory.json
-    python -S tool/flutter_migration_inventory.py /path/to/flutter_navigation_basic --output docs/flutter-migration-inventory.json --check
+    python -S tools/flutter_migration_inventory.py /path/to/flutter_navigation_basic --output docs/flutter-migration-inventory.json
+    python -S tools/flutter_migration_inventory.py /path/to/flutter_navigation_basic --output docs/flutter-migration-inventory.json --check
 
 ``--check`` rebuilds the inventory and exits 1 if the file on disk differs (it writes nothing).
 

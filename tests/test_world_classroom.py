@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 import web_ui as ui
-from support import node26
+from support import node26, node_js, node_value, world_js
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tool"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import record_demo  # noqa: E402  (the GIF recorder for the README demos)
 
 GRID = ["00000",
@@ -195,8 +195,8 @@ def _node26():
     return node26() or pytest.skip('existing Node 26+ required; no installation')
 
 
-def test_node26_grid_route_matches_python_oracle(tmp_path):
-    node = _node26()
+def test_node26_grid_route_matches_python_oracle():
+    _node26()
     floor = classroom()
     blocked = ui.world_blocked(floor["width"], floor["height"], floor["tile"], floor["props"])
     rng = random.Random(11)
@@ -205,12 +205,9 @@ def test_node26_grid_route_matches_python_oracle(tmp_path):
     cases = [[GRID, 32, [10, 10], [140, 140]], [GRID, 32, [10, 10], [80, 48]], [["1"], 32, [5, 5], [20, 20]]]
     cases += [[blocked, 32, a, b] for a, b in routes]
     glyphs = ["🐱", " 🦖x ", "先生", "A", "", "   ", "x" * 16, "x" * 17, "a\nb", "a\u202eb", "a\u2028b", "🐱たろう", "👨‍👩‍👧‍👦", "a b", "\u3000a\u3000"]
-    module = tmp_path / 'grid.mjs'
-    module.write_text(ui.WORLD_JS.removesuffix('bindWorlds();\n') + '\nconst cases=' + json.dumps(cases) + ';const times=[0,0.4,1,2.5,7,1e6];'
-                      'console.log(JSON.stringify({routes:cases.map(([r,t,a,b])=>gridRoute(r,t,a,b)),'
-                      'samples:cases.map(([r,t,a,b])=>{const route=motionRoute(gridRoute(r,t,a,b),2,96,384,512);return times.map(x=>routeSample(route,2+x))}),'
-                      'glyphs:' + json.dumps(glyphs) + '.map(cleanAvatar)}))\n')
-    result = json.loads(subprocess.check_output([node, str(module)], text=True))
+    result = node_value(world_js(), '{routes:data.cases.map(([r,t,a,b])=>gridRoute(r,t,a,b)),'
+                        'samples:data.cases.map(([r,t,a,b])=>{const route=motionRoute(gridRoute(r,t,a,b),2,96,384,512);return [0,0.4,1,2.5,7,1e6].map(x=>routeSample(route,2+x))}),'
+                        'glyphs:data.glyphs.map(cleanAvatar)}', {'cases': cases, 'glyphs': glyphs})
     for (rows, tile, a, b), actual, samples in zip(cases, result['routes'], result['samples']):
         expected = ui.world_route_points(rows, tile, a, b)
         assert len(actual) == len(expected)
@@ -265,15 +262,13 @@ def test_arrow_names_an_anchor_in_any_form():
             ui.world_arrow_anchor(bad)
 
 
-def test_node26_direction_matches_python_oracle(tmp_path):
-    node = _node26()
+def test_node26_direction_matches_python_oracle():
+    _node26()
     rng = random.Random(23)
     cases = [[[rng.randint(-300, 300), rng.randint(-300, 300)], [rng.randint(-300, 300), rng.randint(-300, 300)], rng.choice([0, 8, 16, 32])] for _ in range(400)]
     cases += [[[rng.uniform(-300, 300), rng.uniform(-300, 300)], [rng.uniform(-300, 300), rng.uniform(-300, 300)], rng.choice([0.5, 8, 24])] for _ in range(400)]
     cases += [[[0, 0], [240, 99], 8], [[0, 0], [240, 101], 8], [[0, 0], [99, 240], 8], [[0, 0], [101, 240], 8], [[3, 3], [3, 3], 0], [[0, 0], [8, 8], 8], [[0, 0], [9, 8], 8]]
-    module = tmp_path / 'direction.mjs'
-    module.write_text(ui.WORLD_JS.removesuffix('bindWorlds();\n') + '\nconst cases=' + json.dumps(cases) + ';console.log(JSON.stringify(cases.map(([a,b,e])=>direction(a,b,e))))\n')
-    got = json.loads(subprocess.check_output([node, str(module)], text=True))
+    got = node_value(world_js(), 'data.map(([a,b,e])=>direction(a,b,e))', cases)
     assert got == [ui.world_direction(a, b, e) for a, b, e in cases]
     assert {"➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️", "⬆️", "↗️", "📍"} == set(got)
 
@@ -413,7 +408,7 @@ def test_node26_reaches_the_same_page_through_py_launch():
 
 
 def _png(color, mark=None, size=(64, 48)):
-    from tool.image_support.png import rgb_png
+    from tools.image_support.png import rgb_png
     if isinstance(color, str):
         color = {"black": (0, 0, 0), "white": (255, 255, 255)}[color]
     rectangles = [((8, 8, 24, 24), mark)] if mark else []
@@ -552,7 +547,7 @@ def test_demo_zoom_goes_in_toward_the_anchor_and_stays_on_the_real_clock():
 
     class Page:                                                 # a screenshot of a red corner (bottom left) on blue
         def screenshot(self, type):
-            from tool.image_support.png import rgb_png
+            from tools.image_support.png import rgb_png
             return rgb_png(40, 40, (0, 0, 255), rectangles=[((0, 20, 20, 40), (255, 0, 0))])
 
     camera = record_demo.Camera(Page())
@@ -687,25 +682,22 @@ def test_a_real_floor_asks_for_a_photo_or_camera_and_other_worlds_do_not():
             ui.world_validate({**spec, "floors": [{**floor, "real": bad}]})
 
 
-def test_node26_walks_a_land_like_python(tmp_path):
-    node = _node26()
+def test_node26_walks_a_land_like_python():
+    _node26()
     floor = ui.land_floor("forest", seed=9)
     blocked = ui.world_blocked(floor["width"], floor["height"], floor["tile"], floor["props"])
     cases = [[blocked, floor["tile"], [floor["player"]["x"], floor["player"]["y"]], [s["x"], s["y"]]] for s in floor["spots"]]
     cases.append([blocked, floor["tile"], [floor["player"]["x"], floor["player"]["y"]], [48, 48]])
-    module = tmp_path / "land.mjs"
-    module.write_text(ui.WORLD_JS.removesuffix("bindWorlds();\n") + "\nconst cases=" + json.dumps(cases) + ";console.log(JSON.stringify(cases.map(([r,t,a,b])=>gridRoute(r,t,a,b))))\n")
-    for (rows, tile, a, b), actual in zip(cases, json.loads(subprocess.check_output([node, str(module)], text=True))):
+    for (rows, tile, a, b), actual in zip(cases, node_value(world_js(), "data.map(([r,t,a,b])=>gridRoute(r,t,a,b))", cases)):
         want = ui.world_route_points(rows, tile, a, b)
         assert len(actual) == len(want) and all(g == pytest.approx(w, abs=1e-9) for g, w in zip(actual, want))
 
 
-def test_floor_selection_updates_footer_before_animation_or_change_event(tmp_path):
+def test_floor_selection_updates_footer_before_animation_or_change_event():
     """The actual floor setter keeps the footer in sync, including favourite/hash jumps."""
-    node = _node26()
+    _node26()
     setter = ui.WORLD_JS.split('setFloor=', 1)[1].split(';\nconst floor=', 1)[0]
-    script = tmp_path / 'floor-selection.cjs'
-    script.write_text('''const assert = require('node:assert/strict');
+    node_js('''const assert = require('node:assert/strict');
 const select = {value: 'yard'};
 const events = [];
 const radios = Object.fromEntries(['classroom', 'yard'].map(value => [value, {
@@ -734,7 +726,6 @@ setFloor('classroom', true);
 assert.equal(radios.classroom.checked, true);
 assert.equal(events.length, 2);
 ''')
-    subprocess.run([node, str(script)], check=True, capture_output=True, text=True)
 
 
 def test_the_name_layer_is_names_dots_or_off_and_switches_in_the_header():

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tool import repository_metadata as rm
+from tools import repository_metadata as rm
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -66,7 +66,7 @@ def test_repository_metadata_v1_roundtrip_and_cli(tmp_path):
         [
             sys.executable,
             "-S",
-            str(ROOT / "tool/repository_metadata.py"),
+            str(ROOT / "tools/repository_metadata.py"),
             "repo-metadata",
             "--format",
             "v1",
@@ -280,7 +280,7 @@ def test_module_main_entrypoint(tmp_path):
     checkout = tmp_path / "checkout"
     _init_checkout(checkout)
     result = subprocess.run(
-        [sys.executable, "-m", "tool.repository_metadata", "repo-metadata",
+        [sys.executable, "-m", "tools.repository_metadata", "repo-metadata",
          "--repository", "myon-bioinformatics/PySaiyanWeBoo",
          "--root", str(checkout)],
         cwd=str(ROOT),
@@ -288,10 +288,10 @@ def test_module_main_entrypoint(tmp_path):
         text=True,
         check=False,
     )
-    # -m tool.repository_metadata may fail if tool is not a package; allow script path
+    # -m tools.repository_metadata may fail if tools is not a package; allow script path
     if result.returncode != 0:
         result = subprocess.run(
-            [sys.executable, str(ROOT / "tool/repository_metadata.py"), "repo-metadata",
+            [sys.executable, str(ROOT / "tools/repository_metadata.py"), "repo-metadata",
              "--repository", "myon-bioinformatics/PySaiyanWeBoo",
              "--root", str(checkout)],
             capture_output=True,

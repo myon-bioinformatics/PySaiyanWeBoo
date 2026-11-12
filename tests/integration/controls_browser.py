@@ -1076,7 +1076,7 @@ class RunbookBrowserTests(unittest.TestCase):
     its card and filterable, and a JSON from another version comes back with its states reset. ``WEB_UI_GIFS`` keeps component-steps.gif."""
 
     def test_copy_record_filter_and_reload_on_a_phone(self):
-        sys.path.insert(0, str(ROOT / 'tool'))
+        sys.path.insert(0, str(ROOT / 'tools'))
         import json
         import record_demo
         from web_ui import showcase_document
@@ -1183,7 +1183,7 @@ class OperationsPageBrowserTests(unittest.TestCase):
     reload: the parts the Observatory and Component Ops drew by hand. ``WEB_UI_GIFS`` keeps component-operations.gif."""
 
     def test_filter_rows_by_state_download_the_data_and_switch_to_purple(self):
-        sys.path.insert(0, str(ROOT / 'tool'))
+        sys.path.insert(0, str(ROOT / 'tools'))
         import json
         import record_demo
         html, data = operations_page()
@@ -1252,7 +1252,7 @@ class TableBrowserTests(unittest.TestCase):
     keeps it as DIR/<P>component-table<S>[-<run detail>...].gif through record_demo.gif_targets_from (the recorder's own naming rules)."""
 
     def test_the_table_scrolls_inside_its_box_on_a_phone_and_follows_every_theme(self):
-        sys.path.insert(0, str(ROOT / 'tool'))
+        sys.path.insert(0, str(ROOT / 'tools'))
         import record_demo
         from PIL import Image
         from web_ui import CANDIDATE_THEMES, THEMES, component_document

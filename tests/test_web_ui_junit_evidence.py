@@ -16,7 +16,7 @@ def test_tooling_probe_child_keeps_exit_status_with_junit(tmp_path):
     fixture = tmp_path / "test_probe.py"
     fixture.write_text('''
 import pytest
-from tool.web_ui_tooling_meta import canonical
+from tools.web_ui_tooling_meta import canonical
 
 @pytest.fixture
 def unavailable(monkeypatch):

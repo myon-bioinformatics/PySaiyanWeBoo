@@ -1,6 +1,6 @@
 """Compare unmodified Dart fixture auth sources with Python over one corpus.
 
-python -S tool/auth_parity.py /path/to/flutter_navigation_basic
+python -S tools/auth_parity.py /path/to/flutter_navigation_basic
 Requires Dart (and pub access for the original crypto ^3.0.7 dependency).
 No Flutter SDK, application bootstrap, external authentication or network requests.
 Only `dart pub get` obtains test dependencies. Sources must match the pinned hashes.

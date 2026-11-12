@@ -3,7 +3,7 @@ import importlib.util, unittest
 from pathlib import Path
 
 _spec = importlib.util.spec_from_file_location(
-    'flutter_inventory', Path(__file__).resolve().parents[1] / 'tool/flutter_migration_inventory.py')
+    'flutter_inventory', Path(__file__).resolve().parents[1] / 'tools/flutter_migration_inventory.py')
 _inventory = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_inventory)
 shape = _inventory._shape

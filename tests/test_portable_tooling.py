@@ -4,7 +4,7 @@ from pathlib import Path; from types import SimpleNamespace
 
 import pytest
 
-from tool import web_ui_tooling_meta
+from tools import web_ui_tooling_meta
 
 ROOT = Path(__file__).resolve().parents[1]
 canonical = web_ui_tooling_meta.canonical
@@ -81,7 +81,7 @@ def test_duplicate_canonical_owners_fail_before_probing(monkeypatch, collision):
 
 def test_standalone_json_is_stdlib_only_and_does_not_need_checkout(tmp_path):
     env = {**os.environ, "PATH": str(tmp_path), "PYTHONPATH": ""}
-    result = subprocess.run([sys.executable, "-S", str(ROOT / "tool/web_ui_tooling_meta.py")],
+    result = subprocess.run([sys.executable, "-S", str(ROOT / "tools/web_ui_tooling_meta.py")],
                             cwd=tmp_path, env=env, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     assert result.stderr == ""
