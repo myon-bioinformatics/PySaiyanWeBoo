@@ -38,6 +38,18 @@ def node_js(source: str, *argv: str, timeout: float = 60) -> subprocess.Complete
     return done
 
 
+def node_value(source: str, expression: str, data=None, *, timeout: float = 60):
+    """The JSON value of ``expression`` in Node after ``source`` (a module's text, or imports from ``./js/``), with ``data`` bound to ``data``."""
+    script = f"{source}\nconst data={json.dumps(data, ensure_ascii=False)};\nconsole.log(JSON.stringify({expression}));"
+    return json.loads(node_js(script, timeout=timeout).stdout)
+
+
+def world_js() -> str:
+    """world.js without ``bindWorlds();``: its inner functions (gridRoute, motionSample, ...) for node_value and node_js."""
+    import web_ui
+    return web_ui.WORLD_JS.removesuffix("bindWorlds();\n")
+
+
 def flutter_case(tid, sid, name, result="success", **done):
     """The two NDJSON events (testStart, testDone) of one case in a ``flutter test --reporter json`` stream."""
     return [{"type": "testStart", "test": {"id": tid, "suiteID": sid, "name": name}}, {"type": "testDone", "testID": tid, "result": result, **done}]

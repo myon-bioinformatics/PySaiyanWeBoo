@@ -1,27 +1,16 @@
 """Golden behavior and cross-runtime checks for the Flutter successor tools."""
-import datetime as dt, json, os, random, shutil, subprocess, sys, tempfile
+import datetime as dt, json, os, random, subprocess, sys
 from pathlib import Path
 
 import pytest
 import web_ui as u
+from support import node26, node_value
 
 
 def js_call(module, expression, payload):
-    node = shutil.which('node')
-    if not node:
-        pytest.skip('Node required')
-    with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        for name in ('play.js', 'studio-audio.js', 'composition.js', 'timeline.js'):
-            (root / name.replace('.js', '.mjs')).write_text(u.js_modules()[name], encoding='utf-8')
-        script = ('await import(' + json.dumps((root / 'composition.mjs').as_uri()) + ');'
-                  'const m=await import(' + json.dumps((root / module.replace('.js', '.mjs')).as_uri()) + ');'
-                  'let text="";for await(const c of process.stdin)text+=c;const data=JSON.parse(text);'
-                  'console.log(JSON.stringify(' + expression + '));')
-        result = subprocess.run([node, '--input-type=module', '-e', script], input=json.dumps(payload),
-                                text=True, capture_output=True)
-        assert result.returncode == 0, result.stderr
-        return json.loads(result.stdout)
+    """``expression`` over ``m`` (the module) and ``data`` (the payload) in Node, after composition.js (which the studio modules expect loaded)."""
+    node26() or pytest.skip('Node 26+ required')
+    return node_value(f"await import('./js/composition.js');const m=await import('./js/{module}');", expression, payload)
 
 
 def test_garden_golden_rewards_noop_and_replay():

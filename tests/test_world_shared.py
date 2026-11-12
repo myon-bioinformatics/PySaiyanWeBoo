@@ -1,6 +1,6 @@
 """Opt-in shared board contract; no network calls or public writes."""
 import pytest
-from support import node26, node_js
+from support import node26, node_js, world_js
 import web_ui as ui
 
 
@@ -55,7 +55,7 @@ console.log('shared board harness passed');"""
 
 def test_shared_node():
     node26() or pytest.skip('Node 26+ required')
-    assert 'shared board harness passed' in node_js(ui.WORLD_JS.removesuffix('bindWorlds();\n') + SHARED_HARNESS).stdout
+    assert 'shared board harness passed' in node_js(world_js() + SHARED_HARNESS).stdout
 
 
 def test_approved_example_destination():

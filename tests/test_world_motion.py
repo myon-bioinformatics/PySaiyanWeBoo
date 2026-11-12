@@ -1,8 +1,8 @@
 """Python oracle and emitted browser projection: no browser/Python runtime dependency."""
-import json, math, subprocess
+import math
 
 import pytest
-from support import node26, node_js
+from support import node26, node_js, node_value, world_js
 import web_ui as ui
 
 
@@ -86,16 +86,16 @@ def test_html_safe_accessible_and_offset_opt_in():
     assert 'animation-play-state:paused' in ui.world_css(value)
 
 
-def test_node26_projection_matches_python_oracle(tmp_path):
-    node = node26() or pytest.skip('existing Node 26+ required; no installation')
+def test_node26_projection_matches_python_oracle():
+    node26() or pytest.skip('existing Node 26+ required; no installation')
     segments = [ui.world_walk([i, i*2], [100-i, 70-i], at=i/3, speed=10+i) for i in range(20)]
     segments += [ui.world_walk([0, 0], [0, 0], at=2)]
     cases = [[s, t] for s in segments for t in (0, s['at'], s['at'] + s['duration']/2, s['at']+s['duration'], 1e9)]
     boards = [[0,-60], [86399.9,540], [1800000001,0]]
     countdowns = [[600,630], [629.999,630], [630,630], [630.001,630], [1439.5,0]]
-    module = tmp_path / 'motion.mjs'
-    module.write_text(ui.WORLD_JS.removesuffix('bindWorlds();\n') + '\nconsole.log(JSON.stringify({samples:' + json.dumps(cases) + '.map(([s,t])=>motionSample(s,t)),boards:' + json.dumps(boards) + '.map(([n,o])=>boardClock(n,o)),countdowns:' + json.dumps(countdowns) + '.map(([n,a])=>minutesUntil(n,a)),walk:motionWalk([10,20],[70,100],5,10,1024,768)}));')
-    result = json.loads(subprocess.check_output([node, str(module)], text=True))
+    result = node_value(world_js(), '{samples:data.cases.map(([s,t])=>motionSample(s,t)),boards:data.boards.map(([n,o])=>boardClock(n,o)),'
+                        'countdowns:data.countdowns.map(([n,a])=>minutesUntil(n,a)),walk:motionWalk([10,20],[70,100],5,10,1024,768)}',
+                        {'cases': cases, 'boards': boards, 'countdowns': countdowns})
     for actual, (s, t) in zip(result['samples'], cases):
         assert actual == pytest.approx(ui.world_motion_sample(s, t), abs=1e-10)
     for actual, (n,o) in zip(result['boards'], boards):
@@ -167,4 +167,4 @@ console.log('motion interaction harness passed');"""
 
 def test_node26_interaction_harness():
     node26() or pytest.skip('existing Node 26+ required; no installation')
-    assert 'motion interaction harness passed' in node_js(ui.WORLD_JS.removesuffix('bindWorlds();\n') + MOTION_HARNESS).stdout
+    assert 'motion interaction harness passed' in node_js(world_js() + MOTION_HARNESS).stdout

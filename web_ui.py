@@ -6031,7 +6031,8 @@ _PHOTO_FAILURES = {"empty": "decodeFailed", "tooLargeBytes": "tooLargeBytes", "t
                    "heicConversionFailed": "heicUnsupported"}
 
 
-def _photo_half_up(value: float) -> int:
+def _math_round(value: float) -> int:
+    """JavaScript's Math.round: halves go up (also for negatives), as the photo and image studios round in the page."""
     floor = math.floor(value)
     return floor + 1 if value - floor >= 0.5 else floor
 
@@ -6280,13 +6281,13 @@ def photo_reject_size(width: int, height: int) -> str | None:
 
 def photo_document_size(width: int, height: int) -> tuple[int, int]:
     """The size the studio keeps a ``width`` x ``height`` photo at: two thirds of each side, then the long side at most 4096 (what Flutter's web adapter does)."""
-    tw = min(max(_photo_half_up(width * PHOTO_DOWNSCALE), 1), width)
-    th = min(max(_photo_half_up(height * PHOTO_DOWNSCALE), 1), height)
+    tw = min(max(_math_round(width * PHOTO_DOWNSCALE), 1), width)
+    th = min(max(_math_round(height * PHOTO_DOWNSCALE), 1), height)
     long_edge = max(tw, th)
     if long_edge > PHOTO_MAX_EDGE:
         fit = PHOTO_MAX_EDGE / long_edge
-        tw = min(max(_photo_half_up(tw * fit), 1), width)
-        th = min(max(_photo_half_up(th * fit), 1), height)
+        tw = min(max(_math_round(tw * fit), 1), width)
+        th = min(max(_math_round(th * fit), 1), height)
     return tw, th
 
 
@@ -6545,7 +6546,7 @@ def photo_hit_stamp(stamps: list[dict[str, Any]], width: float, height: float, x
 
 def photo_export_size(width: float, height: float, ratio: float = 2) -> tuple[int, int]:
     """The exported PNG's size for an on-screen canvas: each side times the pixel ratio, rounded, between 1 and 4096."""
-    return min(max(_photo_half_up(width * ratio), 1), PHOTO_MAX_EDGE), min(max(_photo_half_up(height * ratio), 1), PHOTO_MAX_EDGE)
+    return min(max(_math_round(width * ratio), 1), PHOTO_MAX_EDGE), min(max(_math_round(height * ratio), 1), PHOTO_MAX_EDGE)
 
 
 def photo_contain_rect(image_width: float, image_height: float, width: float, height: float) -> tuple[float, float, float, float]:
@@ -13887,14 +13888,8 @@ def _stu_need(condition: Any, message: str) -> None:
         raise StudioError(message)
 
 
-def _stu_round(x: float) -> int:
-    """Math.round: halves go up."""
-    r = math.floor(x)
-    return r + 1 if x - r >= 0.5 else r
-
-
 def _stu_num(value: Any, low: float, high: float) -> bool:
-    return type(value) in (int, float) and math.isfinite(value) and low <= value <= high
+    return _js_num(value) and low <= value <= high
 
 
 def _stu_color(value: Any) -> bool:
@@ -14100,11 +14095,11 @@ def studio_heat_color(value: Any, low: Any, high: Any, levels: Any = 0) -> str:
     levels = int(levels)
     t = 0.5 if high == low else max(0, min(1, (value - low) / (high - low)))
     if levels:
-        t = _stu_round(t * (levels - 1)) / (levels - 1)
+        t = _math_round(t * (levels - 1)) / (levels - 1)
     p = t * 4
     i = min(3, math.floor(p))
     a, b = (bytes.fromhex(c[1:]) for c in STUDIO_PALETTE[i:i + 2])
-    return "#" + "".join(f"{_stu_round(x + (y - x) * (p - i)):02X}" for x, y in zip(a, b))
+    return "#" + "".join(f"{_math_round(x + (y - x) * (p - i)):02X}" for x, y in zip(a, b))
 
 
 def studio_matrix(source: Any) -> dict[str, Any]:
@@ -14151,7 +14146,7 @@ def studio_arrow_geometry(w: Any, h: Any, head: Any = 28, placement: Any = "tip"
 def studio_output_size(scene: Any, scale: Any = 1) -> dict[str, int]:
     """Pixels of an export at ``scale`` (0.25 to 8): at most 8192 a side and 16 MP."""
     _stu_need(_stu_num(scale, 0.25, 8), "出力倍率は0.25〜8です")
-    width, height = _stu_round(scene["width"] * scale), _stu_round(scene["height"] * scale)
+    width, height = _math_round(scene["width"] * scale), _math_round(scene["height"] * scale)
     _stu_need(width <= 8192 and height <= 8192 and width * height <= 16777216, "出力は各辺8192px・合計16MP以下にしてください")
     return {"width": width, "height": height}
 
@@ -14235,7 +14230,7 @@ def studio_mosaic_rgba(data: Any, width: Any, height: Any, cell: Any, levels: An
                     sums[1] += raw[n + 1] * a
                     sums[2] += raw[n + 2] * a
             count = (end_x - x) * (end_y - y)
-            rgba = [_stu_round(_stu_round((_stu_round(s / alpha) if alpha else 0) / 255 * steps) / steps * 255) for s in sums] + [_stu_round(alpha / count)]
+            rgba = [_math_round(_math_round((_math_round(s / alpha) if alpha else 0) / 255 * steps) / steps * 255) for s in sums] + [_math_round(alpha / count)]
             pixel = bytes(rgba)
             for j in range(y, end_y):
                 base = (j * width + x) * 4
@@ -15623,11 +15618,17 @@ STUB_SCHEMA = "web-ui-stub/1"
 # stub.js without its import line: it needs setText/prettyJson from ui.js, so an embedded module is ui.js + this.
 EMBEDDED_STUB_JS = _JS["stub.js"].split("\n", 1)[1]
 
+# Lines several modules share, spliced in like _RNG_JS and _SHA_JS: the Python str.strip whitespace, full-width ASCII folding, and a DOM element builder.
+_SPACE_JS = r"""const SPACE="\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
+"""
+_ASCII_JS = r"""const ascii=s=>{let o="";for(const c of s){const n=c.codePointAt(0);o+=n>=0xFF01&&n<=0xFF5E?String.fromCodePoint(n-0xFEE0):n===0x3000?" ":n===0x2212?"-":c}return o};
+"""
+_EL_JS = r"""const el=(tag,props={},...kids)=>{const e=document.createElement(tag);for(const[k,v]of Object.entries(props))if(k==="text")e.textContent=v;else e.setAttribute(k,v);e.append(...kids);return e};
+"""
+
 _JS["coordinates.js"] = r"""/* web-ui coordinates: validate and format a point, read it from a Maps URL, frame a tolerance area, find its XYZ tile. Python (web_ui.parse_coordinate, tolerance_area, ...) is the reference. */
-const SPACE="\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
-const strip=s=>(s.startsWith("﻿")?s.slice(1):s).replace(new RegExp("^["+SPACE+"]+|["+SPACE+"]+$","g"),"");
-const ascii=s=>{let o="";for(const c of s){const n=c.codePointAt(0);o+=n>=0xFF01&&n<=0xFF5E?String.fromCodePoint(n-0xFEE0):n===0x3000?" ":n===0x2212?"-":c}return o};
-const NUMBER=/^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/,WS="[ \\t\\r\\n\\f\\v]",N="(-?[0-9]+(?:\\.[0-9]+)?)";
+""" + _SPACE_JS + r"""const strip=s=>(s.startsWith("﻿")?s.slice(1):s).replace(new RegExp("^["+SPACE+"]+|["+SPACE+"]+$","g"),"");
+""" + _ASCII_JS + r"""const NUMBER=/^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/,WS="[ \\t\\r\\n\\f\\v]",N="(-?[0-9]+(?:\\.[0-9]+)?)";
 const PATTERNS=[new RegExp("[?&#]ll="+N+WS+"*,"+WS+"*"+N,"i"),new RegExp("[?&#](?:query|q)="+N+WS+"*,"+WS+"*"+N,"i"),new RegExp("!3d"+N+"!4d"+N),new RegExp("@"+N+WS+"*,"+WS+"*"+N+"(?:,|/|z|\\?|#|$)")];
 export const fixed=(v,n)=>v.toFixed(n);
 export function parseCoordinate(latitude,longitude){const v=[];for(const raw of[latitude,longitude]){const t=strip(ascii(String(raw)));
@@ -15882,8 +15883,7 @@ globalThis.webUiPlayground={COUNTER_MIN,COUNTER_MAX,COUNTER_STEPS,HOLD_DELAY,HOL
 if(typeof document!=="undefined")bindPlayground();
 """
 
-_TEXT_JS = r"""const SPACE="\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
-export const pyStrip=s=>s.replace(new RegExp("^["+SPACE+"]+|["+SPACE+"]+$","g"),"");
+_TEXT_JS = _SPACE_JS + r"""export const pyStrip=s=>s.replace(new RegExp("^["+SPACE+"]+|["+SPACE+"]+$","g"),"");
 """
 _SHA_JS = r"""const SHA_K=new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
@@ -16000,8 +16000,7 @@ export function reportRead(text,previous=null,messages=false){const kind=reportK
  out.line=countsLine(out.counts)+" total="+out.total+" ok="+(out.ok?"true":"false");
  if(previous!==null&&pyStrip(previous)){if(kind!=="junit")throw new Error("Comparing with a previous run needs JUnit XML for both.");out.diff=junitDiff(text,previous)}
  return out}
-const el=(tag,props={},...kids)=>{const e=document.createElement(tag);for(const[k,v]of Object.entries(props))if(k==="text")e.textContent=v;else e.setAttribute(k,v);e.append(...kids);return e};
-export function bindReport(root=document){return[...root.querySelectorAll("[data-ui-report]")].map(box=>{
+""" + _EL_JS + r"""export function bindReport(root=document){return[...root.querySelectorAll("[data-ui-report]")].map(box=>{
  const $=s=>box.querySelector(s),input=$("[data-report-input]"),previous=$("[data-report-previous]"),file=$("[data-report-file]"),messages=$("[data-report-messages]"),status=$("[data-report-status]"),line=$("[data-report-line]"),out=$("[data-report-out]"),convert=$("[data-report-convert]");
  let last=null;
  const clear=()=>{line.textContent="";out.replaceChildren();convert.hidden=true;last=null};
@@ -16202,8 +16201,7 @@ export function mcpExchange(routes,request){const method=has(request,"method")?r
 const api={mcpSupportMatrix,rpcFailure,rpcResult,rpcRequest,rpcRequestParse,rpcIsNotification,rpcResponseParse,mcpHeaderNeedsEncoding,mcpHeaderEncode,mcpHeaderDecode,mcpStreamableHeaders,mcpSessionId,pkceChallengeS256,pkcePair,oauthServerMetadata,oauthResourceMetadata,
  bearerInspect,demoBearerToken,mcpMetaVersion,mcpLooksModern,mcpValidateModern,McpFoundation,mcpHeader,mcpOriginAllows,mcpOriginsForPort,McpRoutes,McpClient,mcpInProcess,mcpFoundationTransport,mcpExchange,sha256Hex,mulberry32};
 globalThis.webUiMcp=api;
-const el=(tag,props={},...kids)=>{const e=document.createElement(tag);for(const[k,v]of Object.entries(props))if(k==="text")e.textContent=v;else e.setAttribute(k,v);e.append(...kids);return e};
-const pretty=v=>JSON.stringify(v,null,2);
+""" + _EL_JS + r"""const pretty=v=>JSON.stringify(v,null,2);
 export function bindMcp(root=document){return[...root.querySelectorAll("[data-ui-mcp]")].map(box=>{
  const $=s=>box.querySelector(s),$$=s=>[...box.querySelectorAll(s)];let routes=new McpRoutes(null,{clock:()=>Date.now()/1000}),lastSession="";
  const sessionsNote=$("[data-mcp-sessions]"),refresh=()=>{sessionsNote.textContent=routes.handler.sessions.size+" session(s) open on the in-page server."+(routes.handler.sessions.size?" Last: "+lastSession:"");box.dataset.sessions=String(routes.handler.sessions.size)};
@@ -16884,8 +16882,7 @@ export function patternFind(rows,query="",category="",family=""){
  patternWindowInitial,patternWindowStep,patternWindowRender,patternCollectionInitial,patternCollectionStep,patternCollectionRender,patternStructure,patternFuture,patternStream,patternConcurrency,patternEventLoop,patternInteraction,virtualWindow,debounce,patternRun,patternTheme,patternFamily,patternOwner,patternCatalogue,patternFind,
  PATTERN_RUNNERS,PATTERN_TWINS,PATTERN_FAMILIES,PATTERN_EXAMPLES,PATTERN_ORDER_EXAMPLES,PATTERN_TEXT_DOCUMENTS,PATTERN_WINDOW_MODES,PATTERN_COLLECTION_MODES,PATTERN_WINDOW_ITEMS,sha256Hex};
 globalThis.webUiPatterns=api;
-const el=(tag,props={},...kids)=>{const e=document.createElement(tag);for(const[k,v]of Object.entries(props))if(k==="text")e.textContent=v;else e.setAttribute(k,v);e.append(...kids);return e};
-const pretty=v=>JSON.stringify(v,null,2);
+""" + _EL_JS + r"""const pretty=v=>JSON.stringify(v,null,2);
 const PAGE=48;
 export function bindPatterns(root=document){return[...root.querySelectorAll("[data-ui-patterns]")].map(box=>{
  if(box.hasAttribute("data-patterns-ready"))return box;
@@ -17088,10 +17085,8 @@ const OPTIONS=new Map(Object.entries({"-X":"method","--request":"method","--url"
 const IGNORED=new Set(["-s","-S","-i","-v","-k","--silent","--show-error","--include","--verbose","--insecure"]),METHODS=new Set(["GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"]);
 const SECRET_NAMES=new Set(["authorization","proxy-authorization","cookie","set-cookie","x-api-key","api-key","x-auth-token","key","sig","sas"]);
 const SECRET_PARTS=["api-key","api_key","token","secret","password","signature","credential","access_key","access-key","sharedaccesssignature"];
-const SPACE="\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
-const strip=s=>s.replace(new RegExp("^["+SPACE+"]+|["+SPACE+"]+$","g"),""),lstrip=s=>s.replace(new RegExp("^["+SPACE+"]+"),"");
-const ascii=s=>{let o="";for(const c of s){const n=c.codePointAt(0);o+=n>=0xFF01&&n<=0xFF5E?String.fromCodePoint(n-0xFEE0):n===0x3000?" ":n===0x2212?"-":c}return o};
-export function curlTokenize(raw){
+""" + _SPACE_JS + r"""const strip=s=>s.replace(new RegExp("^["+SPACE+"]+|["+SPACE+"]+$","g"),""),lstrip=s=>s.replace(new RegExp("^["+SPACE+"]+"),"");
+""" + _ASCII_JS + r"""export function curlTokenize(raw){
  if(typeof raw!=="string")fail("inputType");
  if(!raw.isWellFormed())fail("encoding");
  if(new TextEncoder().encode(raw).length>MAX_BYTES)fail("inputTooLarge");
@@ -17740,7 +17735,6 @@ export class PhotoStudio{constructor(width=760,height=280){this.width=width;this
  undo(){const s=this.history.undo(this.state);if(s===null)return false;this.state=s;if(s.draft_shape!==null)this.pendingEmoji=null;return true}
  redo(){const s=this.history.redo(this.state);if(s===null)return false;this.state=s;if(s.draft_shape!==null)this.pendingEmoji=null;return true}}
 const MIME={png:"image/png",jpeg:"image/jpeg",webp:"image/webp",gif:"image/gif",avif:"image/avif",heic:"image/heic"};
-const fromB64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 /* Decode in the engine. The bytes go in with EXIF orientation set to 1 and the type the bytes show (not the one the file claims), so every engine returns the stored pixels and the page turns them. */
 export function loadImage(bytes,{raw=false}={}){const info=sniff(bytes),blob=new Blob([raw?bytes:neutralizeOrientation(bytes)],{type:MIME[info.kind]||"application/octet-stream"}),url=URL.createObjectURL(blob),image=new Image();
  const release=()=>{image.onload=image.onerror=null;URL.revokeObjectURL(url)};
@@ -17852,8 +17846,8 @@ export function bindPhoto(root=document){return[...root.querySelectorAll("[data-
    shareB.addEventListener("click",async()=>{try{const blob=await exportBlob();await navigator.share({files:[new File([blob],EXPORT_NAME,{type:"image/png"})]})}catch(e){}})}}catch(e){}
  const PROBES=JSON.parse(box.dataset.probes||"[]");
  async function check(){checkOut.textContent="Checking…";const outcomes={};
-  for(const p of PROBES){try{const r=await loadImage(fromB64(p.data));r.release();outcomes[p.id]="supported"}catch(e){outcomes[p.id]="unsupported_by_runtime"}}
-  let applied=null;const exif=PROBES.find(p=>p.id==="jpeg_exif_orientation_6");if(exif){try{const r=await loadImage(fromB64(exif.data),{raw:true});applied=r.width<r.height;r.release()}catch(e){}}
+  for(const p of PROBES){try{const r=await loadImage(fromBase64(p.data));r.release();outcomes[p.id]="supported"}catch(e){outcomes[p.id]="unsupported_by_runtime"}}
+  let applied=null;const exif=PROBES.find(p=>p.id==="jpeg_exif_orientation_6");if(exif){try{const r=await loadImage(fromBase64(exif.data),{raw:true});applied=r.width<r.height;r.release()}catch(e){}}
   const features={};const tryDo=(k,f)=>{try{features[k]=f()}catch(e){features[k]=false}};
   tryDo("pointerEvents",()=>"PointerEvent" in window);tryDo("touchActionNone",()=>CSS.supports("touch-action","none"));tryDo("createImageBitmap",()=>typeof createImageBitmap==="function");
   tryDo("canvasToBlob",()=>typeof HTMLCanvasElement.prototype.toBlob==="function");tryDo("clipboardRead",()=>!!(navigator.clipboard&&navigator.clipboard.read));tryDo("clipboardWrite",()=>!!(navigator.clipboard&&navigator.clipboard.writeText));
