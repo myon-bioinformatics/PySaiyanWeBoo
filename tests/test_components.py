@@ -18,7 +18,7 @@ SOURCE_SPEC = {"id": "t", "label": "Name", "name": "[a-z]+", "url": "https://exa
 def args_for(name):
     return {"dial": (("level",), {"maximum": 11, "label": "Level"}), "door": ((ui.example_data("door"),), {}), "world": ((ui.example_data("school"),), {}),
             "stub": ((ui.EXAMPLE_STUBS["api"],), {}), "source": ((SOURCE_SPEC,), {}), "showcase": ((ui.example_data("showcase"),), {}),
-            "front": (("<p>main</p>", [ROOM]), {"title": "Front"}), "repository-diagnostics": (("myon-bioinformatics/web-ui",), {}),
+            "front": (("<p>main</p>", [ROOM]), {"title": "Front"}), "scroll": (("<button>a</button>",), {"label": "Views"}), "repository-diagnostics": (("myon-bioinformatics/web-ui",), {}),
             "table": (({"columns": ["page", "chromium"], "rows": [["index", {"text": "pass", "status": "pass"}]], "row_headers": True},), {}),
             "steps": (({"key": "demo/run", "steps": [{"id": "run", "title": "Run", "command": "python3 -S demo.py", "expect": "42"}]},), {})}.get(name, ((), {}))
 
@@ -41,6 +41,22 @@ def test_every_component_gives_html_css_and_a_module_that_mounts(name):
         assert parts["js"].rstrip().endswith(mount)
     else:                                                                                           # the module binds itself when a page loads it
         assert any(sign in parts["js"] for sign in ('if(typeof document!=="undefined")', "DOMContentLoaded", "if(rootNode)mount(rootNode)", "addEventListener("))
+
+
+def test_scroll_regions_are_marked_in_python_and_enhanced_by_one_module():
+    row = ui.scroll_html("<button>a</button><button>b</button>", label='Views "top"', id="views")
+    assert row == '<div class="ui-shell-scroll" data-ui-scroll="row" data-scroll-label="Views &quot;top&quot;" id="views"><button>a</button><button>b</button></div>'
+    assert 'data-ui-scroll="table"' in ui.scroll_html("<table></table>", label="Records", kind="table")
+    for bad in ({"kind": "grid"}, {"label": " "}, {"id": "a b"}):
+        with pytest.raises(ValueError):
+            ui.scroll_html("<p></p>", **{"label": "x", **bad})
+    module, sheet = ui.js_source("scroll.js"), ui.css_source("scroll.css")
+    assert "export function bindScroll" in module and module.rstrip().endswith('if(typeof document!=="undefined")bindScroll();')
+    assert "fetch(" not in module and "localStorage" not in module                       # nothing sent, nothing stored
+    for name in ("ui-scroll-row", "ui-scroll-table", "ui-scroll-arrow", "ui-scroll-bar", "ui-scroll-top", "ui-scroll-left", "ui-scroll-over"):
+        assert name in module and "." + name in sheet                                     # every class the module sets has a rule
+    assert "#" not in sheet.replace("#{", "")                                             # colours are tokens only
+    assert sheet in ui.bundled_css()
 
 
 def test_the_dial_is_a_registered_component():
