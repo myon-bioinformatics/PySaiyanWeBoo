@@ -801,3 +801,8 @@ python -S web_ui.py --site .   # writes js/records.js next to it
 See [standard-library discovery commands](docs/unittest-discovery.md) for
 validated `python -S -m unittest discover` recipes, filename/name filtering,
 and the boundary with the full pytest suite.
+
+
+### 運用ビューの状態
+
+手順カードと状態フィルタは共通の `STEP_STATUSES` を使用します。`todo=調査中`、`doing=着手中`、`pass=完了`、`hold=保留`、`block=ブロッカー` の5種類です。従来JSONの4つのトークンと保存キーは維持し、版が違う記録の状態リセットも維持します。GitHubのopen/closedやCI結果とは別の利用者の作業状態です。
