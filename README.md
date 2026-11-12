@@ -793,7 +793,7 @@ writes `runs/component-table-chromium-20261108T113412Z-288cbed.gif` (the suffix 
 
 `stat_tiles`, `data_table`, `filter_input`, `draft_textarea`, `draft_select`, `records_io` and
 `records_board` build a read-only record board (PR / Issue queues, audit tables) from Python
-data; the optional `records.js` module adds a text filter, browser-local drafts
+data (`data_table` is `table()` with a required `id`; `row_ids=` puts `data-ui-row` on each row); the optional `records.js` module adds a text filter, browser-local drafts
 (`data-ui-draft`, localStorage, best effort) and JSON export/import of those drafts. No fetch
 and no HTML from data: GitHub or other observations are gathered by the Python producer.
 

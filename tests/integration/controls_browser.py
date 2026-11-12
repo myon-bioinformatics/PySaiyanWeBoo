@@ -41,6 +41,22 @@ class PageCase(unittest.TestCase):
     """A browser test whose ``setUp`` leaves ``self.browser``, ``self.playwright_manager``, ``self.server``, ``self.errors`` (page errors) and ``self.external`` (requests
     beyond the page's own origin) behind; the tearDown that closes them in that order and requires both lists to be empty is shared."""
 
+    JS_TRY = "const tryit = fn => { try { return {ok: fn()} } catch (e) { return {error: e.message} } };"
+
+    @staticmethod
+    def attempt(fn, *args, **kwargs):
+        """The Python side of ``tryit``: ``{ok: value}``, or ``{error: message}`` for a ValueError."""
+        try:
+            return {'ok': fn(*args, **kwargs)}
+        except ValueError as error:
+            return {'error': str(error)}
+
+    def watch(self, page):
+        """Collect the page's errors and its requests beyond ``self.origin`` into the two lists the tearDown requires to be empty."""
+        page.on('pageerror', lambda error: self.errors.append(str(error)))
+        page.on('request', lambda request: self.external.append(request.url) if request.url.startswith('http') and not request.url.startswith(self.origin + '/') else None)
+        return page
+
     def tearDown(self):
         self.browser.close()
         self.playwright_manager.__exit__(None, None, None)
@@ -2331,9 +2347,8 @@ class PhotoPageBrowserTests(PageCase):
         self.context = self.browser.new_context(accept_downloads=True, **photo_device(self.playwright))
         self.page = self.context.new_page()
         self.errors, self.external = [], []
-        self.page.on('pageerror', lambda error: self.errors.append(str(error)))
+        self.watch(self.page)
         self.page.on('console', lambda message: self.errors.append('console: ' + message.text) if message.type == 'error' else None)
-        self.page.on('request', lambda request: self.external.append(request.url) if request.url.startswith('http') and not request.url.startswith(self.origin + '/') else None)
         self.page.goto(self.origin + '/photo.html')
 
     def mime(self, case_id):
@@ -2723,8 +2738,7 @@ class ClipboardBrowserTests(PageCase):
 
     def page(self, name):
         page = self.context.new_page()
-        page.on('pageerror', lambda error: self.errors.append(str(error)))
-        page.on('request', lambda request: self.external.append(request.url) if request.url.startswith('http') and not request.url.startswith(self.origin + '/') else None)
+        self.watch(page)
         page.goto(self.origin + '/' + name)
         return page
 
@@ -3031,8 +3045,7 @@ class PlaygroundBrowserTests(PageCase):
 
     def page(self, clock=False):
         page = self.context.new_page()
-        page.on('pageerror', lambda error: self.errors.append(str(error)))
-        page.on('request', lambda request: self.external.append(request.url) if request.url.startswith('http') and not request.url.startswith(self.origin + '/') else None)
+        self.watch(page)
         if clock:
             page.clock.install()
             # Freeze real time before navigation; run_for alone still lets wall time advance.
@@ -3262,19 +3275,9 @@ class ReportBrowserTests(PageCase):
 
     def page(self):
         page = self.context.new_page()
-        page.on('pageerror', lambda error: self.errors.append(str(error)))
-        page.on('request', lambda request: self.external.append(request.url) if request.url.startswith('http') and not request.url.startswith(self.origin + '/') else None)
+        self.watch(page)
         page.goto(self.origin + '/report.html')
         return page
-
-    @staticmethod
-    def attempt(fn, *args, **kwargs):
-        try:
-            return {'ok': fn(*args, **kwargs)}
-        except ValueError as error:
-            return {'error': str(error)}
-
-    JS_TRY = "const tryit = fn => { try { return {ok: fn()} } catch (e) { return {error: e.message} } };"
 
     def test_sha256_equals_hashlib(self):
         import hashlib
@@ -3575,19 +3578,9 @@ class McpBrowserTests(PageCase):
 
     def page(self):
         page = self.context.new_page()
-        page.on('pageerror', lambda error: self.errors.append(str(error)))
-        page.on('request', lambda request: self.external.append(request.url) if request.url.startswith('http') and not request.url.startswith(self.origin + '/') else None)
+        self.watch(page)
         page.goto(self.origin + '/mcp.html')
         return page
-
-    JS_TRY = "const tryit = fn => { try { return {ok: fn()} } catch (e) { return {error: e.message} } };"
-
-    @staticmethod
-    def attempt(fn, *args, **kwargs):
-        try:
-            return {'ok': fn(*args, **kwargs)}
-        except ValueError as error:
-            return {'error': str(error)}
 
     # --- seeded request scripts
     def meta(self, rng, version=None):
@@ -4483,8 +4476,7 @@ class PatternBrowserTests(PageCase):
 
     def page(self):
         page = self.context.new_page()
-        page.on('pageerror', lambda error: self.errors.append(str(error)))
-        page.on('request', lambda request: self.external.append(request.url) if request.url.startswith('http') and not request.url.startswith(self.origin + '/') else None)
+        self.watch(page)
         page.goto(self.origin + '/patterns.html')
         page.wait_for_selector('[data-patterns-ready]')
         return page
@@ -4495,8 +4487,7 @@ class PatternBrowserTests(PageCase):
     def clock_page(self):
         """The page with a clock that moves only when the test moves it: the promises and timers of future, stream, concurrency and event_loop run on virtual time."""
         page = self.context.new_page()
-        page.on('pageerror', lambda error: self.errors.append(str(error)))
-        page.on('request', lambda request: self.external.append(request.url) if request.url.startswith('http') and not request.url.startswith(self.origin + '/') else None)
+        self.watch(page)
         page.clock.install(time=0)
         page.clock.pause_at(10_000)
         page.goto(self.origin + '/patterns.html')
@@ -5302,9 +5293,8 @@ class ScreensBrowserTests(PageCase):
 
     def page(self, hash_='', init=None, context=None):
         page = (context or self.context).new_page()
-        page.on('pageerror', lambda error: self.errors.append(str(error)))
+        self.watch(page)
         page.on('console', lambda message: self.errors.append(message.text) if message.type == 'error' else None)
-        page.on('request', lambda request: self.external.append(request.url) if request.url.startswith('http') and not request.url.startswith(self.origin + '/') else None)
         if init:
             page.add_init_script(init)
         page.goto(self.origin + '/screens.html' + hash_)
@@ -5761,8 +5751,7 @@ class ImageStudioBrowserTests(PageCase):
         page = self.context.new_page()
         if size:
             page.set_viewport_size(size)
-        page.on('pageerror', lambda error: self.errors.append(str(error)))
-        page.on('request', lambda request: self.external.append(request.url) if request.url.startswith('http') and not request.url.startswith(self.origin + '/') else None)
+        self.watch(page)
         page.on('dialog', lambda dialog: dialog.accept() if accept else dialog.dismiss())
         page.goto(self.origin + '/image-studio.html')
         page.wait_for_selector('[data-ui-imagestudio][data-ready]')

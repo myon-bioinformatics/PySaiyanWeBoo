@@ -4,6 +4,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import web_ui as ui
+from support import node26
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -78,10 +79,17 @@ class RecordsBoardTests(unittest.TestCase):
         self.assertEqual(ui.shared_scripts(".", names=("records.js",)), ("./js/records.js",))
         self.assertNotIn("records.js", ui.render_document("A"))
         source = ui.js_source("records.js")
-        for name in ("filterRows", "bindFilter", "bindDrafts", "collectDrafts", "applyDrafts", "bindRecordsIO", "mount"):
+        for name in ("filterItems", "bindFilter", "bindDrafts", "collectDrafts", "applyDrafts", "bindRecordsIO", "mount"):
             self.assertRegex(source, rf"export function {name}\(")
         self.assertNotIn("fetch(", source)
         self.assertNotIn("innerHTML", source)
+
+    @unittest.skipUnless(node26(), "run_node requires Node 26+")
+    def test_records_js_contract_in_node(self):
+        """tests/records.node.mjs: filters, drafts and their JSON file against a small DOM stub."""
+        result = ui.run_node(ROOT / "tests" / "records.node.mjs", timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("records.js ok", result.stdout)
 
     def test_records_css_uses_multiples_of_eight(self):
         css = ui._CSS["records.css"]
