@@ -82,8 +82,10 @@ def walk(data: bytes) -> dict:
         x, y, w, h, flags = struct.unpack_from("<HHHHB", data, p)
         assert flags & 0xC0 == 0 and w > 0 and h > 0 and x + w <= width and y + h <= height, "no local table, not interlaced, inside the screen"
         out["frames"].append({"rect": [x, y, w, h], "min": data[p + 9], **(gce or {"disposal": 0, "transparent": False, "delay": 0})})
+        start = p + 9
         p += 10
         blocks()
+        check_lzw(data[start:p], w * h)
         gce = None
     return out
 
@@ -94,8 +96,50 @@ def pictures(data: bytes) -> list[bytes]:
         return [frame.convert("RGB").tobytes() for frame in ImageSequence.Iterator(image)]
 
 
+def check_lzw(block: bytes, count: int) -> None:
+    """Check framing, codes, EOI and pixel count; Pillow alone decodes the pixels.
+
+    Pillow can stop after enough pixels even when EOI is missing. Track only
+    dictionary entry lengths to preserve the old decoder's strict checks.
+    """
+    assert block and 2 <= block[0] <= 8, "LZW minimum code size"
+    data, p = bytearray(), 1
+    while True:
+        assert p < len(block), "LZW sub-block terminator"
+        n = block[p]
+        p += 1
+        if not n:
+            break
+        assert p + n <= len(block), "truncated LZW sub-block"
+        data.extend(block[p:p + n])
+        p += n
+    assert p == len(block), "trailing LZW bytes"
+    clear, bit, produced, previous = 1 << block[0], 0, 0, None
+    lengths, size = [1] * clear + [0, 0], block[0] + 1
+    while True:
+        assert bit + size <= len(data) * 8, "LZW stream ended without EOI"
+        code = sum(((data[(bit + i) // 8] >> ((bit + i) % 8)) & 1) << i for i in range(size))
+        bit += size
+        if code == clear:
+            lengths, size, previous = [1] * clear + [0, 0], block[0] + 1, None
+            continue
+        if code == clear + 1:
+            assert produced == count, "LZW pixel count"
+            return
+        assert code < len(lengths) or code == len(lengths) and previous is not None, "invalid LZW code"
+        length = lengths[code] if code < len(lengths) else previous + 1
+        produced += length
+        assert produced <= count, "LZW pixel count"
+        if previous is not None and len(lengths) < 4096:
+            lengths.append(previous + 1)
+        previous = length
+        if len(lengths) == 1 << size and size < 12:
+            size += 1
+
+
 def lzw_indices(block: bytes, count: int) -> list[int]:
     """Pillow's reading of an LZW image block (code size byte, sub-blocks, terminator) put in a one-frame GIF with a 2**size, non-grey table."""
+    check_lzw(block, count)
     size = block[0]
     width = next(d for d in range(min(count, 65535), 0, -1) if count % d == 0 and count // d <= 65535)
     table = bytes(v for i in range(1 << size) for v in (i & 255, 255 - (i & 255), 128))
@@ -135,6 +179,18 @@ def test_lzw_blocks_decode_to_their_indices(encoded):
         assert lzw_indices(block, len(values)) == list(values), case["name"]
 
 
+@pytest.mark.parametrize(("block", "count", "message"), [
+    (b"\x02\x01\x04\x00", 1, "without EOI"),
+    (b"\x02\x02\x44", 1, "truncated LZW sub-block"),
+    (b"\x02\x02\x44\x01", 1, "sub-block terminator"),
+    (b"\x02\x02\x7c\x01\x00", 1, "invalid LZW code"),
+    (b"\x02\x02\x44\x01\x00", 2, "pixel count"),
+])
+def test_corrupt_lzw_is_rejected(block, count, message):
+    with pytest.raises(AssertionError, match=message):
+        lzw_indices(block, count)
+
+
 def test_exact_colours_merged_repeats_delta_frames_and_the_timeline(encoded):
     t = encoded["timeline"]
     g, frames = unpack(t)
@@ -144,7 +200,7 @@ def test_exact_colours_merged_repeats_delta_frames_and_the_timeline(encoded):
     assert (g["W"], g["H"], g["loop"], g["comment"]) == (40, 30, 0, "web_ui gif.js test")
     assert [f["delay"] for f in g["frames"]] == [150, 3, 4, 103]          # rounded on the timeline: 1533 → 153, 1566 → 157
     assert sum(f["delay"] for f in g["frames"]) == round((1000 + 500 + 33 + 33 + 1034) / 10)
-    assert frames[:3] == [bytes(a), bytes(c), bytes(a)]
+    assert frames == [bytes(a), bytes(c), bytes(a), bytes(c)]
     assert g["frames"][1]["rect"] == [25, 12, 5, 5]
     assert all(f["disposal"] == 1 for f in g["frames"]) and not g["frames"][0]["transparent"]
     assert (t["report"]["colors"], t["report"]["merged"], t["report"]["frames"]) == (3, 1, 4)
