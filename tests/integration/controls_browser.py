@@ -1087,9 +1087,12 @@ class RunbookBrowserTests(unittest.TestCase):
                     self.assertEqual(page.evaluate('navigator.clipboard.readText()'), 'mkdir -p "$HOME/.local/share/olnm"\ncurl -fL https://example.invalid/olnm.py -o "$HOME/.local/share/olnm/olnm.py"')
                     cam.hold(400)
                     # a record: the state moves to the card's tag and to data-status, the note is kept
+                    first.locator('select[data-ui-status]').select_option('doing')
+                    expect(first.locator('[data-ui-status-tag]')).to_have_text('着手中')
+                    expect(first).to_have_attribute('data-status', 'doing')
                     first.locator('select[data-ui-status]').select_option('pass')
                     first.locator('textarea').first.fill('42')
-                    expect(first.locator('[data-ui-status-tag]')).to_have_text('検証済み')
+                    expect(first.locator('[data-ui-status-tag]')).to_have_text('完了')
                     self.assertEqual(first.get_attribute('data-status'), 'pass')
                     cam.hold(500)
                     # the state filter and the search
@@ -1110,7 +1113,7 @@ class RunbookBrowserTests(unittest.TestCase):
                     cam.hold(500)
                     page.reload()
                     first = page.locator('#steps-guide-uvfile-list .ui-step').nth(0)
-                    expect(first.locator('[data-ui-status-tag]')).to_have_text('検証済み')
+                    expect(first.locator('[data-ui-status-tag]')).to_have_text('完了')
                     expect(first.locator('textarea').first).to_have_value('42')
                     # JSON out (with the source) and a file from another version back in: states reset, notes kept, the message says so
                     with page.expect_download() as info:
@@ -1121,7 +1124,7 @@ class RunbookBrowserTests(unittest.TestCase):
                     other.write_text(json.dumps({**saved, 'source': 'fff0000'}), encoding='utf-8')
                     page.locator('#steps-guide-uvfile input[type=file][data-ui-import]').set_input_files(str(other))
                     expect(page.locator('#steps-guide-uvfile [data-ui-records-message]')).to_have_text('別の版の記録を読み込み、状態を戻しました。')
-                    expect(first.locator('[data-ui-status-tag]')).to_have_text('未検証')
+                    expect(first.locator('[data-ui-status-tag]')).to_have_text('調査中')
                     expect(first.locator('textarea').first).to_have_value('42')
                     cam.hold(800)
                     self.assertEqual(errors, [])
