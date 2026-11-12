@@ -44,7 +44,7 @@ assert.equal(count.textContent, "2");
 input.value = "aoi"; input.dispatchEvent(new Event("input"));
 assert.equal(count.textContent, "1");
 assert.equal(table.tBodies[0].rows[1].hidden, true);
-assert.equal(records.filterRows(table, ""), 2);
+assert.equal(records.filterItems(table, ""), 2);
 
 memory.set("web-ui-drafts:r1:notes", "restored");
 const bound = records.bindDrafts(doc);

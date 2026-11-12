@@ -1,5 +1,7 @@
 # Mobile layout revalidation — 2026-11-08
 
+> The 2026-11-07 shots, page and manifest were removed once London and Paris became transport-only: [`cities-20261111`](../cities-20261111/index.html) is the current sweep. They remain in the history of PR #127 at `c7faf3b`.
+
 Initial reproduction: PR #127, `cab9b3f37e94130e331819d952d8bd15b9775e2d`. Final patch integrates the concurrent zoom-dial/overlay updates through `82cc7c16ce79af2be55aa61a6703a3045fd2e53e` without overwriting them.
 
 ## Reproduction and causes

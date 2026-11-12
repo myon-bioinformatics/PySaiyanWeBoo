@@ -4,6 +4,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import web_ui as ui
+from support import node26
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,6 +41,22 @@ class RecordsBoardTests(unittest.TestCase):
             ui.data_table(("A",), [("x",)], id="t", row_ids=())
         with self.assertRaises(ValueError):
             ui.data_table(("A",), [], id="bad id")
+
+    def test_data_table_preserves_legacy_cell_text(self):
+        from html import escape
+        values = (None, {"a": "<script>&"}, {"text": "link", "href": "https://example.com"},
+                  False, 0, 3.5, "<b>trusted</b>")
+        for trusted in (False, True):
+            with self.subTest(trusted=trusted):
+                html = ui.data_table(("Value",), ((value,) for value in values), id="legacy",
+                                     trusted_cells=trusted, row_ids=tuple(str(i) for i in range(len(values))))
+                for i, value in enumerate(values):
+                    text = str(value) if trusted else escape(str(value))
+                    self.assertIn(f'<tr data-ui-row="{i}"><td>{text}</td></tr>', html)
+                self.assertNotIn('<a href=', html)
+        # Rich cells remain available through table(), not the legacy records wrapper.
+        self.assertIn('<a href="https://example.com">link</a>',
+                      ui.table(("Value",), [({"text": "link", "href": "https://example.com"},)]))
 
     def test_stat_tiles_render_text_values(self):
         html = ui.stat_tiles((("PR", 12), ("CI失敗", 2, self.hostile)))
@@ -78,10 +95,17 @@ class RecordsBoardTests(unittest.TestCase):
         self.assertEqual(ui.shared_scripts(".", names=("records.js",)), ("./js/records.js",))
         self.assertNotIn("records.js", ui.render_document("A"))
         source = ui.js_source("records.js")
-        for name in ("filterRows", "bindFilter", "bindDrafts", "collectDrafts", "applyDrafts", "bindRecordsIO", "mount"):
+        for name in ("filterItems", "bindFilter", "bindDrafts", "collectDrafts", "applyDrafts", "bindRecordsIO", "mount"):
             self.assertRegex(source, rf"export function {name}\(")
         self.assertNotIn("fetch(", source)
         self.assertNotIn("innerHTML", source)
+
+    @unittest.skipUnless(node26(), "run_node requires Node 26+")
+    def test_records_js_contract_in_node(self):
+        """tests/records.node.mjs: filters, drafts and their JSON file against a small DOM stub."""
+        result = ui.run_node(ROOT / "tests" / "records.node.mjs", timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("records.js ok", result.stdout)
 
     def test_records_css_uses_multiples_of_eight(self):
         css = ui._CSS["records.css"]

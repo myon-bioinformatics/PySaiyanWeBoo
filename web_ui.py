@@ -38,12 +38,10 @@ const KEY=/^[A-Za-z0-9_.:/#@-]{1,200}$/;
 function storage(){try{const s=globalThis.localStorage;s.getItem("");return s}catch{return null}}
 function value(field){return field.type==="checkbox"?(field.checked?"1":""):field.value}
 function assign(field,text){if(field.type==="checkbox")field.checked=text==="1";else field.value=text;field.dispatchEvent(new Event("input",{bubbles:true}))}
-/** Hide rows whose text does not contain the query (case-insensitive); returns the number still shown. */
+/** The rows of a table's bodies, or the [data-ui-item] elements of a board. */
 function items(target){return target.tBodies?[...target.tBodies].flatMap(body=>[...body.rows]):[...target.querySelectorAll("[data-ui-item]")]}
 /** Show the items of target (table rows, or its [data-ui-item] elements) whose text contains the query and, when status is given, whose data-status is it; returns the number still shown. */
 export function filterItems(target,query="",status=""){const q=String(query||"").trim().toLowerCase();let shown=0;for(const item of items(target)){const hit=(!q||item.textContent.toLowerCase().includes(q))&&(!status||item.dataset.status===status);item.hidden=!hit;if(hit)shown++}return shown}
-/** Hide rows whose text does not contain the query (case-insensitive); returns the number still shown. */
-export function filterRows(table,query){return filterItems(table,query)}
 /** input[data-ui-filter="#target"] (text) and select[data-ui-filter-status="#target"] (status) filter one target together; data-ui-filter-count="#out" receives the shown count. One run function per target. */
 export function bindFilter(root=document){const targets=new Map();for(const control of[...root.querySelectorAll("input[data-ui-filter]"),...root.querySelectorAll("select[data-ui-filter-status]")]){const target=root.querySelector(control.dataset.uiFilter||control.dataset.uiFilterStatus);if(!target)continue;const t=targets.get(target)||{text:null,status:null,count:null};targets.set(target,t);if(control.dataset.uiFilterStatus!==undefined)t.status=control;else t.text=control;if(control.dataset.uiFilterCount)t.count=root.querySelector(control.dataset.uiFilterCount)}return[...targets].map(([target,t])=>{const run=()=>{const n=filterItems(target,t.text?t.text.value:"",t.status?t.status.value:"");if(t.count)t.count.textContent=String(n)};if(t.text)t.text.addEventListener("input",run);if(t.status)t.status.addEventListener("change",run);target.addEventListener("ui-status",run);run();return run})}
 /** select[data-ui-status] (a step's state) writes its value to the closest [data-ui-item] as data-status and its option's text to that item's [data-ui-status-tag], then tells the filters (event ui-status). */
@@ -984,8 +982,8 @@ body[data-ui-theme="github-like"] .ui-tag{
 @layer theme{body[data-ui-theme="terminal"] .ui-title::before{content:"# ";color:var(--ui-accent)}body[data-ui-theme="terminal"] .ui-tag:not(.ui-pass,.ui-fail)::before{content:"["}body[data-ui-theme="terminal"] .ui-tag:not(.ui-pass,.ui-fail)::after{content:"]"}body[data-ui-theme="terminal"] .ui-button::before{content:"> ";color:var(--ui-accent)}body[data-ui-theme="terminal"] .ui-button:hover{border-color:var(--ui-accent)}body[data-ui-theme="terminal"] .ui-output{background:#05080a;color:var(--ui-fg);border:1px solid var(--ui-border);border-radius:0}body[data-ui-theme="terminal"] .ui-panel,body[data-ui-theme="terminal"] .ui-card{box-shadow:none}}""",
     "themes/modern.css": r"""@layer theme{body[data-ui-theme="modern"]{color-scheme:dark}body[data-ui-theme="modern"] .ui-title::before,body[data-ui-theme="modern"] .ui-card>h2::before{content:"> ";color:var(--ui-accent)}body[data-ui-theme="modern"] .ui-panel,body[data-ui-theme="modern"] .ui-card{background:var(--ui-panel);box-shadow:4px 4px 0 rgba(88,166,255,.16)}body[data-ui-theme="modern"] .ui-tag:not(.ui-pass,.ui-fail)::before{content:"#";color:var(--ui-accent)}}""",
 }
-_CSS["records.css"] = ("@layer components{.ui-records table.ui-table{border-collapse:collapse;width:100%;margin:8px 0}.ui-records .ui-table th,.ui-records .ui-table td{border:thin solid var(--ui-border);padding:8px;text-align:left;vertical-align:top;overflow-wrap:anywhere}"
-                       ".ui-records .ui-table caption{text-align:left;font-weight:600;padding:8px 0}.ui-records .ui-table tr[hidden]{display:none}.ui-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin:8px 0}"
+_CSS["records.css"] = ("@layer components{.ui-records table.ui-table{margin:8px 0}.ui-records .ui-table th,.ui-records .ui-table td{border:thin solid var(--ui-border);padding:8px}"
+                       ".ui-records .ui-table caption{font-weight:600;padding:8px 0}.ui-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin:8px 0}"
                        ".ui-stat .ui-stat-value{display:block;font-size:32px;line-height:40px}.ui-stat .ui-stat-label{display:block;color:var(--ui-muted)}.ui-stat .ui-stat-hint{display:block;font-size:.75rem;color:var(--ui-muted)}"
                        ".ui-records-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}.ui-records-bar .ui-input{flex:1 1 240px}.ui-records-io{display:inline-flex;gap:8px}.ui-records [data-ui-draft]{width:100%;box-sizing:border-box}"
                        ".ui-notice{border-left:8px solid var(--ui-border);padding:8px 16px;margin:8px 0;background:var(--ui-panel)}.ui-notice[data-tone=warn]{border-left-color:var(--ui-accent)}.ui-notice[data-tone=block]{border-left-color:var(--ui-danger)}"
@@ -1809,7 +1807,8 @@ def catalog_document(spec: Any, *, theme: str = "modern") -> str:
 
 def table(headers: Sequence[str], rows: Sequence[Sequence[Any]], *, caption: str | None = None, id: str | None = None,
           trusted_html: bool = False, row_classes: Sequence[str | None] | None = None, row_headers: bool = False,
-          missing: str | None = None, row_statuses: Sequence[str | None] | None = None) -> str:
+          missing: str | None = None, row_statuses: Sequence[str | None] | None = None,
+          row_ids: Sequence[str] | None = None) -> str:
     """A ``.ui-table``: header cells and rows, every cell escaped unless ``trusted_html`` (then cells are HTML the
     caller already built, e.g. an ``<img>``). ``row_classes`` gives one class (or None) per row, such as ``ui-pass`` /
     ``ui-fail``; the status classes ``ui-changed`` / ``ui-pass`` / ``ui-fail`` are styled by components.css on any element (a cell, a row, a ``.ui-tag`` badge).
@@ -1818,10 +1817,14 @@ def table(headers: Sequence[str], rows: Sequence[Sequence[Any]], *, caption: str
     the text of a ``None`` cell (marked ``data-missing``, muted; without it a ``None`` cell stays empty); and a cell may be
     ``{text, href, image: {src, alt, width, height}, status, num}`` (``href`` and ``src`` relative or http(s), ``status`` a token written as
     ``data-status``, ``num`` right-aligns it). ``row_statuses`` gives each row a state token (``data-status`` on its ``<tr>``) for
-    ``status_filter()``. ``table_html(spec)`` is the same table from a JSON spec."""
+    ``status_filter()``, and ``row_ids`` sets ``data-ui-row`` on each body row so a script can address one record.
+    ``table_html(spec)`` is the same table from a JSON spec."""
     if row_classes is not None and len(row_classes) != len(rows):
         raise ValueError("row_classes must have one entry per row")
-    marks = _row_statuses(row_statuses, len(rows))
+    if row_ids is not None and len(row_ids) != len(rows):
+        raise ValueError("row_ids must have one entry per row")
+    marks = [(f' data-ui-row="{escape(row_ids[i], quote=True)}"' if row_ids is not None else "") + mark
+             for i, mark in enumerate(_row_statuses(row_statuses, len(rows)))]
 
     def cell(value: Any, header: bool = False) -> str:
         tag = "th" if header else "td"
@@ -1937,30 +1940,13 @@ def _row_statuses(row_statuses: Sequence[str | None] | None, count: int) -> list
 def data_table(columns: tuple[str, ...], rows, *, id: str, caption: str | None = None,
                trusted_cells: bool = False, row_ids: tuple[str, ...] | None = None,
                row_statuses: Sequence[str | None] | None = None) -> str:
-    """Escaped table (.ui-table) for records.js filtering; every row needs one cell per column.
-
-    ``trusted_cells`` inserts cell strings verbatim (caller-audited HTML such as ``badge()`` output).
-    ``row_ids`` sets ``data-ui-row`` on each body row so scripts can address one record.
-    ``row_statuses`` gives each row a state token (``data-status``) for ``status_filter()``.
-    """
-    identity = _element_id(id)
+    """``table()`` for records.js filtering: an ``id`` is required, ``rows`` may be any iterable and
+    Cells retain their legacy ``str()`` representation, including None and dictionaries.
+    ``trusted_cells`` is ``trusted_html`` (caller-audited HTML such as ``badge()`` output)."""
     if not columns:
         raise ValueError("columns must not be empty")
-    rows = [tuple(row) for row in rows]
-    if any(len(row) != len(columns) for row in rows):
-        raise ValueError("every row needs one cell per column")
-    if row_ids is not None and len(row_ids) != len(rows):
-        raise ValueError("row_ids must match rows")
-    cell = (lambda text: str(text)) if trusted_cells else (lambda text: escape(str(text)))
-    head = "".join(f"<th scope=\"col\">{escape(column)}</th>" for column in columns)
-    body = []
-    marks = _row_statuses(row_statuses, len(rows))
-    for index, row in enumerate(rows):
-        marker = (f' data-ui-row="{escape(row_ids[index], quote=True)}"' if row_ids is not None else "") + marks[index]
-        body.append(f"<tr{marker}>" + "".join(f"<td>{cell(text)}</td>" for text in row) + "</tr>")
-    title = f"<caption>{escape(caption)}</caption>" if caption else ""
-    return (f'<table class="ui-table" id="{identity}">{title}<thead><tr>{head}</tr></thead>'
-            f'<tbody>{"".join(body)}</tbody></table>')
+    return table(columns, [tuple(str(cell) for cell in row) for row in rows], id=_element_id(id), caption=caption, trusted_html=trusted_cells,
+                 row_ids=row_ids, row_statuses=row_statuses)
 
 
 def filter_input(table_id: str, *, id: str = "filter", label: str = "絞り込み",
