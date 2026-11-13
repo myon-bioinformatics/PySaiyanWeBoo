@@ -1,6 +1,6 @@
 # Local Gradio DOM regression
 
-The optional lab wraps an audited HTML fragment using `web_ui.render_document`
+The optional lab wraps an audited HTML fragment using `pysaiyanweboo.render_document`
 and displays it in a sandboxed srcdoc iframe inside Gradio. The iframe isolates
 fixture CSS. No scripts are enabled inside it. This is deterministic local
 reproduction, not proof that an inaccessible upstream site rendered identically.

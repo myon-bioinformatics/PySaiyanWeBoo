@@ -2,7 +2,7 @@
 import json, subprocess, sys, unittest
 from pathlib import Path
 
-from web_ui import (
+from pysaiyanweboo import (
     pptx_arrow_geometry,
     pptx_connector,
     pptx_presentation,
@@ -313,7 +313,7 @@ class PptxPresentationTests(unittest.TestCase):
         self.assertIn(PPTX_SRI, run.stdout)
         self.assertIn("writeFile", run.stdout)
         code = (
-            "from web_ui import pptx_connector, pptx_presentation, render_document, remote_scripts; "
+            "from pysaiyanweboo import pptx_connector, pptx_presentation, render_document, remote_scripts; "
             "spec={'slides':[{'items':["
             "{'id':'a','kind':'shape','shape':'rect','x':0.5,'y':1,'w':2,'h':1},"
             "{'id':'b','kind':'shape','shape':'rect','x':4,'y':1,'w':2,'h':1},"

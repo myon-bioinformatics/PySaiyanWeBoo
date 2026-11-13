@@ -6,7 +6,7 @@ from pathlib import Path; from typing import NamedTuple, Union
 
 import pytest
 
-import web_ui as ui
+import pysaiyanweboo as ui
 
 ROOT = Path(__file__).resolve().parents[1]
 _STDIN_CLOSED_PAYLOAD = "x" * 70000 + "\n"

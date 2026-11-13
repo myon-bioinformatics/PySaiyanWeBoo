@@ -38,5 +38,5 @@ override-dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["pysaiyanweboo", "web_ui"]
+py-modules = ["pysaiyanweboo"]
 packages = []

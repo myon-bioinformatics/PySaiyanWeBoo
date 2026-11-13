@@ -1,7 +1,7 @@
 import json, subprocess, sys, unittest
 from html.parser import HTMLParser; from pathlib import Path
 
-import web_ui as ui
+import pysaiyanweboo as ui
 
 
 class Elements(HTMLParser):
@@ -52,7 +52,7 @@ class ControlsTests(unittest.TestCase):
         self.assertIn('controls.js', ui.shared_scripts('.', names=('controls.js',))[0])
 
     def test_stdlib_only_one_liner(self):
-        code = 'from web_ui import *; print(render_document(trusted_html=section_browser((("概要", "本文"),), full_text="全文"), scripts=shared_scripts(".", names=("controls.js",))))'
+        code = 'from pysaiyanweboo import *; print(render_document(trusted_html=section_browser((("概要", "本文"),), full_text="全文"), scripts=shared_scripts(".", names=("controls.js",))))'
         run = subprocess.run([sys.executable, '-S', '-c', code], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True)
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertIn('aria-live="polite"', run.stdout)

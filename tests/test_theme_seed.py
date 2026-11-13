@@ -1,4 +1,4 @@
-"""The seed dial: theme.js gives the tokens of web_ui.random_theme, seed for seed (Node), and the dial's HTML.
+"""The seed dial: theme.js gives the tokens of pysaiyanweboo.random_theme, seed for seed (Node), and the dial's HTML.
 
 Browser behaviour (dial, 🎲, ✖️, tap on a wall cell, named themes taking over) is in tests/integration/controls_browser.py.
 """
@@ -6,7 +6,7 @@ import json, random, subprocess, tempfile
 from pathlib import Path
 
 import pytest
-import web_ui as ui
+import pysaiyanweboo as ui
 from support import node26
 
 EDGES = [0, 1, 2, 11, 99, 2**31 - 1, 2**32 - 1, 2**32, 2**32 + 1, 2**40 + 5, 12345678901, 2**53 - 1, -1, -5, -2**32, -(2**40)]

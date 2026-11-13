@@ -24,8 +24,8 @@ nonzero exit results, and `subprocess.TimeoutExpired` with raw byte output.
 | `section_browser((("概要", "本文"),), full_text="全文")` | Heading selector and text output; pair with local `controls.js` |
 
 ```sh
-python -S -c 'from web_ui import *; print(render_document(trusted_html=select((("a","項目A"),("b","項目B")),id="choice",label="選択")+button("実行")))' > controls.html
-python -S -c 'from web_ui import *; print(render_document(trusted_html=section_browser((("概要","概要の本文"),("詳細","詳細の本文")),full_text="全文"),scripts=shared_scripts(".",names=("controls.js",))))' > sections.html
+python -S -c 'from pysaiyanweboo import *; print(render_document(trusted_html=select((("a","項目A"),("b","項目B")),id="choice",label="選択")+button("実行")))' > controls.html
+python -S -c 'from pysaiyanweboo import *; print(render_document(trusted_html=section_browser((("概要","概要の本文"),("詳細","詳細の本文")),full_text="全文"),scripts=shared_scripts(".",names=("controls.js",))))' > sections.html
 ```
 
 Serve `sections.html` alongside the written `js/controls.js` (`python -S pysaiyanweboo.py --site DIR`) over local HTTP (for example
@@ -49,7 +49,7 @@ safe default. It neither imports a second Markdown parser nor assumes that a
 heading title uniquely identifies a section.
 
 ```python
-from web_ui import details, render_document
+from pysaiyanweboo import details, render_document
 from markdown import markdown_to_html  # myon-bioinformatics/markdown.py
 print(render_document(trusted_html=details("関連タグ", trusted_html=markdown_to_html(body))))
 ```

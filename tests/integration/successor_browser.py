@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
-import web_ui as u
+import pysaiyanweboo as u
 from playwright.sync_api import sync_playwright, expect
 
 

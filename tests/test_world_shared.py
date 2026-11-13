@@ -1,7 +1,7 @@
 """Opt-in shared board contract; no network calls or public writes."""
 import pytest
 from support import node26, node_js, world_js
-import web_ui as ui
+import pysaiyanweboo as ui
 
 
 def spec():

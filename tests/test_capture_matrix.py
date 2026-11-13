@@ -7,9 +7,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import capture_matrix as cm  # noqa: E402
-import web_ui  # noqa: E402
+import pysaiyanweboo  # noqa: E402
 
-PAGES = web_ui.example_data("flutter-pages")
+PAGES = pysaiyanweboo.example_data("flutter-pages")
 # browser-test-kit adapters/flutter-*.json (contract shared by fixture, not by import).
 BTK_ADAPTERS = {"flutter-home": "/", "flutter-hub": "/hub", "flutter-clipboard-shelf": "/core/clipboard-shelf",
                 "flutter-now-timeline": "/tools/time/now-timeline", "flutter-photo-studio": "/tools/media/photo-studio",
@@ -28,7 +28,7 @@ def report(**extra):
 
 def test_page_table_is_the_btk_page_set_and_a_valid_route_table():
     assert PAGES["schema"] == "web-ui-flutter-pages/1"
-    rows = web_ui.route_table(PAGES["pages"])
+    rows = pysaiyanweboo.route_table(PAGES["pages"])
     assert {p["adapter"]: p["route"] for p in PAGES["pages"]} == BTK_ADAPTERS
     assert [r["identity"] for r in rows][:3] == ["\U0001F3E0", "\U0001F5FA", "\U0001F4CB"]
     for page in PAGES["pages"]:
@@ -92,9 +92,9 @@ def test_viewer_rejects_ambiguous_mode_aliases():
 
 
 def test_matrix_css_defaults_are_on_the_8px_grid():
-    # Defaults only: layout presets (web_ui.EXAMPLES["layout-presets"]) may switch to other values.
+    # Defaults only: layout presets (pysaiyanweboo.EXAMPLES["layout-presets"]) may switch to other values.
     import re
-    css = web_ui.css_source("matrix.css")
+    css = pysaiyanweboo.css_source("matrix.css")
     sizes = [int(v) for v in re.findall(r"(?<![\d.])(\d+)px", css) if v not in ("1", "2")]  # borders/outlines
     assert sizes and all(v % 8 == 0 for v in sizes) and "rem" not in css.replace(".8rem", "")
 

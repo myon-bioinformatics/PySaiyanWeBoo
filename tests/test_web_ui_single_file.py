@@ -3,13 +3,13 @@ import shutil, subprocess, sys
 from pathlib import Path
 
 import pytest
-import web_ui
+import pysaiyanweboo
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_embedded_launcher_matches_locked_vendor():
-    assert web_ui._EMBEDDED_NODE_LAUNCH_SOURCE.encode() == (ROOT / 'vendor/node_launch.py').read_bytes()
+    assert pysaiyanweboo._EMBEDDED_NODE_LAUNCH_SOURCE.encode() == (ROOT / 'vendor/node_launch.py').read_bytes()
 
 
 @pytest.mark.parametrize('vendor', [False, True])
@@ -78,15 +78,9 @@ else:
     assert done.returncode == 0, done.stderr
 
 
-def test_old_name_forwards_to_pysaiyanweboo(tmp_path):
-    """web_ui.py is the old name: the same module object, the same CLI (also under -I), and a clear error alone."""
-    import pysaiyanweboo
-    assert web_ui is pysaiyanweboo and web_ui.__name__ == 'pysaiyanweboo'
-    new = subprocess.run([sys.executable, '-S', str(ROOT / 'pysaiyanweboo.py'), '--css-bundle'], capture_output=True, text=True)
-    for flags in (['-S'], ['-I', '-S']):
-        old = subprocess.run([sys.executable, *flags, str(ROOT / 'web_ui.py'), '--css-bundle'], capture_output=True, text=True)
-        assert (old.returncode, old.stdout) == (new.returncode, new.stdout) == (0, new.stdout), old.stderr
-    shutil.copyfile(ROOT / 'web_ui.py', tmp_path / 'web_ui.py')                  # copied without the real file
-    alone = subprocess.run([sys.executable, '-I', '-S', '-c', 'import sys; sys.path.insert(0, sys.argv[1]); import web_ui', str(tmp_path)],
-                           capture_output=True, text=True)
-    assert alone.returncode == 1 and 'copy pysaiyanweboo.py' in alone.stderr
+def test_one_module_and_no_old_name():
+    """pysaiyanweboo.py is the only module: the forwarding file web_ui.py is gone and is not installed."""
+    import tomllib
+    assert not (ROOT / 'web_ui.py').exists()
+    project = tomllib.loads((ROOT / 'pyproject.toml').read_text(encoding='utf-8'))
+    assert project['tool']['setuptools']['py-modules'] == ['pysaiyanweboo']

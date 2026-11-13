@@ -3,7 +3,7 @@ import unittest
 from html.parser import HTMLParser
 from pathlib import Path
 
-import web_ui as ui
+import pysaiyanweboo as ui
 from support import node26, node_js
 
 ROOT = Path(__file__).resolve().parents[1]

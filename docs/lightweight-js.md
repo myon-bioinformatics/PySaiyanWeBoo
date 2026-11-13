@@ -24,7 +24,7 @@ found inside API responses.
 `pysaiyanweboo.py` is the stdlib one-liner surface for layout-including static output:
 
 ```sh
-python -S -c 'from web_ui import render_document; print(render_document("Hello"))'
+python -S -c 'from pysaiyanweboo import render_document; print(render_document("Hello"))'
 printf 'Hello' | python -S pysaiyanweboo.py --title Demo > demo.html
 printf 'Hello' | python -S pysaiyanweboo.py --asset-base . --with-scripts ui.js > demo.html
 ```
@@ -108,7 +108,7 @@ renderers do not download packages or assemble Office XML.
 
 Browser protocol behavior stays outside web-ui. There are no .js test files: like the
 modules in pysaiyanweboo.py, the Node side of a test is a Python string, and `node_js()` in
-`tests/support.py` writes web_ui's modules beside it and runs it through `run_node`:
+`tests/support.py` writes pysaiyanweboo's modules beside it and runs it through `run_node`:
 
 ```python
 from support import node_js
@@ -156,8 +156,8 @@ side-effect ES module). It never fetches URLs or writes storage. Python emits
 escaped controls in one call; the consumer pins/copies the module and opts in:
 
 ```sh
-python -S -c 'from web_ui import source_link; print(source_link("source-url"))'
-python -S -c 'from web_ui import view_tabs; print(view_tabs((("home","Home"),("wiki","Wiki"))))'
+python -S -c 'from pysaiyanweboo import source_link; print(source_link("source-url"))'
+python -S -c 'from pysaiyanweboo import view_tabs; print(view_tabs((("home","Home"),("wiki","Wiki"))))'
 ```
 
 Pair `source_link()` with a caller-authored input whose id matches `input_id`.
@@ -182,7 +182,7 @@ and new-tab policy to legacy consumers' existing buttons.
 ### Route tables: move by emoji or name, offline and online
 
 ```sh
-python -S -c 'from web_ui import route_links; print(route_links({"/": "\U0001F3E0", "/map": "\U0001F5FA\ufe0f"}))'
+python -S -c 'from pysaiyanweboo import route_links; print(route_links({"/": "\U0001F3E0", "/map": "\U0001F5FA\ufe0f"}))'
 ```
 
 `route_links(registry)` validates a route table (the `{"/route": key}` registry
@@ -207,7 +207,7 @@ spec using stdlib-only helpers. No `pip install plotly` is required; the browser
 loads plotly.js from the opt-in CDN allowlist.
 
 ```sh
-python -S -c 'from web_ui import plotly_figure, render_document, remote_scripts; spec={"data":[{"type":"scatter","x":[1,2],"y":[3,4]}]}; print(render_document(trusted_html=plotly_figure(spec), remote_scripts=remote_scripts("plotly.js")))' > chart.html
+python -S -c 'from pysaiyanweboo import plotly_figure, render_document, remote_scripts; spec={"data":[{"type":"scatter","x":[1,2],"y":[3,4]}]}; print(render_document(trusted_html=plotly_figure(spec), remote_scripts=remote_scripts("plotly.js")))' > chart.html
 ```
 
 `plotly_figure(spec, *, div_id="plot", height=400, width=None)` returns trusted
@@ -227,7 +227,7 @@ layouts and visual styles also stay in the consumer spec. This repository only
 provides the allowlist entry, the spec helper, and the arrow geometry below.
 
 ```sh
-python -S -c 'from web_ui import pptx_connector, pptx_presentation, render_document, remote_scripts; spec={"fileName":"flow.pptx","layout":"LAYOUT_WIDE","slides":[{"items":[{"id":"a","kind":"text","text":"A","x":0.5,"y":1.5,"w":2.2,"h":0.8,"options":{"shape":"roundRect","align":"center","valign":"middle"}},{"id":"b","kind":"text","text":"B","x":4.0,"y":1.5,"w":2.2,"h":0.8,"options":{"shape":"roundRect","align":"center","valign":"middle"}},{"id":"c","kind":"text","text":"C","x":2.2,"y":3.4,"w":2.2,"h":0.8},pptx_connector("a","b"),pptx_connector("b","c"),{"kind":"table","rows":[["Step","Note"],["1","Generic"]],"x":7.0,"y":1.5,"w":5.0,"h":1.2}]}]}; print(render_document(trusted_html=pptx_presentation(spec), remote_scripts=remote_scripts("pptxgenjs")))' > deck.html
+python -S -c 'from pysaiyanweboo import pptx_connector, pptx_presentation, render_document, remote_scripts; spec={"fileName":"flow.pptx","layout":"LAYOUT_WIDE","slides":[{"items":[{"id":"a","kind":"text","text":"A","x":0.5,"y":1.5,"w":2.2,"h":0.8,"options":{"shape":"roundRect","align":"center","valign":"middle"}},{"id":"b","kind":"text","text":"B","x":4.0,"y":1.5,"w":2.2,"h":0.8,"options":{"shape":"roundRect","align":"center","valign":"middle"}},{"id":"c","kind":"text","text":"C","x":2.2,"y":3.4,"w":2.2,"h":0.8},pptx_connector("a","b"),pptx_connector("b","c"),{"kind":"table","rows":[["Step","Note"],["1","Generic"]],"x":7.0,"y":1.5,"w":5.0,"h":1.2}]}]}; print(render_document(trusted_html=pptx_presentation(spec), remote_scripts=remote_scripts("pptxgenjs")))' > deck.html
 ```
 
 Item `kind` is `text`, `shape`, `line`, `table`, `image`, or `connector`.

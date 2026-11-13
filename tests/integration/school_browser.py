@@ -23,9 +23,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 import record_demo  # noqa: E402
-import web_ui  # noqa: E402
+import pysaiyanweboo  # noqa: E402
 
-SPEC = web_ui.example_data("school")
+SPEC = pysaiyanweboo.example_data("school")
 CLASSROOM = '.ui-floor[data-floor="classroom"]'
 POS = f"() => {{ const s = document.querySelector('{CLASSROOM} .ui-player').style; return [parseFloat(s.getPropertyValue('--px')), parseFloat(s.getPropertyValue('--py'))]; }}"
 WALL = "() => document.querySelector('.ui-floor[data-floor=\"classroom\"]').dataset.blocked.split(',')"
@@ -36,7 +36,7 @@ class SchoolTests(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.page_path = Path(cls.tmp.name) / "school.html"
-        cls.page_path.write_text(web_ui.world_document(SPEC), encoding="utf-8")
+        cls.page_path.write_text(pysaiyanweboo.world_document(SPEC), encoding="utf-8")
         cls.pw = sync_playwright().start()
         cls.browser = record_demo.launch(cls.pw)
 
@@ -228,7 +228,7 @@ class SchoolTests(unittest.TestCase):
         page.click(f"{spots} summary")
         page.wait_for_function("() => document.querySelector('.ui-world-arrow').textContent === '📍'")   # arrived: within a tile
         player = page.evaluate(POS)                                                    # the page's arrows are the oracle's, point for point
-        want = [web_ui.world_direction(player, [x, y], 32) for x, y in ((192, 16), (192, 112), (192, 432))]
+        want = [pysaiyanweboo.world_direction(player, [x, y], 32) for x, y in ((192, 16), (192, 112), (192, 432))]
         self.assertEqual(arrows("classroom"), want)
         self.assertEqual(want[0], "📍")
         page.keyboard.press("Escape")
@@ -312,7 +312,7 @@ class SchoolTests(unittest.TestCase):
 
     def test_favorites_and_language_come_back_from_the_cache_and_nothing_else_does(self):
         posting = Path(self.tmp.name) / "posting.html"                                     # the same school with the board's message box on
-        posting.write_text(web_ui.world_document({**SPEC, "board": {**SPEC["board"], "post": True}}), encoding="utf-8")
+        posting.write_text(pysaiyanweboo.world_document({**SPEC, "board": {**SPEC["board"], "post": True}}), encoding="utf-8")
         page = self.open(path=posting)
         head = ".ui-world-head"
         self.start(page, "🦊")
@@ -346,7 +346,7 @@ class SchoolTests(unittest.TestCase):
     def test_overworld_lands_are_swapped_by_the_pulldown_and_walked_across(self):
         """Six lands from one line of JSON each: terrain is CSS (colour and an emoji per tile), the walk is the same grid."""
         path = Path(self.tmp.name) / "overworld.html"
-        path.write_text(web_ui.world_document(web_ui.example_data("overworld")), encoding="utf-8")
+        path.write_text(pysaiyanweboo.world_document(pysaiyanweboo.example_data("overworld")), encoding="utf-8")
         page = self.open(path=path)
         self.start(page, "🧙")
         self.assertEqual(page.eval_on_selector_all(".ui-world-goto option", "els => els.map(e => e.value)"),
@@ -362,7 +362,7 @@ class SchoolTests(unittest.TestCase):
         self.assertIn("contain", style[1])                                           # the castle is drawn once; the trees below once per tile
         page.select_option(".ui-world-goto", "forest")
         self.assertEqual(page.eval_on_selector('.ui-floor[data-floor="forest"] .ui-prop[data-kind="tree"]', "e => getComputedStyle(e).backgroundSize").split(",")[0], "32px 32px")
-        spot = next(s for f in web_ui.world_validate(web_ui.example_data("overworld"))["floors"] if f["id"] == "forest" for s in f["spots"] if s["id"] == "forest-town")
+        spot = next(s for f in pysaiyanweboo.world_validate(pysaiyanweboo.example_data("overworld"))["floors"] if f["id"] == "forest" for s in f["spots"] if s["id"] == "forest-town")
         self.menu(page, "spots")
         page.click('.ui-world-spots[data-floor="forest"] a[href="#overworld-spot-forest-town"]')
         page.wait_for_function(record_demo.SETTLED, timeout=20000)
@@ -374,7 +374,7 @@ class SchoolTests(unittest.TestCase):
     def test_the_cities_flip_a_sign_into_a_dragon_and_burn_one_fire_per_block(self):
         """Signs are a dot until touched (Reverse London's wooden nogard: dot, text, 🐉, dot; Tokyo's electronic boards: dot, text); Tokyo has electronic boards; Fake Paris draws its fires as tile emoji."""
         path = Path(self.tmp.name) / "cities.html"
-        path.write_text(web_ui.world_document(web_ui.example_data("cities")), encoding="utf-8")
+        path.write_text(pysaiyanweboo.world_document(pysaiyanweboo.example_data("cities")), encoding="utf-8")
         page = self.open(path=path)
         self.start(page, "🧳")
         self.assertEqual(page.eval_on_selector_all(".ui-world-goto option", "els => els.map(e => e.value)"), ["tokyo", "london", "paris"])
@@ -408,7 +408,7 @@ class SchoolTests(unittest.TestCase):
         """🖼️📷 on the real floor: ask() offers camera or photo; the picture sits behind the props, is released by 🧹 or by leaving (camera), and is never stored or sent."""
         from tools.image_support.png import rgb_png
         path = Path(self.tmp.name) / "overworld.html"
-        path.write_text(web_ui.world_document(web_ui.example_data("overworld")), encoding="utf-8")
+        path.write_text(pysaiyanweboo.world_document(pysaiyanweboo.example_data("overworld")), encoding="utf-8")
         photo = Path(self.tmp.name) / "room.png"
         photo.write_bytes(rgb_png(64, 48, (200, 80, 40)))
         browser = record_demo.launch(self.pw, extra=["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"])
@@ -486,7 +486,7 @@ class SchoolTests(unittest.TestCase):
 
     def test_camera_that_cannot_open_says_so_and_keeps_the_floor_plain(self):
         path = Path(self.tmp.name) / "overworld.html"
-        path.write_text(web_ui.world_document(web_ui.example_data("overworld")), encoding="utf-8")
+        path.write_text(pysaiyanweboo.world_document(pysaiyanweboo.example_data("overworld")), encoding="utf-8")
         page = self.open(path=path)
         self.start(page, "🧙")
         page.evaluate("() => { Object.defineProperty(navigator, 'mediaDevices', {value: {getUserMedia: () => Promise.reject(new DOMException('no', 'NotAllowedError'))}}); }")
@@ -539,9 +539,9 @@ class SharedBoardTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        spec = web_ui.example_data("world")
+        spec = pysaiyanweboo.example_data("world")
         spec["board"]["shared_issue"] = "myon-bioinformatics/PySaiyanWeBoo/123"
-        cls.html = web_ui.world_document(spec)
+        cls.html = pysaiyanweboo.world_document(spec)
         cls.pw = sync_playwright().start()
         cls.browser = record_demo.launch(cls.pw)
 
@@ -599,7 +599,7 @@ class SharedBoardTests(unittest.TestCase):
 
 
 # --- The three cities: every spot, sign, tool, width and language, with an optional screenshot per check ---
-CITIES = web_ui.world_validate(web_ui.example_data("cities"))
+CITIES = pysaiyanweboo.world_validate(pysaiyanweboo.example_data("cities"))
 FAST = copy.deepcopy(CITIES)                     # the same floors, grid and routes; the player walks at the top speed so a sweep takes minutes
 for _floor in FAST["floors"]:
     _floor["player"]["speed"] = 480
@@ -680,8 +680,8 @@ class CitiesTests(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.page_path, cls.fast_path = Path(cls.tmp.name) / "cities.html", Path(cls.tmp.name) / "fast.html"
-        cls.page_path.write_text(web_ui.world_document(CITIES), encoding="utf-8")
-        cls.fast_path.write_text(web_ui.world_document(FAST), encoding="utf-8")
+        cls.page_path.write_text(pysaiyanweboo.world_document(CITIES), encoding="utf-8")
+        cls.fast_path.write_text(pysaiyanweboo.world_document(FAST), encoding="utf-8")
         cls.pw = sync_playwright().start()
         cls.browser = record_demo.launch(cls.pw)
         cls.out = Path(SHOTS) if SHOTS else None
@@ -772,7 +772,7 @@ class CitiesTests(unittest.TestCase):
         self.start(page)
         for f in CITIES["floors"]:
             fl, tile = f["id"], f["tile"]
-            blocked = web_ui.world_blocked(f["width"], f["height"], tile, f["props"])
+            blocked = pysaiyanweboo.world_blocked(f["width"], f["height"], tile, f["props"])
             self.show(page, fl)
             self.shot(page, "overview", fl, "fit", f["label"])
             for s in f["spots"]:
@@ -781,14 +781,14 @@ class CitiesTests(unittest.TestCase):
                     marker = f'{CITY_FLOOR.format(fl)} .ui-spot[href="{href}"]'
                     here = page.evaluate(CITY_POS, fl)
                     self.menu(page, "spots")
-                    want = [[f"#cities-spot-{t['id']}", web_ui.world_direction(here, [t["x"], t["y"]], tile)] for t in f["spots"]]
+                    want = [[f"#cities-spot-{t['id']}", pysaiyanweboo.world_direction(here, [t["x"], t["y"]], tile)] for t in f["spots"]]
                     try:
                         page.wait_for_function("([fl, want]) => JSON.stringify([...document.querySelectorAll(`.ui-world-spots[data-floor=\"${fl}\"] a`)].map(a => "
                                                "[a.getAttribute('href'), a.querySelector('.ui-world-arrow').textContent])) === JSON.stringify(want)", arg=[fl, want], timeout=3000)
                     except Exception:
                         pass
                     self.assertEqual(self.arrows(page, fl), want)                                   # the ☰ arrows from where the player stands
-                    goal = web_ui.world_route_points(blocked, tile, here, [s["x"], s["y"]])[-1]
+                    goal = pysaiyanweboo.world_route_points(blocked, tile, here, [s["x"], s["y"]])[-1]
                     page.click(f'.ui-world-spots[data-floor="{fl}"] a[href="{href}"]')
                     seen = page.evaluate(CITY_WALK, fl)
                     self.assertEqual([p for p in seen if blocked[city_cell(p, tile)[1]][city_cell(p, tile)[0]] == "1"], [], "walked into water")
@@ -892,7 +892,7 @@ class CitiesTests(unittest.TestCase):
                     self.assertLess(abs(here[0] - s["x"]) + abs(here[1] - s["y"]), .05)          # Tokyo has no water: every exit is reached exactly
                     page.click(".ui-sheet-close:visible")
                     page.click('.ui-world-head .ui-world-menu[data-menu="tool"] > summary')
-                    want = [web_ui.world_direction(here, [e["x"], e["y"]], tokyo["tile"]) for e in exits]
+                    want = [pysaiyanweboo.world_direction(here, [e["x"], e["y"]], tokyo["tile"]) for e in exits]
                     page.wait_for_function("([sel, want]) => JSON.stringify([...document.querySelectorAll(sel)].map(a => a.querySelector('.ui-world-arrow').textContent)) === JSON.stringify(want)",
                                            arg=[rows, want], timeout=3000)
                     self.still(page)
@@ -907,7 +907,7 @@ class CitiesTests(unittest.TestCase):
             self.start(page)
             for f in CITIES["floors"]:
                 fl, tile = f["id"], f["tile"]
-                blocked = web_ui.world_blocked(f["width"], f["height"], tile, f["props"])
+                blocked = pysaiyanweboo.world_blocked(f["width"], f["height"], tile, f["props"])
                 self.show(page, fl)
                 page.focus(".ui-world-view")                                                         # the 🚪 pulldown kept the focus: keys go to the map again
                 steps = [((0, -1), "ArrowUp"), ((1, 0), "ArrowRight"), ((0, 1), "ArrowDown"), ((-1, 0), "ArrowLeft")]
@@ -924,7 +924,7 @@ class CitiesTests(unittest.TestCase):
                         page.wait_for_timeout(100)
                         page.evaluate(CITY_WALK, fl)
                         self.assertEqual(city_cell(page.evaluate(CITY_POS, fl), tile), n if free else (cx, cy))
-                water = [c for c in web_ui.world_reach(blocked, city_cell([f["player"]["x"], f["player"]["y"]], tile))
+                water = [c for c in pysaiyanweboo.world_reach(blocked, city_cell([f["player"]["x"], f["player"]["y"]], tile))
                          if c[1] + 1 < len(blocked) and blocked[c[1] + 1][c[0]] == "1"]                  # a free tile with water just below it
                 if not water:
                     continue                                                                         # Tokyo has no water
@@ -1037,7 +1037,7 @@ class CitiesTests(unittest.TestCase):
     def test_every_language_labels_the_city_tools(self):
         page = self.open("phone")
         self.start(page)
-        codes = [code for code, _ in web_ui.WORLD_LANGS]
+        codes = [code for code, _ in pysaiyanweboo.WORLD_LANGS]
         for code in codes:
             with self.subTest(lang=code):
                 self.menu(page, "settings")
@@ -1195,7 +1195,7 @@ class CitiesTests(unittest.TestCase):
         self.start(page)
         for f in CITIES["floors"]:
             self.show(page, f["id"])
-            blocked = web_ui.world_blocked(f["width"], f["height"], f["tile"], f["props"])
+            blocked = pysaiyanweboo.world_blocked(f["width"], f["height"], f["tile"], f["props"])
             for kind in ("fire", "water", "bridge"):
                 props = [p for p in f["props"] if p["kind"] == kind]
                 with self.subTest(floor=f["id"], kind=kind):
