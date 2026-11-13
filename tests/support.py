@@ -11,8 +11,23 @@ from __future__ import annotations
 #    🎞️ PSWB_GIFS     by hand: "DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]" keeps the demo GIFs → integration/pages_browser.py
 #    📸 PSWB_SHOTS    by hand: DIR keeps a screenshot of every cities check                     → integration/worlds_browser.py
 
-import json, re, shutil, subprocess, tempfile
+import json, re, shutil, subprocess, tempfile, unittest
 from pathlib import Path
+
+try:
+    import pytest
+except ImportError:  # `python -S -m unittest discover -p test_pages.py -k Class`: no pytest, so only unittest.TestCase classes run
+    class _Pytest:
+        """Enough of pytest for a module to import: marks become unittest skips or no-ops, pytest-only functions are never collected."""
+        def __getattr__(self, name):
+            return self
+        def __call__(self, *args, **kwargs):
+            return args[0] if len(args) == 1 and callable(args[0]) and not kwargs else self
+        def skipif(self, condition, *args, reason="", **kwargs):
+            return unittest.skipIf(condition, reason)
+        def skip(self, reason="", *args, **kwargs):
+            return unittest.skip(reason)
+    pytest = _Pytest()
 
 ROOT = Path(__file__).resolve().parents[1]
 

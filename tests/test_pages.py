@@ -25,7 +25,6 @@ from posixpath import normpath
 from unittest import mock
 from urllib.parse import urljoin, urlsplit
 
-import pytest
 
 import pysaiyanweboo
 import pysaiyanweboo as ui
@@ -33,7 +32,7 @@ from pysaiyanweboo import (
     EMBEDDED_UI_JS, _njs_launch_module, bundled_css, filter_request, module_asset, module_csp_hash, module_script, plotly_figure, render_document,
     run_node, shared_scripts,
 )
-from support import flutter_case, node26, node_js
+from support import flutter_case, node26, node_js, pytest  # pytest: the real one, or a stand-in under python -S
 
 ROOT = Path(__file__).resolve().parents[1]
 
