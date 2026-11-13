@@ -14,14 +14,12 @@ def load(name, path):
     return module
 
 
-BTK = ROOT / '.browser-test-kit-dom'  # the pinned BrowserTestKit checkout gradio-dom.yml makes
-
-
-@pytest.mark.skipif(not BTK.is_dir() or importlib.util.find_spec('gradio') is None, reason='optional Gradio lane (gradio-dom.yml)')
 def test_gradio_dom(monkeypatch):
+    btk = ROOT / '.browser-test-kit-dom'  # the pinned BrowserTestKit checkout gradio-dom.yml makes
+    if not btk.is_dir() or importlib.util.find_spec('gradio') is None:
+        pytest.skip('optional Gradio lane (gradio-dom.yml)')
     monkeypatch.setenv('GRADIO_ANALYTICS_ENABLED', 'False')
     from playwright.sync_api import sync_playwright, expect
-    btk = BTK
     extractor = load('shared_page_text', btk / 'tools/page_text.py')
     lab = load('gradio_lab', ROOT / 'tools/web_ui_serve_dom_lab.py')
     alpine = json.loads((ROOT / 'docs/evidence/alpine-code-dom.json').read_text())
