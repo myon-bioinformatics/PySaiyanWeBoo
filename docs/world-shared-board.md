@@ -55,10 +55,10 @@ Primary references (checked 2026-11-03):
 
 ## Verification and activation
 
-`PYTHONPATH=. python -m pytest -q tests/test_world_shared.py tests/test_world_motion.py`
+`PYTHONPATH=. python -m pytest -q tests/test_worlds.py`
 checks validation, opt-in compatibility, Node 26 projection and interaction,
 text-only comments, malformed API payloads, cooldown and failure retention.
-`python tests/integration/school_browser.py SharedBoardTests` uses
+`python tests/integration/worlds_browser.py SharedBoardTests` uses
 Playwright Chromium at 320, 390 and 1280 px, with mocked API responses only. It checks
 no automatic fetch, anonymous GET, HTML injection, posting link, local notes,
 rate limit failures, retained shared display and reload cleanup. The dedicated

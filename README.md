@@ -268,7 +268,7 @@ Contracts (`pattern_run("contract", ...)`, `python3 pysaiyanweboo.py --pattern c
 comparison with changed pixels, ratio, bounding box and largest difference). `operation` is `screens`, `locales`, `layout` or `swap`; the answer is `{ok, failures, ...}` (at most 50 reasons, `truncated`
 counts the rest), and a request that is not a well-formed measurement is a `ValueError`. Python only: a page cannot decode a screenshot the way a Playwright run saved it, and these are checks that a
 test or CI runs. The oracle is the original itself: `tests/fixtures/contract_golden.json` holds the verdict and the messages of the originals on seeded mutations of the real data (and the hash of each
-mutated document), taken at ae3c4cb; `python3 tools/contract_golden.py CHECKOUT --check` (or `FLUTTER_NAVIGATION_BASIC_CHECKOUT=CHECKOUT` with the test suite) regenerates it from a checkout and compares.
+mutated document), taken at ae3c4cb; `python3 tools/contract_golden.py CHECKOUT --check` regenerates it from a checkout and compares.
 Deliberate differences: every failure is listed, not the first; `count` allows a smaller catalogue; locale placeholders must equal English's for every key; the header's title-emoji identity belongs to Flutter's
 shared header and is left out; PNGs are decoded by `studio_png_decode` (8 bits, not interlaced, at most 4 MP); a bool where a number is wanted is refused.
 
@@ -310,7 +310,7 @@ Source panel: `source_panel_html(spec)` is a name box (**Fetch**, **Open JSON**)
 declarative `spec` the consumer owns (name pattern, one `https://…{name}` address, a title and table layout; see `docs/source-panel.md`). Python is the reference
 (`source_spec`, `source_name`, `source_url`, `source_extract`, `source_markdown`); `source.js` and `_CSS["source.css"]` are Python data like the other modules, so a consumer
 writes no JavaScript or CSS of its own. Fetch sends one GET per press and never retries; every failure is a message, and pasting needs no network. Chromium checks the page offline
-and over HTTP (`tests/integration/source_browser.py`); `tests/fixtures/source/cases.json` runs through both languages.
+and over HTTP (`tests/integration/pages_browser.py`); `tests/fixtures/source/cases.json` runs through both languages.
 
 `ui.js` (`js_source("ui.js")`) is the shared helper module: `setText`, `prettyJson`, `copyText` (with a fallback where the async
 clipboard is missing), `bindTheme`, `observeLit` (marks on-screen elements with `data-lit`) and `bindLightbox`
@@ -414,7 +414,7 @@ Run the unittest-compatible subset of the static contract checks locally
 file remain part of the full pytest lane:
 
 ```sh
-python -S -m unittest discover -s tests -p test_static_contract.py -v
+python -S -m unittest discover -s tests -p test_pages.py -v
 ```
 
 Pytest lanes, including those contract modules, run with uv:
@@ -452,6 +452,8 @@ The first phase intentionally treats screenshots as observable test evidence rat
 | `tests/integration/test_gradio_dom.py` | 1 | BrowserTestKit main instead of the pinned commit |
 | BrowserTestKit `platform_probe` × 17 adapters | 34 | Chromium desktop + Pixel |
 | 🎞️ evidence GIF shots | 24 | |
+
+🗂️ Since 2026-11-13 these suites live in `tests/integration/pages_browser.py` (controls, layout presets, route table, source, plotly), `worlds_browser.py` (school) and `flutter_browser.py` (successor).
 
 🚫 Firefox / WebKit not installed here, so only the Chromium lanes ran.
 
@@ -633,7 +635,7 @@ check that flag before saving. Timing continuation images also count toward this
 very long finite recordings can still require substantial memory and output.
 `gif_recorder_document()` is the blank page a browser driver opens to use it — screenshots go in once, the GIF
 comes out once; BrowserTestKit's `evidence_gif.py` is that driver. The encoder (`UiGif.Encoder`) also runs in Node from the file
-`--site` writes; `tests/test_gif.py` runs it in Node and reads every GIF back in Python (its own block walk, Pillow's LZW), `GifBrowserTests` in each engine with Pillow.
+`--site` writes; `tests/test_media.py` runs it in Node and reads every GIF back in Python (its own block walk, Pillow's LZW), `GifBrowserTests` in each engine with Pillow.
 
 🧩 `parts_document()` (`examples/parts.html`, `--parts`) is the regression baseline: every block of the `page` example under every
 theme (`PARTS_THEMES`, plus a `--brand`), each in its own sandboxed frame with the layout radios inside. BrowserTestKit
@@ -749,7 +751,7 @@ from Node, `require("./vendor/py_launch.cjs").run("vendor/pysaiyanweboo.py", ["-
 `css_source(name)` and `js_source(name)` stay the raw sources by file name; `write_js()` still writes the modules out for pages that link files (`python -S pysaiyanweboo.py --css-bundle` the stylesheets).
 mcp-toolcall-lab is the model consumer: it vendors `pysaiyanweboo.py` through the parent repository's `vendor_sync.py` (`vendor-consumers.json`, `vendor.lock.json`)
 and builds its Pokémon panel from `source_panel_html(spec)` + `css_source("source.css")` + `js_source("source.js")`; `component_parts("source", spec)` is the
-same three in one call. `tests/test_components.py` renders every entry.
+same three in one call. `tests/test_pages.py` renders every entry.
 
 `repository-diagnostics` is `repository_diagnostics_page()`'s body (`repository_diagnostics_body()`, the page ascii_artist, markdown and
 mcp-toolcall-lab each wrote by hand; markdown already calls the page). `repository-diagnostics.js` stays a classic script (`"classic": true` in the
@@ -784,8 +786,8 @@ and `row_statuses=` on `table()` / `data_table()` so `status_filter()` narrows t
 
 <img src="docs/demo/component-table.gif" width="320" alt="A browser matrix table on a phone: the themes change its colors, then it scrolls sideways inside its box while the page stays still">
 
-The GIF comes from the browser test (`WEB_UI_GIFS=docs/demo python -m pytest tests/integration/controls_browser.py -k TableBrowserTests`).
-`WEB_UI_GIFS` takes the recorder's output options too, parsed by the same argparse definitions: `WEB_UI_GIFS="runs --suffix=-chromium --timestamp --git-commit"`
+The GIF comes from the browser test (`PSWB_GIFS=docs/demo python -m pytest tests/integration/pages_browser.py -k TableBrowserTests`).
+`PSWB_GIFS` takes the recorder's output options too, parsed by the same argparse definitions: `PSWB_GIFS="runs --suffix=-chromium --timestamp --git-commit"`
 writes `runs/component-table-chromium-20261108T113412Z-288cbed.gif` (the suffix after the base name, then when the run started, in UTC, and the commit it ran, in the order given), so repeated runs keep every file without `--force`.
 
 ### Records boards from Python

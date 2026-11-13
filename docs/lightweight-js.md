@@ -83,8 +83,12 @@ an SRI value (`sha256-`/`sha384-`/`sha512-`), so one pin serves both the
 raw)` checks local bytes of an allowlisted script against `REMOTE_SCRIPT_INTEGRITY`.
 `python pysaiyanweboo.py --sri FILE` prints the sha384 SRI and SHA-256 hex for a new pin.
 On 2026-10-17 the `pptxgenjs` pin also matched `package/dist/pptxgen.bundle.js`
-from `npm pack pptxgenjs@4.0.1` (460,889 bytes); set
-`WEB_UI_PPTXGENJS_TEST_FILE` to that file to re-run the check.
+from `npm pack pptxgenjs@4.0.1` (460,889 bytes); `python pysaiyanweboo.py --sri FILE` only prints hashes; it does not verify the recorded pin.
+To fail on a mismatched bundle, run
+`WEB_UI_PPTXGENJS_TEST_FILE=/path/to/pptxgen.bundle.js python -m pytest tests/test_media.py -k actual_pptxgenjs_bundle_matches_pin`.
+For explicitly supplied Plotly bytes,
+`WEB_UI_PLOTLY_JS_TEST_FILE=/path/to/plotly.min.js python -m pytest tests/test_media.py -k actual_jsdelivr_bundle_is_bounded`
+checks the bound and the bounded-fetch path without downloading anything.
 
 Stylesheet links retain their existing local/HTTPS behavior.
 
@@ -196,7 +200,7 @@ naming two routes, a repeated route, or a relative/`//`/`#` route is rejected (t
 cases in `tests/fixtures/route_table_cases.json` run against Python and JS).
 Hash routing (`#/route`, the default) works from `file://`; there, load
 `navigation.js` with a classic `<script src>`, because browsers block
-`type="module"` scripts from `file://`. `tests/integration/route_table_browser.py`
+`type="module"` scripts from `file://`. `tests/integration/pages_browser.py`
 walks the same table in Chromium from `file://` and over HTTP. Ordered multi-page
 trails and walking a deployed site remain browser-test-kit `route_trail.py --run`.
 

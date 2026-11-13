@@ -1,30 +1,54 @@
-"""Required Chromium contract: python tests/integration/controls_browser.py -v.
+"""📄 Pages in Chromium (required contract): python tests/integration/pages_browser.py -v
 
-Invoked explicitly by the browser CI job; missing Playwright/browser is an error.
-The ordinary dependency-light unit suite does not discover this module.
-"""
-import base64, functools, http.server, json, os, random, re, shutil, sys, tempfile, threading, unittest
-from pathlib import Path; from unittest import mock
+Controls, layout presets, the route table, the source panel and a jsDelivr Plotly smoke (the unit side: tests/test_pages.py, tests/test_media.py)."""
+
+import base64
+import functools
+import http.server
+import json
+import os
+import random
+import re
+import shutil
+import sys
+import tempfile
+import threading
+import unittest
+from pathlib import Path
+from unittest import mock
 
 from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
-from support import flutter_case  # noqa: E402
-from pysaiyanweboo import (EXAMPLE_STUBS, showcase_document, bundled_css, write_js, board_clock, clean_message, clock_label, gauge_cells, gauge_state, minutes_until, travel_seconds, board_seconds,
-                    clamp_focus, contrast_ratio, fit_zoom, render_document, section_browser, shared_scripts, stub_response, theme_wall_document, utc_offset_label,
-                    world_document, zone_offset, zone_rows)
+sys.path.insert(0, str(ROOT / 'tools'))
 
+import capture_matrix
+import layout_presets
+import pysaiyanweboo
+import pysaiyanweboo as ui
+from pysaiyanweboo import (
+    EXAMPLE_STUBS, board_clock, board_seconds, bundled_css, clamp_focus, clean_message, clock_label, contrast_ratio, fit_zoom, gauge_cells,
+    gauge_state, minutes_until, render_document, route_links, section_browser, shared_scripts, showcase_document, source_panel_html, stub_response,
+    theme_wall_document, travel_seconds, utc_offset_label, world_document, write_js, zone_offset, zone_rows,
+)
+from support import flutter_case
+
+
+# ═══ 🎛️ controls ═════════════════════════════════════════════════════════════════════════════════════════
+#
+# Invoked explicitly by the browser CI job; missing Playwright/browser is an error.
+# The ordinary dependency-light unit suite does not discover this module.
 
 def photo_engine(playwright):
-    """The browser the photo studio tests run in: ``WEBUI_BROWSER`` = chromium (default), firefox or webkit. CI runs each engine; a laptop usually has only Chromium."""
-    return getattr(playwright, os.environ.get('WEBUI_BROWSER', 'chromium'))
+    """The browser the photo studio tests run in: ``PSWB_BROWSER`` = chromium (default), firefox or webkit. CI runs each engine; a laptop usually has only Chromium."""
+    return getattr(playwright, os.environ.get('PSWB_BROWSER', 'chromium'))
 
 
 def photo_device(playwright):
-    """Context options of a Playwright device named by ``WEBUI_DEVICE`` (for example Pixel 7 or iPhone 13), else a desktop window. Emulation, not a device."""
-    name = os.environ.get('WEBUI_DEVICE')
+    """Context options of a Playwright device named by ``PSWB_DEVICE`` (for example Pixel 7 or iPhone 13), else a desktop window. Emulation, not a device."""
+    name = os.environ.get('PSWB_DEVICE')
     if not name:
         return {'viewport': {'width': 800, 'height': 900}}
     options = dict(playwright.devices[name])
@@ -751,7 +775,7 @@ class StubBrowserTests(unittest.TestCase):
 
     def test_curl_in_the_page_reads_exactly_like_python_and_masks_credentials(self):
         sys.path.insert(0, str(ROOT / 'tests'))
-        from test_python_wrapper import CURL_CASES, curl_fuzz_inputs
+        from test_pages import CURL_CASES, curl_fuzz_inputs
         from pysaiyanweboo import mask_curl, parse_curl
         server, origin = WorldBrowserTests.serve({'index.html': (ROOT / 'index.html').read_text(encoding='utf-8')})
         try:
@@ -1075,7 +1099,7 @@ def runbook_showcase():
 
 class RunbookBrowserTests(unittest.TestCase):
     """steps_html() in a showcase: sections switch without a reload, 📋 copies a command, a step's state is kept in this browser, shown on
-    its card and filterable, and a JSON from another version comes back with its states reset. ``WEB_UI_GIFS`` keeps component-steps.gif."""
+    its card and filterable, and a JSON from another version comes back with its states reset. ``PSWB_GIFS`` keeps component-steps.gif."""
 
     def test_copy_record_filter_and_reload_on_a_phone(self):
         sys.path.insert(0, str(ROOT / 'tools'))
@@ -1148,8 +1172,8 @@ class RunbookBrowserTests(unittest.TestCase):
                     self.assertEqual(errors, [])
                     gif = record_demo.encode(cam.shots)
                     self.assertTrue(gif.startswith(b'GIF89a'))
-                    if os.environ.get('WEB_UI_GIFS'):
-                        record_demo.gif_targets_from(os.environ['WEB_UI_GIFS'], ['component-steps'])['component-steps'].write_bytes(gif)
+                    if os.environ.get('PSWB_GIFS'):
+                        record_demo.gif_targets_from(os.environ['PSWB_GIFS'], ['component-steps'])['component-steps'].write_bytes(gif)
                 finally:
                     browser.close()
         finally:
@@ -1182,7 +1206,7 @@ def operations_page():
 
 class OperationsPageBrowserTests(unittest.TestCase):
     """page_heading() + notice() + a table with row states + status_filter() + download_json(), switched to the purple theme without a
-    reload: the parts the Observatory and Component Ops drew by hand. ``WEB_UI_GIFS`` keeps component-operations.gif."""
+    reload: the parts the Observatory and Component Ops drew by hand. ``PSWB_GIFS`` keeps component-operations.gif."""
 
     def test_filter_rows_by_state_download_the_data_and_switch_to_purple(self):
         sys.path.insert(0, str(ROOT / 'tools'))
@@ -1228,15 +1252,12 @@ class OperationsPageBrowserTests(unittest.TestCase):
                     self.assertEqual(errors, [])
                     gif = record_demo.encode(cam.shots)
                     self.assertTrue(gif.startswith(b'GIF89a'))
-                    if os.environ.get('WEB_UI_GIFS'):
-                        record_demo.gif_targets_from(os.environ['WEB_UI_GIFS'], ['component-operations'])['component-operations'].write_bytes(gif)
+                    if os.environ.get('PSWB_GIFS'):
+                        record_demo.gif_targets_from(os.environ['PSWB_GIFS'], ['component-operations'])['component-operations'].write_bytes(gif)
                 finally:
                     browser.close()
         finally:
             server.shutdown()
-
-
-TABLE_TILE = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="40"><rect width="64" height="40" fill="#3fb950"/></svg>'
 
 
 def table_spec():
@@ -1250,15 +1271,16 @@ def table_spec():
 
 class TableBrowserTests(unittest.TestCase):
     """component_document("table", spec): an escaped table in its own scroller, styled by shell.css under every theme, no script.
-    The GIF walks the themes and scrolls the table sideways on a phone; ``WEB_UI_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"``
+    The GIF walks the themes and scrolls the table sideways on a phone; ``PSWB_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"``
     keeps it as DIR/<P>component-table<S>[-<run detail>...].gif through record_demo.gif_targets_from (the recorder's own naming rules)."""
 
     def test_the_table_scrolls_inside_its_box_on_a_phone_and_follows_every_theme(self):
+        table_tile = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="40"><rect width="64" height="40" fill="#3fb950"/></svg>'
         sys.path.insert(0, str(ROOT / 'tools'))
         import record_demo
         from PIL import Image
         from pysaiyanweboo import CANDIDATE_THEMES, THEMES, component_document
-        server, origin = WorldBrowserTests.serve({'table.html': component_document('table', table_spec(), document_title='Table'), 'tile.svg': TABLE_TILE})
+        server, origin = WorldBrowserTests.serve({'table.html': component_document('table', table_spec(), document_title='Table'), 'tile.svg': table_tile})
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
@@ -1291,8 +1313,8 @@ class TableBrowserTests(unittest.TestCase):
                     gif = record_demo.encode(cam.shots)
                     frames = Image.open(__import__('io').BytesIO(gif))
                     self.assertTrue(gif.startswith(b'GIF89a') and getattr(frames, 'n_frames', 1) > 1)
-                    if os.environ.get('WEB_UI_GIFS'):
-                        record_demo.gif_targets_from(os.environ['WEB_UI_GIFS'], ['component-table'])['component-table'].write_bytes(gif)
+                    if os.environ.get('PSWB_GIFS'):
+                        record_demo.gif_targets_from(os.environ['PSWB_GIFS'], ['component-table'])['component-table'].write_bytes(gif)
                 finally:
                     browser.close()
         finally:
@@ -1432,7 +1454,7 @@ class CatalogueBrowserTests(unittest.TestCase):
 
     def test_floors_categories_and_sheets_work_on_a_large_catalogue(self):
         sys.path.insert(0, str(ROOT / 'tests'))
-        from test_python_wrapper import screens_like
+        from test_pages import screens_like
         from pysaiyanweboo import catalogue_world
         server, origin = WorldBrowserTests.serve({'index.html': world_document(catalogue_world(screens_like(), title='Screens'))})
         try:
@@ -1481,7 +1503,7 @@ class ShelfBrowserTests(unittest.TestCase):
 
     def test_the_pages_rules_equal_pythons_on_ironmates_cases_and_a_seeded_fuzz(self):
         sys.path.insert(0, str(ROOT / 'tests'))
-        from test_python_wrapper import BASE64_CASES, PNG_B64, shelf_fuzz_texts
+        from test_pages import BASE64_CASES, PNG_B64, shelf_fuzz_texts
         import random
         import pysaiyanweboo
         server, origin = self.serve_page()
@@ -1529,7 +1551,7 @@ class ShelfBrowserTests(unittest.TestCase):
 
     def test_adding_filtering_ordering_copying_and_forgetting(self):
         sys.path.insert(0, str(ROOT / 'tests'))
-        from test_python_wrapper import PNG_B64
+        from test_pages import PNG_B64
         import base64
         import pysaiyanweboo
         server, origin = self.serve_page()
@@ -1631,7 +1653,7 @@ class ShelfBrowserTests(unittest.TestCase):
             server.server_close()
 
     def test_the_shelf_reads_in_every_theme_and_fits_a_phone(self):
-        from test_python_wrapper import PNG_B64
+        from test_pages import PNG_B64
         server, origin = self.serve_page()
         try:
             with sync_playwright() as playwright:
@@ -1984,7 +2006,7 @@ class CoordinatesBrowserTests(unittest.TestCase):
         import random
         import pysaiyanweboo as w
         sys.path.insert(0, str(ROOT / 'tests'))
-        from test_python_wrapper import AREA_CASES, coordinate_fuzz_urls
+        from test_pages import AREA_CASES, coordinate_fuzz_urls
         server, origin = self.serve_page()
         try:
             with sync_playwright() as playwright:
@@ -2112,7 +2134,7 @@ class PhotoBrowserTests(unittest.TestCase):
         import random
         sys.path.insert(0, str(ROOT / 'tests'))
         from PIL import Image
-        from test_python_wrapper import PHOTO_FIXTURE, photo_file
+        from test_pages import PHOTO_FIXTURE, photo_file
         rng = random.Random(8)
         blobs = []
         for case in PHOTO_FIXTURE['cases']:
@@ -2149,7 +2171,7 @@ class PhotoBrowserTests(unittest.TestCase):
         import random
         import pysaiyanweboo as w
         sys.path.insert(0, str(ROOT / 'tests'))
-        from test_python_wrapper import PHOTO_FIXTURE, photo_file
+        from test_pages import PHOTO_FIXTURE, photo_file
         server, origin = self.serve_page()
         try:
             with sync_playwright() as playwright:
@@ -2338,7 +2360,7 @@ class PhotoPageBrowserTests(PageCase):
 
     def setUp(self):
         sys.path.insert(0, str(ROOT / 'tests'))
-        from test_python_wrapper import PHOTO_CASES, photo_file
+        from test_pages import PHOTO_CASES, photo_file
         self.cases, self.file = PHOTO_CASES, photo_file
         from pysaiyanweboo import photo_document
         self.server, self.origin = WorldBrowserTests.serve({'photo.html': photo_document()})
@@ -2441,13 +2463,13 @@ class PhotoPageBrowserTests(PageCase):
             self.assertEqual((measured['avif'], measured['heic']), ('supported', 'unsupported_by_runtime'))
         for feature in ('pointerEvents', 'touchActionNone', 'createImageBitmap', 'canvasToBlob', 'anchorDownload', 'canvas4096'):
             self.assertTrue(report['features'][feature], (self.engine, feature))
-        if os.environ.get('WEBUI_EVIDENCE_DIR'):                                            # CI keeps what each engine said, as a file
-            os.makedirs(os.environ['WEBUI_EVIDENCE_DIR'], exist_ok=True)
-            name = self.engine + ('-' + os.environ['WEBUI_DEVICE'].replace(' ', '') if os.environ.get('WEBUI_DEVICE') else '-desktop')
-            print('photo-evidence', name, json.dumps({'decoded': measured, 'exifAppliedByEngine': report['exifOrientationAppliedByEngine'],
-                                                       'features': {k: v for k, v in report['features'].items() if k != 'devicePixelRatio'}}, ensure_ascii=False, sort_keys=True))   # also in the log
-            with open(os.path.join(os.environ['WEBUI_EVIDENCE_DIR'], name + '.json'), 'w', encoding='utf-8') as out:
-                json.dump({**report, 'environmentId': name, 'emulation': bool(os.environ.get('WEBUI_DEVICE'))}, out, indent=2, ensure_ascii=False)
+        evidence = ROOT / 'build' / 'platform' / 'photo-evidence'                           # what each engine said, as a file (platform-matrix.yml uploads it)
+        evidence.mkdir(parents=True, exist_ok=True)
+        name = self.engine + ('-' + os.environ['PSWB_DEVICE'].replace(' ', '') if os.environ.get('PSWB_DEVICE') else '-desktop')
+        print('photo-evidence', name, json.dumps({'decoded': measured, 'exifAppliedByEngine': report['exifOrientationAppliedByEngine'],
+                                                   'features': {k: v for k, v in report['features'].items() if k != 'devicePixelRatio'}}, ensure_ascii=False, sort_keys=True))   # also in the log
+        with open(evidence / (name + '.json'), 'w', encoding='utf-8') as out:
+            json.dump({**report, 'environmentId': name, 'emulation': bool(os.environ.get('PSWB_DEVICE'))}, out, indent=2, ensure_ascii=False)
         shown = json.loads(self.page.inner_text('[data-check-out]'))
         self.assertEqual((shown['schemaVersion'], shown['environmentId'], shown['entryPoint']), (2, 'web_ui_photo_studio', 'loader_browser_canvas_adapter'))
         self.assertEqual(shown, report)
@@ -2652,7 +2674,6 @@ class PhotoPageBrowserTests(PageCase):
         self.assertEqual(self.page.evaluate("() => [...document.querySelectorAll('a[href]')].length"), 0)
 
 
-
 class BtkAdapterBrowserTests(unittest.TestCase):
     """Each adapter against its page, with browser-test-kit's own checks: one element per selector, all visible inside the screen without clipping or overlap, and the click
     changes exactly what the adapter says. (The probe itself runs in the platform-matrix workflow, on every engine and profile.)"""
@@ -2728,7 +2749,7 @@ class ClipboardBrowserTests(PageCase):
 
     def setUp(self):
         sys.path.insert(0, str(ROOT / 'tests'))
-        import test_python_wrapper as t
+        import test_pages as t
         self.t = t
         from pysaiyanweboo import shelf_document, photo_document
         self.server, self.origin = WorldBrowserTests.serve({'shelf.html': shelf_document(), 'photo.html': photo_document()})
@@ -3027,7 +3048,6 @@ class ClipboardBrowserTests(PageCase):
 def web_ui_module():
     import pysaiyanweboo
     return pysaiyanweboo
-
 
 
 class PlaygroundBrowserTests(PageCase):
@@ -3942,11 +3962,6 @@ class McpBrowserTests(PageCase):
         self.assertIn('"bearer_methods_supported": [\n    "header"\n  ]', page.locator('[data-mcp-meta-out]').inner_text())
 
 
-PATTERN_GOLDEN = json.loads((Path(__file__).resolve().parents[1] / 'fixtures' / 'pattern_golden.json').read_text(encoding='utf-8'))
-SCREENS_FIXTURE = json.loads((Path(__file__).resolve().parents[1] / 'fixtures' / 'screens_asset.json').read_text(encoding='utf-8'))['screens']
-PATTERN_ASSETS = json.loads((Path(__file__).resolve().parents[1] / 'fixtures' / 'pattern_assets.json').read_text(encoding='utf-8'))
-
-
 def pat_norm(value):
     """Python's value with integral floats as ints: JSON in a page cannot tell 1.0 from 1."""
     if isinstance(value, float):
@@ -3972,11 +3987,9 @@ def pat_canon(value):
     return json.dumps(pat_norm(value), sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
 
 
-PAT_SCALARS = [None, True, False, 0, 1, -1, 2, 7, 0.5, -1.5, 2.5, '', 'a', 'b', 'A', 'é', ' x ', 'abc', 'item', '1', 'true', '0', 'false']
-
-
 def pat_scalar(r):
-    return r.choice(PAT_SCALARS)
+    pat_scalars = [None, True, False, 0, 1, -1, 2, 7, 0.5, -1.5, 2.5, '', 'a', 'b', 'A', 'é', ' x ', 'abc', 'item', '1', 'true', '0', 'false']
+    return r.choice(pat_scalars)
 
 
 def pat_value(r, depth=0):
@@ -4042,11 +4055,11 @@ def pat_condition(r):
 
 
 PAT_ASYNC = ('future', 'stream', 'concurrency', 'event_loop')
-PAT_JS_VALUES = [None, True, False, 0, 1, -1, 2, 7, 0.5, -1.5, '', 'a', 'b', 'A', 'é', 'x y', '1', [], [1], {'a': 1}, {'a': 1, 'b': 2}, {'b': 2, 'a': 1}]
 
 
 def pat_js_value(r):
-    return r.choice(PAT_JS_VALUES)
+    pat_js_values = [None, True, False, 0, 1, -1, 2, 7, 0.5, -1.5, '', 'a', 'b', 'A', 'é', 'x y', '1', [], [1], {'a': 1}, {'a': 1, 'b': 2}, {'b': 2, 'a': 1}]
+    return r.choice(pat_js_values)
 
 
 def pat_js_task(r, top=1000, small=(0, 1, 2, 3, 5, 8, 13, 21)):
@@ -4192,7 +4205,6 @@ def pat_js_request(family, r):
 PAT_SCREEN_TEXTS = ['', 'a', 'Screen 5', 'screen5', ' 7 ', 'Transformed Result List', 'ナビ', 'ＡＢＣ', 'İ', 'ǅ', '\u00a0x\u00a0', '\u3000検索\u3000', 'ß', 'A', 'api', 'NAVIGATION', 'drawer', '🍎',
                     'é', '\ufeffscreen', '\u200bx', 'x' * 40, 'Drawer', 'ui', 'Data', 'form', '15', 'LIST', '\t\n x \r', '\u0085y\u0085', 'ΑΣ']
 PAT_SCREEN_LOCALES = ['eng', 'jpn', 'fra', 'spa', 'por', 'ara', 'zho', 'rus', 'ind', 'deu', 'swa', 'en', 'ja', 'in', ' JPN ', 'ENG', 'zz', 'ja-JP', '', None, 5, True, ['eng'], 'ＪＰＮ', '\u3000ara\u3000']
-PAT_SCREEN_ARGS = ['n', 'title', 'v', 'screenDataId', 'value', 'query', 'route', 'x', '', 'urlParamCaseId', 'example']
 
 
 def pat_screen_events(r, screen, count):
@@ -4218,6 +4230,7 @@ def pat_screen_events(r, screen, count):
 
 
 def pat_screen_request(r):
+    pat_screen_args = ['n', 'title', 'v', 'screenDataId', 'value', 'query', 'route', 'x', '', 'urlParamCaseId', 'example']
     import pysaiyanweboo
     op = r.choice(['view', 'view', 'view', 'hub', 'search', 'text', 'route', 'links', 'bogus'])
     screen = r.choice([r.randint(1, 198), r.randint(1, 198), r.choice([6, 5, 91, 99, 103, 110, 136, 171, 198]), r.choice([0, 199, -1, 'a', None, True, 3.5])])
@@ -4236,7 +4249,7 @@ def pat_screen_request(r):
         request['query'] = r.choice(PAT_SCREEN_TEXTS + [5, None])
     elif op == 'text':
         keys = list(pysaiyanweboo.SCREEN_TEXT_KEYS) + ['constructor', '__proto__', 'toString', '', 'nope', 5]
-        request.update(key=r.choice(keys), locale=r.choice(PAT_SCREEN_LOCALES), arguments=[[r.choice(PAT_SCREEN_ARGS), r.choice([None, 'v', 5, -5, 0, 2 ** 53, -2 ** 53, '{n}', True, 0.5, [1]])] for _ in range(r.randint(0, 4))])
+        request.update(key=r.choice(keys), locale=r.choice(PAT_SCREEN_LOCALES), arguments=[[r.choice(pat_screen_args), r.choice([None, 'v', 5, -5, 0, 2 ** 53, -2 ** 53, '{n}', True, 0.5, [1]])] for _ in range(r.randint(0, 4))])
         if r.random() < 0.15:
             request['arguments'] = r.choice([[['n']], [5], 'n', [['n', 1, 2]], [[5, 1]], [['n', 1]] * 21])
     elif op == 'route':
@@ -4527,10 +4540,12 @@ class PatternBrowserTests(PageCase):
 
     # --- the recorded outputs of the original oracles
     def test_the_recorded_original_outputs_are_reproduced_exactly(self):
+        pattern_assets = json.loads((Path(__file__).resolve().parents[1] / 'fixtures' / 'pattern_assets.json').read_text(encoding='utf-8'))
+        pattern_golden = json.loads((Path(__file__).resolve().parents[1] / 'fixtures' / 'pattern_golden.json').read_text(encoding='utf-8'))
         page = self.page()
-        cases = [c for c in PATTERN_GOLDEN['cases'] if c['family'] in self.FAMILIES + PAT_ASYNC and not (c['family'] == 'score' and isinstance(c['request'], dict) and c['request'].get('operation') == 'tfidf')
+        cases = [c for c in pattern_golden['cases'] if c['family'] in self.FAMILIES + PAT_ASYNC and not (c['family'] == 'score' and isinstance(c['request'], dict) and c['request'].get('operation') == 'tfidf')
                  and not pat_integral_float(c['request'])]
-        assets = PATTERN_ASSETS['assets']
+        assets = pattern_assets['assets']
         self.assertGreaterEqual(len(cases), 550)
         got = page.evaluate(self.RUN, [[c['family'], c['request']] if c['family'] not in PAT_ASYNC else ['query', {}] for c in cases])
         timed = [i for i, c in enumerate(cases) if c['family'] in PAT_ASYNC]
@@ -4855,20 +4870,6 @@ class PatternBrowserTests(PageCase):
         self.assertLessEqual(page.evaluate('Math.max(...[...document.querySelectorAll("#patterns *")].map(e => e.getBoundingClientRect().right))'), 320)
 
 
-STUDIO_GOLDEN = json.loads((Path(__file__).resolve().parents[1] / 'fixtures' / 'studio_golden.json').read_text(encoding='utf-8'))
-STUDIO_CALL = """jobs => { const S = webUiImageStudio; S.useCanvasMetrics(false); const expand = v => Array.isArray(v) ? v.map(expand) : v && typeof v === 'object' ? ('__repeat' in v ? v.__repeat[0] + v.__repeat[1].repeat(v.__repeat[2]) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, expand(x)]))) : v;\n  return jobs.map(([fn, arg0]) => { const arg = expand(arg0); try { return {ok: (() => { switch (fn) {
-  case 'jsnum': return String(arg); case 'jsjson': return JSON.stringify(arg); case 'heatColor': return S.heatColor(...arg); case 'matrix': return S.matrix(arg); case 'validate': return S.validate(arg);
-  case 'mosaic': return [...S.mosaicRGBA(arg[0], ...arg.slice(1))]; case 'arrow': return S.arrowGeometry(...arg); case 'outputSize': return S.outputSize(...arg); case 'pngPayload': return S.pngPayload(arg);
-  case 'textLayout': return S.textLayout(arg); case 'layerSVG': return S.layerSVG(arg); case 'svg': return S.svg(arg[0], undefined, arg[1]); case 'words': return S.words(arg); case 'graphemes': return S.graphemes(arg);
-  case 'history': { let h; const states = []; for (const [op, scene] of arg) { if (op === 'new') h = new S.History(scene); else if (op === 'commit') h.commit(scene); else if (op === 'undo') h.undo(); else h.redo();
-    states.push([h.index, h.items.length]) } return {states, items: h.items, workspace: S.workspaceText(h)} }
-  case 'place': return S.place(arg[0], arg[1], arg[2], arg[3], arg[4]); case 'textLayer': return S.textLayer(...arg); case 'matrixLayer': return S.matrixLayer(...arg); case 'imageLayer': return S.imageLayer(...arg);
-  case 'demo': return S.demoScene(); case 'stampDemo': return S.stampDemoScene(); case 'heatmapScene': return S.heatmapScene(arg); case 'blank': return S.blank();
-  case 'sincos': return [S.sin(arg), S.cos(arg)];
-  case 'textLayoutM': return S.textLayout(arg[0], t => Array.from(t).length * arg[1]);
-  case 'historyRun': { const h = new S.History(arg[0]), seen = []; for (const [op, scene] of arg.slice(1)) { if (op === 'commit') h.commit(scene); else if (op === 'undo') h.undo(); else if (op === 'redo') h.redo(); else if (op === 'trim') { h.items = h.items.slice(-1); h.index = 0 } seen.push([h.index, h.items.length, JSON.stringify(h.current)]) } return seen }
-  case 'workspace': { const h = new S.History(arg[0]); for (const s of arg.slice(1)) h.commit(s); return S.workspaceText(h) }
-  default: throw new Error('unknown ' + fn) } })() } } catch (e) { return {error: e.message} } }) }"""
 def studio_norm(value):
     if isinstance(value, float):
         return int(value) if value.is_integer() and abs(value) < 2 ** 53 else value
@@ -5255,7 +5256,7 @@ class PatternBridgeBrowserTests(unittest.TestCase):
                          'the first bridge was not told about this origin')
 
     def test_a_host_that_is_not_the_bound_address_is_refused_even_when_it_resolves_to_it(self):
-        if os.environ.get('WEBUI_BROWSER', 'chromium') != 'chromium':
+        if os.environ.get('PSWB_BROWSER', 'chromium') != 'chromium':
             self.skipTest('the name is mapped to loopback with a Chromium flag; Python tests send every other Host header')
         browser = self.playwright.chromium.launch(args=['--host-resolver-rules=MAP rebind.test 127.0.0.1'])
         try:
@@ -5374,10 +5375,11 @@ class ScreensBrowserTests(PageCase):
         page.wait_for_function('document.querySelector("#screens").dataset.route === ""')
 
     def test_each_template_reacts_to_real_clicks_and_typing(self):
+        screens_fixture = json.loads((Path(__file__).resolve().parents[1] / 'fixtures' / 'screens_asset.json').read_text(encoding='utf-8'))['screens']
         import pysaiyanweboo
         page = self.page()
         # 22 screens carry a detail: their use case comes first and the template sits on the UI sample tab; every other number shows the template at once
-        self.assertEqual(sorted(n for n in range(1, 199) if SCREENS_FIXTURE[n - 1].get('detail')), [1, 2, 19, 20, 37, 38, 55, 56, 73, 74, 91, 92, 109, 110, 127, 128, 145, 146, 163, 164, 181, 182])
+        self.assertEqual(sorted(n for n in range(1, 199) if screens_fixture[n - 1].get('detail')), [1, 2, 19, 20, 37, 38, 55, 56, 73, 74, 91, 92, 109, 110, 127, 128, 145, 146, 163, 164, 181, 182])
         # a list and a detail
         self.route(page, 4)
         self.assertEqual(page.eval_on_selector_all('.ui-screens-list > li', 'els => els.length'), len(pysaiyanweboo.screen_view(4, 'eng')['body']['items']))
@@ -5802,7 +5804,20 @@ class ImageStudioBrowserTests(PageCase):
         self.assertEqual(self.data(page, 'layers'), '0')
 
     def call(self, page, jobs):
-        return page.evaluate(STUDIO_CALL, jobs)
+        studio_call = """jobs => { const S = webUiImageStudio; S.useCanvasMetrics(false); const expand = v => Array.isArray(v) ? v.map(expand) : v && typeof v === 'object' ? ('__repeat' in v ? v.__repeat[0] + v.__repeat[1].repeat(v.__repeat[2]) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, expand(x)]))) : v;\n  return jobs.map(([fn, arg0]) => { const arg = expand(arg0); try { return {ok: (() => { switch (fn) {
+  case 'jsnum': return String(arg); case 'jsjson': return JSON.stringify(arg); case 'heatColor': return S.heatColor(...arg); case 'matrix': return S.matrix(arg); case 'validate': return S.validate(arg);
+  case 'mosaic': return [...S.mosaicRGBA(arg[0], ...arg.slice(1))]; case 'arrow': return S.arrowGeometry(...arg); case 'outputSize': return S.outputSize(...arg); case 'pngPayload': return S.pngPayload(arg);
+  case 'textLayout': return S.textLayout(arg); case 'layerSVG': return S.layerSVG(arg); case 'svg': return S.svg(arg[0], undefined, arg[1]); case 'words': return S.words(arg); case 'graphemes': return S.graphemes(arg);
+  case 'history': { let h; const states = []; for (const [op, scene] of arg) { if (op === 'new') h = new S.History(scene); else if (op === 'commit') h.commit(scene); else if (op === 'undo') h.undo(); else h.redo();
+    states.push([h.index, h.items.length]) } return {states, items: h.items, workspace: S.workspaceText(h)} }
+  case 'place': return S.place(arg[0], arg[1], arg[2], arg[3], arg[4]); case 'textLayer': return S.textLayer(...arg); case 'matrixLayer': return S.matrixLayer(...arg); case 'imageLayer': return S.imageLayer(...arg);
+  case 'demo': return S.demoScene(); case 'stampDemo': return S.stampDemoScene(); case 'heatmapScene': return S.heatmapScene(arg); case 'blank': return S.blank();
+  case 'sincos': return [S.sin(arg), S.cos(arg)];
+  case 'textLayoutM': return S.textLayout(arg[0], t => Array.from(t).length * arg[1]);
+  case 'historyRun': { const h = new S.History(arg[0]), seen = []; for (const [op, scene] of arg.slice(1)) { if (op === 'commit') h.commit(scene); else if (op === 'undo') h.undo(); else if (op === 'redo') h.redo(); else if (op === 'trim') { h.items = h.items.slice(-1); h.index = 0 } seen.push([h.index, h.items.length, JSON.stringify(h.current)]) } return seen }
+  case 'workspace': { const h = new S.History(arg[0]); for (const s of arg.slice(1)) h.commit(s); return S.workspaceText(h) }
+  default: throw new Error('unknown ' + fn) } })() } } catch (e) { return {error: e.message} } }) }"""
+        return page.evaluate(studio_call, jobs)
 
     def same(self, got, expect):
         return got == expect
@@ -5821,8 +5836,9 @@ class ImageStudioBrowserTests(PageCase):
 
     # --- the twin gives Python's answer ----------------------------------------------------------------------------------------------------------
     def test_every_recorded_core_js_output_is_reproduced_in_the_page(self):
+        studio_golden = json.loads((Path(__file__).resolve().parents[1] / 'fixtures' / 'studio_golden.json').read_text(encoding='utf-8'))
         page = self.page()
-        cases = STUDIO_GOLDEN['cases']
+        cases = studio_golden['cases']
         outcomes = self.call(page, [[c['fn'], c['arg']] for c in cases])
         bad = []
         for case, got in zip(cases, outcomes):
@@ -6821,7 +6837,7 @@ class MockAuthBrowserTests(unittest.TestCase):
 
 
 class GifBrowserTests(unittest.TestCase):
-    """gif.js in this engine (WEBUI_BROWSER): the browser decodes, fits, captions, patches and zooms screenshots on a canvas,
+    """gif.js in this engine (PSWB_BROWSER): the browser decodes, fits, captions, patches and zooms screenshots on a canvas,
     the encoder writes one GIF89a, and both this browser and Pillow (an independent decoder) read it back."""
 
     def test_recorder_builds_a_gif_every_decoder_opens(self):
@@ -6855,9 +6871,9 @@ class GifBrowserTests(unittest.TestCase):
                        {'zoom': box, 'caption': '🔍 #a', 'steps': 4, 'ms': 400, 'hold': 800, 'ok': False}])
                 result = page.evaluate("() => rec.encodeBase64({comment: 'web_ui gif.js browser test'})")
                 gif = base64.b64decode(result['gif'])
-                if os.environ.get('WEBUI_EVIDENCE_DIR'):
-                    Path(os.environ['WEBUI_EVIDENCE_DIR']).mkdir(parents=True, exist_ok=True)
-                    (Path(os.environ['WEBUI_EVIDENCE_DIR']) / 'gif-recorder.gif').write_bytes(gif)
+                evidence = ROOT / 'build' / 'platform' / 'photo-evidence'                   # platform-matrix.yml uploads it
+                evidence.mkdir(parents=True, exist_ok=True)
+                (evidence / 'gif-recorder.gif').write_bytes(gif)
                 opened = page.evaluate("""async src => {
                     const img = new Image(); img.src = src; await img.decode();
                     const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
@@ -6887,6 +6903,332 @@ class GifBrowserTests(unittest.TestCase):
         self.assertGreater(sum(near(p, (0x15, 0x65, 0xc0)) for p in pixels), 200 * 150 // 4)   # zoomed in: #a fills the frame
         self.assertGreater(sum(near(p, (0xff, 0x6f, 0x00), 48) for p in pixels), 100)          # and is outlined
 
-if __name__ == '__main__':
-    unittest.main()
 
+# ═══ 📐 layout presets ════════════════════════════════════════════════════════════════════════════════════
+#
+# Choosing a layout preset re-lays the viewer at once (no reload, no JavaScript), and the
+# sweep clicks every preset at every width: several presets may pass, a broken one is caught.
+# Invoked explicitly by the browser CI job; missing Playwright/browser is an error.
+
+PAGES = pysaiyanweboo.example_data("flutter-pages")
+LAYOUT_SPEC = pysaiyanweboo.example_data("layout-presets")
+# A preset meant to break on phones: tiles wider than the screen.
+BROKEN = {**LAYOUT_SPEC, "presets": LAYOUT_SPEC["presets"] + [{"id": "poster", "label": "Poster",
+          "vars": {"--ui-matrix-col": "480px", "--ui-matrix-gap": "8px", "--ui-matrix-pad": "8px"}}]}
+REPORT = {"schema": "ironmate-browser-matrix/1", "reference": "Linux-chromium-desktop",
+          "pages": [p["adapter"] for p in PAGES["pages"]],
+          "envs": ["Linux-chromium-desktop", "Windows-firefox-desktop", "macOS-webkit-iphone", "Linux-webkit-desktop"],
+          "cells": []}
+
+
+class LayoutPresetTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.page = Path(self.tmp.name) / "viewer.html"
+        self.page.write_text(capture_matrix.viewer(PAGES, REPORT, layouts=BROKEN), encoding="utf-8")
+
+    def test_switching_relays_live_without_reload(self):
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            page = browser.new_page(viewport={"width": 1280, "height": 800})
+            page.goto(self.page.as_uri() + "#/hub")
+            page.evaluate("window.__marker = 'same document'")
+            column = "() => getComputedStyle(document.querySelector('#\\\\/hub .ui-matrix-tiles')).gridTemplateColumns.split(' ').length"
+            before = page.evaluate(column)
+            page.get_by_label("Wide").check()
+            wide = page.evaluate(column)
+            page.get_by_label("Compact").check()
+            compact = page.evaluate(column)
+            self.assertEqual(page.evaluate("window.__marker"), "same document")  # no reload happened
+            self.assertTrue(compact > before > wide, (compact, before, wide))
+            browser.close()
+
+    def test_sweep_keeps_every_passing_preset_and_catches_the_broken_one(self):
+        result = layout_presets.sweep(self.page.as_uri(), BROKEN, [320, 384, 1280], items=".ui-matrix-tiles li")
+        self.assertEqual(result["schema"], "web-ui-layout-candidates/1")
+        self.assertTrue(result["every_width_has_a_candidate"])
+        self.assertGreaterEqual(len(result["by_width"]["1280"]), 2)  # several presets may pass
+        self.assertIn("poster", result["by_width"]["1280"])
+        self.assertEqual(result["presets"]["poster"]["failed"], [320, 384])
+        self.assertTrue(all(o["items"] > 0 for o in result["observations"]))
+        labelled = capture_matrix.viewer(PAGES, REPORT, layouts=BROKEN, candidates=result)
+        self.assertIn("ok at 1280px; check at 320px, 384px", labelled)
+
+    def assert_no_candidates(self, result):
+        self.assertFalse(result["every_width_has_a_candidate"])
+        self.assertEqual(result["by_width"], {"320": [], "1280": []})
+        self.assertEqual(len(result["observations"]), 2 * len(LAYOUT_SPEC["presets"]))
+        for row in result["observations"]:
+            self.assertFalse(row["ok"])
+            self.assertEqual(row["items"], 0)
+            self.assertIn("no_items", row["failed"])
+        for row in result["presets"].values():
+            self.assertEqual(row, {"passed": [], "failed": [320, 1280]})
+
+    def test_sweep_rejects_selector_without_matches(self):
+        result = layout_presets.sweep(self.page.as_uri(), LAYOUT_SPEC, [320, 1280], items=".typo-no-tiles")
+        self.assert_no_candidates(result)
+
+    def test_sweep_rejects_unrendered_items(self):
+        # Matching DOM nodes are insufficient when none have rendered boxes.
+        self.page.write_text(self.page.read_text(encoding="utf-8").replace(
+            "</head>", "<style>.ui-matrix-tiles{display:none}</style></head>"), encoding="utf-8")
+        result = layout_presets.sweep(self.page.as_uri(), LAYOUT_SPEC, [320, 1280], items=".ui-matrix-tiles li")
+        self.assert_no_candidates(result)
+
+    def test_cli_returns_failure_and_writes_evidence_when_items_are_missing(self):
+        out = Path(self.tmp.name) / "candidates.json"
+        presets = Path(self.tmp.name) / "layout-presets.json"
+        presets.write_text(json.dumps(LAYOUT_SPEC), encoding="utf-8")
+        status = layout_presets.main(["sweep", str(self.page), "--presets",
+                                      str(presets), "--widths", "320", "1280",
+                                      "--items", ".typo-no-tiles", "--out", str(out)])
+        self.assertEqual(status, 1)
+        self.assert_no_candidates(json.loads(out.read_text(encoding="utf-8")))
+
+
+# ═══ 🧭 route table ═══════════════════════════════════════════════════════════════════════════════════════
+#
+# The same generated route table navigates offline (file://) and over HTTP. Invoked
+# explicitly by the browser CI job; missing Playwright/browser is an error.
+
+HOME, MAP, SHADES = '\U0001F3E0', '\U0001F5FA\ufe0f', '\U0001F576'
+
+
+def route_page_files(directory):
+    # A classic script, not type=module: browsers block module scripts from file:// (origin null).
+    table = [{'route': '/', 'key': HOME, 'label': 'Home'}, {'route': '/map', 'key': MAP, 'label': 'Map'},
+             {'route': '/shades', 'key': SHADES}]
+    body = (route_links(table) + f'<button type="button" data-ui-go="{SHADES}">go shades</button>'
+            + '<script src="./js/navigation.js"></script>')
+    document = render_document(trusted_html=body)
+    root = Path(directory)
+    (root / 'index.html').write_text(document, encoding='utf-8')
+    write_js(root)
+    return root / 'index.html'
+
+
+class RouteTableBrowserTests(unittest.TestCase):
+    def walk(self, page, url):
+        errors = []
+        page.on('pageerror', lambda error: errors.append(str(error)))
+        page.goto(url)
+        nav = page.get_by_role('navigation', name='Pages')
+        expect(nav.get_by_role('link', name=HOME + ' Home')).to_have_attribute('aria-current', 'page')
+        nav.get_by_role('link', name=MAP + ' Map').click()
+        expect(page).to_have_url(url.split('#')[0] + '#/map')
+        expect(nav.get_by_role('link', name=MAP + ' Map')).to_have_attribute('aria-current', 'page')
+        page.get_by_role('button', name='go shades').click()
+        expect(page).to_have_url(url.split('#')[0] + '#/shades')
+        # Both spellings of the map emoji resolve to one route.
+        self.assertEqual(page.evaluate("k => webUiNavigation.bindRouteTable(window, {}).go(k)", '\U0001F5FA'), '/map')
+        expect(page).to_have_url(url.split('#')[0] + '#/map')
+        page.go_back()
+        expect(page).to_have_url(url.split('#')[0] + '#/shades')
+        expect(nav.get_by_role('link', name=MAP + ' Map')).not_to_have_attribute('aria-current', 'page')
+        self.assertEqual(errors, [])
+
+    def test_offline_file_and_http_navigate_the_same_table(self):
+        with tempfile.TemporaryDirectory() as directory:
+            index = route_page_files(directory)
+            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0),
+                                                     functools.partial(QuietHandler, directory=directory))
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            try:
+                with sync_playwright() as playwright:
+                    browser = playwright.chromium.launch()
+                    try:
+                        for url in (index.as_uri(), f'http://127.0.0.1:{server.server_port}/index.html'):
+                            with self.subTest(url=url.split(':')[0]):
+                                context = browser.new_context()
+                                requests = []
+                                context.on('request', lambda request: requests.append(request.url))
+                                self.walk(context.new_page(), url)
+                                self.assertTrue(all(r.startswith(url.rsplit('/', 1)[0]) for r in requests), requests)
+                                context.close()
+                    finally:
+                        browser.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+
+
+# ═══ 📥 source panel ══════════════════════════════════════════════════════════════════════════════════════
+#
+# The generic source panel (pysaiyanweboo.source_panel_html + source.js) with the Pokémon spec, offline (file://) and over HTTP: pasted JSON is read with no
+# request, Fetch asks the spec's one address once (answered here by the browser's own network layer, never the live site), and every failure is a visible
+# message. Invoked explicitly by the browser CI job; missing Playwright/browser is an error.
+
+FIX = ROOT / 'tests' / 'fixtures' / 'source'
+SOURCE_SPEC = json.loads((FIX / 'pokeapi.spec.json').read_text(encoding='utf-8'))
+DITTO = (FIX / 'ditto.json').read_text(encoding='utf-8')
+DITTO_MD = (FIX / 'ditto.md').read_text(encoding='utf-8')
+API = 'https://pokeapi.co/api/v2/pokemon/'
+
+
+def source_page_files(directory):
+    # A classic script, not type=module: browsers block module scripts from file:// (origin null).
+    body = '<main class="ui-page">' + source_panel_html(SOURCE_SPEC) + '</main><script src="./js/source.js"></script>'
+    root = Path(directory)
+    (root / 'index.html').write_text(render_document(trusted_html=body, css=bundled_css()), encoding='utf-8')
+    write_js(root)
+    return root / 'index.html'
+
+
+def launch(playwright):
+    return playwright.chromium.launch()
+
+
+class SourcePanelBrowserTests(unittest.TestCase):
+    def walk(self, page, url):
+        errors, requests = [], []
+        page.on('pageerror', lambda error: errors.append(str(error)))
+
+        def answer(route):
+            requests.append((route.request.url, route.request.headers.get('accept')))
+            name = route.request.url.rsplit('/', 1)[-1]
+            if name == 'ditto':
+                route.fulfill(status=200, content_type='application/json', headers={'access-control-allow-origin': '*'}, body=DITTO)
+            elif name == 'nope':
+                route.fulfill(status=404, headers={'access-control-allow-origin': '*'}, body='Not Found')
+            elif name == 'html':
+                route.fulfill(status=200, content_type='text/html', headers={'access-control-allow-origin': '*'}, body='<html>')
+            else:
+                route.abort('failed')
+
+        page.context.route(API + '**', answer)  # the context, so the new tab Open JSON makes is answered too
+        page.goto(url)
+        panel = page.locator('[data-ui-source]')
+        name, text = panel.locator('[data-source-name]'), panel.locator('[data-source-text]')
+        output, error, status = panel.locator('[data-source-output]'), panel.locator('[data-source-error]'), panel.locator('[data-source-status]')
+        expect(output).to_be_hidden()
+        expect(error).to_be_hidden()
+
+        # Paste: no request at all.
+        panel.locator('[data-source-extract]').click()
+        expect(error).to_have_text('Paste the JSON first.')
+        text.fill(DITTO)
+        panel.locator('[data-source-extract]').click()
+        expect(output).to_have_text(DITTO_MD.rstrip('\n'))
+        expect(error).to_be_hidden()
+        expect(status).to_contain_text('ditto (#132) — from pasted JSON')
+        text.fill('{nope')
+        panel.locator('[data-source-extract]').click()
+        expect(error).to_have_text('source is not JSON')
+        expect(output).to_be_hidden()
+        self.assertEqual(requests, [])
+
+        # Fetch: one request, JSON accepted, the same Markdown.
+        name.fill('  Ditto ')
+        panel.locator('[data-source-fetch]').click()
+        expect(output).to_have_text(DITTO_MD.rstrip('\n'))
+        expect(status).to_contain_text('fetched')
+        self.assertEqual(requests, [(API + 'ditto', 'application/json')])
+
+        # Every failure is a message, and a bad name sends nothing.
+        for typed, message in (('nope', 'not found: nope'), ('html', 'source is not JSON'), ('boom', 'could not fetch')):
+            name.fill(typed)
+            panel.locator('[data-source-fetch]').click()
+            expect(error).to_contain_text(message)
+            expect(output).to_be_hidden()
+        sent = len(requests)
+        name.fill('no way!')
+        panel.locator('[data-source-fetch]').click()
+        expect(error).to_have_text(SOURCE_SPEC['missing'])
+        self.assertEqual(len(requests), sent)
+
+        # Open JSON: the spec's address in a new tab, without opener or referrer.
+        name.fill('ditto')
+        with page.expect_popup() as popup:
+            panel.locator('[data-source-open]').click()
+        popup.value.wait_for_load_state()
+        self.assertEqual(popup.value.url, API + 'ditto')
+        self.assertIsNone(popup.value.evaluate('window.opener'))
+        popup.value.close()
+        self.assertEqual(errors, [])
+
+    def test_offline_and_http(self):
+        with tempfile.TemporaryDirectory() as directory:
+            index = source_page_files(directory)
+            handler = functools.partial(QuietHandler, directory=directory)
+            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), handler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with sync_playwright() as playwright:
+                    browser = launch(playwright)
+                    try:
+                        for url in (index.as_uri(), f'http://127.0.0.1:{server.server_port}/index.html'):
+                            context = browser.new_context()
+                            try:
+                                self.walk(context.new_page(), url)
+                            finally:
+                                context.close()
+                    finally:
+                        browser.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join()
+
+
+# ═══ 📈 plotly (jsDelivr) ═════════════════════════════════════════════════════════════════════════════════
+# Chromium smoke: jsDelivr plotly.js loads and renders a figure spec.
+
+class PlotlyBrowserTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.raw = ui.fetch_plotly_js()
+        cls.playwright = sync_playwright().start()
+        cls.browser = cls.playwright.chromium.launch()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.browser.close()
+        cls.playwright.stop()
+
+    def page_for(self, raw, *, fail=False):
+        page = self.browser.new_page()
+        self.addCleanup(page.close)
+        spec = {'data': [{'type': 'scatter', 'x': [1, 2], 'y': [3, 4], 'mode': 'markers'}],
+                'layout': {'title': {'text': 'jsDelivr Plotly'}, 'width': 400, 'height': 300}}
+        document = ui.render_document(trusted_html=ui.plotly_figure(spec, height=None),
+                                      remote_scripts=ui.remote_scripts('plotly.js'))
+        def serve(route):
+            if route.request.url == 'https://plotly-test.invalid/':
+                route.fulfill(status=200, content_type='text/html', body=document)
+            elif route.request.url == ui.PLOTLY_JS_URL:
+                if fail:
+                    route.abort('failed')
+                else:
+                    route.fulfill(status=200, content_type='application/javascript', body=raw,
+                                  headers={'Access-Control-Allow-Origin': '*'})
+            else:
+                route.abort('blockedbyclient')
+        page.route('**/*', serve)
+        page.goto('https://plotly-test.invalid/', wait_until='load')
+        return page
+
+    def test_script_tag_has_no_integrity(self):
+        tag = ui.remote_script_tag(ui.remote_scripts('plotly.js')[0])
+        self.assertNotIn('integrity=', tag)
+        self.assertNotRegex(ui.PLOTLY_JS_URL, r"@[0-9]")
+
+    def test_cdn_bundle_renders_json(self):
+        page = self.page_for(self.raw)
+        page.wait_for_selector('#plot .point')
+        version = page.evaluate('Plotly.version')
+        self.assertIsInstance(version, str)
+        self.assertRegex(version, r'^\d+\.\d+\.\d+')
+        self.assertEqual(page.locator('#plot .point').count(), 2)
+        self.assertIn('jsDelivr Plotly', page.locator('#plot .gtitle').text_content())
+
+    def test_cdn_failure_cannot_run_plotly(self):
+        page = self.page_for(self.raw, fail=True)
+        self.assertEqual(page.evaluate('typeof Plotly'), 'undefined')
+        self.assertEqual(page.locator('#plot svg').count(), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

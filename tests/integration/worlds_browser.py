@@ -1,9 +1,9 @@
-"""Required Chromium contract for the school world: python tests/integration/school_browser.py -v.
+"""Required Chromium contract for the school world: python tests/integration/worlds_browser.py -v.
 
 The emoji picker comes first, then the player walks by tap, arrow keys / WASD and the on-screen pad.
 Solid props (desks, board, shelves) are never entered, whichever way the player moves.
 Invoked explicitly by the browser CI job; missing Playwright/browser is an error. WEB_UI_CHROME may name a local Chrome.
-``SharedBoardTests`` checks the opt-in shared board against a mocked GitHub API. ``CitiesTests`` sweeps the three cities (every spot, sign, tool, width and language); with WEB_UI_SHOTS=DIR it also keeps a
+``SharedBoardTests`` checks the opt-in shared board against a mocked GitHub API. ``CitiesTests`` sweeps the three cities (every spot, sign, tool, width and language); with PSWB_SHOTS=DIR it also keeps a
 screenshot of each check, a manifest.json and one index.html in DIR (Pillow writes them as WebP).
 """
 import copy
@@ -28,7 +28,6 @@ import pysaiyanweboo  # noqa: E402
 SPEC = pysaiyanweboo.example_data("school")
 CLASSROOM = '.ui-floor[data-floor="classroom"]'
 POS = f"() => {{ const s = document.querySelector('{CLASSROOM} .ui-player').style; return [parseFloat(s.getPropertyValue('--px')), parseFloat(s.getPropertyValue('--py'))]; }}"
-WALL = "() => document.querySelector('.ui-floor[data-floor=\"classroom\"]').dataset.blocked.split(',')"
 
 
 class SchoolTests(unittest.TestCase):
@@ -67,8 +66,9 @@ class SchoolTests(unittest.TestCase):
         return int(x // tile), int(y // tile)
 
     def assert_free(self, page, point):
+        wall = "() => document.querySelector('.ui-floor[data-floor=\"classroom\"]').dataset.blocked.split(',')"
         tile = int(page.get_attribute(CLASSROOM, "data-tile"))
-        rows = page.evaluate(WALL)
+        rows = page.evaluate(wall)
         self.assertEqual(rows[int(point[1] // tile)][int(point[0] // tile)], "0", f"inside a solid tile at {point}")
 
     def menu(self, page, name):
@@ -406,7 +406,7 @@ class SchoolTests(unittest.TestCase):
 
     def test_real_floor_shows_a_chosen_photo_or_the_camera_only_in_the_page(self):
         """🖼️📷 on the real floor: ask() offers camera or photo; the picture sits behind the props, is released by 🧹 or by leaving (camera), and is never stored or sent."""
-        from tools.image_support.png import rgb_png
+        from tools.check_visual_regression import rgb_png
         path = Path(self.tmp.name) / "overworld.html"
         path.write_text(pysaiyanweboo.world_document(pysaiyanweboo.example_data("overworld")), encoding="utf-8")
         photo = Path(self.tmp.name) / "room.png"
@@ -532,7 +532,6 @@ class SchoolTests(unittest.TestCase):
             self.assertLessEqual(box[1], width)
 
 
-
 class SharedBoardTests(unittest.TestCase):
     """The opt-in shared board at phone and desktop widths with every GitHub API answer mocked (nothing is posted): no fetch until asked, one anonymous
     GET per cooldown, comments as text, the posting link, local notes, a rate limit that keeps the last lines, and nothing kept across a reload."""
@@ -606,17 +605,13 @@ for _floor in FAST["floors"]:
 SIZES = {"phone": (390, 844, True), "desktop": (1280, 800, False)}
 WIDTHS = {"phone-320": (320, 640, True), "phone": (390, 844, True), "phone-landscape": (844, 390, True),
           "tablet": (768, 1024, False), "desktop": (1280, 800, False), "wide": (1920, 1080, False)}
-SHOTS = os.environ.get("WEB_UI_SHOTS")           # a folder: each check also keeps a screenshot, listed in manifest.json and index.html
+SHOTS = os.environ.get("PSWB_SHOTS")           # a folder: each check also keeps a screenshot, listed in manifest.json and index.html
 CITY_FLOOR = '.ui-floor[data-floor="{}"]'
 CITY_POS = "fl => { const s = document.querySelector(`.ui-floor[data-floor=\"${fl}\"] .ui-player`).style; return [parseFloat(s.getPropertyValue('--px')), parseFloat(s.getPropertyValue('--py'))]; }"
-CITY_TARGET = "fl => { const p = document.querySelector(`.ui-floor[data-floor=\"${fl}\"] .ui-player`); return [+p.dataset.targetX, +p.dataset.targetY]; }"
 CITY_WALK = ("fl => new Promise(done => { const p = document.querySelector(`.ui-floor[data-floor=\"${fl}\"] .ui-player`), seen = [], t0 = performance.now();"
              " const step = () => { const s = p.style, x = parseFloat(s.getPropertyValue('--px')), y = parseFloat(s.getPropertyValue('--py')); seen.push([x, y]);"
              " if ((Math.abs(x - +p.dataset.targetX) < .01 && Math.abs(y - +p.dataset.targetY) < .01) || performance.now() - t0 > 30000) done(seen);"
              " else requestAnimationFrame(step) }; requestAnimationFrame(step) })")      # every frame of the walk, until the player stands at its target
-CITY_STILL = ("() => new Promise(done => { const cam = document.querySelector('.ui-world-cam'); let last = getComputedStyle(cam).transform, same = 0, n = 0;"
-              " const step = () => { const now = getComputedStyle(cam).transform; same = now === last ? same + 1 : 0; last = now;"
-              " if (same >= 3 || ++n > 120) done(same >= 3); else requestAnimationFrame(step) }; requestAnimationFrame(step) })")   # the camera's glide (.24s) has ended
 CITY_TOP = ("sel => { const a = document.querySelector(sel), r = a.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2,"
             " e = document.elementFromPoint(x, y); return {self: !!e && (e === a || a.contains(e)), sheet: !!e?.closest('.ui-sheet'),"
             " what: (e?.closest('.ui-spot,.ui-sheet-item,.ui-world-dpad,.ui-world-side,.ui-player')?.textContent || e?.className || '').trim().slice(0, 24), x, y} }")
@@ -747,7 +742,7 @@ class CitiesTests(unittest.TestCase):
             return [f"⚠️ 目印の上に「{top['what']}」が重なり押せない（スクリプトで代用）"]
 
     def shot(self, page, kind, floor, ident, label, notes=()):
-        """One screenshot of the world (the page around it is cut off), kept only with WEB_UI_SHOTS."""
+        """One screenshot of the world (the page around it is cut off), kept only with PSWB_SHOTS."""
         if not self.out:
             return
         from PIL import Image
@@ -761,13 +756,17 @@ class CitiesTests(unittest.TestCase):
 
     def still(self, page):
         """Wait for the camera: after a walk with the camera following, or a press (focusSpot), it glides for .24 s."""
-        self.assertTrue(page.evaluate(CITY_STILL), "the camera kept moving")
+        city_still = ("() => new Promise(done => { const cam = document.querySelector('.ui-world-cam'); let last = getComputedStyle(cam).transform, same = 0, n = 0;"
+                      " const step = () => { const now = getComputedStyle(cam).transform; same = now === last ? same + 1 : 0; last = now;"
+                      " if (same >= 3 || ++n > 120) done(same >= 3); else requestAnimationFrame(step) }; requestAnimationFrame(step) })")   # the camera's glide (.24s) has ended
+        self.assertTrue(page.evaluate(city_still), "the camera kept moving")
 
     def arrows(self, page, floor):
         return page.eval_on_selector_all(f'.ui-world-spots[data-floor="{floor}"] a', "els => els.map(a => [a.getAttribute('href'), a.querySelector('.ui-world-arrow').textContent])")
 
     def sweep(self, size):
         """Every spot of every city, one after another, from the ☰ list; then a real tap on its marker."""
+        city_target = "fl => { const p = document.querySelector(`.ui-floor[data-floor=\"${fl}\"] .ui-player`); return [+p.dataset.targetX, +p.dataset.targetY]; }"
         page = self.open(size)
         self.start(page)
         for f in CITIES["floors"]:
@@ -792,7 +791,7 @@ class CitiesTests(unittest.TestCase):
                     page.click(f'.ui-world-spots[data-floor="{fl}"] a[href="{href}"]')
                     seen = page.evaluate(CITY_WALK, fl)
                     self.assertEqual([p for p in seen if blocked[city_cell(p, tile)[1]][city_cell(p, tile)[0]] == "1"], [], "walked into water")
-                    target = page.evaluate(CITY_TARGET, fl)
+                    target = page.evaluate(city_target, fl)
                     self.assertAlmostEqual(target[0], goal[0], delta=.01)
                     self.assertAlmostEqual(target[1], goal[1], delta=.01)
                     end = page.evaluate(CITY_POS, fl)

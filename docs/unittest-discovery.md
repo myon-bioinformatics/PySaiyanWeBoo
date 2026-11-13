@@ -6,7 +6,7 @@ package or browser installation. `-S` disables automatic `site` initialization
 and its usual site-packages path additions; it is not a complete isolation boundary.
 
 ```sh
-python -S -m unittest discover -s tests -p test_embedded_modules.py -v
+python -S -m unittest discover -s tests -p test_pages.py -v
 ```
 
 Validated on Linux / CPython 3.12.14: **6 tests, exit 0** (2026-11-03).
@@ -14,7 +14,7 @@ Validated on Linux / CPython 3.12.14: **6 tests, exit 0** (2026-11-03).
 To narrow the first command to a test name, use the built-in `-k` filter:
 
 ```sh
-python -S -m unittest discover -s tests -p test_embedded_modules.py -v -k test_the_embedded_module_is_the_one_source_of_ui_js
+python -S -m unittest discover -s tests -p test_pages.py -v -k test_the_embedded_module_is_the_one_source_of_ui_js
 ```
 
 `-s` is the discovery start directory, `-p` matches test filenames, `-k`

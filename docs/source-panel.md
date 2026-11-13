@@ -52,5 +52,5 @@ In Markdown cells `|` becomes `\|` and line breaks become spaces. The shared beh
 
 ## Tests
 
-`tests/test_source_panel.py` (spec validation, panel HTML, bundle) and its Node 26+ test of source.js run the same `tests/fixtures/source/cases.json`; `tests/integration/source_browser.py`
+`tests/test_pages.py` (spec validation, panel HTML, bundle) and its Node 26+ test of source.js run the same `tests/fixtures/source/cases.json`; `tests/integration/pages_browser.py`
 runs the panel in Chromium (`file://` and HTTP, the network answered by the browser's own request layer).

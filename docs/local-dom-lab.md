@@ -9,7 +9,7 @@ sanitizer or a network firewall.
 
 ```sh
 uv run --locked --group gradio python -m playwright install chromium
-uv run --locked --group gradio python tools/web_ui_serve_dom_lab.py fixture.html --css fixture.css
+uv run --locked --group gradio python tools/dom_lab.py fixture.html --css fixture.css
 ```
 
 The test actually launches Gradio on loopback, opens Chromium, and compares
@@ -24,7 +24,8 @@ Test browser requests outside the local Gradio origin are aborted. Evidence JSON
 is retained even on comparison failure and the browser/server are closed.
 
 ```sh
-WEB_UI_GRADIO_TEST=1 BTK_ROOT=/path/to/pinned/browser-test-kit uv run --group gradio pytest tests/integration/test_gradio_dom.py
+git clone https://github.com/myon-bioinformatics/BrowserTestKit .browser-test-kit-dom   # the pinned commit: see gradio-dom.yml
+uv run --group gradio pytest tests/integration/test_gradio_dom.py   # evidence: build/gradio-dom/gradio-dom.json
 ```
 
 The CI lane supplies browser-test-kit commit

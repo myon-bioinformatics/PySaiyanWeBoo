@@ -72,7 +72,7 @@ Its bounded-list repair is retained unchanged.
 
 ## Verification
 
-`PYTHONPATH=. python -m pytest tests/test_world_motion.py` covers finite limits,
+`PYTHONPATH=. python -m pytest tests/test_worlds.py` covers finite limits,
 constant speed, seeded continuous loops, retarget/pause/arrival, daily boundaries,
 UTC offsets, Node numerical parity, and a deterministic DOM/clock event harness.
 The harness covers tap, drag/pinch/cancel, keyboard form, floor switching,

@@ -6,8 +6,8 @@ on:
       - 'tools/build/studio-audio/**'
       - tools/flutter_migration_inventory.py
       - docs/flutter-migration-inventory.json
-      - tests/test_successor_tools.py
-      - tests/integration/successor_browser.py
+      - tests/test_flutter.py
+      - tests/integration/flutter_browser.py
       - .github/workflows/successor-studios.yml
   push:
     branches: [main]
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26'
-      - run: uv run --locked --only-group world-test python -m pytest -q tests/test_successor_tools.py
+      - run: uv run --locked --only-group world-test python -m pytest -q tests/test_flutter.py
       - run: npm ci --prefix tools/build/studio-audio --ignore-scripts
       - run: node tools/build/studio-audio/build.mjs build/site/vendor
       - name: Verify two builds produce identical audio bytes
@@ -56,9 +56,10 @@ jobs:
           pactl set-default-sink studio_test
           pactl load-module module-native-protocol-tcp listen=127.0.0.1 port=4714 auth-ip-acl=127.0.0.1
           pactl info
-      - run: uv run --locked --only-group world-test python tests/integration/successor_browser.py -v
+      - run: uv run --locked --only-group world-test python tests/integration/flutter_browser.py -v
+        # 🌱 the tests read these names: rename them together with the list in tests/support.py
         env:
-          WEBUI_BROWSER: ${{ matrix.browser }}
+          PSWB_BROWSER: ${{ matrix.browser }}
           PULSE_SERVER: tcp:127.0.0.1:4714
       - uses: actions/upload-artifact@v7
         if: always()

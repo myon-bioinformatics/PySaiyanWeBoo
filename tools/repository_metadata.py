@@ -1,12 +1,15 @@
-"""Local repository-metadata v1 producer (stdlib only).
+"""Local repository-metadata v1 producer and advisory tooling versions (stdlib only).
+
+``repo-metadata`` writes the identity record; ``tooling`` prints observed versions (reported, never pinned or
+rejected). The probes sit under the historical ``canonical`` name so tests can patch shutil/subprocess.
 
 Replaces the former vendored ``gh_identity.py repo-metadata --format v1``
 invocation. Schema and JSON/JSONL identity path stay the Ironmate v1 contract.
 """
 from __future__ import annotations
 
-import argparse, json, os, re, subprocess, sys
-from datetime import datetime, timezone; from pathlib import Path
+import argparse, json, os, platform, re, shutil, subprocess, sys
+from datetime import datetime, timezone; from importlib import metadata as importlib_metadata; from pathlib import Path
 
 REPOSITORY_METADATA_V1_SCHEMA = "1.0"
 _RM_OWNER = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")
@@ -174,9 +177,109 @@ def write_repository_metadata(record: dict, output_dir: str | Path) -> dict[str,
     return {"json": "repository-metadata.json", "jsonl": "repository-metadata.jsonl"}
 
 
+# --- 🧰 tooling versions (was tools/web_ui_tooling_meta.py) ---
+
+RUNTIME_KEYS = ("python",)
+COMMANDS = ("git", "gh", "node", "npx")
+DISTRIBUTIONS = (("pytest", "pytest"), ("stagehand", "stagehand"))
+_PACKAGE_VERSION = re.compile(
+    r"(?:[0-9]+!)?[0-9]+(?:\.[0-9]+)*(?:(?:a|b|rc)[0-9]+)?(?:\.post[0-9]+)?(?:\.dev[0-9]+)?"
+    r"(?:\+(?:[0-9A-Za-z][0-9A-Za-z.-]*)?)?"
+)
+_TOOL_ARGS = {
+    "git": "--version",
+    "gh": "--version",
+    "node": "--version",
+    "npm": "--version",
+    "npx": "--version",
+}
+_VERSION = r"[0-9]+(?:\.[0-9]+)+(?:[-+._][0-9A-Za-z][0-9A-Za-z.-]*)?"
+_TOOL_PATTERNS = {
+    "git": re.compile(r"git version (?P<v>" + _VERSION + r")(?:\s.*)?"),
+    "gh": re.compile(r"gh version (?P<v>" + _VERSION + r")(?:\s.*)?"),
+    "node": re.compile(r"v(?P<v>" + _VERSION + r")"),
+    "npm": re.compile(r"(?P<v>" + _VERSION + r")"),
+    "npx": re.compile(r"(?P<v>" + _VERSION + r")"),
+    "python": re.compile(
+        r"(?P<v>(?:[0-9]+!)?[0-9]+(?:\.[0-9]+)*(?:(?:a|b|rc)[0-9]+)?(?:\.post[0-9]+)?"
+        r"(?:\.dev[0-9]+)?(?:\+(?:[0-9A-Za-z][0-9A-Za-z.-]*)?)?)"
+    ),
+}
+
+
+def tool_versions(commands=(), *, include_python=False, timeout=5.0):
+    """Explicitly requested, allowlisted tool versions; missing tools are omitted."""
+    if isinstance(commands, (str, bytes)):
+        raise TypeError("commands must be a sequence of command names")
+    unknown = [command for command in commands if command not in _TOOL_ARGS]
+    if unknown:
+        raise ValueError("unsupported tooling command: " + ", ".join(map(str, unknown)))
+    observed = {}
+    if include_python:
+        match = _TOOL_PATTERNS["python"].fullmatch(platform.python_version())
+        if match:
+            observed["python"] = match.group("v")
+    for command in commands:
+        executable = shutil.which(command)
+        if not executable:
+            continue
+        try:
+            result = subprocess.run(
+                [executable, _TOOL_ARGS[command]],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        text = (result.stdout.strip() or result.stderr.strip()) if result.returncode == 0 else ""
+        first = next((line.strip() for line in text.splitlines() if line.strip()), "")
+        match = _TOOL_PATTERNS[command].fullmatch(first)
+        if match and len(match.group("v")) <= 32:
+            observed[command] = match.group("v")
+    return observed
+
+
+# Historical alias: tests patch canonical.shutil / canonical.subprocess /
+# canonical.tool_versions the same way they patched the old vendored module.
+canonical = sys.modules[__name__]
+
+
+def observe_package_version(distribution: str) -> str | None:
+    try:
+        value = importlib_metadata.version(distribution)
+    except importlib_metadata.PackageNotFoundError:
+        return None
+    candidate = value.strip()
+    match = _PACKAGE_VERSION.fullmatch(candidate)
+    if not match or len(match.group(0)) > 32:
+        return None
+    return match.group(0)
+
+
+def collect() -> dict[str, object]:
+    owners = list(RUNTIME_KEYS) + list(COMMANDS) + [key for key, _ in DISTRIBUTIONS]
+    if len(owners) != len(set(owners)):
+        raise ValueError("tooling keys must have exactly one canonical source")
+    observed = canonical.tool_versions(COMMANDS, include_python=True)
+    for key, distribution in DISTRIBUTIONS:
+        value = observe_package_version(distribution)
+        if value is not None:
+            observed[key] = value
+    return {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "runtime": {key: observed[key] for key in RUNTIME_KEYS if key in observed},
+        "commands": {key: observed[key] for key in COMMANDS if key in observed},
+        "packages": {key: observed[key] for key, _ in DISTRIBUTIONS if key in observed},
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Emit repository-metadata v1 JSON/JSONL")
-    parser.add_argument("cmd", choices=("repo-metadata",))
+    parser = argparse.ArgumentParser(description="Emit repository-metadata v1 JSON/JSONL, or the observed tooling versions")
+    parser.add_argument("cmd", choices=("repo-metadata", "tooling"))
     parser.add_argument("--root", default=".")
     parser.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY"))
     parser.add_argument("--format", choices=("v1",), default="v1")
@@ -184,8 +287,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--generated-at")
     parser.add_argument("--output-dir")
     ns = parser.parse_args(argv)
-    if ns.cmd != "repo-metadata":  # pragma: no cover - argparse choices already enforce
-        raise SystemExit("unsupported command")
+    if ns.cmd == "tooling":
+        print(json.dumps(collect(), indent=2, ensure_ascii=False))
+        return 0
     if ns.format != "v1":  # pragma: no cover - argparse choices already enforce
         raise SystemExit("only --format v1 is supported")
     if not ns.repository:

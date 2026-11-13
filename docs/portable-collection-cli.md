@@ -42,5 +42,5 @@ Both print `[{"name":"Aoi","topics":["python"]}]` and a newline. Contract:
 
 `tests/fixtures/collection_filter_cases.json` is shared across both languages.
 Run `python -S pysaiyanweboo.py --collection` with JSON stdin, `uv run pytest
-tests/test_collection_filter.py`, and `tests/test_collection_filter.py` (it also runs the Node route).
+tests/test_pages.py` (it also runs the Node route).
 A consumer should pin the source revision and verify its bytes before vendoring.

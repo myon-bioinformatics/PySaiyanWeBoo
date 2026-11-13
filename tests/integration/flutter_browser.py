@@ -17,7 +17,7 @@ class SuccessorBrowser(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp=tempfile.TemporaryDirectory()
         u.write_site(cls.tmp.name)
-        assets=Path(os.environ.get('WEBUI_AUDIO_ASSETS',ROOT/'build/site/vendor'))
+        assets=ROOT/'build/site/vendor'  # successor-studios.yml builds it there
         if not (assets/'tone-studio.min.js').is_file():
             raise RuntimeError('Build the optional audio asset before this acceptance suite')
         shutil.copytree(assets,Path(cls.tmp.name)/'vendor',dirs_exist_ok=True)
@@ -25,10 +25,7 @@ class SuccessorBrowser(unittest.TestCase):
         threading.Thread(target=cls.server.serve_forever,daemon=True).start()
         cls.origin=f'http://127.0.0.1:{cls.server.server_port}'
         cls.pw=sync_playwright().start()
-        options={'headless':True}
-        if os.environ.get('WEBUI_CHROMIUM'):
-            options.update(executable_path=os.environ['WEBUI_CHROMIUM'],args=['--no-sandbox','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'])
-        cls.browser=getattr(cls.pw,os.environ.get('WEBUI_BROWSER','chromium')).launch(**options)
+        cls.browser=getattr(cls.pw,os.environ.get('PSWB_BROWSER','chromium')).launch(headless=True)
 
     @classmethod
     def tearDownClass(cls):

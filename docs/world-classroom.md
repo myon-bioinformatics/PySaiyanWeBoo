@@ -39,7 +39,7 @@ python -S -c "import pysaiyanweboo as u,sys;sys.stdout.write(u.world_document({'
 ```
 
 A bad spec exits with status 2 and one `error:` line on stderr (no traceback, nothing on stdout). Add `--theme NAME` for another theme.
-Python, the CLI and `py_launch.cjs` return identical bytes; `tests/test_world_classroom.py` checks that.
+Python, the CLI and `py_launch.cjs` return identical bytes; `tests/test_worlds.py` checks that.
 
 ## Who does what
 
@@ -111,7 +111,7 @@ so the thing you walked to stays in the view above the sheet.
 `dial_html(name, minimum=, maximum=, step=, value=, label=, attrs=)` is a rotary dial over an ordinary `<input type="range">`: `DIAL_CSS` draws the knob and its
 pointer (`--ui-dial-angle`, −135° to 135°), `bindDial(root)` from `dial.js` turns it by a drag around its centre or the wheel, and the input keeps the value, the keys,
 the form and the aria-label, so a listener on `input`/`change` sees a dial and a slider the same way. The map's 🔍 is its first use; `dialAngle` and `dialValue` are the
-pure maps between a value and an angle (`tests/test_theme_seed.py` checks them in Node).
+pure maps between a value and an angle (`tests/test_pages.py` checks them in Node).
 
 ### Languages (🌐)
 
@@ -182,9 +182,9 @@ the metro beside them and the Seine, with a 🔥 in each block. The cities are t
 * Two points on one tile: the earlier keeps it and the other goes to the nearest free tile (never into water). Roads and water are merged into rectangles, so a
   place stays far below the 512-prop limit.
 * The coordinates in `EXAMPLES["cities"]` are approximate (about 100 m, read off public maps): a miniature shows where things stand relative to each other, not exact positions.
-  There are no facility names in TOKYO, only stations and exits, and no religious buildings in any of the three cities (`tests/test_world_places.py` keeps it so).
-* Evidence: `tests/integration/school_browser.py` (`CitiesTests`) walks to every spot of the three cities on a phone and a desktop, touches every sign, and checks the
-  tools, keys, categories, favourites, six widths, eleven languages and the page without JavaScript. With `WEB_UI_SHOTS=DIR` it also keeps a WebP of each check with
+  There are no facility names in TOKYO, only stations and exits, and no religious buildings in any of the three cities (`tests/test_worlds.py` keeps it so).
+* Evidence: `tests/integration/worlds_browser.py` (`CitiesTests`) walks to every spot of the three cities on a phone and a desktop, touches every sign, and checks the
+  tools, keys, categories, favourites, six widths, eleven languages and the page without JavaScript. With `PSWB_SHOTS=DIR` it also keeps a WebP of each check with
   a `manifest.json` and an `index.html`; the reviewed set lives under `docs/evidence/cities-<date>/`. The three `cities-*.gif` demos are the same operations in motion.
 * From Python: `pysaiyanweboo.place_floor(points, meters=, tile=, links=, rivers=, area=, start=, id=, label=)`; from another repository: `--world -` with `place` as above.
   The cities open in the **dots** name layer (below), so the crowded centre is dots, not a pile of names; `"names": "names"` on the world shows every name.
@@ -193,7 +193,7 @@ the metro beside them and the Seine, with a 🔥 in each block. The cities are t
 
 `"real": true` on a floor (also beside a `land` or `classroom`) lets the visitor put **a photo they choose or their camera** behind that floor's props, spots and
 player. It is shown in the page and nothing else: a photo is an object URL on an `<img>`, the camera a stream on a `<video>`; neither is drawn, read back,
-recorded, stored (not even in the ⭐/🌐 cache) or sent, and the guard test in `tests/test_python_wrapper.py` pins that. The camera is released by 🧹, by
+recorded, stored (not even in the ⭐/🌐 cache) or sent, and the guard test in `tests/test_pages.py` pins that. The camera is released by 🧹, by
 leaving the floor, or by closing the page; a refused or missing camera says ⚠️ and the floor stays plain.
 
 * On a real floor the ⋯ menu has one button, 🖼️📷. It opens the shared dialog (below) with 📷 camera, 🖼️ photo, 🧹 clear (only once something is shown) and ✖️.
@@ -263,7 +263,7 @@ in Tokyo), so names sort in recording order and read the same in any time zone; 
 the same timestamp and commit. Without `--timestamp` an existing file is refused unless `--force`, so a repeated run by hand or by an agent
 either keeps its own files or says so. `pysaiyanweboo.add_gif_arguments`, `gif_targets` and `gif_targets_from` are these rules as functions
 (record_demo imports them under the same names; `ext=".png"` names stills, so other recorders such as BrowserTestKit's evidence_gif can share them):
-the browser tests name their GIFs through them from `WEB_UI_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"`.
+the browser tests name their GIFs through them from `PSWB_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"`.
 
 | File | Shows |
 |---|---|
@@ -284,7 +284,7 @@ the browser tests name their GIFs through them from `WEB_UI_GIFS="DIR [--prefix 
 
 A scene may end with `cam.zoom((x, y))` (or an anchor name or arrow emoji such as `cam.zoom("↘️")`): a smooth zoom toward that point that stays (the easing of Ironmate's `png_zoom_gif.py`, taken into this
 tool and written by the same encoder rather than kept as a second tool), because the README shows the GIFs small.
-The frames are cropped to the world, not the whole page. A new operation is one `@scene` function in the tool. `tests/integration/school_browser.py` records every scene, so a UI change that breaks a demo
+The frames are cropped to the world, not the whole page. A new operation is one `@scene` function in the tool. `tests/integration/worlds_browser.py` records every scene, so a UI change that breaks a demo
 fails the browser job instead of leaving a stale GIF. The page asks for Meiryo first; these were recorded on Linux, where it is absent, so the fallback
 face shows (record on Windows to get Meiryo).
 
@@ -294,7 +294,7 @@ deliberately does not have. The shared GitHub board (`docs/world-shared-board.md
 ## Verification
 
 ```
-PYTHONPATH=. python -m pytest -q tests/test_world_classroom.py          # oracle, validation, generator, HTML, Node 26 parity
-PYTHONPATH=. python -m pytest -q tests/test_world_places.py             # projection, bridges, nudging, scatter, flip, the three cities
-WEB_UI_CHROME=/path/to/chrome python tests/integration/school_browser.py -v   # real browser: picker, keys, pad, taps, no desk crossing, 320..1280px
+PYTHONPATH=. python -m pytest -q tests/test_worlds.py          # oracle, validation, generator, HTML, Node 26 parity
+PYTHONPATH=. python -m pytest -q tests/test_worlds.py             # projection, bridges, nudging, scatter, flip, the three cities
+WEB_UI_CHROME=/path/to/chrome python tests/integration/worlds_browser.py -v   # real browser: picker, keys, pad, taps, no desk crossing, 320..1280px
 ```
