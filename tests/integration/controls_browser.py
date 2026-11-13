@@ -665,6 +665,8 @@ class WorldBrowserTests(unittest.TestCase):
                 browser = pw.chromium.launch()
                 try:
                     page = browser.new_page()
+                    # Posting can cross a real minute boundary; this assertion compares one fixed instant.
+                    page.clock.set_fixed_time(1794528000000)
                     page.goto(origin + '/index.html')
                     board = page.locator('.ui-board')
                     base = int(board.get_attribute('data-chars'))
