@@ -6,7 +6,7 @@ escaped. These helpers emit HTML, not a Python application server.
 
 `run_node()` also works when only `pysaiyanweboo.py` is copied. It requires an installed
 Node 26+ executable; HTML generation does not require Node. A checkout uses
-`vendor/node_launch.py`; a standalone copy uses an embedded snapshot of that
+`vendor/njs_launch.py`; a standalone copy uses an embedded snapshot of that
 same stdlib launcher. Updating the vendor requires refreshing the snapshot;
 the regression suite checks their equality. Both paths preserve text output,
 nonzero exit results, and `subprocess.TimeoutExpired` with raw byte output.
