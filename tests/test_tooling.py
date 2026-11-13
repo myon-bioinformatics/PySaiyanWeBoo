@@ -890,7 +890,7 @@ def _complete_fake_run(argv: list[str], **kwargs) -> subprocess.CompletedProcess
     return subprocess.CompletedProcess(tuple(argv), rc, stdout, stderr)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _njs_launch_process_layer_stub(monkeypatch):
     njs_launch = ui._njs_launch_module()
     real_run = njs_launch.subprocess.run
@@ -1008,6 +1008,7 @@ def _assert_same_outcome(old_call, new_call):
     assert _proc_bytes(old_value) == _proc_bytes(new_value)
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_normal_run_matches_legacy(tmp_path):
     script = _write_fake_node(
         tmp_path,
@@ -1026,6 +1027,7 @@ def test_normal_run_matches_legacy(tmp_path):
     _assert_same_outcome(old, new)
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_explicit_missing_node_path_raises_file_not_found(tmp_path):
     missing = tmp_path / "definitely-not-node"
     assert not missing.exists()
@@ -1046,6 +1048,7 @@ def test_explicit_missing_node_path_raises_file_not_found(tmp_path):
     assert str(missing) in (new_exc.value.filename or "")
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_node_not_on_path_raises_runtime_error(tmp_path, monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda name, **kw: None)
     ui._njs_launch_module().clear_probe_cache()
@@ -1058,6 +1061,7 @@ def test_node_not_on_path_raises_runtime_error(tmp_path, monkeypatch):
         ui.run_node(script, timeout=30)
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_node_v20_on_path_names_found_version(tmp_path, monkeypatch):
     script = _write_fake_node(tmp_path, version="v20.0.0", on_eval="pass")
     monkeypatch.setattr(
@@ -1070,6 +1074,7 @@ def test_node_v20_on_path_names_found_version(tmp_path, monkeypatch):
         ui.run_node(tmp_path / "check.mjs")
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_node_v20_rejected_while_legacy_would_run(tmp_path):
     script = _write_fake_node(
         tmp_path,
@@ -1084,6 +1089,7 @@ def test_node_v20_rejected_while_legacy_would_run(tmp_path):
         ui.run_node(entry, node=script, timeout=30)
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 @pytest.mark.parametrize("major", [24, 25])
 @pytest.mark.parametrize("explicit", [False, True])
 def test_below_node_26_names_found_version(tmp_path, monkeypatch, major, explicit):
@@ -1095,6 +1101,7 @@ def test_below_node_26_names_found_version(tmp_path, monkeypatch, major, explici
         ui.run_node(tmp_path / "check.mjs", **kwargs)
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_nonzero_exit_preserves_stderr(tmp_path):
     script = _write_fake_node(
         tmp_path,
@@ -1113,6 +1120,7 @@ def test_nonzero_exit_preserves_stderr(tmp_path):
     _assert_same_outcome(old, new)
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_timeout_cmd_includes_resolved_node(tmp_path, monkeypatch):
     script = _write_fake_node(tmp_path, version="v26.0.0", on_eval="import time; time.sleep(60)")
     entry = tmp_path / "demo.js"
@@ -1134,6 +1142,7 @@ def test_timeout_cmd_includes_resolved_node(tmp_path, monkeypatch):
     assert info.value.cmd == [str(script), str(entry)]
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_timeout_matches_legacy(monkeypatch, tmp_path):
     script = _write_fake_node(tmp_path, version="v26.0.0", on_eval="pass")
     entry = tmp_path / "demo.js"
@@ -1161,6 +1170,7 @@ def test_timeout_matches_legacy(monkeypatch, tmp_path):
     _assert_same_outcome(old, new)
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_stdin_closed_nonzero_returns_legacy_stderr(tmp_path):
     script = _write_fake_node(tmp_path, version="v26.0.0", close_stdin_unread=True)
     entry = tmp_path / "demo.js"
@@ -1180,6 +1190,7 @@ def test_stdin_closed_nonzero_returns_legacy_stderr(tmp_path):
     assert new_proc.stderr == "boom\n"
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_stdin_closed_zero_exit_returns_stdout(tmp_path):
     script = _write_fake_node(
         tmp_path,
@@ -1202,6 +1213,7 @@ def test_stdin_closed_zero_exit_returns_stdout(tmp_path):
     _assert_same_outcome(old, new)
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_bytes_stdout_preserved(tmp_path):
     script = _write_fake_node(
         tmp_path,
@@ -1218,11 +1230,13 @@ def test_bytes_stdout_preserved(tmp_path):
     assert done.stdout == _BINARY_STDOUT.decode("utf-8", errors="replace")
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_decode_node_process_bytes_normalizes_line_endings():
     assert ui._decode_node_process_bytes(b"a\r\nb\rc") == "a\nb\nc"
     assert ui._decode_node_process_bytes("x\r\ny\rz") == "x\ny\nz"
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_run_node_normalizes_stdout_line_endings(tmp_path):
     script = _write_fake_node(
         tmp_path,
@@ -1238,6 +1252,7 @@ def test_run_node_normalizes_stdout_line_endings(tmp_path):
     assert result.stdout == "a\nb\nc"
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_timeout_expired_keeps_raw_output_and_stderr_bytes(tmp_path, monkeypatch):
     script = _write_fake_node(tmp_path, version="v26.0.0", on_eval="pass")
     entry = tmp_path / "demo.js"
@@ -1280,6 +1295,7 @@ def _pytest_on_mutated_web_ui(replacements: list[tuple[str, str]], test_id: str)
         return completed.returncode
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_mutation_subprocess_broken_decode_fails_line_ending_test():
     rc = _pytest_on_mutated_web_ui(
         [
@@ -1293,6 +1309,7 @@ def test_mutation_subprocess_broken_decode_fails_line_ending_test():
     assert rc != 0
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_mutation_subprocess_broken_raise_fails_v20_path_test():
     rc = _pytest_on_mutated_web_ui(
         [
@@ -1306,6 +1323,7 @@ def test_mutation_subprocess_broken_raise_fails_v20_path_test():
     assert rc != 0
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_mutation_subprocess_broken_run_fails_normal_parity_test():
     rc = _pytest_on_mutated_web_ui(
         [
@@ -1319,6 +1337,7 @@ def test_mutation_subprocess_broken_run_fails_normal_parity_test():
     assert rc != 0
 
 
+@pytest.mark.usefixtures("_njs_launch_process_layer_stub")
 def test_run_node_without_argv_matches_legacy_bare_node(tmp_path):
     script = _write_fake_node(
         tmp_path,
