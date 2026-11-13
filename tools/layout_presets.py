@@ -11,7 +11,7 @@ radio like a person would, and checks the layout: no horizontal overflow, and th
 items neither overlap nor leave the viewport. Several presets may pass; all passing presets
 are candidates. Node reaches this tool through vendor/py_launch.cjs (no Node twin).
 
-    python -S tools/layout_presets.py css layout-presets.json   # python -S web_ui.py --example layout-presets > layout-presets.json
+    python -S tools/layout_presets.py css layout-presets.json   # python -S pysaiyanweboo.py --example layout-presets > layout-presets.json
     python tools/layout_presets.py sweep viewer.html --presets layout-presets.json \\
         --widths 320 384 768 1280 --items ".ui-matrix-tiles li" --out candidates.json
 """

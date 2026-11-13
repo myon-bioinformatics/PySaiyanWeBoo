@@ -374,7 +374,7 @@ ONE_LINER = {"schema": ui.WORLD_SCHEMA, "avatars": ["🙂", "🐱"], "floors": [
 def _cli(*args, stdin, command=None):
     import os
     import sys
-    cmd = command or [sys.executable, "-S", "web_ui.py"]
+    cmd = command or [sys.executable, "-S", "pysaiyanweboo.py"]
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return subprocess.run([*cmd, *args], input=stdin.encode("utf-8"), capture_output=True, cwd=root, timeout=60)
 
@@ -403,7 +403,7 @@ def test_world_from_stdin_is_bounded():
 def test_node26_reaches_the_same_page_through_py_launch():
     node = _node26()
     expected = ui.world_document(ONE_LINER)
-    result = _cli("--", "web_ui.py", "--world", "-", stdin=json.dumps(ONE_LINER, ensure_ascii=False), command=[node, "vendor/py_launch.cjs"])
+    result = _cli("--", "pysaiyanweboo.py", "--world", "-", stdin=json.dumps(ONE_LINER, ensure_ascii=False), command=[node, "vendor/py_launch.cjs"])
     assert result.returncode == 0 and result.stdout.decode("utf-8") == expected
 
 
@@ -456,6 +456,21 @@ def test_demo_recorder_refuses_before_it_opens_a_browser(tmp_path, capsys):
 
 
 JST_RUN = datetime(2026, 11, 8, 20, 34, 12, tzinfo=timezone(timedelta(hours=9)))
+
+
+def test_output_names_live_in_pysaiyanweboo_for_every_recorder(tmp_path):
+    """The naming rules are pysaiyanweboo's (record_demo re-exports them): .png stills too, and git-commit of a chosen checkout."""
+    import pysaiyanweboo
+    assert record_demo.gif_targets is pysaiyanweboo.gif_targets and record_demo.add_gif_arguments is pysaiyanweboo.add_gif_arguments
+    assert record_demo.source_commit is pysaiyanweboo.checkout_commit                  # pysaiyanweboo.source_commit is the module's own
+    assert pysaiyanweboo.gif_targets(tmp_path, ["top"], prefix="p-", suffix="-dark", ext=".png") == {"top": tmp_path / "p-top-dark.png"}
+    assert pysaiyanweboo.gif_targets_from(f"{tmp_path} --suffix=-x --git-commit", ["top"], revision="abc1234", ext=".png") == {
+        "top": tmp_path / "top-x-abc1234.png"}
+    for bad in ("png", ".PNG", "", ".toolongext"):
+        with pytest.raises(ValueError):
+            pysaiyanweboo.gif_targets(tmp_path, ["top"], ext=bad)
+    with pytest.raises(ValueError, match="needs a git checkout"):
+        pysaiyanweboo.gif_targets(tmp_path, ["top"], run_details=["git-commit"], root=tmp_path, force=True)
 
 
 def test_demo_recorder_names_files_with_a_prefix_a_suffix_and_run_details_in_order(tmp_path):

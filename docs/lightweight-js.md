@@ -15,18 +15,18 @@ Acceptable lightweight JS meets all of:
    source KB/MB and network transfer size alone do not define lightweight
 
 web-ui’s first-party ES modules (`ui.js`, `stub.js`,
-`repository-diagnostics.js`, Python data in `web_ui.py`, written by `--site`) already sit inside this bar. Execution JS must
+`repository-diagnostics.js`, Python data in `pysaiyanweboo.py`, written by `--site`) already sit inside this bar. Execution JS must
 be owned and version-pinned by the project. Do not execute arbitrary JavaScript
 found inside API responses.
 
 ## Python layout wrapper
 
-`web_ui.py` is the stdlib one-liner surface for layout-including static output:
+`pysaiyanweboo.py` is the stdlib one-liner surface for layout-including static output:
 
 ```sh
 python -S -c 'from web_ui import render_document; print(render_document("Hello"))'
-printf 'Hello' | python -S web_ui.py --title Demo > demo.html
-printf 'Hello' | python -S web_ui.py --asset-base . --with-scripts ui.js > demo.html
+printf 'Hello' | python -S pysaiyanweboo.py --title Demo > demo.html
+printf 'Hello' | python -S pysaiyanweboo.py --asset-base . --with-scripts ui.js > demo.html
 ```
 
 Scripts are omitted by default. `--with-scripts` / `shared_scripts()` only emit
@@ -57,7 +57,7 @@ Current allowlist entries:
   (pinned 4.0.1 browser bundle, JSZip included;
   `sha384-qb0Xhi7LLYpvW1HCK6oMrmDLSY9sy7vwm6ZlV6KjtrlL9yg30+YN4neTwnmX+Kp8`)
 
-Plotly's distribution contract lives in `web_ui.py`: `PLOTLY_JS_URL` and
+Plotly's distribution contract lives in `pysaiyanweboo.py`: `PLOTLY_JS_URL` and
 `PLOTLY_JS_MAX_BYTES` (8 MiB). Do not use `cdn.plot.ly/plotly-latest.min.js`;
 Plotly's official documentation identifies that endpoint as legacy v1.58.5,
 frozen since July 2021: <https://plotly.com/javascript/getting-started/>.
@@ -81,7 +81,7 @@ integrity)` and `fetch_pinned_asset(url, integrity)` take either a 64-hex SHA-25
 an SRI value (`sha256-`/`sha384-`/`sha512-`), so one pin serves both the
 `<script integrity>` attribute and offline embedding. `verify_remote_script(name,
 raw)` checks local bytes of an allowlisted script against `REMOTE_SCRIPT_INTEGRITY`.
-`python web_ui.py --sri FILE` prints the sha384 SRI and SHA-256 hex for a new pin.
+`python pysaiyanweboo.py --sri FILE` prints the sha384 SRI and SHA-256 hex for a new pin.
 On 2026-10-17 the `pptxgenjs` pin also matched `package/dist/pptxgen.bundle.js`
 from `npm pack pptxgenjs@4.0.1` (460,889 bytes); set
 `WEB_UI_PPTXGENJS_TEST_FILE` to that file to re-run the check.
@@ -107,7 +107,7 @@ renderers do not download packages or assemble Office XML.
 ## Node wrapping for pytest
 
 Browser protocol behavior stays outside web-ui. There are no .js test files: like the
-modules in web_ui.py, the Node side of a test is a Python string, and `node_js()` in
+modules in pysaiyanweboo.py, the Node side of a test is a Python string, and `node_js()` in
 `tests/support.py` writes web_ui's modules beside it and runs it through `run_node`:
 
 ```python

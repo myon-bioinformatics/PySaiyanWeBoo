@@ -10,7 +10,7 @@ name: Platform matrix
 on:
   pull_request:
     paths:
-      - 'web_ui.py'
+      - 'pysaiyanweboo.py'
       - 'tests/integration/controls_browser.py'
       - 'tests/fixtures/photo_import_cases.json'
       - 'tests/fixtures/pattern_assets.json'
@@ -78,7 +78,7 @@ jobs:
           uv run --locked --group gradio python -m unittest -v "${args[@]}"
       - name: Build and serve the example pages
         run: |
-          python3 -S web_ui.py --site build/site
+          python3 -S pysaiyanweboo.py --site build/site
           python3 -m http.server 8000 --directory build/site > /tmp/web-ui-http.log 2>&1 &
           python3 - <<'PY'
           import time
@@ -101,9 +101,9 @@ jobs:
         run: |
           mkdir -p build/platform/adapters build/platform/app-results
           status=0
-          mapfile -t ids < <(python3 -S web_ui.py --btk-adapter list)
+          mapfile -t ids < <(python3 -S pysaiyanweboo.py --btk-adapter list)
           for id in "${ids[@]}"; do
-            python3 -S web_ui.py --btk-adapter "$id" > "build/platform/adapters/$id.json"
+            python3 -S pysaiyanweboo.py --btk-adapter "$id" > "build/platform/adapters/$id.json"
             uv run --locked --group gradio python .browser-test-kit/tools/platform_probe.py collect --browser "$BROWSER" --profile "$PROFILE" \
               --adapter "build/platform/adapters/$id.json" --widths 320 384 --width-step 8 --out build/platform/app-results \
               --evidence-dir "build/platform/app-results/$id/$RUNNER_OS-$BROWSER-$PROFILE" || status=1

@@ -1,10 +1,10 @@
 # Python UI one-liners
 
-`web_ui.py` remains one stdlib-only Python 3.10+ file. Copy it into the import
+`pysaiyanweboo.py` remains one stdlib-only Python 3.10+ file. Copy it into the import
 path or use the repository root. All labels, values and default bodies are
 escaped. These helpers emit HTML, not a Python application server.
 
-`run_node()` also works when only `web_ui.py` is copied. It requires an installed
+`run_node()` also works when only `pysaiyanweboo.py` is copied. It requires an installed
 Node 26+ executable; HTML generation does not require Node. A checkout uses
 `vendor/node_launch.py`; a standalone copy uses an embedded snapshot of that
 same stdlib launcher. Updating the vendor requires refreshing the snapshot;
@@ -28,7 +28,7 @@ python -S -c 'from web_ui import *; print(render_document(trusted_html=select(((
 python -S -c 'from web_ui import *; print(render_document(trusted_html=section_browser((("概要","概要の本文"),("詳細","詳細の本文")),full_text="全文"),scripts=shared_scripts(".",names=("controls.js",))))' > sections.html
 ```
 
-Serve `sections.html` alongside the written `js/controls.js` (`python -S web_ui.py --site DIR`) over local HTTP (for example
+Serve `sections.html` alongside the written `js/controls.js` (`python -S pysaiyanweboo.py --site DIR`) over local HTTP (for example
 `python -m http.server`). Native controls/disclosures require no script;
 section switching requires explicit local `controls.js`. With JS disabled,
 full text stays visible and the section selector stays disabled. Supply

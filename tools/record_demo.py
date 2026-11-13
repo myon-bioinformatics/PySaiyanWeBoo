@@ -451,9 +451,9 @@ def _paris(page, cam, tmp):
 def _oneliner(page, cam, tmp):
     """From another repository: one command writes the school page. The output shown is the real output of that run."""
     spec = '{"schema":"web-ui-world/1","avatars":["🙂","先生"],"floors":[{"classroom":{"rows":5,"groups":3}}]}'
-    command = f"echo '{spec}' | python -S web_ui.py --world - > school.html"
+    command = f"echo '{spec}' | python -S pysaiyanweboo.py --world - > school.html"
     began = time.monotonic()
-    done = subprocess.run([sys.executable, "-S", str(ROOT / "web_ui.py"), "--world", "-"], input=spec, text=True, capture_output=True,
+    done = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--world", "-"], input=spec, text=True, capture_output=True,
                           check=True, encoding="utf-8")
     seconds = time.monotonic() - began
     (tmp / "oneliner.html").write_text(done.stdout, encoding="utf-8")
@@ -484,99 +484,11 @@ def launch(pw, chrome=None, extra=()):
     return pw.chromium.launch(executable_path=chrome, args=args) if chrome else pw.chromium.launch(args=args)
 
 
-NAME_PART = re.compile(r"[\w.-]{0,64}")
-
-
-def name_part(value):
-    """argparse type for ``--prefix`` / ``--suffix``: letters, digits, ``_``, ``.`` and ``-`` only (up to 64), so the name stays one file name."""
-    if not NAME_PART.fullmatch(value):
-        raise argparse.ArgumentTypeError(f"{value!r}: letters, digits, _ . - only, up to 64 characters")
-    return value
-
-
-RUN_DETAILS = ("timestamp", "git-commit")
-
-
-class _AddRunDetail(argparse.Action):
-    """``--timestamp`` / ``--git-commit``: append that detail to ``run_details`` in the order the options are given (a repeat adds nothing)."""
-
-    def __init__(self, option_strings, dest, detail, **kwargs):
-        super().__init__(option_strings, dest, nargs=0, default=[], **kwargs)
-        self.detail = detail
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        details = list(getattr(namespace, self.dest) or [])
-        if self.detail not in details:
-            details.append(self.detail)
-        setattr(namespace, self.dest, details)
-
-
-def add_gif_arguments(parser):
-    """The output arguments shared by the CLI and ``WEB_UI_GIFS``: ``out``, ``--prefix``, ``--suffix``, ``--timestamp``, ``--git-commit``, ``--force``."""
-    parser.add_argument("out", type=Path, help="directory for <prefix><world>-<scene><suffix>[-<run detail>...].gif")
-    parser.add_argument("--prefix", type=name_part, default="", metavar="TEXT", help="put TEXT before every file name")
-    parser.add_argument("--suffix", type=name_part, default="", metavar="TEXT",
-                        help="put TEXT right after the scene name, before the run details (write --suffix=-x when TEXT starts with -)")
-    parser.add_argument("--timestamp", action=_AddRunDetail, detail="timestamp", dest="run_details",
-                        help="add when this run started, in UTC as ISO 8601 basic format (-20261108T113412Z), so every run keeps its own file;"
-                             " run details follow the order their options are given")
-    parser.add_argument("--git-commit", action=_AddRunDetail, detail="git-commit", dest="run_details",
-                        help="add the git commit the pages were built from (-288cbed, or -288cbed-dirty with uncommitted changes); records nothing in git")
-    parser.add_argument("--force", action="store_true", help="replace existing GIFs")
-    return parser
-
-
-def run_timestamp(now=None):
-    """``now`` (default: the current time) in UTC as ISO 8601 basic format, ``20261108T113412Z``: sorts in recording order, reads the same in any time zone."""
-    now = datetime.now(timezone.utc) if now is None else now
-    if now.tzinfo is None:
-        raise ValueError("now needs a time zone")
-    return now.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-
-def source_commit(root=ROOT):
-    """The checkout's short commit (``git rev-parse --short=7 HEAD``) plus ``-dirty`` when tracked files differ (``git describe --dirty``'s word)."""
-    try:
-        head = subprocess.run(["git", "-C", str(root), "rev-parse", "--short=7", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
-        dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True, check=True).stdout.strip()
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise ValueError(f"--git-commit needs a git checkout at {root}") from exc
-    return head + ("-dirty" if dirty else "")
-
-
-def gif_targets(directory, stems, *, prefix="", suffix="", run_details=(), force=False, now=None, revision=None):
-    """``{stem: directory/<prefix><stem><suffix>[-<run detail>...].gif}``, one timestamp and commit for the whole batch; creates the directory.
-
-    ``run_details`` lists ``RUN_DETAILS`` names in the order they are added, left to right: ``"timestamp"`` is ``run_timestamp(now)``,
-    ``"git-commit"`` is ``revision`` (default ``source_commit()``), so repeated runs get files that say when and from which code they were
-    recorded. Without ``force`` an existing target raises FileExistsError before anything is written.
-    """
-    directory = Path(directory)
-    stems, run_details = list(stems), list(run_details)
-    if len(set(stems)) != len(stems) or not all(NAME_PART.fullmatch(s) and s for s in stems):
-        raise ValueError("stems are distinct file-name parts (letters, digits, _ . -)")
-    if len(set(run_details)) != len(run_details) or set(run_details) - set(RUN_DETAILS):
-        raise ValueError("run_details are distinct names from " + ", ".join(RUN_DETAILS))
-    name_part(prefix), name_part(suffix)
-    value = {"timestamp": lambda: run_timestamp(now), "git-commit": lambda: revision or source_commit()}
-    details = "".join(f"-{value[d]()}" for d in run_details)
-    targets = {stem: directory / f"{prefix}{stem}{suffix}{details}.gif" for stem in stems}
-    if not force and any(p.exists() for p in targets.values()):
-        raise FileExistsError("refusing to overwrite " + ", ".join(str(p) for p in targets.values() if p.exists())
-                              + " (add --force to replace it, or --timestamp to keep each run)")
-    directory.mkdir(parents=True, exist_ok=True)
-    return targets
-
-
-def gif_targets_from(spec, stems, *, now=None, revision=None):
-    """``gif_targets`` from one setting string, ``"DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"`` (``WEB_UI_GIFS`` in the
-    browser tests). The words are split like a shell command line and parsed by the same argparse definitions as the CLI (the run details
-    keep their order), so a bad option raises argparse.ArgumentError here instead of exiting.
-    """
-    parser = add_gif_arguments(argparse.ArgumentParser(prog="WEB_UI_GIFS", add_help=False, allow_abbrev=False, exit_on_error=False))
-    args = parser.parse_args(shlex.split(spec))
-    return gif_targets(args.out, stems, prefix=args.prefix, suffix=args.suffix, run_details=args.run_details,
-                       force=args.force, now=now, revision=revision)
+# The output-name rules (``--prefix`` / ``--suffix`` / ``--timestamp`` / ``--git-commit`` / ``--force``) live in pysaiyanweboo.py now, so
+# every recorder shares them; they are imported here under the same names (record_demo.gif_targets_from etc. keep working).
+from pysaiyanweboo import (NAME_PART, RUN_DETAILS, _AddRunDetail, add_gif_arguments, gif_targets, gif_targets_from,  # noqa: E402,F401
+                           name_part, run_timestamp)
+from pysaiyanweboo import checkout_commit as source_commit  # noqa: E402,F401  (pysaiyanweboo.source_commit is the module's own commit)
 
 
 def record(out, names=None, *, chrome=None, width=None, force=False, browser=None, prefix="", suffix="", run_details=()):
@@ -591,7 +503,7 @@ def record(out, names=None, *, chrome=None, width=None, force=False, browser=Non
         raise ValueError("unknown scene: " + ", ".join(unknown) + " (have " + ", ".join(SCENES) + ")")
     out = Path(out)
     stems = {n: f"{SCENES[n].world}-{n}" for n in names}
-    paths = gif_targets(out, stems.values(), prefix=prefix, suffix=suffix, run_details=run_details, force=force)
+    paths = gif_targets(out, stems.values(), prefix=prefix, suffix=suffix, run_details=run_details, force=force, root=ROOT)
     targets = {n: paths[stems[n]] for n in names}
     with tempfile.TemporaryDirectory() as tmp_name, contextlib.ExitStack() as stack:
         tmp = Path(tmp_name)

@@ -15,12 +15,12 @@ def test_embedded_launcher_matches_locked_vendor():
 @pytest.mark.parametrize('vendor', [False, True])
 @pytest.mark.parametrize('case', ['html', 'success', 'nonzero', 'timeout', 'missing', 'old'])
 def test_copied_artifact(tmp_path, vendor, case):
-    shutil.copyfile(ROOT / 'web_ui.py', tmp_path / 'web_ui.py')
+    shutil.copyfile(ROOT / 'pysaiyanweboo.py', tmp_path / 'pysaiyanweboo.py')
     if vendor:
         (tmp_path / 'vendor').mkdir()
         shutil.copyfile(ROOT / 'vendor/node_launch.py', tmp_path / 'vendor/node_launch.py')
     code = '''
-import web_ui as u
+import pysaiyanweboo as u
 import subprocess
 '''
     code += {
@@ -76,3 +76,17 @@ else:
                            'import sys; sys.path.insert(0, ' + repr(str(tmp_path)) + ');' + code],
                           cwd=tmp_path, capture_output=True, text=True, timeout=20)
     assert done.returncode == 0, done.stderr
+
+
+def test_old_name_forwards_to_pysaiyanweboo(tmp_path):
+    """web_ui.py is the old name: the same module object, the same CLI (also under -I), and a clear error alone."""
+    import pysaiyanweboo
+    assert web_ui is pysaiyanweboo and web_ui.__name__ == 'pysaiyanweboo'
+    new = subprocess.run([sys.executable, '-S', str(ROOT / 'pysaiyanweboo.py'), '--css-bundle'], capture_output=True, text=True)
+    for flags in (['-S'], ['-I', '-S']):
+        old = subprocess.run([sys.executable, *flags, str(ROOT / 'web_ui.py'), '--css-bundle'], capture_output=True, text=True)
+        assert (old.returncode, old.stdout) == (new.returncode, new.stdout) == (0, new.stdout), old.stderr
+    shutil.copyfile(ROOT / 'web_ui.py', tmp_path / 'web_ui.py')                  # copied without the real file
+    alone = subprocess.run([sys.executable, '-I', '-S', '-c', 'import sys; sys.path.insert(0, sys.argv[1]); import web_ui', str(tmp_path)],
+                           capture_output=True, text=True)
+    assert alone.returncode == 1 and 'copy pysaiyanweboo.py' in alone.stderr

@@ -10,7 +10,7 @@ from support import node26, node_js
 
 ROOT = Path(__file__).resolve().parents[1]
 FIX = ROOT / "tests" / "fixtures" / "source"
-_spec = importlib.util.spec_from_file_location("web_ui_source_panel", ROOT / "web_ui.py")
+_spec = importlib.util.spec_from_file_location("web_ui_source_panel", ROOT / "pysaiyanweboo.py")
 ui = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ui)
 

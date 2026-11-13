@@ -294,7 +294,7 @@ class PptxPresentationTests(unittest.TestCase):
         self.assertEqual(table["rows"][0][1]["options"]["fontFace"], "Meiryo")
 
     def test_python_source_does_not_assemble_office_xml(self):
-        source = (ROOT / "web_ui.py").read_text(encoding="utf-8")
+        source = (ROOT / "pysaiyanweboo.py").read_text(encoding="utf-8")
         for marker in ("p:spTree", "a:xfrm", "[Content_Types]", "ppt/slides"):
             self.assertNotIn(marker, source)
 
@@ -303,7 +303,7 @@ class PptxPresentationTests(unittest.TestCase):
             {"kind": "text", "text": "Hello", "x": 0.5, "y": 0.5, "w": 3, "h": 0.5},
         ]}]})
         run = subprocess.run(
-            [sys.executable, "-S", str(ROOT / "web_ui.py"), "--trusted-html", "--with-remote-scripts", "pptxgenjs"],
+            [sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--trusted-html", "--with-remote-scripts", "pptxgenjs"],
             input=fragment,
             text=True,
             capture_output=True,

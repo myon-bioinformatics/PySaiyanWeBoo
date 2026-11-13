@@ -48,8 +48,8 @@ def test_minimal_node_adapter_preserves_cli_behavior(args, stdin):
     root = Path(web_ui.__file__).parent
     env = {**os.environ, 'PYTHON': sys.executable}
     run = lambda cmd: subprocess.run(cmd, cwd=root, env=env, input=stdin, capture_output=True, text=True, timeout=30)
-    direct = run([sys.executable, '-S', 'web_ui.py', *args])
-    adapter = run([node, 'vendor/py_launch.cjs', '--', 'web_ui.py', *args])
+    direct = run([sys.executable, '-S', 'pysaiyanweboo.py', *args])
+    adapter = run([node, 'vendor/py_launch.cjs', '--', 'pysaiyanweboo.py', *args])
     assert (adapter.returncode, adapter.stdout, adapter.stderr) == (direct.returncode, direct.stdout, direct.stderr)
 
 

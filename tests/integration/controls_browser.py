@@ -4757,7 +4757,7 @@ class PatternBrowserTests(PageCase):
         for name, outcome in zip(names, got):
             self.assertEqual(outcome['error'], self.python_outcome(name, {})['error'], name)
         for name in ('search', 'convert', 'validate'):
-            self.assertEqual(self.page().evaluate(self.RUN, [[name, {}]])[0]['error'], f'{name} runs in Python only: python3 web_ui.py --pattern {name}')
+            self.assertEqual(self.page().evaluate(self.RUN, [[name, {}]])[0]['error'], f'{name} runs in Python only: python3 pysaiyanweboo.py --pattern {name}')
         self.assertEqual(self.page().evaluate(self.RUN, [['score', {'operation': 'tfidf', 'documents': []}]])[0]['error'], 'tfidf runs in Python only')
 
     # --- the catalogue
@@ -4829,7 +4829,7 @@ class PatternBrowserTests(PageCase):
         page.fill('[data-patterns-request]', '{"operation": "stem", "text": "walking it\'s"}')
         page.click('[data-patterns-run]')
         self.assertEqual(page.get_attribute('#patterns', 'data-run'), 'python')
-        self.assertIn("python3 web_ui.py --pattern search", page.text_content('[data-patterns-status]'))
+        self.assertIn("python3 pysaiyanweboo.py --pattern search", page.text_content('[data-patterns-status]'))
         self.assertIn("'\\''", page.text_content('[data-patterns-status]'), 'a quote in the request is escaped for the shell')
         page.select_option('[data-patterns-run-family]', 'order')
         page.fill('[data-patterns-request]', '{"mode": "shuffle"}')
@@ -4980,7 +4980,7 @@ def bridge_expected(family, text):
 
 
 class PatternBridgeBrowserTests(unittest.TestCase):
-    """``web_ui.py --pattern-serve`` in a real browser: the patterns page it serves runs the families that stay in Python through the bridge and shows exactly Python's answer; the bridge
+    """``pysaiyanweboo.py --pattern-serve`` in a real browser: the patterns page it serves runs the families that stay in Python through the bridge and shows exactly Python's answer; the bridge
     does not answer a page of another origin, a form post, a rebinding host or a request that is not JSON."""
 
     def setUp(self):
@@ -5113,7 +5113,7 @@ class PatternBridgeBrowserTests(unittest.TestCase):
         self.bridges[0].server_close()
         outcome, engine, status, result = self.send(page, 'search', json.dumps(self.web_ui.PATTERN_EXAMPLES['search']))
         self.assertEqual((outcome, engine, result), ('unreachable', 'bridge', ''))
-        self.assertEqual(status, 'The Python bridge cannot be reached; start it with: python3 web_ui.py --pattern-serve')
+        self.assertEqual(status, 'The Python bridge cannot be reached; start it with: python3 pysaiyanweboo.py --pattern-serve')
         outcome, engine, status, result = self.send(page, 'query', json.dumps(self.web_ui.PATTERN_EXAMPLES['query']))
         self.assertEqual((outcome, engine), ('ok', 'browser'), 'the page still runs what it can run itself')
 

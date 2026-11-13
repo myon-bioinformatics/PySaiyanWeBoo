@@ -23,7 +23,7 @@ def node26() -> str | None:
 def node_js(source: str, *argv: str, timeout: float = 60) -> subprocess.CompletedProcess[str]:
     """Run ``source``, an ES module kept as a string in a Python test, in Node 26+; returns the finished process, or raises AssertionError with Node's stderr.
 
-    There are no .js test files: like web_ui.py's browser modules, the Node side of a test is Python data. web_ui writes the modules beside the
+    There are no .js test files: like pysaiyanweboo.py's browser modules, the Node side of a test is Python data. web_ui writes the modules beside the
     script under ``./js/``; ``require`` (for the UMD modules: ``require("./js/gif.js")``) and ``REPO`` (this repository, for fixtures) are bound
     first, and ``argv`` follows the script in ``process.argv``."""
     import web_ui

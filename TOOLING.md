@@ -83,7 +83,7 @@ entries with the pinned parent `vendor_sync.py` workflow, not per-file sidecars.
 CI's existing `tooling-meta` artifact contains three separate files:
 `tooling-meta.json` (advisory observations), `repository-metadata.json`, and
 `repository-metadata.jsonl` (the same canonical record). Measurements remain
-`null` unless measured. The `repository-diagnostics.js` module (Python data in `web_ui.py`) only reads/renders the
+`null` unless measured. The `repository-diagnostics.js` module (Python data in `pysaiyanweboo.py`) only reads/renders the
 canonical record; it never recollects Git identity. This is the first consumer
 slice of Ironmate #49; Flutter and other consumers remain separate follow-ups.
 The CLI retains the repository-metadata v1 output fields and JSON/JSONL identity

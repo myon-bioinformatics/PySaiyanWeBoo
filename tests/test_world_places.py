@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-_spec = importlib.util.spec_from_file_location("web_ui_places", ROOT / "web_ui.py")
+_spec = importlib.util.spec_from_file_location("web_ui_places", ROOT / "pysaiyanweboo.py")
 ui = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ui)
 
@@ -341,8 +341,8 @@ def test_the_front_page_and_the_cli_carry_the_cities():
     for text in ('id="cities"', "丸の内中央口", "リバースロンドン", "Fake Paris", "Parallel Tokyo", 'data-category="exit"', 'data-category="terminus"',
                  'data-flip="🐉"'):
         assert text in page
-    spec = subprocess.run([sys.executable, str(ROOT / "web_ui.py"), "--example", "cities"], capture_output=True, text=True, check=True, encoding="utf-8").stdout
+    spec = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--example", "cities"], capture_output=True, text=True, check=True, encoding="utf-8").stdout
     assert json.loads(spec)["floors"][0]["place"]["points"][0]["id"] == "marunouchi-c"
-    html = subprocess.run([sys.executable, str(ROOT / "web_ui.py"), "--world", "-"], input=spec, capture_output=True, text=True, check=True, encoding="utf-8").stdout
+    html = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--world", "-"], input=spec, capture_output=True, text=True, check=True, encoding="utf-8").stdout
     assert "八重洲北口" in html and "ウォータールー" in html and "サン・ラザール駅" in html          # a spot of each city from the CLI
     assert "タワー・ブリッジ" not in html and "エッフェル塔" not in html                               # transport only

@@ -23,14 +23,15 @@ PySaiyanWeBoo combines Py (Python), Saiyan, Web, and Boo. Like Majin Buu in Drag
 ## v1 foundation
 
 ```text
-web_ui.py        the one Python module: CSS (in memory), pages, stubs, worlds, themes
+pysaiyanweboo.py the one Python module: CSS (in memory), pages, stubs, worlds, themes, and shared helpers beyond the web UI
+web_ui.py        its old name: forwards to pysaiyanweboo.py (the same module object), until the repositories import pysaiyanweboo
 index.html       the front page: front_document() over the library's own builders, kept equal by a test (nothing is written for the page alone)
                  (example data is Python too: web_ui.EXAMPLES, example_data(), --example NAME; no examples/ directory)
                  (the browser modules are Python data too: js_modules(), write_js(); there is no js/ directory)
 tests/
 ```
 
-There are no css/ files and no example HTML files: the stylesheets are Python data (`web_ui.css_source()`), the example pages are built by `web_ui.example_pages()` (`python -S web_ui.py --site DIR` writes them). Modern is the default theme, not the only theme. `github-like` is the first alternate theme using the same semantic `ui-*` / `stub-*` contract.
+There are no css/ files and no example HTML files: the stylesheets are Python data (`web_ui.css_source()`), the example pages are built by `web_ui.example_pages()` (`python -S pysaiyanweboo.py --site DIR` writes them). Modern is the default theme, not the only theme. `github-like` is the first alternate theme using the same semantic `ui-*` / `stub-*` contract.
 
 Generic JavaScript handles browser behavior and rendering helpers. MCP/API protocol semantics remain in consuming repositories.
 
@@ -56,12 +57,12 @@ Current themes:
 - `github-like` — generic light presentation intentionally using familiar GitHub visual cues
 - `green`, `red`, `blue`, `purple`, `terminal` — candidates, token-only: palettes (green first built by hand in Ironmate's studio; purple is flutter_navigation_basic's Material 3 baseline, kept before that repository is archived; red and blue are `theme_palette(hue)`, and any hue works; terminal is mcp-toolcall-lab's dark terminal-lite returned here, mono body font) whose values are generated into `tokens.css` (no theme files, not in contract v1 yet)
 
-Single-file pages: `render_document(css=bundled_css())` (or `python -S web_ui.py --css-bundle`) embeds every
-stylesheet and theme, built in memory from the sources in `web_ui.py`; nothing is written to the repository. Because all themes ship
+Single-file pages: `render_document(css=bundled_css())` (or `python -S pysaiyanweboo.py --css-bundle`) embeds every
+stylesheet and theme, built in memory from the sources in `pysaiyanweboo.py`; nothing is written to the repository. Because all themes ship
 together, `bindTheme()` from `ui.js` switches `data-ui-theme` live, with no stylesheet swap and no reload.
-From Node, run `node vendor/py_launch.cjs -- web_ui.py --css-bundle`.
+From Node, run `node vendor/py_launch.cjs -- pysaiyanweboo.py --css-bundle`.
 
-World pages (prototype): `world_document(spec)` or `python -S web_ui.py --example world > world.json; python -S web_ui.py --world world.json` builds one page that never
+World pages (prototype): `world_document(spec)` or `python -S pysaiyanweboo.py --example world > world.json; python -S pysaiyanweboo.py --world world.json` builds one page that never
 changes page: scrolling "shots" and a pan/zoom map with floors, categories and an info sheet (data: `web-ui-world/1`).
 Python validates the data, does the camera arithmetic (`fit_zoom`, `clamp_focus`) and writes the HTML, the CSS and a
 small module; the script applies state and projects interactive player motion; static Pages does not execute Python. Without JavaScript the shots stack and spots open
@@ -81,7 +82,7 @@ projection, keyboard/reduced-motion controls, and daily countdown/timezone seman
 [School world](docs/world-classroom.md) adds a floor `tile` grid with solid `props` (desks, board, shelves; `classroom_floor()` writes a classroom),
 world `avatars` (pick an emoji, a short text or both first) and walking by tap, arrow keys/WASD or an on-screen pad around the furniture (`EXAMPLES["school"]`). The page stays short and iconic: header 🏠 ⭐ ⚙️ plus emoji tools you add (`"tools": {"🗺️": ...}`), side ☰ ⋯ menus (places with direction arrows), a 🚪 floor pulldown in the footer; `shell: true` gives any world or `catalogue_world` the same layout.
 `land` floors (`land_floor()`, `EXAMPLES["overworld"]`; themes meadow, forest, mountain, desert, coast, castle) make a Dragon Quest-style map of several lands from the same grid by swapping prop kinds (`WORLD_PROPS`, `WORLD_GROUND`, `WORLD_LOOK`). `place` floors (`place_floor()`, `EXAMPLES["cities"]`: Parallel Tokyo, Reverse London, Fake Paris) lay latitude/longitude points on the same grid with roads, a river and its bridges, using the coordinates tool's projection; a spot can `flip` to a second face when pressed or be a `sign` (an electronic or wooden board: a bold dot at a tile corner until touched) ([Places](docs/world-classroom.md#places-real-space-in-miniature)). `"real": true` floors let a visitor put a photo or the camera behind the props (🖼️📷, shown in the page only: not stored, not sent), through the same `ask()` dialog the page exposes. 🌐 speaks the 11 languages of flutter_navigation_basic; the starred places and the language are a light `localStorage` cache (`ui-world:<id>`), nothing else is stored.
-From another repository: `echo '{"schema":"web-ui-world/1","floors":[{"classroom":{}}]}' | python -S web_ui.py --world - > school.html` (`--world -` reads stdin; Node: `node vendor/py_launch.cjs -- web_ui.py --world -`).
+From another repository: `echo '{"schema":"web-ui-world/1","floors":[{"classroom":{}}]}' | python -S pysaiyanweboo.py --world - > school.html` (`--world -` reads stdin; Node: `node vendor/py_launch.cjs -- pysaiyanweboo.py --world -`).
 
 `scroll_html(trusted_html, label=, kind="row"|"table")` marks a region that scrolls sideways; `scroll.js` (it binds itself, `bindScroll()`) adds ‹ › buttons, edge fades and, for tables, a second scrollbar on top, and `scroll.css` draws them from the tokens. It came from the parent repository's observatory, so pages do not keep their own copy: `component_parts("scroll", html, label=...)` gives the HTML, the stylesheet and the module from Python.
 
@@ -202,7 +203,7 @@ failed load kept, `classname` is the suite path, anything incomplete is an error
 parameter suffix removed, kind) and say what is new, recurring or resolved between two runs; `failure_ledger_update` and `attempt_history` keep fingerprints and the "a retry never masks
 the first failure" record; `runner_command`, `run_test_suite` and `node_test_run` are the allowlisted Deno / Playwright / Node runners (no shell, files inside the repository, stale reports
 removed first, a missing or all-skipped report fails closed); `expected_child_failure` runs a command that is *meant* to fail and keeps bounded evidence. The command line:
-`web_ui.py --junit FILE... [--previous FILE]`, `--flutter-events FILE [--to JUNIT.xml]`, `--run-tests RUNNER --test-file F`, `--expect-exit CODE --output-dir DIR -- command`.
+`pysaiyanweboo.py --junit FILE... [--previous FILE]`, `--flutter-events FILE [--to JUNIT.xml]`, `--run-tests RUNNER --test-file F`, `--expect-exit CODE --output-dir DIR -- command`.
 The Python tests of those eight tools are the golden values (ported case by case); `report.js` equals Python on 900 Flutter event streams (a third of them damaged), about 800 JUnit documents
 (generated, damaged and hand-picked: namespaces, CDATA, comments, entities, a DTD, the 1 MB edge, 250-emoji names) and seeded history and ledger runs; its SHA-256 is the page's own
 (no `crypto.subtle`, which needs a secure context) and equals `hashlib`. Deliberate differences: a failed, non-hidden `loading <file>` test is an `error` (the tally used to skip
@@ -237,7 +238,7 @@ dates, units, UTF-8/Base64, masks), `validate` (a named-regex allowlist, never a
 pub/sub, CQRS, checkpoints), `transform` (a typed schema, `true`, `1` and `1.0` kept apart), `select`, `order`, `text`, `window`, `collection`, `structure`; and `future` (Promise basics, all, race,
 timeout), `stream`, `concurrency` (queue, semaphore, mutex, cancel, progress), `event_loop` (sync, microtask, promise, timer) and `interaction` (`pattern_virtual_window`, a debounce through
 `PatternDebouncer` on a virtual clock). The JavaScript ones are modelled without a clock: a task has a delay, and what finishes first is a sort on (delay, creation order), as Node's timers do
-(0 ms waits 1 ms, a tie goes to the earlier created); numbers read as JavaScript reads them (`1.0` is the integer 1). `python3 web_ui.py --pattern FAMILY` runs one on stdin (`list`, `catalogue`;
+(0 ms waits 1 ms, a tie goes to the earlier created); numbers read as JavaScript reads them (`1.0` is the integer 1). `python3 pysaiyanweboo.py --pattern FAMILY` runs one on stdin (`list`, `catalogue`;
 NaN, Infinity and numbers beyond the float range are refused). The golden values are the originals' own outputs, never this code's: the 34 files of `assets/data_processing/` that the Dart app
 shows are reproduced exactly (`tests/fixtures/pattern_assets.json`), and 1,145 requests recorded from the originals (the Python oracles, and the Node modules for the JavaScript five), answers and
 refusals with their text, are reproduced exactly (`tests/fixtures/pattern_golden.json`, taken at 39d659e); during development every family was also run against the originals themselves on
@@ -246,7 +247,7 @@ seeded requests (3 x 4,000 per Python family, 1,500 + 3,000 per Node family), wi
 page (the seventeen above, and `screen` and `native` below): the sync ones answer 1,200 seeded requests per family like Python, refusal text included, and the five JavaScript ones run on real promises and timers (a virtual clock in the tests) and
 answer 700 seeded requests each; every cap is tried at its edge in both languages. `search`, `convert` and `validate` stay in Python because they rest on CPython's case folding, integer parsing
 and `urlsplit`, and so does TF-IDF (the min-heap runs in the page), and so does `contract` (below); the static page shows what Python answers to their examples, and the page that
-`python3 web_ui.py --pattern-serve` serves runs them in Python (see the bridge below). Limits of a page: JSON cannot tell `1` from `1.0` (an integral number
+`python3 pysaiyanweboo.py --pattern-serve` serves runs them in Python (see the bridge below). Limits of a page: JSON cannot tell `1` from `1.0` (an integral number
 is an int), integers beyond 2^53 are not exact, and the catalogue search lower-cases where Python case-folds. The Flutter-native patterns (136-137, 151-175, 183-184) and the screens of every pattern are the next section. Not absorbed: the 594
 `view.dart` files of the navigation, API and UI patterns (the inventory detects one shared heuristic shape across all three categories; this does not prove behavioral equivalence or completed migration) and the Digest/HMAC auth matrix mock (not yet).
 BTK adapters: `web-ui-patterns`, `web-ui-pattern-run`.
@@ -263,7 +264,7 @@ press, the search text and count across resizes from 1180 to 320 px (the origina
 the screens' data and texts are embedded in the page (no load-error state), screen 5 (the URL-parameter tool) is its generic screen with a note, and the native examples count notifications and rebuilds,
 which the Dart ones do not display. BTK adapters: `web-ui-screens`, `web-ui-native-patterns`.
 
-Contracts (`pattern_run("contract", ...)`, `python3 web_ui.py --pattern contract`): flutter_navigation_basic's `metadata_contracts.py` (the 198 screens and the eleven locale tables),
+Contracts (`pattern_run("contract", ...)`, `python3 pysaiyanweboo.py --pattern contract`): flutter_navigation_basic's `metadata_contracts.py` (the 198 screens and the eleven locale tables),
 `header_contracts.py` (measured box geometry: inside the viewport, aligned on one row, stacked with a minimum height) and `gesture_paint.py` (a swap of two cards judged on saved PNGs: exact RGBA
 comparison with changed pixels, ratio, bounding box and largest difference). `operation` is `screens`, `locales`, `layout` or `swap`; the answer is `{ok, failures, ...}` (at most 50 reasons, `truncated`
 counts the rest), and a request that is not a well-formed measurement is a `ValueError`. Python only: a page cannot decode a screenshot the way a Playwright run saved it, and these are checks that a
@@ -272,7 +273,7 @@ mutated document), taken at ae3c4cb; `python3 tools/contract_golden.py CHECKOUT 
 Deliberate differences: every failure is listed, not the first; `count` allows a smaller catalogue; locale placeholders must equal English's for every key; the header's title-emoji identity belongs to Flutter's
 shared header and is left out; PNGs are decoded by `studio_png_decode` (8 bits, not interlaced, at most 4 MP); a bool where a number is wanted is refused.
 
-Bridge (`python3 web_ui.py --pattern-serve [--port N] [--allow-origin ORIGIN]`): flutter_navigation_basic's `validation_http.py` (a loopback HTTP server that runs a reference), for every family.
+Bridge (`python3 pysaiyanweboo.py --pattern-serve [--port N] [--allow-origin ORIGIN]`): flutter_navigation_basic's `validation_http.py` (a loopback HTTP server that runs a reference), for every family.
 It serves the patterns page at `/` with its Run box wired to `POST /pattern/FAMILY` (a JSON request in, the result out, `{"error": text}` with 400 for what the command line refuses), so `search`,
 `convert`, `validate`, `contract` and TF-IDF run in Python from the page. It binds 127.0.0.1 only; the Host must be `127.0.0.1:PORT` or `localhost:PORT` (a name that resolves to loopback is refused:
 DNS rebinding), a browser's Origin must be the bridge's own or one given with `--allow-origin` (an origin, no wildcard; the answer echoes that one origin with `Vary: Origin`, and the Private Network
@@ -287,7 +288,7 @@ triangle, text, image, heatmap, arrow and clock layers, at most 100 layers and 4
 heatmap trace into heatmap data: row 0 on top, `null` kept as a gap), the alpha-weighted mosaic (`studio_mosaic_rgba`, always recomputed from the kept original, never from a mosaic), arrow geometry, output size
 (0.25 to 8 times, at most 8192 px a side and 16 MP), the PNG payload for Base64 hand-off, and a small PNG reader and writer (`studio_png_decode`: 8 bits, not interlaced, every filter and colour type) so the command line
 can mosaic photo layers. `studio_place`, `studio_text_layer`, `studio_matrix_layer`, `studio_image_layer`, `studio_demo_scene` and `studio_stamp_demo_scene` are what a click or a button puts on the canvas. Command line:
-`python3 web_ui.py --studio-render FILE [--format svg|json] [--scale N]`, `--studio-heatmap FILE` (a matrix into an editable scene) and `--studio-base64 FILE [--data-uri]`, each with `-o FILE` (never replaces a file
+`python3 pysaiyanweboo.py --studio-render FILE [--format svg|json] [--scale N]`, `--studio-heatmap FILE` (a matrix into an editable scene) and `--studio-base64 FILE [--data-uri]`, each with `-o FILE` (never replaces a file
 without `--force`); a bad input is exit 2 with a message. The golden values are Ironmate's own `core.js` run by Node, never this code: 1,859 results (`tests/fixtures/studio_golden.json`, taken at Ironmate 3b7c07d) cover every
 function on seeded scenes and on the cases of Ironmate's own tests (`test_image_studio.py`, `studio_workspace.test.cjs`), each limit at its edge, each rule of the text breaker, both of its demos (ids aside) and 471
 sines and cosines; during development the Python port was also run against `core.js` itself on random scenes (5 x 2,500 per function) with no difference. `imagestudio.js` gives the same answers in the page: Chromium
@@ -327,7 +328,7 @@ redistributed), so systems without it, such as macOS, iOS and Linux, fall back t
 `layout.font` keys win. PPTX output already defaults to `Meiryo`.
 
 The alternate-theme example page is `example_pages()["examples/github-like.html"]`; CI writes the example pages
-with `python -S web_ui.py --site build/site` and captures desktop/mobile screenshots of them.
+with `python -S pysaiyanweboo.py --site build/site` and captures desktop/mobile screenshots of them.
 
 Theme screenshot filenames follow
 `web-ui-<theme>-<viewport-name>.png`, for example
@@ -398,7 +399,7 @@ MCP or API semantics.
 ## Local preview
 
 ```sh
-python -S web_ui.py --site build/site
+python -S pysaiyanweboo.py --site build/site
 python -m http.server 8000 --directory build/site
 ```
 
@@ -458,7 +459,7 @@ The first phase intentionally treats screenshots as observable test evidence rat
 🔁 Re-record:
 
 ```sh
-python3 -S web_ui.py --site build/site
+python3 -S pysaiyanweboo.py --site build/site
 uv run --project ../BrowserTestKit --group pages --group browser python ../BrowserTestKit/tools/evidence_gif.py docs/evidence/browser.gif --serve build/site --plan docs/evidence/browser.json
 ```
 
@@ -525,14 +526,14 @@ Python and JavaScript run everywhere; what differs is the engine, the device and
 - **Layer 1, the rules**: Python is the reference and the page's module gives identical answers (Chromium compares them on seeded fuzz; a one-character change in a rule fails a test).
   Engine and OS do not enter, so this layer is the same everywhere by construction.
 - **Layer 2, the page in an engine**: the photo studio's page tests (upright pixels equal Pillow, drawing, history, export, import outcomes) and BrowserTestKit's probe
-  (`python web_ui.py --btk-adapter list`, one `btk-platform-adapter/1` per page that has state, built from Python; key elements fit without overflow, overlap or clipping at
+  (`python pysaiyanweboo.py --btk-adapter list`, one `btk-platform-adapter/1` per page that has state, built from Python; key elements fit without overflow, overlap or clipping at
   320-1280 px and a real click or tap changes what the page promises). `.github/workflows/platform-matrix.yml` runs both on Chromium, Firefox, WebKit, a Pixel 7 profile and an
   iPhone 13 profile on Linux runners and keeps each engine's own decode report (`Check this browser`) as an artifact. Chromium and its Pixel profile also run locally.
 - **Layer 3, a real device**: not run. Pixel and iPhone profiles are emulation; Playwright's WebKit is not Safari. iOS Safari (HEIC, camera, Share, `download`, the paste bubble)
   is **not verified** until the page's JSON is kept from a device. Nothing here says otherwise.
 
-Running the probe against the local pages: `python -S web_ui.py --site build/site`, serve it on port 8000, then
-`python -S web_ui.py --btk-adapter web-ui-photo-studio > adapter.json` and `python BrowserTestKit/tools/platform_probe.py collect --browser chromium --profile pixel --adapter adapter.json
+Running the probe against the local pages: `python -S pysaiyanweboo.py --site build/site`, serve it on port 8000, then
+`python -S pysaiyanweboo.py --btk-adapter web-ui-photo-studio > adapter.json` and `python BrowserTestKit/tools/platform_probe.py collect --browser chromium --profile pixel --adapter adapter.json
 --widths 320 384 --out out`. It found a real defect while this was written: the showcase title was clipped at 320 px (it now wraps). The examples are generated, not published, so the probe
 uses `http://127.0.0.1:8000/examples/...` (`--url` overrides it); the page viewer for multi-browser captures needs https pages and stays Flutter-only for now.
 
@@ -546,7 +547,7 @@ for the JSON, the CSS generator (Python; Node reaches it through `vendor/py_laun
 
 ## Python static wrapper
 
-`web_ui.py` is a portable, stdlib-only HTML emitter. Standalone users copy the
+`pysaiyanweboo.py` is a portable, stdlib-only HTML emitter. Standalone users copy the
 file from GitHub and run that copy with Python 3.10+. The copy accepts text or
 explicitly authored HTML and CSS, and it needs no npm, Deno, browser, or
 installed package. The repository root is also an installable project for
@@ -558,10 +559,10 @@ the same pytest lane.
 
 ```sh
 python -S -c 'from web_ui import render_document; print(render_document("Hello"))'
-printf 'Hello <world>' | python -S web_ui.py --title Demo > demo.html
-printf '<main class="ui-page">Demo</main>' | python -S web_ui.py --trusted-html --css palette.css > demo.html
-printf 'Result' | python -S web_ui.py --css-bundle --theme github-like > demo.html
-printf 'Result' | python -S web_ui.py --asset-base . --with-scripts ui.js > demo.html
+printf 'Hello <world>' | python -S pysaiyanweboo.py --title Demo > demo.html
+printf '<main class="ui-page">Demo</main>' | python -S pysaiyanweboo.py --trusted-html --css palette.css > demo.html
+printf 'Result' | python -S pysaiyanweboo.py --css-bundle --theme github-like > demo.html
+printf 'Result' | python -S pysaiyanweboo.py --asset-base . --with-scripts ui.js > demo.html
 ```
 
 The first examples escape input as text. `--trusted-html` and `--css` accept
@@ -600,12 +601,12 @@ built by its own script) opts them into the component look with `class="ui-eleme
 📦 A consumer ships one committed stylesheet: `web_ui.write_bundle("static/site.css", theme="terminal", brand=("acme", tokens),
 extra_css=LAYOUT)` writes `core_css` + the brand palette + the consumer's own layout rules under a one-line provenance header
 (`web-ui-bundle/1 commit=… sha256=…`), and `check_bundle(...)` with the same arguments lists why it is stale (moved pin, hand
-edit, changed layout) — a two-line test per repository. The same from the shell or Node: `python -S web_ui.py --bundle FILE
+edit, changed layout) — a two-line test per repository. The same from the shell or Node: `python -S pysaiyanweboo.py --bundle FILE
 --theme terminal --brand brand.json --extra-css layout.css` / `--bundle-check FILE`. `source_commit()` is the commit the
 installed module came from (pip's install record, or the checkout's HEAD).
 Before a brand palette ships, `check_theme(tokens)` lists every text token that misses WCAG AA (4.5) on `--ui-bg` or
 `--ui-panel` and a border that would vanish; `theme_palette(hue, dark=…)` builds a palette from one hue that passes by
-construction. CLI: `python -S web_ui.py --check-theme brand.json`.
+construction. CLI: `python -S pysaiyanweboo.py --check-theme brand.json`.
 Every rendered page carries `<meta name="generator" content="web_ui <commit>">` (`generator_meta()`; the installed commit, `checkout` in a checkout), so a screenshot or a
 GIF receipt says which web_ui drew it; BrowserTestKit's `evidence_gif.py` records it as `generator`.
 Layout is a preset too: the core reads `--ui-text` / `--ui-space` / `--ui-max`, `EXAMPLES["page-layouts"]` names four
@@ -615,7 +616,7 @@ one that holds as a candidate.
 📄 A whole page from data: `page_document(spec)` renders a `web-ui-page/1` JSON — title, description, icon and blocks
 (`heading`, `text`, `output`, `table`, `card`, `section`, `links`, `image`, `kv`, `badges`) — as one self-contained page,
 every string escaped and every link relative or HTTPS, with a brand theme (`theme_css`) and switchable layouts
-(`layouts=`). `python -S web_ui.py --example page` prints a spec; `--page spec.json [--brand brand.json --layouts
+(`layouts=`). `python -S pysaiyanweboo.py --example page` prints a spec; `--page spec.json [--brand brand.json --layouts
 page-layouts.json]` renders it from the shell or Node, so a report script owns only its data.
 
 🎞️ `gif.js` (`UiGif`) turns canvas frames into one animated GIF89a with no dependency: the browser decodes, resizes, zooms and
@@ -658,11 +659,11 @@ between static discovery and execution evidence.
 
 ### Single-file embedded ES modules (experimental)
 
-The browser modules (`ui.js` and the rest) are Python data inside `web_ui.py`; `python -S web_ui.py --site DIR` writes them under `DIR/js/`.
+The browser modules (`ui.js` and the rest) are Python data inside `pysaiyanweboo.py`; `python -S pysaiyanweboo.py --site DIR` writes them under `DIR/js/`.
 No npm, pip dependencies or runtime download is needed. JavaScript remains opt-in.
 
 ```sh
-printf 'Hello' | python -S web_ui.py --embed-ui > demo.html
+printf 'Hello' | python -S pysaiyanweboo.py --embed-ui > demo.html
 python -S -c 'from web_ui import render_document; print(render_document("Hello", embedded_modules=("ui.js",)))' > demo.html
 ```
 
@@ -735,7 +736,7 @@ boundary](docs/python-controls.md).
 `front`, `world`, `repository-diagnostics`, `table`, `steps`, `scroll`; `components()` lists them as data), and two calls wrap them:
 
 ```python
-import web_ui                                   # the vendored copy (vendor/web_ui.py) in another repository
+import web_ui                                   # the vendored copy (vendor/pysaiyanweboo.py) in another repository
 parts = web_ui.component_parts("dial", "volume", maximum=11, label="Volume")   # {"html", "css", "js"}: place them where your page wants them
 page = web_ui.component_document("dial", "volume", maximum=11, document_title="Volume")  # or one single-file page: bundled_css() + the stylesheet, the HTML, the module inline
 ```
@@ -743,11 +744,11 @@ page = web_ui.component_document("dial", "volume", maximum=11, document_title="V
 `parts["css"]` is what the component needs beyond `bundled_css()`; `parts["js"]` is the module source, which binds its own elements when the page loads it
 (`[data-ui-dial]`, `[data-ui-door]`, …), so a page lists it once with `module_script()` or `render_document(embedded_modules=...)`. A spec goes first for the
 components that take one (`door`, `source`, `stub`, `world`); keyword arguments reach the builder (`heading_level=`, a dial's `minimum=`/`maximum=`/`step=`).
-From Node or a shell, the same calls by name: `python -S web_ui.py --component dial --set name=volume --set maximum=11 --part json` prints the three as
+From Node or a shell, the same calls by name: `python -S pysaiyanweboo.py --component dial --set name=volume --set maximum=11 --part json` prints the three as
 JSON (`--part page|html|css|js|json`, `--spec FILE` or `--spec -` for a spec, `--set KEY=VALUE` with JSON values, `--component list` for the table);
-from Node, `require("./vendor/py_launch.cjs").run("vendor/web_ui.py", ["--component", ...], {noSite: true}).stdout`.
-`css_source(name)` and `js_source(name)` stay the raw sources by file name; `write_js()` still writes the modules out for pages that link files (`python -S web_ui.py --css-bundle` the stylesheets).
-mcp-toolcall-lab is the model consumer: it vendors `web_ui.py` through the parent repository's `vendor_sync.py` (`vendor-consumers.json`, `vendor.lock.json`)
+from Node, `require("./vendor/py_launch.cjs").run("vendor/pysaiyanweboo.py", ["--component", ...], {noSite: true}).stdout`.
+`css_source(name)` and `js_source(name)` stay the raw sources by file name; `write_js()` still writes the modules out for pages that link files (`python -S pysaiyanweboo.py --css-bundle` the stylesheets).
+mcp-toolcall-lab is the model consumer: it vendors `pysaiyanweboo.py` through the parent repository's `vendor_sync.py` (`vendor-consumers.json`, `vendor.lock.json`)
 and builds its Pokémon panel from `source_panel_html(spec)` + `css_source("source.css")` + `js_source("source.js")`; `component_parts("source", spec)` is the
 same three in one call. `tests/test_components.py` renders every entry.
 
@@ -762,7 +763,7 @@ one `no-store` GET fills `#metadata`, `#summary` and one escaped card per observ
 "missing"})` is `table()` (the one table renderer, `.ui-table`) from a JSON spec, in its own horizontal scroller, no script; `table(headers, rows,
 row_headers=, missing=)` takes the same rich cells from Python. A cell is text (line breaks kept), a finite number (right-aligned, `data-num`), `null` (the `missing` text, muted) or
 `{text, href, image: {src, alt, width, height}, status, num}`; `status` is a token written as `data-status` for the page to color, hrefs and image
-sources are relative paths or http(s) addresses. `python -S web_ui.py --component table --spec table.json --part html` from the shell or Node.
+sources are relative paths or http(s) addresses. `python -S pysaiyanweboo.py --component table --spec table.json --part html` from the shell or Node.
 
 `steps` is a runbook (olnm's guide and Component Ops' operations steps had one each, written by hand): `steps_html({"key", "steps": [{id, title,
 command, expect, needs, trouble: {seen, check, fix}}], "statuses", "source"})` gives one card per step with its command (📋 `code_block()`,
@@ -801,7 +802,7 @@ python -S -c 'import web_ui as ui
 rows=[("Aoi", "#1", ui.badge("失敗")), ("markdown", "#2", ui.badge("成功"))]
 body=ui.stat_tiles((("PR", len(rows)), ("CI失敗", 1)))+ui.filter_input("prs", count_id="n")+"<span id=n></span>"+ui.data_table(("repo","PR","CI"), rows, id="prs", trusted_cells=True, row_ids=("Aoi#1","markdown#2"))+ui.draft_textarea(key="Aoi#1:notes", id="notes", label="メモ")+ui.records_io()
 print(ui.render_document(trusted_html=ui.records_board(body), css=ui.bundled_css(), scripts=ui.shared_scripts(".", names=("records.js",))))' > board.html
-python -S web_ui.py --site .   # writes js/records.js next to it
+python -S pysaiyanweboo.py --site .   # writes js/records.js next to it
 ```
 
 ## Focused test discovery

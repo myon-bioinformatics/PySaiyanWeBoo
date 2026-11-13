@@ -34,7 +34,7 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npx playwright install --with-deps --only-shell chromium
       - name: Build example pages in memory and write them for capture
-        run: python3 -S web_ui.py --site build/site
+        run: python3 -S pysaiyanweboo.py --site build/site
       - name: Serve examples
         run: python3 -m http.server 8000 --directory build/site > /tmp/web-ui-http.log 2>&1 &
       - name: Wait for static server

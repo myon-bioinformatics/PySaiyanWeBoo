@@ -66,7 +66,7 @@ class PlotlyFigureTests(unittest.TestCase):
             [
                 sys.executable,
                 "-S",
-                str(ROOT / "web_ui.py"),
+                str(ROOT / "pysaiyanweboo.py"),
                 "--trusted-html",
                 "--with-remote-scripts",
                 "plotly.js",

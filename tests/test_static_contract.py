@@ -124,7 +124,7 @@ class StaticContractTest(unittest.TestCase):
     def test_example_pages_are_single_files_carrying_the_whole_bundle(self):
         self.assertEqual(sorted(PAGES), ["contract/v1/example.html", "examples/api-stub.html", "examples/clipboard-shelf.html", "examples/composition-studio.html", "examples/coordinates.html", "examples/door.html", "examples/github-like.html",
                                          "examples/image-studio.html", "examples/index.html", "examples/mcp-lab.html", "examples/mcp-stub.html", "examples/parts.html", "examples/patterns.html", "examples/photo-studio.html", "examples/play-studio.html", "examples/playground.html", "examples/screens.html", "examples/showcase.html", "examples/test-report.html", "examples/timeline.html", "index.html"])
-        self.assertEqual((ROOT / "index.html").read_text(encoding="utf-8"), PAGES["index.html"], "run: python -S web_ui.py --site DIR; copy DIR/index.html")
+        self.assertEqual((ROOT / "index.html").read_text(encoding="utf-8"), PAGES["index.html"], "run: python -S pysaiyanweboo.py --site DIR; copy DIR/index.html")
         for name, text in PAGES.items():
             self.assertNotIn('rel="stylesheet"', text, name)
             self.assertIn(web_ui.bundled_css(), text, name)
@@ -209,7 +209,7 @@ def test_every_css_class_is_referenced_by_markup_scripts_or_generators():
     for path in _css_sources():
         defined |= set(re.findall(r"\.([A-Za-z_][A-Za-z0-9_-]*)", re.sub(r"\{[^{}]*\}", "{}", _css_text(path))))
     # Classes the Python generators emit (tools/capture_matrix.py, tools/layout_presets.py) count as used.
-    used_in = [*ROOT.glob("*.html"), ROOT / "web_ui.py", *(ROOT / "tools").glob("*.py")]
+    used_in = [*ROOT.glob("*.html"), ROOT / "pysaiyanweboo.py", *(ROOT / "tools").glob("*.py")]
     corpus = "\n".join(path.read_text(encoding="utf-8") for path in used_in) + "\n".join(PAGES.values()) + "\n".join(web_ui.js_modules().values())
     unused = sorted(name for name in defined
                     if not re.search(rf"(?<![A-Za-z0-9_-]){re.escape(name)}(?![A-Za-z0-9_-])", corpus))

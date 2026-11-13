@@ -145,7 +145,7 @@ def test_every_function_the_inventory_names_as_a_successor_exists():
                 if part.replace('_', '').isalnum() and part.islower() and ' ' not in part:
                     named.add(part)
     assert {'screen_view', 'pattern_run', 'parse_curl', 'junit_inspect'} <= named
-    assert not [name for name in sorted(named) if not hasattr(u, name)], 'a target that is not a function of web_ui.py'
+    assert not [name for name in sorted(named) if not hasattr(u, name)], 'a target that is not a function of pysaiyanweboo.py'
 
 
 def test_the_migration_inventory_is_what_the_tool_writes_from_the_pinned_checkout():

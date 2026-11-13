@@ -37,7 +37,7 @@ Initial Python checks: 164 passed, 7 skipped, 1 subtest passed (5.17s): `test_wo
 
 Only the eight previously warned WebP files are replaced. `manifest.json` and the generated gallery now count **574 clean / 0 noted / 574 records**. The concurrent update added four records and refreshed language screenshots. This combines 566 preserved records from the integrated head with eight new captures; it does not claim that all 574 were newly photographed. Original top-level capture metadata remains intact; `revalidation` records the new browser, source hash, exact files, and comparison. Updated records carry `revalidated: true`.
 
-On the initial head, all 562 clean records and their 560 distinct images were verified unchanged. On the integrated head, all 566 clean records and their 564 distinct images are preserved byte-for-byte by this patch (two existing pairs of records share filenames; those were preserved). GIFs are unchanged. Other files changed are `web_ui.py`, the regenerated root `index.html`, the browser test, and this report. No dependency or lockfile changes.
+On the initial head, all 562 clean records and their 560 distinct images were verified unchanged. On the integrated head, all 566 clean records and their 564 distinct images are preserved byte-for-byte by this patch (two existing pairs of records share filenames; those were preserved). GIFs are unchanged. Other files changed are `pysaiyanweboo.py`, the regenerated root `index.html`, the browser test, and this report. No dependency or lockfile changes.
 
 Reproduce the focused after-check:
 

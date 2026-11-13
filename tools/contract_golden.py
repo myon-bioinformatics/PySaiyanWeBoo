@@ -1,4 +1,4 @@
-"""Record the verdicts of flutter_navigation_basic's own contract checks as golden values for ``web_ui.py --pattern contract``.
+"""Record the verdicts of flutter_navigation_basic's own contract checks as golden values for ``pysaiyanweboo.py --pattern contract``.
 
 Run it against a checkout of the original (read only)::
 

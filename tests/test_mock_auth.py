@@ -206,7 +206,7 @@ class AuthBridgeTests(unittest.TestCase):
         for page in (ui.patterns_html(), ui.patterns_document(),
                      ui.example_pages()['examples/patterns.html']):
             self.assertNotIn('href="/auth.html"',page)
-            self.assertIn('python3 web_ui.py --pattern-serve',page)
+            self.assertIn('python3 pysaiyanweboo.py --pattern-serve',page)
         conn=http.client.HTTPConnection('127.0.0.1',self.port,timeout=10)
         conn.request('GET','/')
         response=conn.getresponse();page=response.read().decode();conn.close()
