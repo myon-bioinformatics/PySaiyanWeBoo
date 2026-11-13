@@ -21,14 +21,14 @@ import argparse, json, re, sys
 from html import escape; from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import web_ui  # noqa: E402  (the presets API lives in the installable module; this tool keeps the sweep)
+import pysaiyanweboo  # noqa: E402  (the presets API lives in the installable module; this tool keeps the sweep)
 
-SCHEMA = web_ui.LAYOUT_PRESETS_SCHEMA
-CANDIDATES = web_ui.LAYOUT_CANDIDATES_SCHEMA
-MAX_PRESETS = web_ui.MAX_LAYOUT_PRESETS
-validate = web_ui.validate_layout_presets
-css = web_ui.layout_presets_css
-controls_html = web_ui.layout_switch_html
+SCHEMA = pysaiyanweboo.LAYOUT_PRESETS_SCHEMA
+CANDIDATES = pysaiyanweboo.LAYOUT_CANDIDATES_SCHEMA
+MAX_PRESETS = pysaiyanweboo.MAX_LAYOUT_PRESETS
+validate = pysaiyanweboo.validate_layout_presets
+css = pysaiyanweboo.layout_presets_css
+controls_html = pysaiyanweboo.layout_switch_html
 
 
 _CHECK_JS = r"""items => {

@@ -22,14 +22,14 @@ from html import escape; from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-import web_ui  # noqa: E402  (route table rules shared with navigation.js)
+import pysaiyanweboo  # noqa: E402  (route table rules shared with navigation.js)
 sys.path.insert(0, str(ROOT / "tools"))
 import layout_presets  # noqa: E402  (switchable layouts)
 
 
 MAX_INPUT = 8 * 1024 * 1024
 THEMES = ("modern", "github-like")
-ASSETS = ("tokens.css", "base.css", "components.css", "matrix.css")  # names in web_ui.css_source()
+ASSETS = ("tokens.css", "base.css", "components.css", "matrix.css")  # names in pysaiyanweboo.css_source()
 
 
 def _load(path, schema):
@@ -112,7 +112,7 @@ def viewer(pages, report, dataset=None, *, tiles_base=".", theme="github-like",
     rows = pages.get("pages")
     if not isinstance(rows, list):
         raise ValueError("pages must list the representative pages")
-    table = web_ui.route_table(rows)  # same rules as navigation.js: unique routes and emoji keys
+    table = pysaiyanweboo.route_table(rows)  # same rules as navigation.js: unique routes and emoji keys
     adapters = [row.get("adapter") for row in rows]
     if any(not isinstance(a, str) or not a for a in adapters) or len(set(adapters)) != len(adapters):
         raise ValueError("each page needs a distinct adapter id")
@@ -129,13 +129,13 @@ def viewer(pages, report, dataset=None, *, tiles_base=".", theme="github-like",
             f'<p class="ui-muted"><a href="{escape(url, quote=True)}">{escape(url)}</a> · adapter {escape(adapter)}</p>'
             f'<ul class="ui-matrix-tiles">{tiles}</ul></section>')
     unknown = sorted(set(report.get("pages", [])) - set(adapters))
-    styles = "\n".join(web_ui.css_source(name) for name in (*ASSETS, f"themes/{theme}.css"))
+    styles = "\n".join(pysaiyanweboo.css_source(name) for name in (*ASSETS, f"themes/{theme}.css"))
     if "</style" in styles.lower():
         raise ValueError("unsafe stylesheet")
     css = "<style>" + styles + "</style>"
     # Layout presets switch the tile grid live (radio + CSS :has); the presets' own CSS is
     # generated from validated lengths, so it is inlined next to the shared CSS.
-    layouts = layouts if layouts is not None else web_ui.example_data("layout-presets")
+    layouts = layouts if layouts is not None else pysaiyanweboo.example_data("layout-presets")
     css += "<style>" + layout_presets.css(layouts) + "</style>"
     switch = layout_presets.controls_html(layouts, candidates, legend="Tile layout")
     note = (f'<p class="ui-muted">Reference: {escape(report["reference"])}. '
@@ -146,7 +146,7 @@ def viewer(pages, report, dataset=None, *, tiles_base=".", theme="github-like",
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             '<title>Browser matrix</title>' + css + '</head>'
             f'<body data-ui-theme="{theme}"><main class="ui-page ui-matrix-page"><h1>Browser matrix</h1>' + note
-            + web_ui.route_links([{k: r[k] for k in ("route", "key", "label") if r.get(k)} for r in rows],
+            + pysaiyanweboo.route_links([{k: r[k] for k in ("route", "key", "label") if r.get(k)} for r in rows],
                                  label="Pages")
             + switch + '<div class="ui-matrix">' + "".join(sections) + "</div></main></body></html>\n")
 

@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-import web_ui  # noqa: E402
+import pysaiyanweboo  # noqa: E402
 
 SEED = "contract-golden/1"
 DUMMY_KEYS = {"common.x": "x", "home.x": "x", "coordinate.x": "x", "photoStudio.x": "x", "nowTimeline.x": "x", "urlParameters.case": "x {urlParamCaseId}"}
@@ -271,7 +271,7 @@ def swap_cases(rng, gesture_paint):
                                               [{"x": None, "y": 0, "width": 40, "height": 30}, slots[1]], [slots[0], {"x": 0, "y": 0, "width": 39, "height": 30}], [slots[0], {"y": 0}]))
         if mode == "viewport":
             geometry["viewport"] = rng.choice(({"width": view_w + 2, "height": view_h}, {"width": view_w, "height": view_h - 3}, {"width": view_w + 1, "height": view_h}, {"width": "a", "height": view_h}, {"width": view_w}))
-        before_png, after_png = web_ui.photo_png(width, height, bytes(before)), web_ui.photo_png(width + (1 if mode == "size" else 0), height, bytes(after) if mode != "size" else bytes(make_raster(width + 1, height, (9, 9, 9, 255))))
+        before_png, after_png = pysaiyanweboo.photo_png(width, height, bytes(before)), pysaiyanweboo.photo_png(width + (1 if mode == "size" else 0), height, bytes(after) if mode != "size" else bytes(make_raster(width + 1, height, (9, 9, 9, 255))))
         try:
             result = gesture_paint.check_swap(backend.Image.open(io.BytesIO(before_png)).convert("RGBA"), backend.Image.open(io.BytesIO(after_png)).convert("RGBA"), copy.deepcopy(geometry))
             expected = {"ok": bool(result["matches"]), "pixel_crops": [list(box) for box in result["pixel_crops"]],
