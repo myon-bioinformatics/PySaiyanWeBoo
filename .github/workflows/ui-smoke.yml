@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: myon-bioinformatics/BrowserTestKit
-          ref: 6a2e32a4bbe49be5268e6b30040d665a89eecf66
+          ref: 9d3183ab9244c763be519ee18ca513205c4d3374
           path: .browser-test-kit
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -75,16 +75,16 @@ jobs:
           if [ -f web-ui-contract-v1-mobile-390x844.png ]; then cp web-ui-contract-v1-mobile-390x844.png screenshot-evidence/; fi
           if [ -f web-ui-github-like-desktop-1440x900.png ]; then cp web-ui-github-like-desktop-1440x900.png screenshot-evidence/; fi
           if [ -f web-ui-github-like-mobile-390x844.png ]; then cp web-ui-github-like-mobile-390x844.png screenshot-evidence/; fi
-          python3 -S .browser-test-kit/scripts/write_capture_evidence.py screenshot-evidence --project chromium --captures web-ui-desktop-1440x900.png,web-ui-mobile-390x844.png,web-ui-contract-v1-desktop-1440x900.png,web-ui-contract-v1-mobile-390x844.png,web-ui-github-like-desktop-1440x900.png,web-ui-github-like-mobile-390x844.png --sha "$EXPECTED_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --stage "$CAPTURE_STAGE"
+          python3 -S .browser-test-kit/tools/btk.py write-capture-evidence screenshot-evidence --project chromium --captures web-ui-desktop-1440x900.png,web-ui-mobile-390x844.png,web-ui-contract-v1-desktop-1440x900.png,web-ui-contract-v1-mobile-390x844.png,web-ui-github-like-desktop-1440x900.png,web-ui-github-like-mobile-390x844.png --sha "$EXPECTED_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --stage "$CAPTURE_STAGE"
       - name: Require all captures, hashes and current run identity
         if: always()
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: python3 -S .browser-test-kit/scripts/check_capture_evidence.py screenshot-evidence --expect chromium --captures web-ui-desktop-1440x900.png,web-ui-mobile-390x844.png,web-ui-contract-v1-desktop-1440x900.png,web-ui-contract-v1-mobile-390x844.png,web-ui-github-like-desktop-1440x900.png,web-ui-github-like-mobile-390x844.png --sha "$EXPECTED_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
+        run: python3 -S .browser-test-kit/tools/btk.py check-capture-evidence screenshot-evidence --expect chromium --captures web-ui-desktop-1440x900.png,web-ui-mobile-390x844.png,web-ui-contract-v1-desktop-1440x900.png,web-ui-contract-v1-mobile-390x844.png,web-ui-github-like-desktop-1440x900.png,web-ui-github-like-mobile-390x844.png --sha "$EXPECTED_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
       - name: Prove rejection using copies of actual evidence
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: python3 -S .browser-test-kit/scripts/probe_capture_rejections.py screenshot-evidence --expect chromium --captures web-ui-desktop-1440x900.png,web-ui-mobile-390x844.png,web-ui-contract-v1-desktop-1440x900.png,web-ui-contract-v1-mobile-390x844.png,web-ui-github-like-desktop-1440x900.png,web-ui-github-like-mobile-390x844.png --sha "$EXPECTED_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
+        run: python3 -S .browser-test-kit/tools/btk.py probe-capture-rejections screenshot-evidence --expect chromium --captures web-ui-desktop-1440x900.png,web-ui-mobile-390x844.png,web-ui-contract-v1-desktop-1440x900.png,web-ui-contract-v1-mobile-390x844.png,web-ui-github-like-desktop-1440x900.png,web-ui-github-like-mobile-390x844.png --sha "$EXPECTED_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
       - name: Preserve complete or failed receipts and images
         if: always()
         uses: actions/upload-artifact@v7
@@ -94,7 +94,7 @@ jobs:
           retention-days: 14
 
       - name: Check visual regression candidates
-        run: python3 scripts/check_visual_regression.py --candidate-dir .
+        run: python3 tools/check_visual_regression.py --candidate-dir .
 
       - uses: actions/upload-artifact@v7
         if: always()

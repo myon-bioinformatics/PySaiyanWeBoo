@@ -1,12 +1,12 @@
 # Build-free collection filtering: Python and Node
 
 This extends the browser `collection.js` module with a JSON input/output contract that
-Python implements (`collection_filter.py`); Node reaches it through `vendor/py_launch.cjs`, with no
+Python implements (`pysaiyanweboo.py --collection` (`filter_request`)); Node reaches it through `vendor/py_launch.cjs`, with no
 Node twin. Neither route requires npm, pip, compilation or a network connection.
 
 ```sh
-printf '%s\n' '{"items":[{"name":"Aoi","topics":["python"]},{"name":"Ironmate","topics":["js"]}],"query":"PYTHON","text_fields":["name","topics"]}' | python -S collection_filter.py
-printf '%s\n' '{"items":[{"name":"Aoi","topics":["python"]},{"name":"Ironmate","topics":["js"]}],"query":"PYTHON","text_fields":["name","topics"]}' | node vendor/py_launch.cjs -- collection_filter.py
+printf '%s\n' '{"items":[{"name":"Aoi","topics":["python"]},{"name":"Ironmate","topics":["js"]}],"query":"PYTHON","text_fields":["name","topics"]}' | python -S pysaiyanweboo.py --collection
+printf '%s\n' '{"items":[{"name":"Aoi","topics":["python"]},{"name":"Ironmate","topics":["js"]}],"query":"PYTHON","text_fields":["name","topics"]}' | node vendor/py_launch.cjs -- pysaiyanweboo.py --collection
 ```
 
 Both print `[{"name":"Aoi","topics":["python"]}]` and a newline. Contract:
@@ -41,6 +41,6 @@ Both print `[{"name":"Aoi","topics":["python"]}]` and a newline. Contract:
   JavaScript functions are **not** serialized into the JSON contract.
 
 `tests/fixtures/collection_filter_cases.json` is shared across both languages.
-Run `python -S collection_filter.py` with JSON stdin, `uv run pytest
+Run `python -S pysaiyanweboo.py --collection` with JSON stdin, `uv run pytest
 tests/test_collection_filter.py`, and `tests/test_collection_filter.py` (it also runs the Node route).
 A consumer should pin the source revision and verify its bytes before vendoring.

@@ -37,19 +37,19 @@ from typing import Callable, NamedTuple
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-import web_ui  # noqa: E402
+import pysaiyanweboo  # noqa: E402
 
 FRAME_MS = 80                                   # at most one screenshot per 80 ms while a scene waits
 MIN_MS, MAX_MS, TAIL_MS = 20, 2000, 1500        # delay limits, and how long the last frame stays
-SPEC = web_ui.example_data("school")
-FLOOR = web_ui.world_validate(SPEC)["floors"][0]
+SPEC = pysaiyanweboo.example_data("school")
+FLOOR = pysaiyanweboo.world_validate(SPEC)["floors"][0]
 W, H, T = FLOOR["width"], FLOOR["height"], FLOOR["tile"]
 CLASSROOM = f'.ui-floor[data-floor="{FLOOR["id"]}"]'
 PICKED = "() => !document.querySelector('.ui-world').hasAttribute('data-pick')"
 SETTLED = ("() => { const f = [...document.querySelectorAll('.ui-floor')].find(f => getComputedStyle(f).display !== 'none'), p = f.querySelector('.ui-player'), s = p.style;"
            "return Math.abs(parseFloat(s.getPropertyValue('--px')) - +p.dataset.targetX) < .01 && Math.abs(parseFloat(s.getPropertyValue('--py')) - +p.dataset.targetY) < .01 }")   # the shown floor's player has arrived
 PLAYER = (0.48, 0.69)                           # where a character standing at the door is on screen: a zoom target
-WORLDS = {"school": SPEC, "overworld": web_ui.example_data("overworld"), "cities": web_ui.example_data("cities")}   # the specs a scene can open; a GIF is <world>-<scene>.gif
+WORLDS = {"school": SPEC, "overworld": pysaiyanweboo.example_data("overworld"), "cities": pysaiyanweboo.example_data("cities")}   # the specs a scene can open; a GIF is <world>-<scene>.gif
 
 
 class Scene(NamedTuple):
@@ -93,7 +93,7 @@ class Camera:
         same table web_ui uses for directions. Every pixel changes in a zoom, so it costs a few frames of GIF size; it does not zoom back."""
         from PIL import Image
         if isinstance(anchor, str):
-            anchor = web_ui.WORLD_ANCHORS[anchor if anchor in web_ui.WORLD_ANCHORS else web_ui.world_arrow_anchor(anchor)]
+            anchor = pysaiyanweboo.WORLD_ANCHORS[anchor if anchor in pysaiyanweboo.WORLD_ANCHORS else pysaiyanweboo.world_arrow_anchor(anchor)]
         source = Image.open(io.BytesIO(self.png())).convert("RGB")
         width, height = source.size
         forward = []
@@ -508,7 +508,7 @@ def record(out, names=None, *, chrome=None, width=None, force=False, browser=Non
     with tempfile.TemporaryDirectory() as tmp_name, contextlib.ExitStack() as stack:
         tmp = Path(tmp_name)
         for world in {SCENES[n].world for n in names}:
-            (tmp / f"{world}.html").write_text(web_ui.world_document(WORLDS[world]), encoding="utf-8")
+            (tmp / f"{world}.html").write_text(pysaiyanweboo.world_document(WORLDS[world]), encoding="utf-8")
         if browser is None:
             from playwright.sync_api import sync_playwright
             browser = launch(stack.enter_context(sync_playwright()), chrome)

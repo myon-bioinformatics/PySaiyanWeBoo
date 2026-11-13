@@ -4,7 +4,7 @@ import argparse, sys
 from html import escape; from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from web_ui import render_document
+from pysaiyanweboo import render_document
 
 
 def build_demo(fragment, *, css=''):

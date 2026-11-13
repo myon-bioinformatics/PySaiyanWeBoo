@@ -466,7 +466,7 @@ uv run --project ../BrowserTestKit --group pages --group browser python ../Brows
 ## Visual regression
 
 The deterministic Chromium screenshot lane now also runs
-`scripts/check_visual_regression.py`.
+`tools/check_visual_regression.py`.
 
 The rollout is intentionally two-stage:
 
@@ -503,8 +503,8 @@ Browser/UI verification keeps two separate lanes: deterministic Playwright/Chrom
 ## Shared screenshot checks
 
 CI checks all six named Chromium desktop/mobile PNGs with BrowserTestKit at
-`6a2e32a4bbe49be5268e6b30040d665a89eecf66`, checked out separately in the screenshot job.
-See the [shared screenshot guide](https://github.com/myon-bioinformatics/BrowserTestKit/blob/6a2e32a4bbe49be5268e6b30040d665a89eecf66/docs/screenshot-evidence.md).
+`9d3183ab9244c763be519ee18ca513205c4d3374`, checked out separately in the screenshot job.
+See the [shared screenshot guide](https://github.com/myon-bioinformatics/BrowserTestKit/blob/9d3183ab9244c763be519ee18ca513205c4d3374/docs/screenshot-evidence.md).
 The shared structural PNG checks supplement the existing local candidate/baseline
 comparison. Missing/invalid required captures fail CI; available PNGs are uploaded
 even after failure (14 days). This lane does not measure Firefox/WebKit; image validity does not establish semantic correctness.

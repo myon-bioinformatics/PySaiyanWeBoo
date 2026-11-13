@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-import web_ui
+import pysaiyanweboo
 
 # Source commit is recorded with the corpus. Hashes verify the actual Dart bytes.
 SOURCES = {
@@ -54,13 +54,13 @@ void main(List<String> args) {
 def python_answers(corpus):
     sessions = []
     for session in corpus['sessions']:
-        handler = web_ui.MockAuthHandler(clock=lambda: corpus['clock'])
+        handler = pysaiyanweboo.MockAuthHandler(clock=lambda: corpus['clock'])
         sessions.append({'name': session['name'], 'answers': [handler.handle(r) for r in session['requests']]})
-    return {'sessions': sessions, 'nc': [web_ui.digest_nc_parse(v) for v in corpus['nc']],
-            'format': [web_ui.digest_nc_format(v) for v in corpus['format']],
-            'hmac': [web_ui.auth_hmac_signature(**r) for r in corpus['hmac']],
-            'digest': [web_ui.auth_digest_response(**r) for r in corpus['digest']],
-            'query': [web_ui.auth_query_pairs(p) for p in corpus['query']]}
+    return {'sessions': sessions, 'nc': [pysaiyanweboo.digest_nc_parse(v) for v in corpus['nc']],
+            'format': [pysaiyanweboo.digest_nc_format(v) for v in corpus['format']],
+            'hmac': [pysaiyanweboo.auth_hmac_signature(**r) for r in corpus['hmac']],
+            'digest': [pysaiyanweboo.auth_digest_response(**r) for r in corpus['digest']],
+            'query': [pysaiyanweboo.auth_query_pairs(p) for p in corpus['query']]}
 
 
 def main(argv=None):
