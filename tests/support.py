@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 # 🌱 The only environment variables the tests read (everything else is a fixed path: build/… for evidence, .browser-test-kit-dom for BTK).
-#    ⚙️ = a workflow sets it, so rename both together.
-#    ⚙️ WEBUI_BROWSER   platform-matrix.yml, successor-studios.yml (the engine of the matrix row) → integration/pages_browser.py, integration/flutter_browser.py
-#    ⚙️ WEBUI_DEVICE    platform-matrix.yml (the emulated device of the row)                      → integration/pages_browser.py
+#    ⚙️ = a workflow sets it, so rename both together. One prefix: PSWB_.
+#    ⚙️ PSWB_BROWSER   platform-matrix.yml, successor-studios.yml (the engine of the matrix row) → integration/pages_browser.py, integration/flutter_browser.py
+#    ⚙️ PSWB_DEVICE    platform-matrix.yml (the emulated device of the row)                      → integration/pages_browser.py
 #    ⚙️ GITHUB_ACTIONS  GitHub itself (CI must have the JUnit importer; locally the test skips)   → test_tooling.py
-#    🎞️ WEB_UI_GIFS     by hand: "DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]" keeps the demo GIFs → integration/pages_browser.py
-#    📸 WEB_UI_SHOTS    by hand: DIR keeps a screenshot of every cities check                     → integration/worlds_browser.py
+#    🎞️ PSWB_GIFS     by hand: "DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]" keeps the demo GIFs → integration/pages_browser.py
+#    📸 PSWB_SHOTS    by hand: DIR keeps a screenshot of every cities check                     → integration/worlds_browser.py
 
 import json, re, shutil, subprocess, tempfile
 from pathlib import Path

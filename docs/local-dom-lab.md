@@ -9,7 +9,7 @@ sanitizer or a network firewall.
 
 ```sh
 uv run --locked --group gradio python -m playwright install chromium
-uv run --locked --group gradio python tools/web_ui_serve_dom_lab.py fixture.html --css fixture.css
+uv run --locked --group gradio python tools/dom_lab.py fixture.html --css fixture.css
 ```
 
 The test actually launches Gradio on loopback, opens Chromium, and compares

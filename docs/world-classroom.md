@@ -184,7 +184,7 @@ the metro beside them and the Seine, with a 🔥 in each block. The cities are t
 * The coordinates in `EXAMPLES["cities"]` are approximate (about 100 m, read off public maps): a miniature shows where things stand relative to each other, not exact positions.
   There are no facility names in TOKYO, only stations and exits, and no religious buildings in any of the three cities (`tests/test_worlds.py` keeps it so).
 * Evidence: `tests/integration/worlds_browser.py` (`CitiesTests`) walks to every spot of the three cities on a phone and a desktop, touches every sign, and checks the
-  tools, keys, categories, favourites, six widths, eleven languages and the page without JavaScript. With `WEB_UI_SHOTS=DIR` it also keeps a WebP of each check with
+  tools, keys, categories, favourites, six widths, eleven languages and the page without JavaScript. With `PSWB_SHOTS=DIR` it also keeps a WebP of each check with
   a `manifest.json` and an `index.html`; the reviewed set lives under `docs/evidence/cities-<date>/`. The three `cities-*.gif` demos are the same operations in motion.
 * From Python: `pysaiyanweboo.place_floor(points, meters=, tile=, links=, rivers=, area=, start=, id=, label=)`; from another repository: `--world -` with `place` as above.
   The cities open in the **dots** name layer (below), so the crowded centre is dots, not a pile of names; `"names": "names"` on the world shows every name.
@@ -263,7 +263,7 @@ in Tokyo), so names sort in recording order and read the same in any time zone; 
 the same timestamp and commit. Without `--timestamp` an existing file is refused unless `--force`, so a repeated run by hand or by an agent
 either keeps its own files or says so. `pysaiyanweboo.add_gif_arguments`, `gif_targets` and `gif_targets_from` are these rules as functions
 (record_demo imports them under the same names; `ext=".png"` names stills, so other recorders such as BrowserTestKit's evidence_gif can share them):
-the browser tests name their GIFs through them from `WEB_UI_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"`.
+the browser tests name their GIFs through them from `PSWB_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"`.
 
 | File | Shows |
 |---|---|

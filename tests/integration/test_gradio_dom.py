@@ -21,7 +21,7 @@ def test_gradio_dom(monkeypatch):
     monkeypatch.setenv('GRADIO_ANALYTICS_ENABLED', 'False')
     from playwright.sync_api import sync_playwright, expect
     extractor = load('shared_page_text', btk / 'tools/page_text.py')
-    lab = load('gradio_lab', ROOT / 'tools/web_ui_serve_dom_lab.py')
+    lab = load('gradio_lab', ROOT / 'tools/dom_lab.py')
     alpine = json.loads((ROOT / 'docs/evidence/alpine-code-dom.json').read_text())
     deno = json.loads((ROOT / 'docs/evidence/deno-doc-dom.json').read_text())['samples'][0]
     samples = [(alpine['html'], alpine['visible_text']), (deno['dom_html'], deno['inner_text']),

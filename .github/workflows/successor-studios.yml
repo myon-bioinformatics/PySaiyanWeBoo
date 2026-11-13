@@ -59,7 +59,7 @@ jobs:
       - run: uv run --locked --only-group world-test python tests/integration/flutter_browser.py -v
         # 🌱 the tests read these names: rename them together with the list in tests/support.py
         env:
-          WEBUI_BROWSER: ${{ matrix.browser }}
+          PSWB_BROWSER: ${{ matrix.browser }}
           PULSE_SERVER: tcp:127.0.0.1:4714
       - uses: actions/upload-artifact@v7
         if: always()

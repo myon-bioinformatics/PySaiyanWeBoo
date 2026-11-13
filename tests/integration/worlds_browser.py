@@ -3,7 +3,7 @@
 The emoji picker comes first, then the player walks by tap, arrow keys / WASD and the on-screen pad.
 Solid props (desks, board, shelves) are never entered, whichever way the player moves.
 Invoked explicitly by the browser CI job; missing Playwright/browser is an error. WEB_UI_CHROME may name a local Chrome.
-``SharedBoardTests`` checks the opt-in shared board against a mocked GitHub API. ``CitiesTests`` sweeps the three cities (every spot, sign, tool, width and language); with WEB_UI_SHOTS=DIR it also keeps a
+``SharedBoardTests`` checks the opt-in shared board against a mocked GitHub API. ``CitiesTests`` sweeps the three cities (every spot, sign, tool, width and language); with PSWB_SHOTS=DIR it also keeps a
 screenshot of each check, a manifest.json and one index.html in DIR (Pillow writes them as WebP).
 """
 import copy
@@ -406,7 +406,7 @@ class SchoolTests(unittest.TestCase):
 
     def test_real_floor_shows_a_chosen_photo_or_the_camera_only_in_the_page(self):
         """🖼️📷 on the real floor: ask() offers camera or photo; the picture sits behind the props, is released by 🧹 or by leaving (camera), and is never stored or sent."""
-        from tools.image_support.png import rgb_png
+        from tools.check_visual_regression import rgb_png
         path = Path(self.tmp.name) / "overworld.html"
         path.write_text(pysaiyanweboo.world_document(pysaiyanweboo.example_data("overworld")), encoding="utf-8")
         photo = Path(self.tmp.name) / "room.png"
@@ -605,7 +605,7 @@ for _floor in FAST["floors"]:
 SIZES = {"phone": (390, 844, True), "desktop": (1280, 800, False)}
 WIDTHS = {"phone-320": (320, 640, True), "phone": (390, 844, True), "phone-landscape": (844, 390, True),
           "tablet": (768, 1024, False), "desktop": (1280, 800, False), "wide": (1920, 1080, False)}
-SHOTS = os.environ.get("WEB_UI_SHOTS")           # a folder: each check also keeps a screenshot, listed in manifest.json and index.html
+SHOTS = os.environ.get("PSWB_SHOTS")           # a folder: each check also keeps a screenshot, listed in manifest.json and index.html
 CITY_FLOOR = '.ui-floor[data-floor="{}"]'
 CITY_POS = "fl => { const s = document.querySelector(`.ui-floor[data-floor=\"${fl}\"] .ui-player`).style; return [parseFloat(s.getPropertyValue('--px')), parseFloat(s.getPropertyValue('--py'))]; }"
 CITY_WALK = ("fl => new Promise(done => { const p = document.querySelector(`.ui-floor[data-floor=\"${fl}\"] .ui-player`), seen = [], t0 = performance.now();"
@@ -742,7 +742,7 @@ class CitiesTests(unittest.TestCase):
             return [f"⚠️ 目印の上に「{top['what']}」が重なり押せない（スクリプトで代用）"]
 
     def shot(self, page, kind, floor, ident, label, notes=()):
-        """One screenshot of the world (the page around it is cut off), kept only with WEB_UI_SHOTS."""
+        """One screenshot of the world (the page around it is cut off), kept only with PSWB_SHOTS."""
         if not self.out:
             return
         from PIL import Image

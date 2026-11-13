@@ -786,8 +786,8 @@ and `row_statuses=` on `table()` / `data_table()` so `status_filter()` narrows t
 
 <img src="docs/demo/component-table.gif" width="320" alt="A browser matrix table on a phone: the themes change its colors, then it scrolls sideways inside its box while the page stays still">
 
-The GIF comes from the browser test (`WEB_UI_GIFS=docs/demo python -m pytest tests/integration/pages_browser.py -k TableBrowserTests`).
-`WEB_UI_GIFS` takes the recorder's output options too, parsed by the same argparse definitions: `WEB_UI_GIFS="runs --suffix=-chromium --timestamp --git-commit"`
+The GIF comes from the browser test (`PSWB_GIFS=docs/demo python -m pytest tests/integration/pages_browser.py -k TableBrowserTests`).
+`PSWB_GIFS` takes the recorder's output options too, parsed by the same argparse definitions: `PSWB_GIFS="runs --suffix=-chromium --timestamp --git-commit"`
 writes `runs/component-table-chromium-20261108T113412Z-288cbed.gif` (the suffix after the base name, then when the run started, in UTC, and the commit it ran, in the order given), so repeated runs keep every file without `--force`.
 
 ### Records boards from Python

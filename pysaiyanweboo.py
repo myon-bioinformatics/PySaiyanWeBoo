@@ -1639,7 +1639,7 @@ class _AddRunDetail(argparse.Action):
 
 
 def add_gif_arguments(parser):
-    """The output arguments shared by the CLI and ``WEB_UI_GIFS``: ``out``, ``--prefix``, ``--suffix``, ``--timestamp``, ``--git-commit``, ``--force``."""
+    """The output arguments shared by the CLI and ``PSWB_GIFS``: ``out``, ``--prefix``, ``--suffix``, ``--timestamp``, ``--git-commit``, ``--force``."""
     parser.add_argument("out", type=Path, help="directory for <prefix><name><suffix>[-<run detail>...].gif")
     parser.add_argument("--prefix", type=name_part, default="", metavar="TEXT", help="put TEXT before every file name")
     parser.add_argument("--suffix", type=name_part, default="", metavar="TEXT",
@@ -1700,11 +1700,11 @@ def gif_targets(directory, stems, *, prefix="", suffix="", run_details=(), force
 
 
 def gif_targets_from(spec, stems, *, now=None, revision=None, ext=".gif", root=None):
-    """``gif_targets`` from one setting string, ``"DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"`` (``WEB_UI_GIFS`` in the
+    """``gif_targets`` from one setting string, ``"DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"`` (``PSWB_GIFS`` in the
     browser tests). The words are split like a shell command line and parsed by the same argparse definitions as the CLI (the run details
     keep their order), so a bad option raises argparse.ArgumentError here instead of exiting.
     """
-    parser = add_gif_arguments(argparse.ArgumentParser(prog="WEB_UI_GIFS", add_help=False, allow_abbrev=False, exit_on_error=False))
+    parser = add_gif_arguments(argparse.ArgumentParser(prog="PSWB_GIFS", add_help=False, allow_abbrev=False, exit_on_error=False))
     args = parser.parse_args(shlex.split(spec))
     return gif_targets(args.out, stems, prefix=args.prefix, suffix=args.suffix, run_details=args.run_details,
                        force=args.force, now=now, revision=revision, ext=ext, root=root)

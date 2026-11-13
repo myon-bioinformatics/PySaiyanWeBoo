@@ -12,7 +12,7 @@ the run's details in the order their options were given, left to right: ``--time
 so ``--git-commit --timestamp`` writes ``…-288cbed-20261108T113412Z.gif``. Repeated runs, by hand or by an agent, keep every GIF without
 ``--force`` and each name says when and from which code it was recorded. ``add_gif_arguments``, ``gif_targets`` and ``gif_targets_from``
 are those rules as functions, so the browser tests name their GIFs the same way from
-``WEB_UI_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"``. Unlike that zoom (every pixel changes), a walking player changes few pixels, so frames are
+``PSWB_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"``. Unlike that zoom (every pixel changes), a walking player changes few pixels, so frames are
 written as deltas (``optimize=True``): about a third of the size, decoding to exactly the same pictures. The zoom step
 (``cam.zoom``) is Ironmate's smooth zoom-in, kept to what the demos need and run through this same encoder, not a second copy of
 that tool; this repository is the canonical home of both. Needs Playwright and Pillow, like the browser tests. Scenes are ordinary functions, so a new

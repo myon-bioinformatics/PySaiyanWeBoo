@@ -30,7 +30,7 @@ integration and should remain opt-in tests.
 Live Stagehand tests must be opt-in. Local browser tests may use local
 Chrome/Chromium. Remote Browserbase tests must receive credentials through
 GitHub Actions secrets/environment at execution time; credentials must never be
-committed, emitted by `web_ui_tooling_meta.py`, or uploaded as artifacts.
+committed, emitted by `repository_metadata.py tooling`, or uploaded as artifacts.
 
 ## Tool diagnostics
 
@@ -53,11 +53,11 @@ current PyPI release without conflict.
 ```sh
 uv run pytest -v
 uv run --group stagehand pytest -v
-uv run --locked --group stagehand python tools/web_ui_tooling_meta.py
+uv run --locked --group stagehand python tools/repository_metadata.py tooling
 python -S tools/repository_metadata.py repo-metadata --format v1 --repository myon-bioinformatics/PySaiyanWeBoo --root . --output-dir /tmp/PySaiyanWeBoo-metadata
 ```
 
-`web_ui_tooling_meta.py` probes Python runtime and Git/GitHub CLI/Node/npx versions
+`repository_metadata.py tooling` probes Python runtime and Git/GitHub CLI/Node/npx versions
 locally (stdlib only; the former vendored `gh_identity.tool_versions()` copy was
 removed), and observes the explicitly allowlisted `pytest`/`stagehand` distributions
 (`stagehand` is reported only when its group is installed). The consumer only

@@ -25,7 +25,7 @@ class SuccessorBrowser(unittest.TestCase):
         threading.Thread(target=cls.server.serve_forever,daemon=True).start()
         cls.origin=f'http://127.0.0.1:{cls.server.server_port}'
         cls.pw=sync_playwright().start()
-        cls.browser=getattr(cls.pw,os.environ.get('WEBUI_BROWSER','chromium')).launch(headless=True)
+        cls.browser=getattr(cls.pw,os.environ.get('PSWB_BROWSER','chromium')).launch(headless=True)
 
     @classmethod
     def tearDownClass(cls):

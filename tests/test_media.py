@@ -22,8 +22,7 @@ import pysaiyanweboo
 import pysaiyanweboo as ui
 from pysaiyanweboo import classic_script, plotly_figure, pptx_arrow_geometry, pptx_connector, pptx_presentation, remote_scripts, render_document
 from support import node26, node_js
-from tools.check_visual_regression import compare
-from tools.image_support.png import rgb_png
+from tools.check_visual_regression import compare, rgb_png
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -870,7 +869,7 @@ def test_png_pixels_match_independent_pillow_decode(size, color, rectangles):
 
 def test_png_writer_works_without_site_packages():
     result = subprocess.run([sys.executable, "-S", "-c",
-        "import sys; from tools.image_support.png import rgb_png; "
+        "import sys; from tools.check_visual_regression import rgb_png; "
         "sys.stdout.buffer.write(rgb_png(64, 48, (200, 80, 40)))"],
         cwd=Path(__file__).resolve().parents[1], check=True, capture_output=True)
     image = Image.open(io.BytesIO(result.stdout))

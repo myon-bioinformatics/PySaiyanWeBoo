@@ -42,13 +42,13 @@ from support import flutter_case
 # The ordinary dependency-light unit suite does not discover this module.
 
 def photo_engine(playwright):
-    """The browser the photo studio tests run in: ``WEBUI_BROWSER`` = chromium (default), firefox or webkit. CI runs each engine; a laptop usually has only Chromium."""
-    return getattr(playwright, os.environ.get('WEBUI_BROWSER', 'chromium'))
+    """The browser the photo studio tests run in: ``PSWB_BROWSER`` = chromium (default), firefox or webkit. CI runs each engine; a laptop usually has only Chromium."""
+    return getattr(playwright, os.environ.get('PSWB_BROWSER', 'chromium'))
 
 
 def photo_device(playwright):
-    """Context options of a Playwright device named by ``WEBUI_DEVICE`` (for example Pixel 7 or iPhone 13), else a desktop window. Emulation, not a device."""
-    name = os.environ.get('WEBUI_DEVICE')
+    """Context options of a Playwright device named by ``PSWB_DEVICE`` (for example Pixel 7 or iPhone 13), else a desktop window. Emulation, not a device."""
+    name = os.environ.get('PSWB_DEVICE')
     if not name:
         return {'viewport': {'width': 800, 'height': 900}}
     options = dict(playwright.devices[name])
@@ -1099,7 +1099,7 @@ def runbook_showcase():
 
 class RunbookBrowserTests(unittest.TestCase):
     """steps_html() in a showcase: sections switch without a reload, 📋 copies a command, a step's state is kept in this browser, shown on
-    its card and filterable, and a JSON from another version comes back with its states reset. ``WEB_UI_GIFS`` keeps component-steps.gif."""
+    its card and filterable, and a JSON from another version comes back with its states reset. ``PSWB_GIFS`` keeps component-steps.gif."""
 
     def test_copy_record_filter_and_reload_on_a_phone(self):
         sys.path.insert(0, str(ROOT / 'tools'))
@@ -1172,8 +1172,8 @@ class RunbookBrowserTests(unittest.TestCase):
                     self.assertEqual(errors, [])
                     gif = record_demo.encode(cam.shots)
                     self.assertTrue(gif.startswith(b'GIF89a'))
-                    if os.environ.get('WEB_UI_GIFS'):
-                        record_demo.gif_targets_from(os.environ['WEB_UI_GIFS'], ['component-steps'])['component-steps'].write_bytes(gif)
+                    if os.environ.get('PSWB_GIFS'):
+                        record_demo.gif_targets_from(os.environ['PSWB_GIFS'], ['component-steps'])['component-steps'].write_bytes(gif)
                 finally:
                     browser.close()
         finally:
@@ -1206,7 +1206,7 @@ def operations_page():
 
 class OperationsPageBrowserTests(unittest.TestCase):
     """page_heading() + notice() + a table with row states + status_filter() + download_json(), switched to the purple theme without a
-    reload: the parts the Observatory and Component Ops drew by hand. ``WEB_UI_GIFS`` keeps component-operations.gif."""
+    reload: the parts the Observatory and Component Ops drew by hand. ``PSWB_GIFS`` keeps component-operations.gif."""
 
     def test_filter_rows_by_state_download_the_data_and_switch_to_purple(self):
         sys.path.insert(0, str(ROOT / 'tools'))
@@ -1252,8 +1252,8 @@ class OperationsPageBrowserTests(unittest.TestCase):
                     self.assertEqual(errors, [])
                     gif = record_demo.encode(cam.shots)
                     self.assertTrue(gif.startswith(b'GIF89a'))
-                    if os.environ.get('WEB_UI_GIFS'):
-                        record_demo.gif_targets_from(os.environ['WEB_UI_GIFS'], ['component-operations'])['component-operations'].write_bytes(gif)
+                    if os.environ.get('PSWB_GIFS'):
+                        record_demo.gif_targets_from(os.environ['PSWB_GIFS'], ['component-operations'])['component-operations'].write_bytes(gif)
                 finally:
                     browser.close()
         finally:
@@ -1271,7 +1271,7 @@ def table_spec():
 
 class TableBrowserTests(unittest.TestCase):
     """component_document("table", spec): an escaped table in its own scroller, styled by shell.css under every theme, no script.
-    The GIF walks the themes and scrolls the table sideways on a phone; ``WEB_UI_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"``
+    The GIF walks the themes and scrolls the table sideways on a phone; ``PSWB_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"``
     keeps it as DIR/<P>component-table<S>[-<run detail>...].gif through record_demo.gif_targets_from (the recorder's own naming rules)."""
 
     def test_the_table_scrolls_inside_its_box_on_a_phone_and_follows_every_theme(self):
@@ -1313,8 +1313,8 @@ class TableBrowserTests(unittest.TestCase):
                     gif = record_demo.encode(cam.shots)
                     frames = Image.open(__import__('io').BytesIO(gif))
                     self.assertTrue(gif.startswith(b'GIF89a') and getattr(frames, 'n_frames', 1) > 1)
-                    if os.environ.get('WEB_UI_GIFS'):
-                        record_demo.gif_targets_from(os.environ['WEB_UI_GIFS'], ['component-table'])['component-table'].write_bytes(gif)
+                    if os.environ.get('PSWB_GIFS'):
+                        record_demo.gif_targets_from(os.environ['PSWB_GIFS'], ['component-table'])['component-table'].write_bytes(gif)
                 finally:
                     browser.close()
         finally:
@@ -2465,11 +2465,11 @@ class PhotoPageBrowserTests(PageCase):
             self.assertTrue(report['features'][feature], (self.engine, feature))
         evidence = ROOT / 'build' / 'platform' / 'photo-evidence'                           # what each engine said, as a file (platform-matrix.yml uploads it)
         evidence.mkdir(parents=True, exist_ok=True)
-        name = self.engine + ('-' + os.environ['WEBUI_DEVICE'].replace(' ', '') if os.environ.get('WEBUI_DEVICE') else '-desktop')
+        name = self.engine + ('-' + os.environ['PSWB_DEVICE'].replace(' ', '') if os.environ.get('PSWB_DEVICE') else '-desktop')
         print('photo-evidence', name, json.dumps({'decoded': measured, 'exifAppliedByEngine': report['exifOrientationAppliedByEngine'],
                                                    'features': {k: v for k, v in report['features'].items() if k != 'devicePixelRatio'}}, ensure_ascii=False, sort_keys=True))   # also in the log
         with open(evidence / (name + '.json'), 'w', encoding='utf-8') as out:
-            json.dump({**report, 'environmentId': name, 'emulation': bool(os.environ.get('WEBUI_DEVICE'))}, out, indent=2, ensure_ascii=False)
+            json.dump({**report, 'environmentId': name, 'emulation': bool(os.environ.get('PSWB_DEVICE'))}, out, indent=2, ensure_ascii=False)
         shown = json.loads(self.page.inner_text('[data-check-out]'))
         self.assertEqual((shown['schemaVersion'], shown['environmentId'], shown['entryPoint']), (2, 'web_ui_photo_studio', 'loader_browser_canvas_adapter'))
         self.assertEqual(shown, report)
@@ -5256,7 +5256,7 @@ class PatternBridgeBrowserTests(unittest.TestCase):
                          'the first bridge was not told about this origin')
 
     def test_a_host_that_is_not_the_bound_address_is_refused_even_when_it_resolves_to_it(self):
-        if os.environ.get('WEBUI_BROWSER', 'chromium') != 'chromium':
+        if os.environ.get('PSWB_BROWSER', 'chromium') != 'chromium':
             self.skipTest('the name is mapped to loopback with a Chromium flag; Python tests send every other Host header')
         browser = self.playwright.chromium.launch(args=['--host-resolver-rules=MAP rebind.test 127.0.0.1'])
         try:
@@ -6837,7 +6837,7 @@ class MockAuthBrowserTests(unittest.TestCase):
 
 
 class GifBrowserTests(unittest.TestCase):
-    """gif.js in this engine (WEBUI_BROWSER): the browser decodes, fits, captions, patches and zooms screenshots on a canvas,
+    """gif.js in this engine (PSWB_BROWSER): the browser decodes, fits, captions, patches and zooms screenshots on a canvas,
     the encoder writes one GIF89a, and both this browser and Pillow (an independent decoder) read it back."""
 
     def test_recorder_builds_a_gif_every_decoder_opens(self):
