@@ -4,13 +4,13 @@ A reusable panel that reads **one JSON response** (asked for by name, or pasted)
 script and its stylesheet are `pysaiyanweboo.py` data, so a consumer writes no JavaScript or CSS for it.
 
 ```python
-import web_ui
+import pysaiyanweboo
 spec = json.loads(Path("pokeapi.spec.json").read_text(encoding="utf-8"))
-page_html = web_ui.source_panel_html(spec)          # the panel (the spec rides in a data attribute)
-web_ui.bundled_css()                                  # includes source.css (or css_source / --css-bundle)
-web_ui.js_source("source.js")                         # classic <script>; binds every [data-ui-source]
-extract = web_ui.source_extract(spec, response_text)  # {"title", "tables": [{"headers", "rows"}]}
-markdown = web_ui.source_markdown(extract)
+page_html = pysaiyanweboo.source_panel_html(spec)          # the panel (the spec rides in a data attribute)
+pysaiyanweboo.bundled_css()                                  # includes source.css (or css_source / --css-bundle)
+pysaiyanweboo.js_source("source.js")                         # classic <script>; binds every [data-ui-source]
+extract = pysaiyanweboo.source_extract(spec, response_text)  # {"title", "tables": [{"headers", "rows"}]}
+markdown = pysaiyanweboo.source_markdown(extract)
 ```
 
 `python -S pysaiyanweboo.py --site DIR` writes `DIR/js/source.js`. The panel never ships a network address of its own: the spec names it.

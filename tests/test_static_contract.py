@@ -3,10 +3,10 @@ from html.parser import HTMLParser; from pathlib import Path; from posixpath imp
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-import web_ui  # noqa: E402
+import pysaiyanweboo  # noqa: E402
 
 CONTRACT = ROOT / "contract" / "v1"
-PAGES = web_ui.example_pages()  # the example pages are built in memory; there are no examples/*.html files
+PAGES = pysaiyanweboo.example_pages()  # the example pages are built in memory; there are no examples/*.html files
 
 
 def _relative_luminance(hex_color):
@@ -57,7 +57,7 @@ class StaticContractTest(unittest.TestCase):
     def test_html_contract_v1_manifest_matches_fixture_and_css(self):
         manifest = json.loads((CONTRACT / "contract.json").read_text(encoding="utf-8"))
         fixture = PAGES["contract/v1/example.html"]
-        css = web_ui.bundled_css()
+        css = pysaiyanweboo.bundled_css()
         selectors = set(re.findall(r"\.(ui-[A-Za-z0-9_-]+|stub-[A-Za-z0-9_-]+)", css))
 
         self.assertEqual(manifest["version"], "1.0.0")
@@ -90,8 +90,8 @@ class StaticContractTest(unittest.TestCase):
     def test_html_contract_v1_declared_themes_exist_and_use_theme_layer(self):
         manifest = json.loads((CONTRACT / "contract.json").read_text(encoding="utf-8"))
         for theme in manifest["theme"]["values"]:
-            self.assertIn(f"themes/{theme}.css", web_ui._CSS, f"missing declared theme: {theme}")
-            text = web_ui.css_source(f"themes/{theme}.css")
+            self.assertIn(f"themes/{theme}.css", pysaiyanweboo._CSS, f"missing declared theme: {theme}")
+            text = pysaiyanweboo.css_source(f"themes/{theme}.css")
             self.assertIn("@layer theme", text, f"{theme} must stay in @layer theme")
             self.assertIn(f'data-ui-theme="{theme}"', text, f"{theme} selector must be scoped by data-ui-theme")
 
@@ -127,7 +127,7 @@ class StaticContractTest(unittest.TestCase):
         self.assertEqual((ROOT / "index.html").read_text(encoding="utf-8"), PAGES["index.html"], "run: python -S pysaiyanweboo.py --site DIR; copy DIR/index.html")
         for name, text in PAGES.items():
             self.assertNotIn('rel="stylesheet"', text, name)
-            self.assertIn(web_ui.bundled_css(), text, name)
+            self.assertIn(pysaiyanweboo.bundled_css(), text, name)
             self.assertNotIn("<script src", text, name)
 
     def test_theme_examples_keep_semantic_markup(self):
@@ -169,7 +169,7 @@ class StaticContractTest(unittest.TestCase):
                 self.assertIn(class_name, PAGES[name], f"{name}: missing {class_name}")
 
     def test_domain_protocols_not_in_generic_js(self):
-        text = web_ui.EMBEDDED_STUB_JS.lower()
+        text = pysaiyanweboo.EMBEDDED_STUB_JS.lower()
         for term in ("tools/list", "tools/call", "json-rpc", "authorization:"):
             self.assertNotIn(term, text)
 
@@ -186,7 +186,7 @@ def test_pages_root_is_one_self_contained_page_with_the_examples_inside():
 
 
 def test_output_surface_uses_neutral_high_contrast_palette():
-    css = web_ui.css_source("components.css")
+    css = pysaiyanweboo.css_source("components.css")
     assert ".ui-output" in css
     assert "background:#d8dee4" in css
     assert "color:#161b22" in css
@@ -196,11 +196,11 @@ def test_output_surface_uses_neutral_high_contrast_palette():
 # --- Definition audit: CSS classes and custom properties may not pile up unnoticed. ---
 
 def _css_sources():
-    return sorted(web_ui._CSS)
+    return sorted(pysaiyanweboo._CSS)
 
 
 def _css_text(name):
-    return re.sub(r"/\*.*?\*/", "", web_ui.css_source(name), flags=re.S)
+    return re.sub(r"/\*.*?\*/", "", pysaiyanweboo.css_source(name), flags=re.S)
 
 
 def test_every_css_class_is_referenced_by_markup_scripts_or_generators():
@@ -210,7 +210,7 @@ def test_every_css_class_is_referenced_by_markup_scripts_or_generators():
         defined |= set(re.findall(r"\.([A-Za-z_][A-Za-z0-9_-]*)", re.sub(r"\{[^{}]*\}", "{}", _css_text(path))))
     # Classes the Python generators emit (tools/capture_matrix.py, tools/layout_presets.py) count as used.
     used_in = [*ROOT.glob("*.html"), ROOT / "pysaiyanweboo.py", *(ROOT / "tools").glob("*.py")]
-    corpus = "\n".join(path.read_text(encoding="utf-8") for path in used_in) + "\n".join(PAGES.values()) + "\n".join(web_ui.js_modules().values())
+    corpus = "\n".join(path.read_text(encoding="utf-8") for path in used_in) + "\n".join(PAGES.values()) + "\n".join(pysaiyanweboo.js_modules().values())
     unused = sorted(name for name in defined
                     if not re.search(rf"(?<![A-Za-z0-9_-]){re.escape(name)}(?![A-Za-z0-9_-])", corpus))
     assert not unused, f"CSS classes nothing refers to: {unused}"
@@ -248,7 +248,7 @@ def _theme_blocks():
 def test_themes_override_only_tokens_that_tokens_css_defines():
     # A new semantic token goes into :root with a default, so every theme has it.
     root, blocks = _theme_blocks()
-    assert {"modern", "github-like", *web_ui.CANDIDATE_THEMES} <= set(blocks)
+    assert {"modern", "github-like", *pysaiyanweboo.CANDIDATE_THEMES} <= set(blocks)
     for theme, values in blocks.items():
         assert set(values) <= set(root), f"{theme} invents tokens: {sorted(set(values) - set(root))}"
 

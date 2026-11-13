@@ -2,7 +2,7 @@
 
 Pixel values in a layout are choices, not facts. web-ui keeps them as **presets**: named
 sets of CSS custom properties in one JSON file (`web-ui-layout-presets/1`, for example
-`web_ui.EXAMPLES["layout-presets"]`; `python -S pysaiyanweboo.py --example layout-presets` prints it). Any preset may be the right one for a screen; the page
+`pysaiyanweboo.EXAMPLES["layout-presets"]`; `python -S pysaiyanweboo.py --example layout-presets` prints it). Any preset may be the right one for a screen; the page
 lets people switch, and tests try them all.
 
 ## The page itself is a preset too
@@ -14,7 +14,7 @@ and card padding; the 8 px grid: 8 / 16 px) and `--ui-max` (page width). `EXAMPL
 ships them in its stylesheet with `write_bundle(..., layouts=spec)` (CLI `--layouts FILE`) and
 puts `layout_switch_html(spec)` on the page; the sweep below then says which presets hold at
 which widths. The presets API (`validate_layout_presets`, `layout_presets_css`,
-`layout_switch_html`) lives in `web_ui`; `tools/layout_presets.py` delegates to it and keeps the sweep.
+`layout_switch_html`) lives in `pysaiyanweboo`; `tools/layout_presets.py` delegates to it and keeps the sweep.
 
 ## Switch live, without reloading
 
@@ -62,8 +62,8 @@ and judge for themselves. A machine (Playwright) can do the same by clicking the
 ## On the Pages front page
 
 `index.html` carries a live demo in its 🎛️ Try it room (open `index.html#try`): the generated `<style>` (the `css` output) and the radios (the `html`
-output, labeled from the sweep result kept in `web_ui._INDEX_LAYOUT_CANDIDATES`). `index.html` itself is
-written by `web_ui.example_pages()` (`front_document()` over the library's builders) and a test keeps them equal; unit tests keep the CSS and the radios equal
+output, labeled from the sweep result kept in `pysaiyanweboo._INDEX_LAYOUT_CANDIDATES`). `index.html` itself is
+written by `pysaiyanweboo.example_pages()` (`front_document()` over the library's builders) and a test keeps them equal; unit tests keep the CSS and the radios equal
 to the presets. After changing the presets or the page, run the sweep, update the labels, and regenerate:
 
 ```sh

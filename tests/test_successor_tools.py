@@ -3,7 +3,7 @@ import datetime as dt, json, os, random, subprocess, sys
 from pathlib import Path
 
 import pytest
-import web_ui as u
+import pysaiyanweboo as u
 from support import node26, node_value
 
 

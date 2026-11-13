@@ -90,7 +90,7 @@ class Camera:
     def zoom(self, anchor=(0.5, 0.5), factor=2.5, steps=6, hold_ms=1500):
         """Zoom into what is on screen toward ``anchor`` and stay there: the demos are shown small in the README.
         ``anchor`` is (x, y) from 0 to 1, an anchor name (``"bottom-right"``) or an arrow emoji (``↘️``, ``⬅``, ``🎯`` for the centre), the
-        same table web_ui uses for directions. Every pixel changes in a zoom, so it costs a few frames of GIF size; it does not zoom back."""
+        same table pysaiyanweboo uses for directions. Every pixel changes in a zoom, so it costs a few frames of GIF size; it does not zoom back."""
         from PIL import Image
         if isinstance(anchor, str):
             anchor = pysaiyanweboo.WORLD_ANCHORS[anchor if anchor in pysaiyanweboo.WORLD_ANCHORS else pysaiyanweboo.world_arrow_anchor(anchor)]

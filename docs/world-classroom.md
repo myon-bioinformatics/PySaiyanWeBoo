@@ -5,9 +5,9 @@ and **props**; the world may offer **avatars**. Everything stays in `pysaiyanweb
 no storage, no new dependency). Worlds without these fields produce exactly the same HTML as before.
 
 ```python
-import web_ui
-spec = web_ui.example_data("school")        # a classroom floor plus an open schoolyard
-open("school.html", "w").write(web_ui.world_document(spec))
+import pysaiyanweboo
+spec = pysaiyanweboo.example_data("school")        # a classroom floor plus an open schoolyard
+open("school.html", "w").write(pysaiyanweboo.world_document(spec))
 ```
 
 ## Data (all optional, additive)
@@ -35,7 +35,7 @@ echo '{"schema":"web-ui-world/1","avatars":["🙂","🐱","🦊"],"floors":[{"id
   | python -S pysaiyanweboo.py --world - > school.html
 python -S pysaiyanweboo.py --example school | python -S pysaiyanweboo.py --world - > school.html          # the bundled example, as is
 node vendor/py_launch.cjs -- pysaiyanweboo.py --world - < school.json > school.html                # Node: same bytes
-python -S -c "import web_ui as u,sys;sys.stdout.write(u.world_document({'schema':u.WORLD_SCHEMA,'avatars':['🙂'],'floors':[{'classroom':{}}]}))"   # in-process
+python -S -c "import pysaiyanweboo as u,sys;sys.stdout.write(u.world_document({'schema':u.WORLD_SCHEMA,'avatars':['🙂'],'floors':[{'classroom':{}}]}))"   # in-process
 ```
 
 A bad spec exits with status 2 and one `error:` line on stderr (no traceback, nothing on stdout). Add `--theme NAME` for another theme.
@@ -115,7 +115,7 @@ pure maps between a value and an angle (`tests/test_theme_seed.py` checks them i
 
 ### Languages (🌐)
 
-The chrome speaks the 11 languages of flutter_navigation_basic: ja, en, fr, es, pt, ar, zh, ru, id, de, sw (`web_ui.WORLD_LANGS`, words in `WORLD_TEXT`, one tuple
+The chrome speaks the 11 languages of flutter_navigation_basic: ja, en, fr, es, pt, ar, zh, ru, id, de, sw (`pysaiyanweboo.WORLD_LANGS`, words in `WORLD_TEXT`, one tuple
 per word in that order; a test checks every word in every language). Markup carries Japanese plus `data-t="<word>"`; 🌐 swaps `aria-label` and `title`, sets `lang`
 on the world and remembers the choice. A tool of your own names itself with `label`, `label_en` and `labels`; a missing language falls back to English, then Japanese.
 The content (spot labels, bodies, the board) is yours and is not translated. Arabic changes the words only: the map is not mirrored.
@@ -135,7 +135,7 @@ six lands, a few lines of JSON) and the footer's 🚪 pulldown moves between the
   object, the pond, how many houses). The same arguments always give the same land; `seed` makes another. `cols` 12..48, `rows` 12..32, `tile` a multiple of 8.
 * Each land has a road from the player's start to a village crossroads, and two spots (the town; a landmark on the nearest bank of the water, else the
   farthest tile) on tiles that can be walked to. `spots`, `actors` and `player` beside `land` replace the generated ones, like `classroom`.
-* From Python: `web_ui.land_floor(theme, cols, rows, seed=, tile=, id=, label=)`; from another repository: `... | python -S pysaiyanweboo.py --world - > lands.html`.
+* From Python: `pysaiyanweboo.land_floor(theme, cols, rows, seed=, tile=, id=, label=)`; from another repository: `... | python -S pysaiyanweboo.py --world - > lands.html`.
 
 The representation changes by swapping objects, not code: the prop kinds of any floor can be mixed.
 
@@ -186,7 +186,7 @@ the metro beside them and the Seine, with a 🔥 in each block. The cities are t
 * Evidence: `tests/integration/school_browser.py` (`CitiesTests`) walks to every spot of the three cities on a phone and a desktop, touches every sign, and checks the
   tools, keys, categories, favourites, six widths, eleven languages and the page without JavaScript. With `WEB_UI_SHOTS=DIR` it also keeps a WebP of each check with
   a `manifest.json` and an `index.html`; the reviewed set lives under `docs/evidence/cities-<date>/`. The three `cities-*.gif` demos are the same operations in motion.
-* From Python: `web_ui.place_floor(points, meters=, tile=, links=, rivers=, area=, start=, id=, label=)`; from another repository: `--world -` with `place` as above.
+* From Python: `pysaiyanweboo.place_floor(points, meters=, tile=, links=, rivers=, area=, start=, id=, label=)`; from another repository: `--world -` with `place` as above.
   The cities open in the **dots** name layer (below), so the crowded centre is dots, not a pile of names; `"names": "names"` on the world shows every name.
 
 ## Real × virtual (🖼️📷)

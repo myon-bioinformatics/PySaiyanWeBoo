@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 import pytest
-import web_ui as ui
+import pysaiyanweboo as ui
 from support import node26, node_js, node_value, world_js
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))

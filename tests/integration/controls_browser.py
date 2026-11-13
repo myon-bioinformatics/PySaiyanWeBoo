@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 from support import flutter_case  # noqa: E402
-from web_ui import (EXAMPLE_STUBS, showcase_document, bundled_css, write_js, board_clock, clean_message, clock_label, gauge_cells, gauge_state, minutes_until, travel_seconds, board_seconds,
+from pysaiyanweboo import (EXAMPLE_STUBS, showcase_document, bundled_css, write_js, board_clock, clean_message, clock_label, gauge_cells, gauge_state, minutes_until, travel_seconds, board_seconds,
                     clamp_focus, contrast_ratio, fit_zoom, render_document, section_browser, shared_scripts, stub_response, theme_wall_document, utc_offset_label,
                     world_document, zone_offset, zone_rows)
 
@@ -264,7 +264,7 @@ class WorldBrowserTests(unittest.TestCase):
 
     def test_shots_map_sheet_and_fallback(self):
         import json
-        from web_ui import example_data
+        from pysaiyanweboo import example_data
         spec = example_data('world')
         server, origin = self.serve({'index.html': world_document(spec, theme='github-like')})
         try:
@@ -349,7 +349,7 @@ class WorldBrowserTests(unittest.TestCase):
 
     def test_world_interrupted_repeated_and_history_flows(self):
         import json
-        from web_ui import example_data
+        from pysaiyanweboo import example_data
         spec = example_data('world')
         spec['floors'][0]['spots'][0]['category'] = 'all'
         server, origin = self.serve({'index.html': world_document(spec)})
@@ -420,7 +420,7 @@ class WorldBrowserTests(unittest.TestCase):
 
     def test_board_follows_the_viewers_time_zone_and_shows_only_the_offset(self):
         import datetime
-        from web_ui import example_data
+        from pysaiyanweboo import example_data
         spec = example_data('world')
         spec['board']['zones'] = []                                         # authored zone labels are the page's own words; here only the viewer's clock is shown
         spec['board']['items'] = [i for i in spec['board']['items'] if not i.get('zone')]
@@ -459,7 +459,7 @@ class WorldBrowserTests(unittest.TestCase):
     def test_board_zone_clocks_and_items_follow_the_tz_database_not_the_viewer(self):
         import datetime
         import random
-        from web_ui import example_data
+        from pysaiyanweboo import example_data
         spec = example_data('world')
         spec['board']['items'].append({'text': 'Tokyo hours', 'gauge': {'from': '09:00', 'to': '18:00', 'cells': 10}, 'zone': 'tokyo'})
         server, origin = self.serve({'index.html': world_document(spec)})
@@ -515,7 +515,7 @@ class WorldBrowserTests(unittest.TestCase):
             server.server_close()
 
     def test_board_line_stays_readable_on_a_phone(self):
-        from web_ui import example_data
+        from pysaiyanweboo import example_data
         spec = example_data('world')
         spec['board']['items'].append({'text': 'emoji', 'gauge': {'from': '09:00', 'to': '18:00',
                                       'cells': 20, 'glyphs': ['👩\u200d💻', 'ABCDEFGH']}})
@@ -542,7 +542,7 @@ class WorldBrowserTests(unittest.TestCase):
             server.server_close()
 
     def test_board_keeps_nothing_and_sends_nothing(self):
-        from web_ui import example_data
+        from pysaiyanweboo import example_data
         spec = example_data('world')
         server, origin = self.serve({'index.html': world_document(spec)})
         try:
@@ -579,7 +579,7 @@ class WorldBrowserTests(unittest.TestCase):
 
     def test_villagers_player_board_clock_and_visitor_lines(self):
         import datetime
-        from web_ui import example_data
+        from pysaiyanweboo import example_data
         spec = example_data('world')
         server, origin = self.serve({'index.html': world_document(spec)})
         try:
@@ -658,7 +658,7 @@ class WorldBrowserTests(unittest.TestCase):
             server.server_close()
 
     def test_board_posts_keep_two_bounded_identical_halves(self):
-        from web_ui import example_data, board_seconds
+        from pysaiyanweboo import example_data, board_seconds
         server, origin = self.serve({'index.html': world_document(example_data('world'))})
         try:
             with sync_playwright() as pw:
@@ -718,7 +718,7 @@ class StubBrowserTests(unittest.TestCase):
 
     def test_mock_stubs_answer_like_python_on_their_own_page_and_on_the_front_page(self):
         import json
-        from web_ui import stub_document
+        from pysaiyanweboo import stub_document
         pages = {'mcp.html': stub_document(EXAMPLE_STUBS['mcp']), 'api.html': stub_document(EXAMPLE_STUBS['api']),
                  'index.html': (ROOT / 'index.html').read_text(encoding='utf-8')}
         server, origin = WorldBrowserTests.serve(pages)
@@ -752,7 +752,7 @@ class StubBrowserTests(unittest.TestCase):
     def test_curl_in_the_page_reads_exactly_like_python_and_masks_credentials(self):
         sys.path.insert(0, str(ROOT / 'tests'))
         from test_python_wrapper import CURL_CASES, curl_fuzz_inputs
-        from web_ui import mask_curl, parse_curl
+        from pysaiyanweboo import mask_curl, parse_curl
         server, origin = WorldBrowserTests.serve({'index.html': (ROOT / 'index.html').read_text(encoding='utf-8')})
         try:
             with sync_playwright() as playwright:
@@ -870,20 +870,20 @@ class FrontPageBrowserTests(unittest.TestCase):
         page.close()
 
     def test_the_seed_dial_wears_the_palette_python_draws_for_that_seed(self):
-        import web_ui
+        import pysaiyanweboo
         page = self.open(hash='#try')
         expect(page.locator('[data-ui-seed-out]')).to_have_text('–')
         self.assertEqual(self.tokens(page), {name: '' for name in self.TOKENS})                                          # no seed: the named theme rules
         for seed in (7, 0, 99, 3):
             page.locator('[data-ui-seed]').fill(str(seed))
-            self.assertEqual(self.tokens(page), web_ui.random_theme(seed), seed)
+            self.assertEqual(self.tokens(page), pysaiyanweboo.random_theme(seed), seed)
             expect(page.locator('[data-ui-seed-out]')).to_have_text(str(seed))
             expect(page.locator('body')).to_have_attribute('data-ui-seeded', str(seed))
-            bg = web_ui.random_theme(seed)['--ui-bg']
+            bg = pysaiyanweboo.random_theme(seed)['--ui-bg']
             self.assertEqual(page.evaluate('getComputedStyle(document.body).backgroundColor'),
                              'rgb(%d, %d, %d)' % tuple(int(bg[i:i + 2], 16) for i in (1, 3, 5)))                       # the page really repaints
         page.reload()                                                                                                       # remembered in this browser
-        self.assertEqual(self.tokens(page), web_ui.random_theme(3))
+        self.assertEqual(self.tokens(page), pysaiyanweboo.random_theme(3))
         expect(page.locator('[data-ui-seed]')).to_have_value('3')
         page.check('input[name="ui-theme"][value="green"]')                                                                 # a named theme takes over
         self.assertEqual(self.tokens(page), {name: '' for name in self.TOKENS})
@@ -896,17 +896,17 @@ class FrontPageBrowserTests(unittest.TestCase):
         page.close()
 
     def test_the_bar_dice_rolls_a_seed_on_the_world_and_a_wall_cell_is_picked_by_a_tap(self):
-        import web_ui
+        import pysaiyanweboo
         page = self.open()
         page.evaluate('Math.random = () => 0.5')
         page.click('.ui-front-bar [data-ui-seed-roll]')                                                                     # 🎲 on the main page: floor(0.5 * 100)
-        self.assertEqual(self.tokens(page), web_ui.random_theme(50))
-        bg = web_ui.random_theme(50)['--ui-bg']
+        self.assertEqual(self.tokens(page), pysaiyanweboo.random_theme(50))
+        bg = pysaiyanweboo.random_theme(50)['--ui-bg']
         self.assertEqual(page.evaluate('getComputedStyle(document.querySelector("#overworld-map")).backgroundColor'),
                          'rgb(%d, %d, %d)' % tuple(int(bg[i:i + 2], 16) for i in (1, 3, 5)))
         page.goto(f'{self.origin}/index.html#wall')
         page.click('.ui-wall-cell[data-seed="5"] h3')
-        self.assertEqual(self.tokens(page), web_ui.random_theme(5))
+        self.assertEqual(self.tokens(page), pysaiyanweboo.random_theme(5))
         expect(page.locator('.ui-wall-cell[data-picked]')).to_have_count(1)
         expect(page.locator('.ui-wall-cell[data-seed="5"]')).to_have_attribute('data-picked', '')
         page.click('.ui-wall-cell[data-seed="11"] h3')
@@ -917,7 +917,7 @@ class FrontPageBrowserTests(unittest.TestCase):
 
 class GeneratedSiteBrowserTests(unittest.TestCase):
     def test_generated_front_page_works_offline_without_external_modules(self):
-        from web_ui import write_site
+        from pysaiyanweboo import write_site
         with tempfile.TemporaryDirectory() as directory:
             write_site(directory)
             with sync_playwright() as pw:
@@ -943,7 +943,7 @@ class CatalogBrowserTests(unittest.TestCase):
     """The same data adapter works at project subpaths and with JavaScript off."""
 
     def test_catalog_native_navigation_and_disclosure(self):
-        from web_ui import catalog_document, example_data
+        from pysaiyanweboo import catalog_document, example_data
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for name in ('catalog-report', 'catalog-projects'):
@@ -1025,7 +1025,7 @@ class RepositoryDiagnosticsBrowserTests(unittest.TestCase):
 
     def test_the_page_reads_its_json_once_and_fills_three_slots(self):
         import json
-        from web_ui import repository_diagnostics_page
+        from pysaiyanweboo import repository_diagnostics_page
         record = json.loads((ROOT / 'tests' / 'fixtures' / 'repository_metadata_v1.json').read_text(encoding='utf-8'))
         payload = {'metadata': record, 'resolver': {'auth': 'anonymous', 'status': 'ok', 'observations': [
             {'kind': 'repository', 'status': 'public', 'http_status': 200, 'url': 'https://github.com/myon-bioinformatics/Ironmate'},
@@ -1061,7 +1061,7 @@ class RepositoryDiagnosticsBrowserTests(unittest.TestCase):
 
 def runbook_showcase():
     """olnm's guide as PSWB data: one section per way to run it, a runbook in each (the shape Component Ops' steps take too)."""
-    from web_ui import SHOWCASE_SCHEMA
+    from pysaiyanweboo import SHOWCASE_SCHEMA
     fetch = {'id': 'file', 'title': 'olnm.py を用意する', 'command': 'mkdir -p "$HOME/.local/share/olnm"\ncurl -fL https://example.invalid/olnm.py -o "$HOME/.local/share/olnm/olnm.py"',
              'expect': 'ダウンロードが成功する。', 'needs': 'Python 3.11 以降、curl。', 'trouble': {'seen': 'curl: command not found', 'fix': 'curl を入れて再実行。'}}
     run = {'id': 'run', 'title': 'uv で実行する', 'command': 'uv run --no-project "$OLNM_PY" calc 6 mul 7', 'expect': '42（終了コード 0）'}
@@ -1081,7 +1081,7 @@ class RunbookBrowserTests(unittest.TestCase):
         sys.path.insert(0, str(ROOT / 'tools'))
         import json
         import record_demo
-        from web_ui import showcase_document
+        from pysaiyanweboo import showcase_document
         server, origin = WorldBrowserTests.serve({'guide.html': showcase_document(runbook_showcase())})
         try:
             with sync_playwright() as playwright:
@@ -1163,7 +1163,7 @@ AUDIT_STATES = (('fail', '失敗'), ('pass', '成功'), ('running', '実行中')
 def operations_page():
     """The Observatory's audit view as PSWB parts: heading with a stamp, a notice, a table whose rows carry a state, a state filter and
     the page's data as a JSON download. No script of its own: records.js binds the filter and the download."""
-    from web_ui import (bundled_css, data_table, download_json, filter_input, module_script, js_source, notice, page_heading, records_board,
+    from pysaiyanweboo import (bundled_css, data_table, download_json, filter_input, module_script, js_source, notice, page_heading, records_board,
                         render_document, status_filter)
     state = {label: token for token, label in AUDIT_STATES}
     data = {'schema': 'audit-demo/1', 'rows': [dict(zip(('repo', 'ci', 'issue'), r)) for r in AUDIT_ROWS]}
@@ -1257,7 +1257,7 @@ class TableBrowserTests(unittest.TestCase):
         sys.path.insert(0, str(ROOT / 'tools'))
         import record_demo
         from PIL import Image
-        from web_ui import CANDIDATE_THEMES, THEMES, component_document
+        from pysaiyanweboo import CANDIDATE_THEMES, THEMES, component_document
         server, origin = WorldBrowserTests.serve({'table.html': component_document('table', table_spec(), document_title='Table'), 'tile.svg': TABLE_TILE})
         try:
             with sync_playwright() as playwright:
@@ -1303,7 +1303,7 @@ class ShowcaseBrowserTests(unittest.TestCase):
     """The app shell in Chromium: sections switch with no reload, the rail gives way to the bottom bar, nothing overflows, every theme reads."""
 
     def pages(self):
-        from web_ui import example_data
+        from pysaiyanweboo import example_data
         return WorldBrowserTests.serve({'showcase.html': showcase_document(example_data('showcase'))})
 
     def test_sections_switch_by_rail_bottom_bar_and_keyboard_without_a_reload(self):
@@ -1433,7 +1433,7 @@ class CatalogueBrowserTests(unittest.TestCase):
     def test_floors_categories_and_sheets_work_on_a_large_catalogue(self):
         sys.path.insert(0, str(ROOT / 'tests'))
         from test_python_wrapper import screens_like
-        from web_ui import catalogue_world
+        from pysaiyanweboo import catalogue_world
         server, origin = WorldBrowserTests.serve({'index.html': world_document(catalogue_world(screens_like(), title='Screens'))})
         try:
             with sync_playwright() as playwright:
@@ -1476,14 +1476,14 @@ class ShelfBrowserTests(unittest.TestCase):
     """The clipboard shelf in Chromium: its rules equal Python's, and the shelf works and keeps nothing."""
 
     def serve_page(self):
-        from web_ui import shelf_document
+        from pysaiyanweboo import shelf_document
         return WorldBrowserTests.serve({'shelf.html': shelf_document()})
 
     def test_the_pages_rules_equal_pythons_on_ironmates_cases_and_a_seeded_fuzz(self):
         sys.path.insert(0, str(ROOT / 'tests'))
         from test_python_wrapper import BASE64_CASES, PNG_B64, shelf_fuzz_texts
         import random
-        import web_ui
+        import pysaiyanweboo
         server, origin = self.serve_page()
         try:
             with sync_playwright() as playwright:
@@ -1496,10 +1496,10 @@ class ShelfBrowserTests(unittest.TestCase):
                     limit = BASE64_CASES['limits']['maxInputBytes']
                     texts = [c['text'] for c in BASE64_CASES['cases']]
                     got = page.evaluate('([texts, limit]) => texts.map(t => webUiShelf.decodeImageText(t, limit))', [texts, limit])
-                    self.assertEqual(got, [web_ui.decode_image_text(t, limit) for t in texts])
+                    self.assertEqual(got, [pysaiyanweboo.decode_image_text(t, limit) for t in texts])
                     fuzz = shelf_fuzz_texts()
-                    for name, py in (('shelfClassify', web_ui.shelf_classify), ('markdownPlain', web_ui.markdown_plain), ('looksLikeImage', web_ui.looks_like_image),
-                                     ('decodeImageText', web_ui.decode_image_text)):
+                    for name, py in (('shelfClassify', pysaiyanweboo.shelf_classify), ('markdownPlain', pysaiyanweboo.markdown_plain), ('looksLikeImage', pysaiyanweboo.looks_like_image),
+                                     ('decodeImageText', pysaiyanweboo.decode_image_text)):
                         got = page.evaluate(f'texts => texts.map(t => webUiShelf.{name}(t))', fuzz)
                         for text, result in zip(fuzz, got):
                             self.assertEqual(result, py(text), (name, text))
@@ -1507,19 +1507,19 @@ class ShelfBrowserTests(unittest.TestCase):
                     size = len(__import__('base64').b64decode(PNG_B64))
                     limits = [1, size - 1, size, size + 1, 3, 4, 5]
                     got = page.evaluate('([t, limits]) => limits.map(n => webUiShelf.decodeImageText(t, n))', [PNG_B64, limits])
-                    self.assertEqual(got, [web_ui.decode_image_text(PNG_B64, n) for n in limits])
+                    self.assertEqual(got, [pysaiyanweboo.decode_image_text(PNG_B64, n) for n in limits])
                     # Prompts and bundles from random fields and items.
                     rng = random.Random(7)
                     pool = ['', ' ', 'Goal \u3000', '\ufeffx', 'line1\nline2', '  pad  ', '\t\n', 'あ', '## h']
                     fields = [{k: rng.choice(pool) for k in ('goal', 'context', 'must', 'avoid', 'format', 'raw') if rng.random() < 0.7} for _ in range(300)]
                     images = [None if rng.random() < 0.5 else {'mime': rng.choice(['image/png', '', 'image/webp']), 'bytes': rng.randint(1, 10 ** 6)} for _ in fields]
                     got = page.evaluate('pairs => pairs.map(([f, i]) => webUiShelf.buildPrompt(f, i))', [[f, i] for f, i in zip(fields, images)])
-                    self.assertEqual(got, [web_ui.build_prompt(f, i) for f, i in zip(fields, images)])
+                    self.assertEqual(got, [pysaiyanweboo.build_prompt(f, i) for f, i in zip(fields, images)])
                     bundles = [[rng.choice([{'kind': 'text', 'text': 'a\nb'}, {'kind': 'url', 'text': 'https://x/'}, {'kind': 'markdown', 'text': '# h'},
                                             {'kind': 'image', 'mime': 'image/png', 'data': 'QQ=='}]) for _ in range(rng.randint(0, 4))] for _ in range(100)]
                     got = page.evaluate('lists => lists.map(l => webUiShelf.shelfBundle(l))', bundles)
-                    self.assertEqual(got, [web_ui.shelf_bundle(b) for b in bundles])
-                    self.assertEqual(page.evaluate('webUiShelf.shelfMaxChars(33554432)'), web_ui.shelf_max_chars(33554432))
+                    self.assertEqual(got, [pysaiyanweboo.shelf_bundle(b) for b in bundles])
+                    self.assertEqual(page.evaluate('webUiShelf.shelfMaxChars(33554432)'), pysaiyanweboo.shelf_max_chars(33554432))
                     self.assertEqual(errors, [])
                 finally:
                     browser.close()
@@ -1531,7 +1531,7 @@ class ShelfBrowserTests(unittest.TestCase):
         sys.path.insert(0, str(ROOT / 'tests'))
         from test_python_wrapper import PNG_B64
         import base64
-        import web_ui
+        import pysaiyanweboo
         server, origin = self.serve_page()
         try:
             with sync_playwright() as playwright:
@@ -1588,12 +1588,12 @@ class ShelfBrowserTests(unittest.TestCase):
                     page.locator('.ui-shelf-item[data-id="3"] [data-act="copy"]').click()
                     page.locator('.ui-shelf-item[data-id="3"] [data-act="plain"]').click()
                     page.wait_for_function('window.__copied.length === 2')
-                    self.assertEqual(copied(), ['# Heading\n- point [l](http://u)', web_ui.markdown_plain('# Heading\n- point [l](http://u)')])
+                    self.assertEqual(copied(), ['# Heading\n- point [l](http://u)', pysaiyanweboo.markdown_plain('# Heading\n- point [l](http://u)')])
                     page.locator('.ui-shelf-item[data-id="1"] input[type=checkbox]').check()
                     page.locator('.ui-shelf-item[data-id="3"] input[type=checkbox]').check()
                     page.locator('[data-shelf-bundle]').click()
                     page.wait_for_function('window.__copied.length === 3')
-                    self.assertEqual(copied()[2], web_ui.shelf_bundle([{'kind': 'markdown', 'text': '# Heading\n- point [l](http://u)'}, {'kind': 'text', 'text': 'first note'}]))
+                    self.assertEqual(copied()[2], pysaiyanweboo.shelf_bundle([{'kind': 'markdown', 'text': '# Heading\n- point [l](http://u)'}, {'kind': 'text', 'text': 'first note'}]))
                     # Pasting from the clipboard goes through the same rules.
                     page.evaluate("window.__paste = 'https://example.org/pasted'")
                     page.locator('[data-shelf-paste]').click()
@@ -1602,11 +1602,11 @@ class ShelfBrowserTests(unittest.TestCase):
                     page.locator('summary', has_text='Prompt workbench').click()
                     page.locator('[name=goal]').fill('  Summarize  ')
                     page.locator('[name=raw]').fill('raw text')
-                    self.assertEqual(page.locator('[data-shelf-prompt]').text_content(), web_ui.build_prompt({'goal': 'Summarize', 'raw': 'raw text'}))
+                    self.assertEqual(page.locator('[data-shelf-prompt]').text_content(), pysaiyanweboo.build_prompt({'goal': 'Summarize', 'raw': 'raw text'}))
                     page.locator('[data-shelf-attach]').click()
                     size = len(base64.b64decode(PNG_B64))
                     self.assertEqual(page.locator('[data-shelf-prompt]').text_content(),
-                                     web_ui.build_prompt({'goal': 'Summarize', 'raw': 'raw text'}, {'mime': 'image/png', 'bytes': size}))
+                                     pysaiyanweboo.build_prompt({'goal': 'Summarize', 'raw': 'raw text'}, {'mime': 'image/png', 'bytes': size}))
                     page.locator('[data-shelf-copy-prompt]').click()
                     page.wait_for_function('window.__copied.length === 4')
                     self.assertTrue(copied()[3].startswith('# System Prompt Draft'))
@@ -1658,8 +1658,8 @@ class DoorBrowserTests(unittest.TestCase):
 
     def test_the_seeded_draw_the_options_and_the_notation_equal_pythons(self):
         import random
-        import web_ui
-        from web_ui import door_document, door_draw, door_options, door_validate, emoji_path, example_data, mulberry32
+        import pysaiyanweboo
+        from pysaiyanweboo import door_document, door_draw, door_options, door_validate, emoji_path, example_data, mulberry32
         door = door_validate(example_data('door'))
         server, origin = WorldBrowserTests.serve({'door.html': door_document(door)})
         try:
@@ -1696,7 +1696,7 @@ class DoorBrowserTests(unittest.TestCase):
                         self.assertEqual(result, expected, repr(note))
                     self.assertGreater(sum('ok' in r for r in got), 50)
                     self.assertGreater(sum('error' in r for r in got), 50)
-                    self.assertEqual(page.evaluate('webUiDoor.emojiKey("🗺\ufe0f\u3000 \ufe0e")'), web_ui.emoji_key('🗺\ufe0f\u3000 \ufe0e'))
+                    self.assertEqual(page.evaluate('webUiDoor.emojiKey("🗺\ufe0f\u3000 \ufe0e")'), pysaiyanweboo.emoji_key('🗺\ufe0f\u3000 \ufe0e'))
                     # The page's first render equals the Python-rendered options.
                     html = door_document(door)
                     import re
@@ -1712,7 +1712,7 @@ class DoorBrowserTests(unittest.TestCase):
 
     def test_the_pulldown_goes_there_can_be_stopped_and_draws_again(self):
         import json
-        from web_ui import door_document, door_options, door_validate
+        from pysaiyanweboo import door_document, door_options, door_validate
         spec = {'schema': 'web-ui-door/1', 'current': './door.html', 'k': 2, 'seed': 3, 'pages': [
             {'emoji': '🏠', 'label': 'Home', 'href': './home.html'}, {'emoji': '🚪', 'label': 'Door', 'href': './door.html'},
             {'emoji': '🅰️', 'label': 'A', 'href': './a.html', 'group': 'discover'}, {'emoji': '🅱️', 'label': 'B', 'href': './b.html', 'group': 'discover'},
@@ -1771,12 +1771,12 @@ class StudioBrowserTests(unittest.TestCase):
     """The composition studio in Chromium: every rule equals Python's, and the controls drive them."""
 
     def serve_page(self):
-        from web_ui import studio_document
+        from pysaiyanweboo import studio_document
         return WorldBrowserTests.serve({'studio.html': studio_document()})
 
     def test_every_rule_in_the_page_equals_pythons(self):
         import random
-        import web_ui as w
+        import pysaiyanweboo as w
         server, origin = self.serve_page()
         try:
             with sync_playwright() as playwright:
@@ -1850,7 +1850,7 @@ class StudioBrowserTests(unittest.TestCase):
             server.server_close()
 
     def test_the_controls_drive_the_rules(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         server, origin = self.serve_page()
         try:
             with sync_playwright() as playwright:
@@ -1922,7 +1922,7 @@ class StudioBrowserTests(unittest.TestCase):
             server.server_close()
 
     def test_the_metronome_follows_elapsed_time_and_tap_tempo_sets_the_tempo(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         server, origin = self.serve_page()
         try:
             with sync_playwright() as playwright:
@@ -1977,12 +1977,12 @@ class CoordinatesBrowserTests(unittest.TestCase):
     """The coordinate tool in Chromium: every rule equals Python's (and so the Dart tests'), and the page works."""
 
     def serve_page(self):
-        from web_ui import coordinates_document
+        from pysaiyanweboo import coordinates_document
         return WorldBrowserTests.serve({'coord.html': coordinates_document()})
 
     def test_every_rule_in_the_page_equals_pythons(self):
         import random
-        import web_ui as w
+        import pysaiyanweboo as w
         sys.path.insert(0, str(ROOT / 'tests'))
         from test_python_wrapper import AREA_CASES, coordinate_fuzz_urls
         server, origin = self.serve_page()
@@ -2048,7 +2048,7 @@ class CoordinatesBrowserTests(unittest.TestCase):
             server.server_close()
 
     def test_the_page_checks_formats_and_reads_urls(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         server, origin = self.serve_page()
         try:
             with sync_playwright() as playwright:
@@ -2141,13 +2141,13 @@ class PhotoBrowserTests(unittest.TestCase):
         return blobs
 
     def serve_page(self):
-        from web_ui import photo_document
+        from pysaiyanweboo import photo_document
         return WorldBrowserTests.serve({'photo.html': photo_document()})
 
     def test_every_rule_in_the_page_equals_pythons(self):
         import json
         import random
-        import web_ui as w
+        import pysaiyanweboo as w
         sys.path.insert(0, str(ROOT / 'tests'))
         from test_python_wrapper import PHOTO_FIXTURE, photo_file
         server, origin = self.serve_page()
@@ -2239,7 +2239,7 @@ class PhotoBrowserTests(unittest.TestCase):
 
     def test_the_editing_state_machine_equals_pythons_step_by_step(self):
         import random
-        import web_ui as w
+        import pysaiyanweboo as w
         server, origin = self.serve_page()
         try:
             with sync_playwright() as playwright:
@@ -2301,7 +2301,7 @@ class PhotoBrowserTests(unittest.TestCase):
 
     def test_evidence_and_the_probe_pictures_equal_pythons(self):
         import io
-        import web_ui as w
+        import pysaiyanweboo as w
         from PIL import Image
         probes = w.photo_probes()
         self.assertEqual([p['id'] for p in probes], ['png', 'jpeg', 'jpeg_exif_orientation_6', 'webp_lossy', 'webp_lossless', 'webp_alpha', 'gif', 'avif', 'heic'])
@@ -2340,7 +2340,7 @@ class PhotoPageBrowserTests(PageCase):
         sys.path.insert(0, str(ROOT / 'tests'))
         from test_python_wrapper import PHOTO_CASES, photo_file
         self.cases, self.file = PHOTO_CASES, photo_file
-        from web_ui import photo_document
+        from pysaiyanweboo import photo_document
         self.server, self.origin = WorldBrowserTests.serve({'photo.html': photo_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
@@ -2380,7 +2380,7 @@ class PhotoPageBrowserTests(PageCase):
         return self.page.eval_on_selector('[data-ui-photo]', f'b => b.dataset.{name}')
 
     def test_import_outcomes_equal_what_flutter_measured(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         for case_id, case in self.cases.items():
             expected = case['flutter_test_ci']
             if not case['data'] or expected in (None, 'not_verified'):
@@ -2404,7 +2404,7 @@ class PhotoPageBrowserTests(PageCase):
 
     def test_every_exif_orientation_is_turned_upright_like_pillow(self):
         import io
-        import web_ui
+        import pysaiyanweboo
         from PIL import Image, ImageOps
         quadrants = ((0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75))
         for orientation in range(1, 9):
@@ -2415,7 +2415,7 @@ class PhotoPageBrowserTests(PageCase):
                 with Image.open(io.BytesIO(self.file(case_id))) as original:
                     expected = ImageOps.exif_transpose(original).convert('RGB')
                 ow, oh = expected.size
-                self.assertEqual(self.data('documentSize'), '%dx%d' % web_ui.photo_document_size(ow, oh))
+                self.assertEqual(self.data('documentSize'), '%dx%d' % pysaiyanweboo.photo_document_size(ow, oh))
                 got = self.page.evaluate("""quadrants => { const b = document.querySelector('[data-ui-photo]').photo, c = b.docs.get(b.studio.state.image).canvas, g = c.getContext('2d');
                     return quadrants.map(([fx, fy]) => Array.from(g.getImageData(Math.floor(fx * c.width), Math.floor(fy * c.height), 1, 1).data)) }""", [list(q) for q in quadrants])
                 for (fx, fy), pixel in zip(quadrants, got):
@@ -2451,7 +2451,7 @@ class PhotoPageBrowserTests(PageCase):
         shown = json.loads(self.page.inner_text('[data-check-out]'))
         self.assertEqual((shown['schemaVersion'], shown['environmentId'], shown['entryPoint']), (2, 'web_ui_photo_studio', 'loader_browser_canvas_adapter'))
         self.assertEqual(shown, report)
-        import web_ui as w
+        import pysaiyanweboo as w
         self.assertEqual(set(shown), set(w.photo_evidence()))
         self.assertIn(shown['verifiedAt'][:2], ('20',))
 
@@ -2512,7 +2512,7 @@ class PhotoPageBrowserTests(PageCase):
 
     def test_export_is_a_png_of_the_photo_frames_and_stamps(self):
         import io
-        import web_ui as w
+        import pysaiyanweboo as w
         from PIL import Image
         self.assertEqual(self.pick('png_markers_64x32'), ['success', 'supported'])
         self.page.click('label[for="photo-shape-rectangle"]')
@@ -2627,7 +2627,7 @@ class PhotoPageBrowserTests(PageCase):
 
     def test_paste_and_drop_take_images_and_the_page_keeps_nothing(self):
         import base64 as b64
-        import web_ui as w
+        import pysaiyanweboo as w
         if not self.synthetic_events_work():
             self.skipTest('this engine ignores clipboardData / dataTransfer on events a page builds; real paste and drop are Layer 3 (a device)')
         png = b64.b64encode(self.file('png_markers_64x32')).decode()
@@ -2672,17 +2672,17 @@ class BtkAdapterBrowserTests(unittest.TestCase):
         return failed }"""
 
     def test_every_adapter_fits_its_page_and_its_click_does_what_it_says(self):
-        import web_ui
-        pages = web_ui.example_pages()
-        server, origin = WorldBrowserTests.serve({web_ui.BTK_ADAPTERS[i]['page']: pages['examples/' + web_ui.BTK_ADAPTERS[i]['page']] for i in web_ui.BTK_ADAPTERS})
+        import pysaiyanweboo
+        pages = pysaiyanweboo.example_pages()
+        server, origin = WorldBrowserTests.serve({pysaiyanweboo.BTK_ADAPTERS[i]['page']: pages['examples/' + pysaiyanweboo.BTK_ADAPTERS[i]['page']] for i in pysaiyanweboo.BTK_ADAPTERS})
         try:
             with sync_playwright() as playwright:
                 browser = photo_engine(playwright).launch()
                 try:
-                    for adapter_id in sorted(web_ui.BTK_ADAPTERS):
+                    for adapter_id in sorted(pysaiyanweboo.BTK_ADAPTERS):
                         for width, height in ((1280, 800), (412, 839), (390, 664), (320, 664)):
                             with self.subTest(adapter=adapter_id, viewport=(width, height)):
-                                config = web_ui.btk_adapter(adapter_id, web_ui.btk_adapter_url(web_ui.BTK_ADAPTERS[adapter_id], origin + '/'))
+                                config = pysaiyanweboo.btk_adapter(adapter_id, pysaiyanweboo.btk_adapter_url(pysaiyanweboo.BTK_ADAPTERS[adapter_id], origin + '/'))
                                 page = browser.new_page(viewport={'width': width, 'height': height})
                                 errors = []
                                 page.on('pageerror', lambda error: errors.append(str(error)))
@@ -2730,7 +2730,7 @@ class ClipboardBrowserTests(PageCase):
         sys.path.insert(0, str(ROOT / 'tests'))
         import test_python_wrapper as t
         self.t = t
-        from web_ui import shelf_document, photo_document
+        from pysaiyanweboo import shelf_document, photo_document
         self.server, self.origin = WorldBrowserTests.serve({'shelf.html': shelf_document(), 'photo.html': photo_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
@@ -3025,8 +3025,8 @@ class ClipboardBrowserTests(PageCase):
 
 
 def web_ui_module():
-    import web_ui
-    return web_ui
+    import pysaiyanweboo
+    return pysaiyanweboo
 
 
 
@@ -3036,7 +3036,7 @@ class PlaygroundBrowserTests(PageCase):
     SEED = 7
 
     def setUp(self):
-        from web_ui import playground_document
+        from pysaiyanweboo import playground_document
         html = playground_document().replace('data-ui-play ', f'data-ui-play data-play-seed="{self.SEED}" ', 1)
         self.server, self.origin = WorldBrowserTests.serve({'play.html': html})
         self.playwright_manager = sync_playwright()
@@ -3267,7 +3267,7 @@ class ReportBrowserTests(PageCase):
     """The test report in a real browser: SHA-256, the Flutter tally and conversion, JUnit reading and the failure history equal Python's on seeded fuzz, and the page works."""
 
     def setUp(self):
-        from web_ui import report_document
+        from pysaiyanweboo import report_document
         self.server, self.origin = WorldBrowserTests.serve({'report.html': report_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
@@ -3570,7 +3570,7 @@ class McpBrowserTests(PageCase):
     NOW = 1789387200
 
     def setUp(self):
-        from web_ui import mcp_document
+        from pysaiyanweboo import mcp_document
         self.server, self.origin = WorldBrowserTests.serve({'mcp.html': mcp_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
@@ -4197,9 +4197,9 @@ PAT_SCREEN_ARGS = ['n', 'title', 'v', 'screenDataId', 'value', 'query', 'route',
 
 def pat_screen_events(r, screen, count):
     """Events for a screen: mostly the ones its template has, some it does not, some malformed."""
-    import web_ui
-    row = web_ui.screen_row(screen)
-    template = web_ui.screen_template(screen, row['templateOverride'])
+    import pysaiyanweboo
+    row = pysaiyanweboo.screen_row(screen)
+    template = pysaiyanweboo.screen_template(screen, row['templateOverride'])
     own = {'tab': {'type': 'tab', 'tab': r.choice(['usecase', 'ui', 'x'])}, 'input': {'type': 'input', 'value': r.choice(PAT_SCREEN_TEXTS)}, 'clear': {'type': 'clear'}, 'submit': {'type': 'submit'},
            'select': {'type': 'select', 'index': r.choice([0, 1, 2, 3, -1])}, 'open': {'type': 'open'}, 'close': {'type': 'close'}, 'start': {'type': 'start'}, 'tick': {'type': 'tick', 'ms': r.choice([0, 100, 250, 499, 500, 501, 60000, 60001, -1])},
            'toggle': {'type': 'toggle', 'value': r.choice([True, False, 1, None])}}
@@ -4218,7 +4218,7 @@ def pat_screen_events(r, screen, count):
 
 
 def pat_screen_request(r):
-    import web_ui
+    import pysaiyanweboo
     op = r.choice(['view', 'view', 'view', 'hub', 'search', 'text', 'route', 'links', 'bogus'])
     screen = r.choice([r.randint(1, 198), r.randint(1, 198), r.choice([6, 5, 91, 99, 103, 110, 136, 171, 198]), r.choice([0, 199, -1, 'a', None, True, 3.5])])
     request = {'operation': op}
@@ -4235,7 +4235,7 @@ def pat_screen_request(r):
     elif op == 'search':
         request['query'] = r.choice(PAT_SCREEN_TEXTS + [5, None])
     elif op == 'text':
-        keys = list(web_ui.SCREEN_TEXT_KEYS) + ['constructor', '__proto__', 'toString', '', 'nope', 5]
+        keys = list(pysaiyanweboo.SCREEN_TEXT_KEYS) + ['constructor', '__proto__', 'toString', '', 'nope', 5]
         request.update(key=r.choice(keys), locale=r.choice(PAT_SCREEN_LOCALES), arguments=[[r.choice(PAT_SCREEN_ARGS), r.choice([None, 'v', 5, -5, 0, 2 ** 53, -2 ** 53, '{n}', True, 0.5, [1]])] for _ in range(r.randint(0, 4))])
         if r.random() < 0.15:
             request['arguments'] = r.choice([[['n']], [5], 'n', [['n', 1, 2]], [[5, 1]], [['n', 1]] * 21])
@@ -4249,8 +4249,8 @@ def pat_screen_request(r):
 
 
 def pat_native_request(r):
-    import web_ui
-    number = r.choice(web_ui.NATIVE_NUMBERS) if r.random() < 0.93 else r.choice([0, 1, 150, 164, 176, 5, 'a', None, True, 171.5])
+    import pysaiyanweboo
+    number = r.choice(pysaiyanweboo.NATIVE_NUMBERS) if r.random() < 0.93 else r.choice([0, 1, 150, 164, 176, 5, 'a', None, True, 171.5])
     if number in (136, 137):
         values = r.choice([[1, 2, 3, 4, 5], [], [0], [-3, 4], [r.randint(-50, 50) for _ in range(r.randint(0, 8))], [94906265], [94906266], [94906265, 1], [0.5], [True], ['1'], None, 'x', [1] * 4097, [3] * 5000])
         request = {'pattern': number}
@@ -4259,11 +4259,11 @@ def pat_native_request(r):
         if r.random() < 0.6:
             request['engine'] = r.choice(['worker', 'fallback', 'fallback', 'x', None, 5])
         return request
-    if number in web_ui.NATIVE_STATE:
-        kind = web_ui.NATIVE_STATE[number][0]
+    if number in pysaiyanweboo.NATIVE_STATE:
+        kind = pysaiyanweboo.NATIVE_STATE[number][0]
         pool = ['left', 'right'] if kind in ('scope', 'model', 'atom') else ['increment', 'reset']
         actions = [r.choice(pool) if r.random() < 0.97 else r.choice(['increment', 'left', 'reset', 'x', '', 5, None, {'type': 'insert'}, ['increment']]) for _ in range(r.randint(0, 9))]
-    elif number in web_ui.NATIVE_INTERACTIVE:
+    elif number in pysaiyanweboo.NATIVE_INTERACTIVE:
         names = ['A', 'B', 'C', 'A', 'B', 'C', 'N1', 'N2', 'N3', 'Z', '']
         index = lambda: r.randint(0, 3) if r.random() < 0.88 else r.choice([4, -1, 5, 0.5, 'a', None])
         makers = {'reorder': lambda: {'type': 'reorder', 'old': index(), 'new': index()}, 'swap': lambda: {'type': 'swap', 'a': r.choice(names + [5]), 'b': r.choice(names + [None])},
@@ -4327,9 +4327,9 @@ def pat_request(family, r):
                 request['offset'] = r.choice([0, 1, 3, 9, 10, -1, True])
         elif op in ('cursor', 'infinite'):
             if r.random() < 0.5:
-                import web_ui
+                import pysaiyanweboo
                 try:
-                    cursor = web_ui.pattern_run('page', {'operation': op, 'items': items, 'limit': 2}).get('next_cursor')
+                    cursor = pysaiyanweboo.pattern_run('page', {'operation': op, 'items': items, 'limit': 2}).get('next_cursor')
                 except ValueError:
                     cursor = None
                 if cursor is not None:
@@ -4356,8 +4356,8 @@ def pat_request(family, r):
         request = {'mode': r.choice(['event_state', 'redux'] * 6 + ['x']), 'initial': r.choice([0, 3, -2, 5, 10 ** 9] * 3 + [10 ** 9 + 1, 1.5, True]), 'actions': actions}
         return pat_mutate(r, request, 0.15) if r.random() < 0.97 else pat_value(r)
     if family == 'workflow':
-        import web_ui
-        op = r.choice(sorted(web_ui._PAT_WORKFLOW_OPS) + ['bogus'])
+        import pysaiyanweboo
+        op = r.choice(sorted(pysaiyanweboo._PAT_WORKFLOW_OPS) + ['bogus'])
         values = [r.choice([1, 2, 3, 5, 8, 'a', 2.5]) for _ in range(r.randint(0, 5))]
         if op == 'insert_sorted' and r.random() < 0.7:
             values = sorted(r.randint(0, 9) for _ in range(r.randint(0, 5)))
@@ -4431,8 +4431,8 @@ def pat_request(family, r):
                     request['equals'] = 1
         return pat_mutate(r, request, 0.15) if r.random() < 0.95 else pat_value(r)
     if family == 'order':
-        import web_ui
-        mode = r.choice(sorted(web_ui.PATTERN_ORDER_EXAMPLES) + ['bogus'])
+        import pysaiyanweboo
+        mode = r.choice(sorted(pysaiyanweboo.PATTERN_ORDER_EXAMPLES) + ['bogus'])
         values = None
         if r.random() < 0.5:
             values = [r.choice([3, 1, 2, 2.5, True, 'a', None]) for _ in range(r.randint(0, 5))]
@@ -4449,13 +4449,13 @@ def pat_request(family, r):
     if family == 'structure':
         return {'mode': r.choice(['sticky', 'section', 'grouped', 'tree', 'flat', 'bogus'])} if r.random() < 0.9 else pat_value(r)
     if family == 'window':
-        import web_ui
+        import pysaiyanweboo
         commands = ['next', 'previous', 'load-more', 'prefetch', 'reset', 'page-size-3', 'offset-6', 'refresh', 'x']
-        request = {'mode': r.choice(list(web_ui.PATTERN_WINDOW_MODES) + ['bogus']), 'commands': [r.choice(commands) for _ in range(r.randint(0, 6))]}
+        request = {'mode': r.choice(list(pysaiyanweboo.PATTERN_WINDOW_MODES) + ['bogus']), 'commands': [r.choice(commands) for _ in range(r.randint(0, 6))]}
         return pat_mutate(r, request, 0.1) if r.random() < 0.95 else pat_value(r)
     if family == 'collection':
-        import web_ui
-        request = {'mode': r.choice(list(web_ui.PATTERN_COLLECTION_MODES) + ['bogus']),
+        import pysaiyanweboo
+        request = {'mode': r.choice(list(pysaiyanweboo.PATTERN_COLLECTION_MODES) + ['bogus']),
                    'commands': [[r.choice(['select', 'toggle', 'delete', 'move-first', 'x']), r.choice(['a', 'b', 'c', 'e'])][:r.choice([1, 2, 2, 2])] for _ in range(r.randint(0, 5))]}
         return pat_mutate(r, request, 0.1) if r.random() < 0.95 else pat_value(r)
     raise AssertionError(family)
@@ -4468,7 +4468,7 @@ class PatternBrowserTests(PageCase):
     FAMILIES = ('collection', 'interaction', 'native', 'order', 'page', 'query', 'reduce', 'score', 'screen', 'select', 'structure', 'text', 'transform', 'window', 'workflow')
 
     def setUp(self):
-        from web_ui import patterns_document
+        from pysaiyanweboo import patterns_document
         self.server, self.origin = WorldBrowserTests.serve({'patterns.html': patterns_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
@@ -4510,9 +4510,9 @@ class PatternBrowserTests(PageCase):
 
     @staticmethod
     def python_outcome(family, request):
-        import web_ui
+        import pysaiyanweboo
         try:
-            return {'ok': web_ui.pattern_run(family, request)}
+            return {'ok': pysaiyanweboo.pattern_run(family, request)}
         except ValueError as error:
             return {'error': str(error)}
 
@@ -4649,7 +4649,7 @@ class PatternBrowserTests(PageCase):
                  ('query', {'operation': 'tag', 'items': [{'t': 'x'}], 'key': 't', 'selected': ['x']})]
         states = [{'mode': 'keyset', 'offset': 0, 'limit': 4, 'total': 0}, {'mode': 'keyset', 'offset': 0, 'limit': 4, 'total': 4}, {'mode': 'keyset', 'offset': 3, 'limit': 4, 'total': 12},
                   {'mode': 'keyset', 'offset': 0, 'limit': 1, 'total': 1}, {'mode': 'window', 'offset': 0, 'limit': 4, 'total': 0}, {'mode': 'window', 'offset': 5, 'limit': 3, 'total': 2}]
-        import web_ui
+        import pysaiyanweboo
         windows = [[state, command] for state in states for command in ('next', 'previous', 'page-size-3', 'offset-6', 'refresh', 'reset')]
         page = self.page()
         got = page.evaluate(self.RUN, [list(x) for x in pairs])
@@ -4658,7 +4658,7 @@ class PatternBrowserTests(PageCase):
         got = page.evaluate("""w => w.map(([s, cmd]) => { try { return {ok: webUiPatterns.patternWindowRender(webUiPatterns.patternWindowStep(s, cmd))} } catch (e) { return {error: e.message} } })""", windows)
         for (state, command), outcome in zip(windows, got):
             try:
-                python = {'ok': web_ui.pattern_window_render(web_ui.pattern_window_step(state, command))}
+                python = {'ok': pysaiyanweboo.pattern_window_render(pysaiyanweboo.pattern_window_step(state, command))}
             except ValueError as error:
                 python = {'error': str(error)}
             self.same('window-state', [state, command], python, outcome)
@@ -4679,15 +4679,15 @@ class PatternBrowserTests(PageCase):
         self.assertEqual(got, {'size': 1, 'afterFire': ['last'], 'left': 0, 'errors': ['TypeError: invalid debounce arguments'] * 3, 'window': {'start': 9, 'end': 16, 'topPadding': 180, 'bottomPadding': 1680}})
 
     def test_the_states_of_windows_and_collections_agree_on_every_command(self):
-        import web_ui
+        import pysaiyanweboo
         rng = random.Random('patterns-states')
         windows, collections = [], []
         for _ in range(800):
-            state = {'mode': rng.choice(web_ui.PATTERN_WINDOW_MODES), 'offset': rng.choice([0, 3, 4, 20, -1, True, '1']), 'limit': rng.choice([4, 3, 0, True, 0.5]), 'total': rng.choice([12, 0, 5, -1])}
+            state = {'mode': rng.choice(pysaiyanweboo.PATTERN_WINDOW_MODES), 'offset': rng.choice([0, 3, 4, 20, -1, True, '1']), 'limit': rng.choice([4, 3, 0, True, 0.5]), 'total': rng.choice([12, 0, 5, -1])}
             if rng.random() < 0.2:
                 state.pop(rng.choice(list(state)))
             windows.append([state, rng.choice(['next', 'previous', 'load-more', 'prefetch', 'reset', 'page-size-3', 'offset-6', 'refresh', 'x'])])
-            collections.append([{'mode': rng.choice(web_ui.PATTERN_COLLECTION_MODES), 'items': rng.choice([['a', 'b'], ['a', 'a'], [], ['a', 1], ['a', 'b', 'c', 'd']]), 'selected': rng.choice([[], ['a'], ['z'], ['a', 'a']])},
+            collections.append([{'mode': rng.choice(pysaiyanweboo.PATTERN_COLLECTION_MODES), 'items': rng.choice([['a', 'b'], ['a', 'a'], [], ['a', 1], ['a', 'b', 'c', 'd']]), 'selected': rng.choice([[], ['a'], ['z'], ['a', 'a']])},
                                 rng.choice(['select', 'toggle', 'delete', 'move-first', 'x']), rng.choice(['a', 'b', 'z'])])
         page = self.page()
         got = page.evaluate("""([w, c]) => [w.map(([s, cmd]) => { try { return {ok: webUiPatterns.patternWindowRender(webUiPatterns.patternWindowStep(s, cmd))} } catch (e) { return {error: e.message} } }),
@@ -4695,14 +4695,14 @@ class PatternBrowserTests(PageCase):
         okay = 0
         for (state, command), outcome in zip(windows, got[0]):
             try:
-                python = {'ok': web_ui.pattern_window_render(web_ui.pattern_window_step(state, command))}
+                python = {'ok': pysaiyanweboo.pattern_window_render(pysaiyanweboo.pattern_window_step(state, command))}
             except (ValueError, TypeError) as error:
                 python = {'error': str(error)}
             okay += 'ok' in python
             self.same('window-state', [state, command], python, outcome)
         for (state, command, item), outcome in zip(collections, got[1]):
             try:
-                python = {'ok': web_ui.pattern_collection_render(web_ui.pattern_collection_step(state, command, item))}
+                python = {'ok': pysaiyanweboo.pattern_collection_render(pysaiyanweboo.pattern_collection_step(state, command, item))}
             except (ValueError, TypeError) as error:
                 python = {'error': str(error)}
             okay += 'ok' in python
@@ -4710,7 +4710,7 @@ class PatternBrowserTests(PageCase):
         self.assertGreater(okay, 150)
 
     def test_text_search_helpers(self):
-        import web_ui
+        import pysaiyanweboo
         rng = random.Random('patterns-text')
         words = ['Flutter', 'portable', 'search', 'the', 'And', 'a', 'x_1', 'Ａ', 'cat', 'Dog', '123', 'indexes']
         queries = [' '.join(rng.choice(words) for _ in range(rng.randint(0, 4))) + rng.choice(['', '!', '  ']) for _ in range(400)]
@@ -4718,9 +4718,9 @@ class PatternBrowserTests(PageCase):
         got = self.page().evaluate("""([queries, docs]) => queries.map((q, i) => [webUiPatterns.patternTokens(q), webUiPatterns.patternWithoutStopWords(webUiPatterns.patternTokens(q)), webUiPatterns.patternTextSearch(docs[i], q),
             webUiPatterns.patternInvertedIndex(docs[i])])""", [queries, docs])
         for query, documents, outcome in zip(queries, docs, got):
-            tokens = web_ui.pattern_tokens(query)
-            index = web_ui.pattern_inverted_index(documents)
-            self.assertEqual(outcome, [tokens, web_ui.pattern_without_stop_words(tokens), web_ui.pattern_text_search(documents, query), [[t, ids] for t, ids in index.items()]], (query, documents))
+            tokens = pysaiyanweboo.pattern_tokens(query)
+            index = pysaiyanweboo.pattern_inverted_index(documents)
+            self.assertEqual(outcome, [tokens, pysaiyanweboo.pattern_without_stop_words(tokens), pysaiyanweboo.pattern_text_search(documents, query), [[t, ids] for t, ids in index.items()]], (query, documents))
 
     # --- the helpers the twins stand on
     def test_pyjson_writes_what_python_writes(self):
@@ -4764,31 +4764,31 @@ class PatternBrowserTests(PageCase):
 
     # --- the catalogue
     def test_the_catalogue_is_python_catalogue(self):
-        import web_ui
+        import pysaiyanweboo
         page = self.page()
-        self.assertEqual(page.evaluate("webUiPatterns.patternCatalogue()"), web_ui.pattern_catalogue())
+        self.assertEqual(page.evaluate("webUiPatterns.patternCatalogue()"), pysaiyanweboo.pattern_catalogue())
         numbers = list(range(-2, 203))
         got = page.evaluate("""n => n.map(x => { const out = [webUiPatterns.patternFamily(x), webUiPatterns.patternOwner(x)]; for (const c of ['navigation', 'api', 'ui', 'data']) { try { out.push(webUiPatterns.patternTheme(c, x)) } catch (e) { out.push(e.message) } } return out })""", numbers)
         for number, outcome in zip(numbers, got):
             themes = []
             for category in ('navigation', 'api', 'ui', 'data'):
                 try:
-                    themes.append(web_ui.pattern_theme(category, number))
+                    themes.append(pysaiyanweboo.pattern_theme(category, number))
                 except ValueError as error:
                     themes.append(str(error))
-            self.assertEqual(outcome, [web_ui.pattern_family(number), web_ui.pattern_owner(number), *themes], number)
+            self.assertEqual(outcome, [pysaiyanweboo.pattern_family(number), pysaiyanweboo.pattern_owner(number), *themes], number)
 
     def test_searching_the_catalogue_agrees(self):
-        import web_ui
+        import pysaiyanweboo
         rng = random.Random('patterns-find')
-        rows = web_ui.pattern_catalogue()
+        rows = pysaiyanweboo.pattern_catalogue()
         words = ['filter', 'FILTER', 'ＦＩＬＴＥＲ', 'd003', 'push', 'pop', 'ページング', 'Navigation', ' ', 'theme', 'Cupertino', 'ａｐｉ', '001', 'フィルタ', 'Json', 'a', 'の', 'xyzzy', 'Material', 'ダーク']
         queries = [[' '.join(rng.choice(words) for _ in range(rng.randint(0, 3))), rng.choice(['', '', 'navigation', 'api', 'ui', 'data', 'nope']), rng.choice(['', '', '', 'select', 'workflow', 'query', 'nope'])]
                    for _ in range(600)]
         got = self.page().evaluate("""qs => { const rows = webUiPatterns.patternCatalogue(); return qs.map(([q, c, f]) => webUiPatterns.patternFind(rows, q, c, f).map(r => r.id)) }""", queries)
         counts = set()
         for (query, category, family), outcome in zip(queries, got):
-            expected = [r['id'] for r in web_ui.pattern_find(rows, query, category, family)]
+            expected = [r['id'] for r in pysaiyanweboo.pattern_find(rows, query, category, family)]
             self.assertEqual(outcome, expected, (query, category, family))
             counts.add(min(len(expected), 3))
         self.assertEqual(counts, {0, 1, 2, 3})
@@ -4816,17 +4816,17 @@ class PatternBrowserTests(PageCase):
         self.assertEqual(page.text_content('[data-patterns-count]'), '0 of 792 patterns')
 
     def test_the_runner_runs_twins_here_and_shows_python_for_the_rest(self):
-        import web_ui
+        import pysaiyanweboo
         page = self.page()
         self.assertEqual((page.get_attribute('#patterns', 'data-engine'), page.get_attribute('#patterns', 'data-run'), page.get_attribute('#patterns', 'data-family')), ('browser', 'ok', 'query'))
-        self.assertEqual(pat_canon(json.loads(page.text_content('[data-patterns-result]'))), pat_canon(web_ui.pattern_run('query', web_ui.PATTERN_EXAMPLES['query'])))
-        for family in sorted(web_ui.PATTERN_RUNNERS):
+        self.assertEqual(pat_canon(json.loads(page.text_content('[data-patterns-result]'))), pat_canon(pysaiyanweboo.pattern_run('query', pysaiyanweboo.PATTERN_EXAMPLES['query'])))
+        for family in sorted(pysaiyanweboo.PATTERN_RUNNERS):
             page.select_option('[data-patterns-run-family]', family)
-            engine = 'browser' if family in web_ui.PATTERN_TWINS else 'python'
+            engine = 'browser' if family in pysaiyanweboo.PATTERN_TWINS else 'python'
             if family in PAT_ASYNC:
                 expect(page.locator('#patterns')).to_have_attribute('data-run', 'ok')
             self.assertEqual((page.get_attribute('#patterns', 'data-engine'), page.get_attribute('#patterns', 'data-run')), (engine, 'ok'), family)
-            self.assertEqual(pat_canon(json.loads(page.text_content('[data-patterns-result]'))), pat_canon(web_ui.pattern_run(family, web_ui.PATTERN_EXAMPLES[family])), family)
+            self.assertEqual(pat_canon(json.loads(page.text_content('[data-patterns-result]'))), pat_canon(pysaiyanweboo.pattern_run(family, pysaiyanweboo.PATTERN_EXAMPLES[family])), family)
         page.select_option('[data-patterns-run-family]', 'search')
         page.fill('[data-patterns-request]', '{"operation": "stem", "text": "walking it\'s"}')
         page.click('[data-patterns-run]')
@@ -4888,7 +4888,7 @@ STUDIO_TEXTS = ['hello world', "Hello, world! can't stop", 'a very long line of 
 
 
 def studio_random_scene(r, wrap=True):
-    import web_ui as w
+    import pysaiyanweboo as w
     scene = w.studio_blank()
     scene.update(width=r.randint(64, 900), height=r.randint(64, 700), background=r.choice(['none', '#FFFFFF', '#18A7A1', '#f8f7f2']))
     number = lambda low, high: r.choice([r.randint(low, high), round(r.uniform(low, high), r.choice([1, 2, 3]))])
@@ -4924,7 +4924,7 @@ def studio_random_scene(r, wrap=True):
 
 
 def studio_damage(r, scene):
-    import web_ui as w
+    import pysaiyanweboo as w
     scene = w.studio_clone(scene)
     bad = [None, 0, -1, 9999, 'x', True, [], {}, 1.5, '#12345g', '', 2 ** 40, 0.5, 100000, 'none', '#FFFFFF']
     layers = scene['layers']
@@ -4973,9 +4973,9 @@ def bridge_mutate(rng, value, depth=0):
 
 def bridge_expected(family, text):
     """What Python says to the request text, the way a page shows it: ``("ok", value)`` or ``("refused", message)``; numbers past 2**53 are doubles, as in the page."""
-    import web_ui
+    import pysaiyanweboo
     try:
-        answer = web_ui.pattern_run(family, web_ui.pattern_parse(text))
+        answer = pysaiyanweboo.pattern_run(family, pysaiyanweboo.pattern_parse(text))
         return 'ok', json.loads(json.dumps(answer, ensure_ascii=False, allow_nan=False), parse_int=lambda s: int(s) if abs(int(s)) <= 2 ** 53 else float(s))
     except ValueError as error:
         return 'refused', str(error)
@@ -4986,8 +4986,8 @@ class PatternBridgeBrowserTests(unittest.TestCase):
     does not answer a page of another origin, a form post, a rebinding host or a request that is not JSON."""
 
     def setUp(self):
-        import web_ui
-        self.web_ui = web_ui
+        import pysaiyanweboo
+        self.pysaiyanweboo = pysaiyanweboo
         self.bridges = []
         self.server = self.start_bridge()
         self.port = self.server.server_address[1]
@@ -4999,7 +4999,7 @@ class PatternBridgeBrowserTests(unittest.TestCase):
         self.errors, self.external, self.posts = [], [], []
 
     def start_bridge(self, allow=()):
-        server = self.web_ui.pattern_bridge(0, allow)
+        server = self.pysaiyanweboo.pattern_bridge(0, allow)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.bridges.append(server)
         return server
@@ -5040,14 +5040,14 @@ class PatternBridgeBrowserTests(unittest.TestCase):
         return page.get_attribute('#patterns', 'data-run'), page.get_attribute('#patterns', 'data-engine'), page.text_content('[data-patterns-status]'), page.text_content('[data-patterns-result]')
 
     def test_the_families_that_stay_in_python_run_there_and_show_its_answer(self):
-        web_ui = self.web_ui
+        pysaiyanweboo = self.pysaiyanweboo
         page = self.page()
         self.assertEqual(page.get_attribute('#patterns', 'data-patterns-bridge'), '/pattern/')
         self.assertIn('run in Python through the local bridge', page.text_content('[data-patterns-bridge-note]'))
-        stays = sorted(set(web_ui.PATTERN_RUNNERS) - set(web_ui.PATTERN_TWINS))
+        stays = sorted(set(pysaiyanweboo.PATTERN_RUNNERS) - set(pysaiyanweboo.PATTERN_TWINS))
         self.assertEqual(stays, ['contract', 'convert', 'search', 'validate'])
         for family in stays + ['score']:
-            example = web_ui.PATTERN_EXAMPLES[family] if family != 'score' else {'operation': 'tfidf', 'documents': ['a b', 'b c']}
+            example = pysaiyanweboo.PATTERN_EXAMPLES[family] if family != 'score' else {'operation': 'tfidf', 'documents': ['a b', 'b c']}
             before = len(self.posts)
             outcome, engine, status, result = self.send(page, family, json.dumps(example))
             self.assertEqual((outcome, engine, status), ('ok', 'bridge' if family in stays or family == 'score' else 'browser', 'Run by Python through the local bridge.'), family)
@@ -5057,11 +5057,11 @@ class PatternBridgeBrowserTests(unittest.TestCase):
             self.assertTrue(all(url == self.origin + '/pattern/' + family for method, url in self.posts[before:]), self.posts[before:])
 
     def test_twins_still_run_in_the_page_and_ask_nobody(self):
-        web_ui = self.web_ui
+        pysaiyanweboo = self.pysaiyanweboo
         page = self.page()
         before = len(self.posts)
         for family in ('query', 'page', 'screen', 'native', 'select'):
-            outcome, engine, status, result = self.send(page, family, json.dumps(web_ui.PATTERN_EXAMPLES[family]))
+            outcome, engine, status, result = self.send(page, family, json.dumps(pysaiyanweboo.PATTERN_EXAMPLES[family]))
             self.assertEqual((outcome, engine, status), ('ok', 'browser', 'Run in this page.'), family)
         self.assertEqual(len(self.posts), before, 'a family the page runs itself is not sent anywhere')
         # score is a twin except for tf-idf, which goes to Python
@@ -5073,10 +5073,10 @@ class PatternBridgeBrowserTests(unittest.TestCase):
         self.assertEqual(len(self.posts), before + 1)
 
     def test_random_requests_get_the_answer_or_the_refusal_python_gives(self):
-        web_ui = self.web_ui
+        pysaiyanweboo = self.pysaiyanweboo
         rng = random.Random('bridge-page')
         page = self.page()
-        bases = {family: web_ui.PATTERN_EXAMPLES[family] for family in ('contract', 'convert', 'search', 'validate')}
+        bases = {family: pysaiyanweboo.PATTERN_EXAMPLES[family] for family in ('contract', 'convert', 'search', 'validate')}
         bases['score'] = {'operation': 'tfidf', 'documents': ['the cat', 'the dog sat'], 'query': 'cat'}
         seen = {'ok': 0, 'refused': 0}
         for _ in range(25):
@@ -5113,22 +5113,22 @@ class PatternBridgeBrowserTests(unittest.TestCase):
         self.settled(page)
         self.bridges[0].shutdown()
         self.bridges[0].server_close()
-        outcome, engine, status, result = self.send(page, 'search', json.dumps(self.web_ui.PATTERN_EXAMPLES['search']))
+        outcome, engine, status, result = self.send(page, 'search', json.dumps(self.pysaiyanweboo.PATTERN_EXAMPLES['search']))
         self.assertEqual((outcome, engine, result), ('unreachable', 'bridge', ''))
         self.assertEqual(status, 'The Python bridge cannot be reached; start it with: python3 pysaiyanweboo.py --pattern-serve')
-        outcome, engine, status, result = self.send(page, 'query', json.dumps(self.web_ui.PATTERN_EXAMPLES['query']))
+        outcome, engine, status, result = self.send(page, 'query', json.dumps(self.pysaiyanweboo.PATTERN_EXAMPLES['query']))
         self.assertEqual((outcome, engine), ('ok', 'browser'), 'the page still runs what it can run itself')
 
     def test_a_later_answer_does_not_overwrite_a_newer_request(self):
         page = self.page()
         slow = threading.Event()
-        original = self.web_ui.pattern_run
+        original = self.pysaiyanweboo.pattern_run
 
         def held(family, request):
             if family == 'search' and isinstance(request, dict) and request.get('operation') == 'stem' and request.get('text') == 'slow':
                 slow.wait(10)
             return original(family, request)
-        with mock.patch.object(self.web_ui, 'pattern_run', held):
+        with mock.patch.object(self.pysaiyanweboo, 'pattern_run', held):
             page.select_option('[data-patterns-run-family]', 'search')
             self.settled(page)
             page.fill('[data-patterns-request]', json.dumps({'operation': 'stem', 'text': 'slow'}))
@@ -5162,7 +5162,7 @@ class PatternBridgeBrowserTests(unittest.TestCase):
         page.goto(self.origin + '/')
         page.wait_for_selector('[data-patterns-ready]')
         self.settled(page)
-        outcome, engine, status, result = self.send(page, 'search', json.dumps(self.web_ui.PATTERN_EXAMPLES['search']))
+        outcome, engine, status, result = self.send(page, 'search', json.dumps(self.pysaiyanweboo.PATTERN_EXAMPLES['search']))
         self.assertEqual((outcome, engine), ('ok', 'bridge'))
         self.assertGreaterEqual(len(sent), 1)
         for request in sent:
@@ -5175,7 +5175,7 @@ class PatternBridgeBrowserTests(unittest.TestCase):
         page = self.page()
         page.select_option('[data-patterns-run-family]', 'search')
         self.settled(page)
-        with mock.patch.object(self.web_ui, 'pattern_run', return_value=None):
+        with mock.patch.object(self.pysaiyanweboo, 'pattern_run', return_value=None):
             outcome, engine, status, result = self.send(page, 'search', '{"operation": "stem", "text": "walking"}')
         self.assertEqual((outcome, engine, status, result), ('ok', 'bridge', 'Run by Python through the local bridge.', 'null'))
         page.route('**/pattern/search', lambda route: route.fulfill(status=200, content_type='text/html', body='<html>not the bridge</html>'))
@@ -5224,13 +5224,13 @@ class PatternBridgeBrowserTests(unittest.TestCase):
 
     def test_a_page_of_another_origin_cannot_run_anything(self):
         calls = []
-        original = self.web_ui.pattern_run
-        with mock.patch.object(self.web_ui, 'pattern_run', lambda *a: (calls.append(a), original(*a))[1]):
+        original = self.pysaiyanweboo.pattern_run
+        with mock.patch.object(self.pysaiyanweboo, 'pattern_run', lambda *a: (calls.append(a), original(*a))[1]):
             origin = self.other_origin()
             page = self.context.new_page()
             page.goto(origin + '/other.html')
             url = self.origin + '/pattern/search'
-            body = json.dumps(self.web_ui.PATTERN_EXAMPLES['search'])
+            body = json.dumps(self.pysaiyanweboo.PATTERN_EXAMPLES['search'])
             json_post = self.foreign_fetch(page, url, method='POST', headers={'Content-Type': 'application/json'}, body=body)
             self.assertEqual(json_post, {'error': 'TypeError'}, 'the preflight is refused, so the request is never sent')
             simple = self.foreign_fetch(page, url, method='POST', mode='no-cors', headers={'Content-Type': 'text/plain'}, body=body)
@@ -5248,9 +5248,9 @@ class PatternBridgeBrowserTests(unittest.TestCase):
         url = f'http://127.0.0.1:{server.server_address[1]}/pattern/search'
         page = self.context.new_page()
         page.goto(origin + '/other.html')
-        body = json.dumps(self.web_ui.PATTERN_EXAMPLES['search'])
+        body = json.dumps(self.pysaiyanweboo.PATTERN_EXAMPLES['search'])
         allowed = self.foreign_fetch(page, url, method='POST', headers={'Content-Type': 'application/json'}, body=body)
-        self.assertEqual((allowed['status'], pat_canon(json.loads(allowed['text']))), (200, pat_canon(self.web_ui.pattern_run('search', self.web_ui.PATTERN_EXAMPLES['search']))))
+        self.assertEqual((allowed['status'], pat_canon(json.loads(allowed['text']))), (200, pat_canon(self.pysaiyanweboo.pattern_run('search', self.pysaiyanweboo.PATTERN_EXAMPLES['search']))))
         self.assertEqual(self.foreign_fetch(page, self.origin + '/pattern/search', method='POST', headers={'Content-Type': 'application/json'}, body=body), {'error': 'TypeError'},
                          'the first bridge was not told about this origin')
 
@@ -5270,7 +5270,7 @@ class PatternBridgeBrowserTests(unittest.TestCase):
 
     def test_localhost_is_the_same_loopback_origin_as_127_0_0_1(self):
         page = self.page(f'http://localhost:{self.port}/')
-        outcome, engine, status, result = self.send(page, 'search', json.dumps(self.web_ui.PATTERN_EXAMPLES['search']))
+        outcome, engine, status, result = self.send(page, 'search', json.dumps(self.pysaiyanweboo.PATTERN_EXAMPLES['search']))
         self.assertEqual((outcome, engine), ('ok', 'bridge'))
 
     def test_the_page_lists_the_families_the_bridge_knows(self):
@@ -5285,7 +5285,7 @@ class ScreensBrowserTests(PageCase):
     layout. What the page shows is what Python's `screen_*` and `native_*` say; the requests themselves are checked against Python in PatternBrowserTests."""
 
     def setUp(self):
-        from web_ui import screens_document
+        from pysaiyanweboo import screens_document
         self.server, self.origin = WorldBrowserTests.serve({'screens.html': screens_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
@@ -5310,11 +5310,11 @@ class ScreensBrowserTests(PageCase):
         page.wait_for_function('n => document.querySelector("#screens").dataset.route === String(n)', arg=number)
 
     def test_the_hub_lists_searches_and_switches_between_list_and_grid(self):
-        import web_ui
+        import pysaiyanweboo
         page = self.page()
         self.assertEqual((page.text_content('[data-screens-count]'), page.get_attribute('#screens', 'data-count'), page.get_attribute('#screens', 'data-mode')), ('198 / 198', '198', 'grid'))
         self.assertEqual(page.eval_on_selector_all('[data-screens-items] a', 'els => els.map(e => e.getAttribute("href"))')[:3], ['#screen1', '#screen2', '#screen3'])
-        self.assertEqual(page.text_content('[data-screens-title]'), web_ui.screen_text('eng', 'hub.title'))
+        self.assertEqual(page.text_content('[data-screens-title]'), pysaiyanweboo.screen_text('eng', 'hub.title'))
         page.click('[data-screens-mode="list"]')
         self.assertEqual((page.get_attribute('#screens', 'data-mode'), page.get_attribute('[data-screens-mode="list"]', 'aria-pressed'), page.get_attribute('[data-screens-items]', 'data-mode')), ('list', 'true', 'list'))
         page.fill('[data-screens-query]', 'Transformed Result List')
@@ -5322,7 +5322,7 @@ class ScreensBrowserTests(PageCase):
         page.click('[data-screens-mode="grid"]')
         self.assertEqual(page.input_value('[data-screens-query]'), 'Transformed Result List', 'the search survives a change of view')
         page.fill('[data-screens-query]', 'このような画面はありません')
-        self.assertEqual((page.text_content('[data-screens-empty]'), page.is_visible('[data-screens-empty]')), (web_ui.screen_text('eng', 'hub.empty'), True))
+        self.assertEqual((page.text_content('[data-screens-empty]'), page.is_visible('[data-screens-empty]')), (pysaiyanweboo.screen_text('eng', 'hub.empty'), True))
         page.click('[data-screens-clear]')
         self.assertEqual((page.input_value('[data-screens-query]'), page.text_content('[data-screens-count]'), page.is_hidden('[data-screens-clear]')), ('', '198 / 198', True))
         page.fill('[data-screens-query]', '  SCREEN198 ')
@@ -5331,15 +5331,15 @@ class ScreensBrowserTests(PageCase):
         self.assertTrue(page.url.endswith('#screen198'))
         page.click('[data-screens-back]')
         page.wait_for_function('document.querySelector("#screens").dataset.route === ""')
-        self.assertEqual(page.text_content('[data-screens-title]'), web_ui.screen_text('eng', 'hub.title'))
+        self.assertEqual(page.text_content('[data-screens-title]'), pysaiyanweboo.screen_text('eng', 'hub.title'))
         self.assertEqual({page.get_attribute(f'a[href="./{name}.html"]', 'href') for name in ('mcp-lab', 'api-stub', 'index')}, {'./mcp-lab.html', './api-stub.html', './index.html'})
 
     def test_the_hub_speaks_every_language_and_arabic_runs_right_to_left(self):
-        import web_ui
+        import pysaiyanweboo
         page = self.page()
-        for locale in web_ui.SCREEN_LOCALES:
+        for locale in pysaiyanweboo.SCREEN_LOCALES:
             page.select_option('[data-screens-locale]', locale)
-            hub = web_ui.screen_hub(locale)
+            hub = pysaiyanweboo.screen_hub(locale)
             self.assertEqual((page.text_content('[data-screens-title]'), page.get_attribute('[data-screens-stage]', 'lang'), page.get_attribute('[data-screens-stage]', 'dir')), (hub['title'], hub['lang'], hub['dir']), locale)
             self.assertEqual(page.get_attribute('[data-screens-query]', 'placeholder'), hub['hint'], locale)
             self.assertEqual(page.get_attribute('[data-screens-mode="list"]', 'title') or page.text_content('[data-screens-mode="list"]'), hub['tooltips']['list'], locale)
@@ -5349,14 +5349,14 @@ class ScreensBrowserTests(PageCase):
         self.assertEqual((page.get_attribute('[data-screens-stage]', 'dir'), page.evaluate('getComputedStyle(document.querySelector("[data-screens-stage]")).direction')), ('rtl', 'rtl'))
 
     def test_screens_show_what_python_says_in_random_languages(self):
-        import web_ui
+        import pysaiyanweboo
         rng = random.Random('screens-page')
         page = self.page()
-        generic = [n for n in range(1, 199) if web_ui.screen_route(n)['kind'] == 'generic']
+        generic = [n for n in range(1, 199) if pysaiyanweboo.screen_route(n)['kind'] == 'generic']
         for _ in range(40):
-            number, locale = rng.choice(generic), rng.choice(web_ui.SCREEN_LOCALES)
+            number, locale = rng.choice(generic), rng.choice(pysaiyanweboo.SCREEN_LOCALES)
             self.route(page, number, locale)
-            view = web_ui.screen_view(number, locale)
+            view = pysaiyanweboo.screen_view(number, locale)
             self.assertEqual(page.text_content('[data-screens-title]'), view['title'], (number, locale))
             self.assertEqual(page.eval_on_selector('.ui-screens-headline', 'e => e.textContent'), view['headline'], (number, locale))
             self.assertEqual(page.text_content('[data-screens-back]'), '← ' + view['back'], (number, locale))
@@ -5367,22 +5367,22 @@ class ScreensBrowserTests(PageCase):
             chips = view['chips'] or (view['useCase'] or {}).get('chips') or []
             self.assertEqual(page.eval_on_selector_all('.ui-screens-chips > li', 'els => els.map(e => e.textContent)'), [f"{c['avatar']} {c['text']}" for c in chips], (number, locale))
         self.route(page, 3, 'jpn')
-        view = web_ui.screen_view(3, 'jpn')
+        view = pysaiyanweboo.screen_view(3, 'jpn')
         self.assertEqual(page.eval_on_selector_all('.ui-screens-chips > li', 'els => els.map(e => e.textContent)'), [f"{c['avatar']} {c['text']}" for c in view['chips']])
         self.assertEqual((view['chips'][0]['text'].startswith('ナビゲーション: '), page.text_content('[data-screens-back]')), (True, '← ハブに戻る'))
         page.click('[data-screens-back]')
         page.wait_for_function('document.querySelector("#screens").dataset.route === ""')
 
     def test_each_template_reacts_to_real_clicks_and_typing(self):
-        import web_ui
+        import pysaiyanweboo
         page = self.page()
         # 22 screens carry a detail: their use case comes first and the template sits on the UI sample tab; every other number shows the template at once
         self.assertEqual(sorted(n for n in range(1, 199) if SCREENS_FIXTURE[n - 1].get('detail')), [1, 2, 19, 20, 37, 38, 55, 56, 73, 74, 91, 92, 109, 110, 127, 128, 145, 146, 163, 164, 181, 182])
         # a list and a detail
         self.route(page, 4)
-        self.assertEqual(page.eval_on_selector_all('.ui-screens-list > li', 'els => els.length'), len(web_ui.screen_view(4, 'eng')['body']['items']))
+        self.assertEqual(page.eval_on_selector_all('.ui-screens-list > li', 'els => els.length'), len(pysaiyanweboo.screen_view(4, 'eng')['body']['items']))
         self.route(page, 21)
-        self.assertEqual(page.text_content('[data-template="detail"] p.ui-muted'), web_ui.screen_text('eng', 'patternTemplate.screenIdLabel', (('screenDataId', 21),)))
+        self.assertEqual(page.text_content('[data-template="detail"] p.ui-muted'), pysaiyanweboo.screen_text('eng', 'patternTemplate.screenIdLabel', (('screenDataId', 21),)))
         # a detail screen: use case first, the template after a click on the second tab, which keeps the focus
         self.route(page, 37)
         self.assertEqual((page.get_attribute('[data-tab="usecase"]', 'aria-selected'), page.is_visible('[data-screens-usecase]'), page.locator('[data-template="form"]').count()), ('true', True, 0))
@@ -5394,23 +5394,23 @@ class ScreensBrowserTests(PageCase):
         self.route(page, 39)
         page.fill('[data-screens-input]', 'こんにちは')
         page.click('[data-screens-submit]')
-        self.assertEqual(page.text_content('[data-screens-snackbar]'), web_ui.screen_text('eng', 'patternTemplate.submitted', (('value', 'こんにちは'),)))
+        self.assertEqual(page.text_content('[data-screens-snackbar]'), pysaiyanweboo.screen_text('eng', 'patternTemplate.submitted', (('value', 'こんにちは'),)))
         page.fill('[data-screens-input]', 'again')
         page.press('[data-screens-input]', 'Enter')
-        self.assertEqual(page.text_content('[data-screens-snackbar]'), web_ui.screen_text('eng', 'patternTemplate.submitted', (('value', 'again'),)))
+        self.assertEqual(page.text_content('[data-screens-snackbar]'), pysaiyanweboo.screen_text('eng', 'patternTemplate.submitted', (('value', 'again'),)))
         self.assertEqual(page.input_value('[data-screens-input]'), 'again')
         # a search
         self.route(page, 57)
-        self.assertEqual(page.text_content('[data-screens-result]'), web_ui.screen_text('eng', 'patternTemplate.typeToFilter'))
+        self.assertEqual(page.text_content('[data-screens-result]'), pysaiyanweboo.screen_text('eng', 'patternTemplate.typeToFilter'))
         page.fill('[data-screens-input]', 'abc')
-        self.assertEqual(page.text_content('[data-screens-result]'), web_ui.screen_text('eng', 'patternTemplate.resultFor', (('query', 'abc'),)))
+        self.assertEqual(page.text_content('[data-screens-result]'), pysaiyanweboo.screen_text('eng', 'patternTemplate.resultFor', (('query', 'abc'),)))
         page.fill('[data-screens-input]', '   ')
-        self.assertEqual(page.text_content('[data-screens-result]'), web_ui.screen_text('eng', 'patternTemplate.resultFor', (('query', '   '),)), 'only the empty string is no query, as in the original')
+        self.assertEqual(page.text_content('[data-screens-result]'), pysaiyanweboo.screen_text('eng', 'patternTemplate.resultFor', (('query', '   '),)), 'only the empty string is no query, as in the original')
         page.fill('[data-screens-input]', '')
-        self.assertEqual(page.text_content('[data-screens-result]'), web_ui.screen_text('eng', 'patternTemplate.typeToFilter'))
+        self.assertEqual(page.text_content('[data-screens-result]'), pysaiyanweboo.screen_text('eng', 'patternTemplate.typeToFilter'))
         # tabs: click, arrow keys and End
         self.route(page, 75)
-        views = web_ui.screen_view(75, 'eng')['body']
+        views = pysaiyanweboo.screen_view(75, 'eng')['body']
         page.click('[data-focus="tpl-2"]')
         self.assertEqual((page.get_attribute('[data-screens-panel]', 'data-screens-panel'), page.get_attribute('[data-focus="tpl-2"]', 'aria-selected')), ('2', 'true'))
         page.press('[data-focus="tpl-2"]', 'ArrowRight')
@@ -5448,13 +5448,13 @@ class ScreensBrowserTests(PageCase):
         self.assertTrue(page.is_enabled('[data-screens-start]'))
         # a settings switch starts on, as the view says
         self.route(page, 185)
-        self.assertEqual(web_ui.screen_view(185, 'eng')['body']['enabled'], True)
+        self.assertEqual(pysaiyanweboo.screen_view(185, 'eng')['body']['enabled'], True)
         self.assertTrue(page.is_checked('[data-screens-switch]'))
         page.click('[data-screens-switch]')
         self.assertFalse(page.is_checked('[data-screens-switch]'))
 
     def test_screen_6_searches_the_real_catalogue_and_opens_a_route(self):
-        import web_ui
+        import pysaiyanweboo
         page = self.page()
         self.route(page, 6)
         self.assertEqual(page.text_content('[data-screens-count]'), '198 / 198')
@@ -5466,16 +5466,16 @@ class ScreensBrowserTests(PageCase):
         self.assertIn('Screen5Page', page.text_content('[data-screens-dedicated]'))
         self.route(page, 6, 'jpn')
         page.fill('[data-screens-input]', '存在しない検索語')
-        self.assertEqual((page.text_content('[data-screens-count]'), page.text_content('[data-screens-empty]')), ('0 / 198', web_ui.screen_text('jpn', 'hub.empty')))
+        self.assertEqual((page.text_content('[data-screens-count]'), page.text_content('[data-screens-empty]')), ('0 / 198', pysaiyanweboo.screen_text('jpn', 'hub.empty')))
         page.click('[data-screens-clear]')
         self.assertEqual((page.text_content('[data-screens-count]'), page.input_value('[data-screens-input]'), page.evaluate('document.activeElement.hasAttribute("data-screens-input")')), ('198 / 198', '', True))
 
     def test_the_validation_and_conversion_screens_link_to_pinned_sources_and_request_nothing(self):
-        import web_ui
+        import pysaiyanweboo
         page = self.page()
         for number in (91, 99, 103, 110):
             self.route(page, number)
-            view = web_ui.screen_links_view(number)
+            view = pysaiyanweboo.screen_links_view(number)
             self.assertEqual(page.text_content('[data-screens-title]'), view['title'])
             self.assertEqual(page.eval_on_selector_all('[data-screens-link]', 'els => els.map(e => e.href)'), [link['url'] for link in view['links']])
             self.assertEqual(page.eval_on_selector_all('[data-screens-link]', 'els => els.every(e => e.rel === "noopener noreferrer" && e.target === "_blank")'), True)
@@ -5495,12 +5495,12 @@ class ScreensBrowserTests(PageCase):
         return page.locator(f'[data-native="{number}"]')
 
     def test_the_counters_and_pairs_count_like_the_original_widgets(self):
-        import web_ui
+        import pysaiyanweboo
         page = self.page()
         self.assertEqual(page.get_attribute('[data-screens-native]', 'data-count'), '27')
         for number in (151, 156, 158, 159, 162, 163, 166, 167, 168, 169):
             card = self.card(page, number)
-            self.assertEqual(card.locator('h4').text_content(), web_ui.native_view(number, web_ui.native_initial(number))['title'])
+            self.assertEqual(card.locator('h4').text_content(), pysaiyanweboo.native_view(number, pysaiyanweboo.native_initial(number))['title'])
             self.assertIn('カウント: 0', card.text_content())
             card.locator('[data-native-action="increment"]').click()
             self.assertEqual((card.get_attribute('data-count'), 'カウント: 1' in card.text_content()), ('1', True), number)
@@ -5515,13 +5515,13 @@ class ScreensBrowserTests(PageCase):
         self.assertEqual(notified(158) - before[158], 1, 'a ChangeNotifier notifies on every call')
         # two values: a scope or a model, an atom or a state: what each rebuilds, taken from Python's own steps
         for number in (157, 160, 161, 170):
-            card, state = self.card(page, number), web_ui.native_initial(number)
+            card, state = self.card(page, number), pysaiyanweboo.native_initial(number)
             for action in ('left', 'right', 'left', 'left'):
                 card.locator(f'[data-native-action="{action}"]').click()
-                state = web_ui.native_step(number, state, action)
+                state = pysaiyanweboo.native_step(number, state, action)
                 self.assertEqual(card.get_attribute('data-order') or '', '')
                 shown = card.text_content()
-                for line in web_ui.native_view(number, state)['lines']:
+                for line in pysaiyanweboo.native_view(number, state)['lines']:
                     self.assertIn(line, shown, (number, action))
         self.assertIn('再ビルド left: 3 / right: 1', self.card(page, 161).text_content(), 'a model rebuilds only the side that changed')
         self.assertIn('再ビルド left: 4 / right: 4', self.card(page, 160).text_content(), 'a scope rebuilds both sides every time')
@@ -5678,8 +5678,8 @@ class ScreensBrowserTests(PageCase):
 
 
     def test_a_native_card_has_an_address_the_page_scrolls_to(self):
-        import web_ui
-        for number in web_ui.NATIVE_NUMBERS:
+        import pysaiyanweboo
+        for number in pysaiyanweboo.NATIVE_NUMBERS:
             page = self.page('#native-' + str(number))
             page.set_viewport_size({'width': 390, 'height': 664})
             page.wait_for_timeout(50)
@@ -5741,7 +5741,7 @@ class ImageStudioBrowserTests(PageCase):
     editor places, moves, edits, imports, exports and restores layers."""
 
     def setUp(self):
-        from web_ui import imagestudio_document
+        from pysaiyanweboo import imagestudio_document
         self.server, self.origin = WorldBrowserTests.serve({'image-studio.html': imagestudio_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
@@ -5839,7 +5839,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertGreaterEqual(len(cases), 500)
 
     def test_random_scenes_draw_the_same_svg_in_python_and_the_page(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         r = random.Random('studio-svg')
         jobs, expect = [], []
@@ -5859,7 +5859,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertGreater(sum('ok' in e for e in expect), 200, 'most random scenes are valid')
 
     def test_damaged_scenes_are_refused_with_the_same_text(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         r = random.Random('studio-validate')
         jobs, expect = [], []
@@ -5879,7 +5879,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertTrue(100 < refused < 390, refused)
 
     def test_wrapped_text_breaks_the_same_in_python_and_the_page_for_latin_and_hangul(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         r = random.Random('studio-wrap')
         jobs, expect = [], []
@@ -5906,7 +5906,7 @@ class ImageStudioBrowserTests(PageCase):
             self.assertEqual(out.get('ok'), want, job)
 
     def test_layers_demos_history_and_workspace_text_are_the_same(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         r = random.Random('studio-factories')
         jobs, expect = [], []
@@ -5950,7 +5950,7 @@ class ImageStudioBrowserTests(PageCase):
 
     def test_sin_and_cos_are_the_same_ports_in_python_and_the_page(self):
         import math
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         r = random.Random('studio-sincos')
         xs = [r.uniform(-8, 8) for _ in range(4000)] + [r.uniform(0, 0.8) for _ in range(300)] + [i * math.pi / 6 for i in range(-12, 13)] + [0, 1e-9, math.pi / 2, -math.pi / 2, math.pi, 2 * math.pi, 8, -8, 2.5, -2.5]
@@ -5963,7 +5963,7 @@ class ImageStudioBrowserTests(PageCase):
                 w.studio_sin(x)
 
     def test_every_limit_is_exact_and_the_same_in_the_page(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         blank = lambda **patch: {'schema': w.STUDIO_SCHEMA, 'width': 64, 'height': 64, 'background': 'none', 'layers': [], **patch}
         layer = lambda i=0, **patch: {**w.studio_base_layer('rect', f'r{i}'), 'fill': 'none', 'stroke': 'none', 'strokeWidth': 0, **patch}
@@ -6063,7 +6063,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertEqual(heavy['payload'], [32 * 1024 * 1024, '32MiB以下のPNGが必要です', 8, '32MiB以下のPNGが必要です'])
 
     def test_random_histories_step_the_same_in_python_and_the_page(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         r = random.Random('studio-history')
         jobs, expect = [], []
@@ -6095,7 +6095,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertEqual([entry[:2] for entry in expect[-1][-4:]], [[39, 40], [38, 40], [39, 40], [39, 40]])
 
     def test_mosaic_and_png_payload_agree_on_random_input(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         r = random.Random('studio-mosaic')
         jobs, expect = [], []
@@ -6118,7 +6118,7 @@ class ImageStudioBrowserTests(PageCase):
 
     # --- the editor ----------------------------------------------------------------------------------------------------------------------------
     def test_the_page_starts_with_the_example_and_exports_the_python_svg(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         self.assertEqual((self.data(page, 'layers'), self.data(page, 'tool'), self.data(page, 'metrics'), self.status(page)), ('8', 'select', 'canvas', 'Ready.'))
         self.assertEqual((page.input_value('[data-is="cell"]'), page.inner_text('[data-is="cellout"]'), page.input_value('[data-is="levels"]'), page.inner_text('[data-is="levelsout"]')), ('1', '1 px', '256', '256'), 'with nothing selected the sliders rest at their defaults')
@@ -6136,7 +6136,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertEqual(self.data(page, 'error'), '1', '1280 x 8 is wider than 8192 pixels')
 
     def test_each_tool_places_its_layer_where_the_canvas_was_pressed(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         self.blank(page)
         page.fill('[data-is="fill"]', '#112233')
@@ -6439,7 +6439,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertFalse(page.is_disabled('[data-is="redo"]'))
 
     def test_a_photo_is_added_kept_exactly_and_mosaicked_from_the_original(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         self.blank(page)
         rng = random.Random(5)
@@ -6472,7 +6472,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertEqual(self.data(page, 'layers'), '1')
 
     def test_base64_text_is_added_as_an_image_and_a_bad_one_is_refused(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         self.blank(page)
         png = w.studio_png_encode(4, 4, bytes([200, 30, 60, 255]) * 16)
@@ -6493,7 +6493,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertEqual(self.data(page, 'layers'), '3')
 
     def test_pasting_an_image_from_the_clipboard(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         self.blank(page)
         png = w.studio_png_encode(2, 2, bytes([1, 2, 3, 255]) * 4)
@@ -6507,7 +6507,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertEqual(self.data(page, 'layers'), '1')
 
     def test_png_and_base64_exports_hold_what_the_board_shows(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         scene = w.studio_blank()
         scene.update(width=128, height=96, background='#FFFFFF')
@@ -6549,7 +6549,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertEqual(saved.decode(), text.split(',', 1)[1])
 
     def test_json_and_workspace_files_round_trip_and_bad_files_change_nothing(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         self.blank(page)
         for tool, x in (('rect', 100), ('ellipse', 300), ('text', 500)):
@@ -6653,7 +6653,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertEqual(order(), [ids[0], ids[1], ids[2]], 'the top layer stays at the top')
 
     def test_an_image_that_is_too_large_to_draw_is_reported_in_the_status_line(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         self.blank(page)
         def attempt(png, cell):
@@ -6675,7 +6675,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertEqual(self.data(page, 'error'), '', '4 MP exactly is drawn')
 
     def test_files_of_exactly_32_mib_are_read_and_one_byte_more_is_refused(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         limit = 32 * 1024 * 1024
         page = self.page()
         self.blank(page)
@@ -6726,7 +6726,7 @@ class ImageStudioBrowserTests(PageCase):
         self.assertEqual(accepting.evaluate('() => webUiImageStudio.app.history.items.length'), 1)
 
     def test_the_examples_and_text_measuring(self):
-        import web_ui as w
+        import pysaiyanweboo as w
         page = self.page()
         self.paint(page, lambda: page.click('[data-is="stampdemo"]'))
         scene = self.scene(page)
@@ -6780,14 +6780,14 @@ class MockAuthBrowserTests(unittest.TestCase):
 
     def test_all_demo_presets_and_actual_http_status_headers(self):
         page = self.page()
-        statuses = dict(zip(self.web_ui.AUTH_SCENARIOS, [404,200,401,403,200,200,200,401,200,200,429]))
+        statuses = dict(zip(self.pysaiyanweboo.AUTH_SCENARIOS, [404,200,401,403,200,200,200,401,200,200,429]))
         for scenario, status in statuses.items():
             with self.subTest(scenario=scenario):
                 self.prepare(page, scenario)
                 result = self.run_mock(page)
                 self.assertEqual(result['status'], status)
                 if scenario == 'digestChallengeOnly':
-                    self.assertEqual(result['headers']['www-authenticate'], self.web_ui.AUTH_DIGEST_CHALLENGE)
+                    self.assertEqual(result['headers']['www-authenticate'], self.pysaiyanweboo.AUTH_DIGEST_CHALLENGE)
                 if scenario == 'rateLimited':
                     self.assertEqual(result['headers']['retry-after'], '1')
                 if scenario in ('digest', 'hmac'):
@@ -6827,7 +6827,7 @@ class GifBrowserTests(unittest.TestCase):
     def test_recorder_builds_a_gif_every_decoder_opens(self):
         import io
         from PIL import Image, ImageSequence
-        from web_ui import gif_recorder_document
+        from pysaiyanweboo import gif_recorder_document
         near = lambda pixel, rgb, tolerance=24: sum(abs(a - b) for a, b in zip(pixel, rgb)) < tolerance  # noqa: E731
         with sync_playwright() as playwright:
             browser = photo_engine(playwright).launch()

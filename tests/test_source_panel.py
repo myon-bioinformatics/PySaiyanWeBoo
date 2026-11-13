@@ -1,6 +1,6 @@
 """The generic source panel: a name (one GET) or pasted JSON read through a consumer's declarative spec into Markdown tables.
 
-Python (``web_ui.source_*``) is the reference; ``source.js`` must agree: ``tests/fixtures/source/cases.json`` is run by both.
+Python (``pysaiyanweboo.source_*``) is the reference; ``source.js`` must agree: ``tests/fixtures/source/cases.json`` is run by both.
 """
 import copy, html, importlib.util, json, re
 from pathlib import Path

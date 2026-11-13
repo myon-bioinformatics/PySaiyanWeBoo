@@ -1,6 +1,6 @@
 """Required Chromium contract: python tests/integration/source_browser.py -v.
 
-The generic source panel (web_ui.source_panel_html + source.js) with the Pokémon spec, offline (file://) and over HTTP: pasted JSON is read with no
+The generic source panel (pysaiyanweboo.source_panel_html + source.js) with the Pokémon spec, offline (file://) and over HTTP: pasted JSON is read with no
 request, Fetch asks the spec's one address once (answered here by the browser's own network layer, never the live site), and every failure is a visible
 message. Invoked explicitly by the browser CI job; missing Playwright/browser is an error.
 """
@@ -11,7 +11,7 @@ from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from web_ui import bundled_css, render_document, source_panel_html, write_js
+from pysaiyanweboo import bundled_css, render_document, source_panel_html, write_js
 
 FIX = ROOT / 'tests' / 'fixtures' / 'source'
 SPEC = json.loads((FIX / 'pokeapi.spec.json').read_text(encoding='utf-8'))

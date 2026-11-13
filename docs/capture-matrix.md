@@ -1,12 +1,12 @@
 # Representative Flutter pages and the multi-browser viewer
 
-## Page table (`web_ui.EXAMPLES["flutter-pages"]`)
+## Page table (`pysaiyanweboo.EXAMPLES["flutter-pages"]`)
 
 `web-ui-flutter-pages/1` lists the representative flutter_navigation_basic pages that
 browser-test-kit captures (`adapters/flutter-*.json`): route, emoji key, label, the
 published URL and the browser-test-kit adapter id. Routes and emojis follow
 flutter_navigation_basic's generated page identities. The `pages` rows are a web-ui
-route table, so `web_ui.route_table` / `navigation.js` `routeTable` validate them and
+route table, so `pysaiyanweboo.route_table` / `navigation.js` `routeTable` validate them and
 `go("🗺️")` resolves by emoji. The adapter ids are the join key with the captures; the
 set is checked against browser-test-kit's list by fixture, not by import.
 

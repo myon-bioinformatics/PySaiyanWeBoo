@@ -2,7 +2,7 @@
 import subprocess, sys, unittest
 from pathlib import Path
 
-from web_ui import (
+from pysaiyanweboo import (
     classic_script,
     plotly_figure,
     remote_scripts,
@@ -82,7 +82,7 @@ class PlotlyFigureTests(unittest.TestCase):
 
     def test_one_liner_without_python_plotly_package(self):
         code = (
-            "import json; from web_ui import plotly_figure, render_document, remote_scripts; "
+            "import json; from pysaiyanweboo import plotly_figure, render_document, remote_scripts; "
             "spec={'data':[{'type':'scatter','x':[1],'y':[2]}]}; "
             "print(render_document(trusted_html=plotly_figure(spec), "
             "remote_scripts=remote_scripts('plotly.js')), end='')"

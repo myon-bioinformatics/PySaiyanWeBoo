@@ -2,7 +2,7 @@
 import copy, json, os, subprocess, sys, tempfile, unittest
 from html.parser import HTMLParser; from pathlib import Path; from urllib.parse import urljoin
 
-import web_ui as ui
+import pysaiyanweboo as ui
 
 
 class Tags(HTMLParser):

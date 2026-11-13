@@ -2,7 +2,7 @@
 import http.client, io, os, unittest, urllib.error
 from pathlib import Path; from unittest.mock import patch
 
-import web_ui as ui
+import pysaiyanweboo as ui
 
 
 class Response(io.BytesIO):

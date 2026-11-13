@@ -23,16 +23,16 @@ def node26() -> str | None:
 def node_js(source: str, *argv: str, timeout: float = 60) -> subprocess.CompletedProcess[str]:
     """Run ``source``, an ES module kept as a string in a Python test, in Node 26+; returns the finished process, or raises AssertionError with Node's stderr.
 
-    There are no .js test files: like pysaiyanweboo.py's browser modules, the Node side of a test is Python data. web_ui writes the modules beside the
+    There are no .js test files: like pysaiyanweboo.py's browser modules, the Node side of a test is Python data. pysaiyanweboo writes the modules beside the
     script under ``./js/``; ``require`` (for the UMD modules: ``require("./js/gif.js")``) and ``REPO`` (this repository, for fixtures) are bound
     first, and ``argv`` follows the script in ``process.argv``."""
-    import web_ui
+    import pysaiyanweboo
     with tempfile.TemporaryDirectory(prefix="web-ui-node-") as tmp:
-        web_ui.write_js(tmp)
+        pysaiyanweboo.write_js(tmp)
         script = Path(tmp) / "check.mjs"
         script.write_text('import {createRequire} from "node:module";const require=createRequire(import.meta.url);'
                           f"const REPO={json.dumps(str(ROOT))};\n" + source, encoding="utf-8")
-        done = web_ui.run_node(script, *argv, timeout=timeout)
+        done = pysaiyanweboo.run_node(script, *argv, timeout=timeout)
     if done.returncode != 0:
         raise AssertionError(f"node exited with {done.returncode}\n{done.stderr}")
     return done
@@ -46,8 +46,8 @@ def node_value(source: str, expression: str, data=None, *, timeout: float = 60):
 
 def world_js() -> str:
     """world.js without ``bindWorlds();``: its inner functions (gridRoute, motionSample, ...) for node_value and node_js."""
-    import web_ui
-    return web_ui.WORLD_JS.removesuffix("bindWorlds();\n")
+    import pysaiyanweboo
+    return pysaiyanweboo.WORLD_JS.removesuffix("bindWorlds();\n")
 
 
 def flutter_case(tid, sid, name, result="success", **done):

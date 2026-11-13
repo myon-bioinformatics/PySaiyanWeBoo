@@ -2,11 +2,11 @@
 import json, re, unittest
 from pathlib import Path
 
-import web_ui
-from web_ui import plotly_figure
+import pysaiyanweboo
+from pysaiyanweboo import plotly_figure
 
 def read(*parts):
-    return web_ui.css_source("/".join(parts))
+    return pysaiyanweboo.css_source("/".join(parts))
 
 
 def token(name):
@@ -19,27 +19,27 @@ def figure_layout(fragment):
 
 class FontTests(unittest.TestCase):
     def test_token_matches_the_python_constant_and_puts_meiryo_first(self):
-        self.assertEqual(token("ui-font").replace(" ", ""), web_ui.UI_FONT.replace(" ", ""))
-        self.assertTrue(web_ui.UI_FONT.startswith("Meiryo"))
-        self.assertEqual(web_ui._PPTX_DEFAULT_FONT, web_ui.UI_FONT.split(",")[0])
+        self.assertEqual(token("ui-font").replace(" ", ""), pysaiyanweboo.UI_FONT.replace(" ", ""))
+        self.assertTrue(pysaiyanweboo.UI_FONT.startswith("Meiryo"))
+        self.assertEqual(pysaiyanweboo._PPTX_DEFAULT_FONT, pysaiyanweboo.UI_FONT.split(",")[0])
 
     def test_base_follows_the_tokens_and_no_stylesheet_hardcodes_a_face(self):
         base = read("base.css")
         self.assertIn("font:var(--ui-text)/1.6 var(--ui-font)", base)  # size is a layout token too
         # !important: it must also win over an adapted page's own `pre, code { font-family: inherit }`
         self.assertIn("pre,code,kbd,samp{font-family:var(--ui-font-mono)!important}", base)
-        for name, text in web_ui._CSS.items():
+        for name, text in pysaiyanweboo._CSS.items():
             self.assertNotIn("system-ui", text, name)
             if name.startswith("themes/"):
                 self.assertNotIn("font-family", text, f"{name}: themes follow the tokens")
 
     def test_plotly_figure_defaults_the_family_and_keeps_the_figures_own_font(self):
         spec = {"data": [], "layout": {"title": {"text": "t"}}}
-        self.assertEqual(figure_layout(plotly_figure(spec))["font"], {"family": web_ui.UI_FONT})
+        self.assertEqual(figure_layout(plotly_figure(spec))["font"], {"family": pysaiyanweboo.UI_FONT})
         self.assertNotIn("font", spec["layout"])  # the caller's spec is not changed
 
         own = {"data": [], "layout": {"font": {"size": 11, "color": "#123"}}}
-        self.assertEqual(figure_layout(plotly_figure(own))["font"], {"family": web_ui.UI_FONT, "size": 11, "color": "#123"})
+        self.assertEqual(figure_layout(plotly_figure(own))["font"], {"family": pysaiyanweboo.UI_FONT, "size": 11, "color": "#123"})
 
         own_family = {"data": [], "layout": {"font": {"family": "Arial"}}}
         self.assertEqual(figure_layout(plotly_figure(own_family))["font"], {"family": "Arial"})

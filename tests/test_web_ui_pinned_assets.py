@@ -2,7 +2,7 @@
 import base64, hashlib, io, os, tempfile, unittest
 from pathlib import Path; from unittest.mock import patch
 
-import web_ui as ui
+import pysaiyanweboo as ui
 
 RAW = b'console.log("pinned");\n'
 

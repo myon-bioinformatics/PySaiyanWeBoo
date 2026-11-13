@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-import web_ui as ui
+import pysaiyanweboo as ui
 
 
 class PlotlyBrowserTests(unittest.TestCase):

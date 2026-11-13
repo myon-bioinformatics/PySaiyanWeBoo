@@ -6,7 +6,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 spec=importlib.util.spec_from_file_location('web_ui_navigation',ROOT/'pysaiyanweboo.py');ui=importlib.util.module_from_spec(spec);spec.loader.exec_module(ui)
-# navigation.js in Node: URL checks, views, the route table (the same cases as web_ui.route_table) and bindRouteTable on a fake window.
+# navigation.js in Node: URL checks, views, the route table (the same cases as pysaiyanweboo.route_table) and bindRouteTable on a fake window.
 NAVIGATION_JS = r"""const assert=require('node:assert/strict');
 const ui=require('./js/navigation.js');
 assert.equal(ui.sourceURL('https://example.test/a'),'https://example.test/a');
@@ -19,7 +19,7 @@ assert.equal(ui.viewFromLocation('#bad','',views,'home'),'home');
 assert.equal(ui.viewFromLocation('#pixiv','?view=wiki',views,'home',{wiki:'wiki'}),'wiki');
 assert.equal(ui.viewFromLocation('#pixiv','?view=unlisted',views,'home',{wiki:'wiki'}),'pixiv');
 
-// Route table: shared cases with web_ui.route_table (tests/fixtures/route_table_cases.json).
+// Route table: shared cases with pysaiyanweboo.route_table (tests/fixtures/route_table_cases.json).
 const cases=require(REPO+'/tests/fixtures/route_table_cases.json');
 for(const c of cases.valid){const t=ui.routeTable(c.registry);for(const [k,v] of Object.entries(c.lookups))assert.equal(t.lookup(k),v,c.name+': '+k);}
 for(const c of cases.invalid)assert.throws(()=>ui.routeTable(c.registry),undefined,c.name);

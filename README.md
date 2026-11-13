@@ -24,14 +24,13 @@ PySaiyanWeBoo combines Py (Python), Saiyan, Web, and Boo. Like Majin Buu in Drag
 
 ```text
 pysaiyanweboo.py the one Python module: CSS (in memory), pages, stubs, worlds, themes, and shared helpers beyond the web UI
-web_ui.py        its old name: forwards to pysaiyanweboo.py (the same module object), until the repositories import pysaiyanweboo
 index.html       the front page: front_document() over the library's own builders, kept equal by a test (nothing is written for the page alone)
-                 (example data is Python too: web_ui.EXAMPLES, example_data(), --example NAME; no examples/ directory)
+                 (example data is Python too: pysaiyanweboo.EXAMPLES, example_data(), --example NAME; no examples/ directory)
                  (the browser modules are Python data too: js_modules(), write_js(); there is no js/ directory)
 tests/
 ```
 
-There are no css/ files and no example HTML files: the stylesheets are Python data (`web_ui.css_source()`), the example pages are built by `web_ui.example_pages()` (`python -S pysaiyanweboo.py --site DIR` writes them). Modern is the default theme, not the only theme. `github-like` is the first alternate theme using the same semantic `ui-*` / `stub-*` contract.
+There are no css/ files and no example HTML files: the stylesheets are Python data (`pysaiyanweboo.css_source()`), the example pages are built by `pysaiyanweboo.example_pages()` (`python -S pysaiyanweboo.py --site DIR` writes them). Modern is the default theme, not the only theme. `github-like` is the first alternate theme using the same semantic `ui-*` / `stub-*` contract.
 
 Generic JavaScript handles browser behavior and rendering helpers. MCP/API protocol semantics remain in consuming repositories.
 
@@ -324,7 +323,7 @@ Typography is shared, not per theme: `--ui-font` (Meiryo, メイリオ, then `sa
 `--ui-font-mono` for `pre`, `code`, `kbd` and `samp`. The code rule is `!important` so it also wins over
 an adapted page's own `pre, code { font-family: inherit }`. No font file is bundled (Meiryo cannot be
 redistributed), so systems without it, such as macOS, iOS and Linux, fall back to their `sans-serif`.
-`plotly_figure` defaults `layout.font.family` to `web_ui.UI_FONT`, the same stack; a figure's own
+`plotly_figure` defaults `layout.font.family` to `pysaiyanweboo.UI_FONT`, the same stack; a figure's own
 `layout.font` keys win. PPTX output already defaults to `Meiryo`.
 
 The alternate-theme example page is `example_pages()["examples/github-like.html"]`; CI writes the example pages
@@ -539,7 +538,7 @@ uses `http://127.0.0.1:8000/examples/...` (`--url` overrides it); the page viewe
 
 ## Multi-browser captures of Flutter pages
 
-`web_ui.EXAMPLES["flutter-pages"]` (`--example flutter-pages`) lists the representative flutter_navigation_basic pages by emoji
+`pysaiyanweboo.EXAMPLES["flutter-pages"]` (`--example flutter-pages`) lists the representative flutter_navigation_basic pages by emoji
 (route table + published URL), and `tools/capture_matrix.py` turns BrowserTestKit captures and
 Ironmate's comparison sheet into a static viewer opened by emoji. See [capture matrix](docs/capture-matrix.md).
 Its tile layout switches live between presets (8px grid, compact, device width, wide); see [layout presets](docs/layout-presets.md)
@@ -558,7 +557,7 @@ modules may be linked explicitly. `run_node()` wraps existing Node checks for
 the same pytest lane.
 
 ```sh
-python -S -c 'from web_ui import render_document; print(render_document("Hello"))'
+python -S -c 'from pysaiyanweboo import render_document; print(render_document("Hello"))'
 printf 'Hello <world>' | python -S pysaiyanweboo.py --title Demo > demo.html
 printf '<main class="ui-page">Demo</main>' | python -S pysaiyanweboo.py --trusted-html --css palette.css > demo.html
 printf 'Result' | python -S pysaiyanweboo.py --css-bundle --theme github-like > demo.html
@@ -577,7 +576,7 @@ and imports; the wrapper checks path syntax, not file identity. Authored
 `trusted_html` is outside this link policy. See [the JS contract](docs/lightweight-js.md).
 
 ```python
-from web_ui import bundled_css, render_document, run_node, shared_scripts
+from pysaiyanweboo import bundled_css, render_document, run_node, shared_scripts
 print(render_document("Hello", title="Demo", css=bundled_css()))
 print(render_document("Hello", scripts=shared_scripts("./vendor/web-ui")))
 assert run_node("-e", "console.log(1 + 1)").stdout == "2\n"   # Node 26+; a test keeps its Node side as a Python string
@@ -587,7 +586,7 @@ assert run_node("-e", "console.log(1 + 1)").stdout == "2\n"   # Node 26+; a test
 Existing `ui.js` text/clipboard helpers, `stub.js` form binding, and
 `repository-diagnostics.js` rendering remain in use by examples or consumers.
 
-📋 `web_ui.table(headers, rows, caption=…, row_classes=…)` renders a `.ui-table` (escaped cells; `trusted_html=True` for
+📋 `pysaiyanweboo.table(headers, rows, caption=…, row_classes=…)` renders a `.ui-table` (escaped cells; `trusted_html=True` for
 cells that are already HTML). Consumers' report pages (BrowserTestKit's platform matrix and app digest, markdown's
 real-world report, ascii_artist's captures) build on `render_document` + `core_css()` + this instead of their own CSS.
 `core_css(theme="modern")` is the ~4 KB bundle (tokens, base, components, one theme) for such pages; `bundled_css()` is every
@@ -598,7 +597,7 @@ palette registers it as `theme_css("ironmate", {"--ui-bg": …})` next to `core_
 A page whose forms are plain `<button>` / `<input>` / `<select>` / `<textarea>` / `<table>` elements (hand-written or
 built by its own script) opts them into the component look with `class="ui-elements"` on `<body>` or a container.
 
-📦 A consumer ships one committed stylesheet: `web_ui.write_bundle("static/site.css", theme="terminal", brand=("acme", tokens),
+📦 A consumer ships one committed stylesheet: `pysaiyanweboo.write_bundle("static/site.css", theme="terminal", brand=("acme", tokens),
 extra_css=LAYOUT)` writes `core_css` + the brand palette + the consumer's own layout rules under a one-line provenance header
 (`web-ui-bundle/1 commit=… sha256=…`), and `check_bundle(...)` with the same arguments lists why it is stale (moved pin, hand
 edit, changed layout) — a two-line test per repository. The same from the shell or Node: `python -S pysaiyanweboo.py --bundle FILE
@@ -608,7 +607,7 @@ Before a brand palette ships, `check_theme(tokens)` lists every text token that 
 `--ui-panel` and a border that would vanish; `theme_palette(hue, dark=…)` builds a palette from one hue that passes by
 construction. CLI: `python -S pysaiyanweboo.py --check-theme brand.json`.
 Every rendered page carries `<meta name="generator" content="web_ui <commit>">` (`generator_meta()`; the installed commit, `checkout` in a checkout), so a screenshot or a
-GIF receipt says which web_ui drew it; BrowserTestKit's `evidence_gif.py` records it as `generator`.
+GIF receipt says which PySaiyanWeBoo commit drew it; BrowserTestKit's `evidence_gif.py` records it as `generator`.
 Layout is a preset too: the core reads `--ui-text` / `--ui-space` / `--ui-max`, `EXAMPLES["page-layouts"]` names four
 (comfortable, compact, wide, device; 8 px spacing grid) and `write_bundle(..., layouts=spec)` + `layout_switch_html(spec)`
 make them switchable without a reload — people and Playwright try each, and the [sweep](docs/layout-presets.md) keeps every
@@ -643,7 +642,7 @@ records it in this repository's GIF evidence; a consumer compares its own page a
 The core also carries `@media print` (white page, `.ui-no-print` / `.ui-print-only`), `prefers-reduced-motion` (animations and
 transitions off) and `theme="auto"` (the dark modern palette, or github-like when the browser prefers light).
 
-🩺 The repository-diagnostics page itself is one function: `web_ui.repository_diagnostics_page("owner/repo")`
+🩺 The repository-diagnostics page itself is one function: `pysaiyanweboo.repository_diagnostics_page("owner/repo")`
 returns the self-contained HTML (bundled CSS and `repository-diagnostics.js` embedded, nothing from a CDN) that
 reads `./repository-diagnostics.json` next to it via `RepositoryDiagnostics.mount`. Consumers (markdown,
 ascii_artist, mcp-toolcall-lab) write their own JSON/JSONL with gh_identity and call this for the page, pinning
@@ -664,7 +663,7 @@ No npm, pip dependencies or runtime download is needed. JavaScript remains opt-i
 
 ```sh
 printf 'Hello' | python -S pysaiyanweboo.py --embed-ui > demo.html
-python -S -c 'from web_ui import render_document; print(render_document("Hello", embedded_modules=("ui.js",)))' > demo.html
+python -S -c 'from pysaiyanweboo import render_document; print(render_document("Hello", embedded_modules=("ui.js",)))' > demo.html
 ```
 
 The output HTML contains the ES module body. The module exports `setText`,
@@ -693,7 +692,7 @@ scripts with `remote_scripts()` and `render_document(remote_scripts=...)`. See
 Plotly charts from a figure JSON spec (no Python `plotly` package):
 
 ```sh
-python -S -c 'from web_ui import plotly_figure, render_document, remote_scripts; spec={"data":[{"type":"bar","y":[1,2,3]}]}; print(render_document(trusted_html=plotly_figure(spec), remote_scripts=remote_scripts("plotly.js")))' > chart.html
+python -S -c 'from pysaiyanweboo import plotly_figure, render_document, remote_scripts; spec={"data":[{"type":"bar","y":[1,2,3]}]}; print(render_document(trusted_html=plotly_figure(spec), remote_scripts=remote_scripts("plotly.js")))' > chart.html
 ```
 
 `plotly_figure()` emits the graph div and a trusted inline `Plotly.newPlot`
@@ -711,7 +710,7 @@ Spec values for those properties override the defaults. Layouts beyond that
 stay in the caller spec.
 
 ```sh
-python -S -c 'from web_ui import pptx_presentation, render_document, remote_scripts; spec={"slides":[{"items":[{"kind":"text","text":"Hello","x":0.5,"y":0.5,"w":4,"h":0.6}]}]}; print(render_document(trusted_html=pptx_presentation(spec), remote_scripts=remote_scripts("pptxgenjs")))' > deck.html
+python -S -c 'from pysaiyanweboo import pptx_presentation, render_document, remote_scripts; spec={"slides":[{"items":[{"kind":"text","text":"Hello","x":0.5,"y":0.5,"w":4,"h":0.6}]}]}; print(render_document(trusted_html=pptx_presentation(spec), remote_scripts=remote_scripts("pptxgenjs")))' > deck.html
 ```
 
 See [docs/lightweight-js.md](docs/lightweight-js.md) for the slide spec,
@@ -736,9 +735,9 @@ boundary](docs/python-controls.md).
 `front`, `world`, `repository-diagnostics`, `table`, `steps`, `scroll`; `components()` lists them as data), and two calls wrap them:
 
 ```python
-import web_ui                                   # the vendored copy (vendor/pysaiyanweboo.py) in another repository
-parts = web_ui.component_parts("dial", "volume", maximum=11, label="Volume")   # {"html", "css", "js"}: place them where your page wants them
-page = web_ui.component_document("dial", "volume", maximum=11, document_title="Volume")  # or one single-file page: bundled_css() + the stylesheet, the HTML, the module inline
+import pysaiyanweboo                            # the vendored copy (vendor/pysaiyanweboo.py) in another repository
+parts = pysaiyanweboo.component_parts("dial", "volume", maximum=11, label="Volume")   # {"html", "css", "js"}: place them where your page wants them
+page = pysaiyanweboo.component_document("dial", "volume", maximum=11, document_title="Volume")  # or one single-file page: bundled_css() + the stylesheet, the HTML, the module inline
 ```
 
 `parts["css"]` is what the component needs beyond `bundled_css()`; `parts["js"]` is the module source, which binds its own elements when the page loads it
@@ -798,7 +797,7 @@ data (`data_table` is `table()` with a required `id`; `row_ids=` puts `data-ui-r
 and no HTML from data: GitHub or other observations are gathered by the Python producer.
 
 ```bash
-python -S -c 'import web_ui as ui
+python -S -c 'import pysaiyanweboo as ui
 rows=[("Aoi", "#1", ui.badge("失敗")), ("markdown", "#2", ui.badge("成功"))]
 body=ui.stat_tiles((("PR", len(rows)), ("CI失敗", 1)))+ui.filter_input("prs", count_id="n")+"<span id=n></span>"+ui.data_table(("repo","PR","CI"), rows, id="prs", trusted_cells=True, row_ids=("Aoi#1","markdown#2"))+ui.draft_textarea(key="Aoi#1:notes", id="notes", label="メモ")+ui.records_io()
 print(ui.render_document(trusted_html=ui.records_board(body), css=ui.bundled_css(), scripts=ui.shared_scripts(".", names=("records.js",))))' > board.html

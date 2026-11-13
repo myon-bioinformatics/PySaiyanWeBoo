@@ -2,8 +2,8 @@ import base64, hashlib, json, math, os, random, re, shutil, struct, subprocess, 
 from pathlib import Path; from unittest import mock
 from support import flutter_case, node26
 
-import web_ui
-from web_ui import _node_launch_module, bundled_css, render_document, run_node, shared_scripts
+import pysaiyanweboo
+from pysaiyanweboo import _node_launch_module, bundled_css, render_document, run_node, shared_scripts
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -34,13 +34,13 @@ class PythonWrapperTests(unittest.TestCase):
 
     def test_external_stylesheets_are_still_escaped_links(self):
         self.assertIn('href="a&amp;b.css"', render_document(stylesheets=('a&b.css',)))
-        self.assertFalse(hasattr(web_ui, "shared_stylesheets"), "stylesheets are embedded, not linked from css/ files")
+        self.assertFalse(hasattr(pysaiyanweboo, "shared_stylesheets"), "stylesheets are embedded, not linked from css/ files")
 
     def test_opt_in_shared_scripts_are_module_links(self):
         scripts = shared_scripts('.', names=('ui.js', 'stub.js'))
         self.assertEqual(scripts, ('./js/ui.js', './js/stub.js'))
         for src in scripts:
-            self.assertIn(src.rsplit("/", 1)[1], web_ui.js_modules())  # modules are written by write_js()/--site
+            self.assertIn(src.rsplit("/", 1)[1], pysaiyanweboo.js_modules())  # modules are written by write_js()/--site
         html = render_document(scripts=scripts)
         self.assertIn('<script type="module" src="./js/ui.js"></script>', html)
         self.assertIn('<script type="module" src="./js/stub.js"></script>', html)
@@ -80,7 +80,7 @@ class PythonWrapperTests(unittest.TestCase):
                             stylesheets=('https://example.test/main.css?v=1',)),
             '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
-            f'{web_ui.generator_meta()}'
+            f'{pysaiyanweboo.generator_meta()}'
             '<title>Title</title><link rel="stylesheet" href="https://example.test/main.css?v=1">'
             '<style>body{color:red}</style></head><body data-ui-theme="modern">'
             '<main class="ui-page"><section class="ui-panel"><h1 class="ui-title">Title</h1>'
@@ -187,7 +187,7 @@ class PythonWrapperTests(unittest.TestCase):
                 sys.executable,
                 '-S',
                 '-c',
-                'from web_ui import render_document; print(render_document("one-liner", title="Demo"), end="")',
+                'from pysaiyanweboo import render_document; print(render_document("one-liner", title="Demo"), end="")',
             ],
             text=True,
             capture_output=True,
@@ -204,18 +204,18 @@ class BundledCssTests(unittest.TestCase):
         css = bundled_css()
         marks = re.findall(r"^/\* css/(\S+) \*/$", css, re.MULTILINE)
         self.assertEqual(marks[:3], ["tokens.css", "base.css", "components.css"])
-        self.assertEqual(sorted(marks), sorted(web_ui._CSS))
+        self.assertEqual(sorted(marks), sorted(pysaiyanweboo._CSS))
         themes = [m for m in marks if m.startswith("themes/")]
         self.assertEqual(marks[-len(themes):], themes)
         self.assertEqual(themes, sorted(themes))
         self.assertTrue(css.startswith("@layer base,components,theme;\n"))
         self.assertLess(css.index("@layer base,components,theme;"), css.index("@layer base{"))
-        for name in web_ui._CSS:
-            self.assertIn(web_ui.css_source(name).strip("\n"), css)
+        for name in pysaiyanweboo._CSS:
+            self.assertIn(pysaiyanweboo.css_source(name).strip("\n"), css)
         self.assertEqual(css, bundled_css())
         self.assertFalse((ROOT / "css").exists(), "there are no css/ files: Python is the only source")
         with self.assertRaises(ValueError):
-            web_ui.css_source("nope.css")
+            pysaiyanweboo.css_source("nope.css")
 
     def test_single_file_page_works_for_every_theme_without_links(self):
         css = bundled_css()
@@ -226,26 +226,26 @@ class BundledCssTests(unittest.TestCase):
             self.assertIn(f'body[data-ui-theme="{theme}"]', css)
 
     def test_candidate_themes_live_in_tokens_and_any_hue_makes_a_theme(self):
-        tokens = web_ui.css_source("tokens.css")
-        for name in web_ui.CANDIDATE_THEMES:
+        tokens = pysaiyanweboo.css_source("tokens.css")
+        for name in pysaiyanweboo.CANDIDATE_THEMES:
             self.assertIn(f'body[data-ui-theme="{name}"]', tokens)
             # A candidate may still ship a glyph sheet (terminal does); its palette never moves out of tokens.css.
-            if f"themes/{name}.css" in web_ui._CSS:
-                self.assertNotIn("--ui-bg:", web_ui.css_source(f"themes/{name}.css"))
-        self.assertEqual(web_ui.CANDIDATE_THEMES, ("green", "red", "blue", "purple", "terminal"))
+            if f"themes/{name}.css" in pysaiyanweboo._CSS:
+                self.assertNotIn("--ui-bg:", pysaiyanweboo.css_source(f"themes/{name}.css"))
+        self.assertEqual(pysaiyanweboo.CANDIDATE_THEMES, ("green", "red", "blue", "purple", "terminal"))
         for hand in ("green", "purple"):                     # Ironmate's green and flutter_navigation_basic's purple, measured by hand
-            self.assertEqual(web_ui.check_theme(web_ui.theme_palettes()[hand]), [], hand)
+            self.assertEqual(pysaiyanweboo.check_theme(pysaiyanweboo.theme_palettes()[hand]), [], hand)
         for hue in (0.0, 0.08, 0.33, 0.6, 0.83):
             for dark in (False, True):
-                theme = web_ui.theme_palette(hue, dark=dark)
+                theme = pysaiyanweboo.theme_palette(hue, dark=dark)
                 for text, minimum in (("fg", 7), ("muted", 4.5), ("accent", 4.5), ("danger", 4.5)):
                     for ground in ("bg", "panel"):
-                        self.assertGreaterEqual(web_ui.contrast_ratio(theme[f"--ui-{text}"], theme[f"--ui-{ground}"]), minimum, (hue, dark, text))
-        self.assertEqual(web_ui.theme_palette(0.3), web_ui.theme_palette(0.3))
+                        self.assertGreaterEqual(pysaiyanweboo.contrast_ratio(theme[f"--ui-{text}"], theme[f"--ui-{ground}"]), minimum, (hue, dark, text))
+        self.assertEqual(pysaiyanweboo.theme_palette(0.3), pysaiyanweboo.theme_palette(0.3))
 
     @unittest.skipUnless(node26(), "Node 26+ not available")
     def test_node_reaches_the_bundle_through_the_shared_launcher(self):
-        # No Node twin and no web_ui.cjs: Node runs pysaiyanweboo.py via vendor/py_launch.cjs, so the bytes cannot differ.
+        # No Node twin and no .cjs copy: Node runs pysaiyanweboo.py via vendor/py_launch.cjs, so the bytes cannot differ.
         args = ["--css-bundle", "--theme", "green"]
         env = {**os.environ, "PYTHON": sys.executable}
         run = lambda argv: subprocess.run(argv, cwd=ROOT, env=env, input="hello\n", capture_output=True,
@@ -257,7 +257,7 @@ class BundledCssTests(unittest.TestCase):
         self.assertIn('body[data-ui-theme="green"]', via_node.stdout)
 
 
-WORLD = web_ui.example_data("world")
+WORLD = pysaiyanweboo.example_data("world")
 
 
 def _has_tzdata() -> bool:
@@ -273,15 +273,15 @@ class WorldTests(unittest.TestCase):
     """One page, a camera: Python validates, does the arithmetic and writes HTML, CSS and a thin JS module."""
 
     def test_demo_world_is_valid_and_validation_is_idempotent(self):
-        world = web_ui.world_validate(WORLD)
-        self.assertEqual(web_ui.world_validate(world), world)
+        world = pysaiyanweboo.world_validate(WORLD)
+        self.assertEqual(pysaiyanweboo.world_validate(world), world)
         self.assertEqual([f["id"] for f in world["floors"]], ["1f", "2f"])
 
     def test_invalid_worlds_are_rejected(self):
         spot = {"id": "a", "x": 8, "y": 8, "label": "A"}
         floor = {"id": "f", "label": "F", "width": 64, "height": 64, "spots": [spot]}
         bad = [
-            {"schema": "other"}, {**WORLD, "extra": 1}, {"schema": web_ui.WORLD_SCHEMA},
+            {"schema": "other"}, {**WORLD, "extra": 1}, {"schema": pysaiyanweboo.WORLD_SCHEMA},
             {**WORLD, "id": "1bad"}, {**WORLD, "zoom_max": 9},
             {**WORLD, "shots": [{"id": "A", "label": "x", "title": "t"}]},
             {**WORLD, "shots": [{"id": "a", "label": "x", "title": "t", "bg": "red"}]},
@@ -295,25 +295,25 @@ class WorldTests(unittest.TestCase):
         ]
         for spec in bad:
             with self.subTest(spec=str(spec)[:80]), self.assertRaises(ValueError):
-                web_ui.world_validate(spec)
+                pysaiyanweboo.world_validate(spec)
 
     def test_camera_math(self):
-        self.assertAlmostEqual(web_ui.fit_zoom(960, 640, 400, 300), 0.41666, places=4)
-        self.assertEqual(web_ui.clamp_focus(10, 10, 2, 960, 640, 400, 300), (100, 75))          # held inside the map
-        self.assertEqual(web_ui.clamp_focus(950, 630, 2, 960, 640, 400, 300), (860, 565))
-        self.assertEqual(web_ui.clamp_focus(0, 0, 0.25, 960, 640, 400, 300), (480, 320))        # smaller than the view: centered
-        self.assertEqual(web_ui.clamp_focus(480, 320, 1, 960, 640, 400, 300), (480, 320))
+        self.assertAlmostEqual(pysaiyanweboo.fit_zoom(960, 640, 400, 300), 0.41666, places=4)
+        self.assertEqual(pysaiyanweboo.clamp_focus(10, 10, 2, 960, 640, 400, 300), (100, 75))          # held inside the map
+        self.assertEqual(pysaiyanweboo.clamp_focus(950, 630, 2, 960, 640, 400, 300), (860, 565))
+        self.assertEqual(pysaiyanweboo.clamp_focus(0, 0, 0.25, 960, 640, 400, 300), (480, 320))        # smaller than the view: centered
+        self.assertEqual(pysaiyanweboo.clamp_focus(480, 320, 1, 960, 640, 400, 300), (480, 320))
 
     def test_html_is_semantic_escaped_and_works_without_js(self):
         hostile = {**WORLD, "title": '<img src=x onerror=1>', "floors": [{**WORLD["floors"][0], "spots": [
             {"id": "a", "x": 8, "y": 8, "label": "<b>x</b>", "category": "info", "body": "<script>1</script>"}]}]}
-        html = web_ui.world_html(hostile)
+        html = pysaiyanweboo.world_html(hostile)
         for raw in ("<b>x</b>", "<script>", "<img src=x"):
             self.assertNotIn(raw, html)
         self.assertEqual(html.count('class="ui-spot"'), 1)
         self.assertIn('href="#demo-spot-a"', html)
         self.assertIn('id="demo-spot-a"', html)
-        full = web_ui.world_html(WORLD)
+        full = pysaiyanweboo.world_html(WORLD)
         self.assertEqual(full.count('type="radio" name="demo-floor"'), 2)
         self.assertEqual(full.count('class="ui-spot"'), 6)
         self.assertEqual(full.count('class="ui-shot-mark"'), 4)
@@ -321,48 +321,48 @@ class WorldTests(unittest.TestCase):
         self.assertEqual(full.count('class="ui-sheet-item"'), 11)  # a sheet for every spot and every villager
 
     def test_css_has_one_rule_per_floor_category_and_shot(self):
-        css = web_ui.world_css(WORLD)
+        css = pysaiyanweboo.world_css(WORLD)
         self.assertTrue(css.startswith("@layer components{") and css.endswith("}"))
         for fragment in ('#demo-floor-2f:checked) .ui-floor[data-floor="2f"]{display:block}',
                          '#demo-cat-value-food:checked) .ui-spot:not([data-category="food"]){display:none}',
                          '.ui-shot-mark[data-i="3"][data-lit])'):
             self.assertIn(fragment, css)
         for shot in WORLD["shots"]:
-            self.assertGreaterEqual(web_ui.contrast_ratio(web_ui.ink_for(shot["bg"]), shot["bg"]), 4.5)
+            self.assertGreaterEqual(pysaiyanweboo.contrast_ratio(pysaiyanweboo.ink_for(shot["bg"]), shot["bg"]), 4.5)
             self.assertIn(shot["bg"], css)
 
     def test_single_file_world_page(self):
-        html = web_ui.world_document(WORLD, theme="github-like")
+        html = pysaiyanweboo.world_document(WORLD, theme="github-like")
         self.assertNotIn('rel="stylesheet"', html)
         self.assertEqual(html.count('<script type="module">'), 1)
         self.assertIn("globalThis.webUiWorld", html)
-        self.assertEqual(web_ui.module_asset("world.js")[0].decode(), web_ui.WORLD_JS)
+        self.assertEqual(pysaiyanweboo.module_asset("world.js")[0].decode(), pysaiyanweboo.WORLD_JS)
 
     def test_random_themes_always_read_and_are_reproducible(self):
         seen = set()
         for seed in range(200):
-            theme = web_ui.random_theme(seed)
-            self.assertEqual(theme, web_ui.random_theme(seed))
+            theme = pysaiyanweboo.random_theme(seed)
+            self.assertEqual(theme, pysaiyanweboo.random_theme(seed))
             for text, minimum in (("fg", 7), ("muted", 4.5), ("accent", 4.5), ("danger", 4.5)):
                 for ground in ("bg", "panel"):
-                    ratio = web_ui.contrast_ratio(theme[f"--ui-{text}"], theme[f"--ui-{ground}"])
+                    ratio = pysaiyanweboo.contrast_ratio(theme[f"--ui-{text}"], theme[f"--ui-{ground}"])
                     self.assertGreaterEqual(ratio, minimum, f"seed {seed}: {text} on {ground} {ratio:.2f}")
             seen.add(theme["--ui-bg"])
         self.assertGreater(len(seen), 150)
 
     def test_front_page_is_what_the_generator_writes(self):
         page = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertEqual(page, web_ui.example_pages()["index.html"])
-        for fragment in (web_ui.world_html(WORLD), web_ui.theme_wall(range(12)), web_ui.world_css(WORLD), web_ui.WORLD_JS):
+        self.assertEqual(page, pysaiyanweboo.example_pages()["index.html"])
+        for fragment in (pysaiyanweboo.world_html(WORLD), pysaiyanweboo.theme_wall(range(12)), pysaiyanweboo.world_css(WORLD), pysaiyanweboo.WORLD_JS):
             self.assertIn(fragment, page)
 
     def test_front_page_is_assembled_from_the_librarys_own_builders(self):
         """Nothing in index.html is written for the page alone: every part is a public builder's output (or an EXAMPLES spec through one)."""
         page = (ROOT / "index.html").read_text(encoding="utf-8")
-        for fragment in (web_ui.world_html(web_ui.example_data("overworld")), web_ui.world_html(web_ui.example_data("school")),
-                         web_ui.world_html(web_ui.example_data("cities")), web_ui.stub_html(web_ui.EXAMPLE_STUBS["mcp"], heading_level=2), web_ui.stub_html(web_ui.EXAMPLE_STUBS["api"], heading_level=2),
-                         web_ui.curl_panel_html(), web_ui.theme_switch_html(), web_ui.seed_dial_html(), web_ui.seed_roll_html(), web_ui.front_css(),
-                         web_ui.module_script(web_ui.js_source("theme.js") + "bindSeed();\n"), web_ui.module_script(web_ui.js_source("curl.js"))):
+        for fragment in (pysaiyanweboo.world_html(pysaiyanweboo.example_data("overworld")), pysaiyanweboo.world_html(pysaiyanweboo.example_data("school")),
+                         pysaiyanweboo.world_html(pysaiyanweboo.example_data("cities")), pysaiyanweboo.stub_html(pysaiyanweboo.EXAMPLE_STUBS["mcp"], heading_level=2), pysaiyanweboo.stub_html(pysaiyanweboo.EXAMPLE_STUBS["api"], heading_level=2),
+                         pysaiyanweboo.curl_panel_html(), pysaiyanweboo.theme_switch_html(), pysaiyanweboo.seed_dial_html(), pysaiyanweboo.seed_roll_html(), pysaiyanweboo.front_css(),
+                         pysaiyanweboo.module_script(pysaiyanweboo.js_source("theme.js") + "bindSeed();\n"), pysaiyanweboo.module_script(pysaiyanweboo.js_source("curl.js"))):
             self.assertIn(fragment, page)
         self.assertEqual(page.count('class="ui-front"'), 1)
         self.assertEqual(page.count('class="ui-room"'), 9)                                                       # the menu and eight rooms
@@ -370,11 +370,11 @@ class WorldTests(unittest.TestCase):
     def test_villagers_walk_straight_at_constant_speed_pause_at_random_and_loop_seamlessly(self):
         for seed in range(60):
             for width, height, speed in ((960, 640, 48), (640, 640, 32), (320, 480, 64)):
-                path = web_ui.villager_path(seed, width, height, speed=speed)
+                path = pysaiyanweboo.villager_path(seed, width, height, speed=speed)
                 keys = path["keys"]
                 self.assertEqual((keys[0][0], keys[-1][0]), (0.0, 100.0))
                 self.assertEqual(keys[0][1:], keys[-1][1:])                       # the loop closes
-                self.assertEqual(path, web_ui.villager_path(seed, width, height, speed=speed))
+                self.assertEqual(path, pysaiyanweboo.villager_path(seed, width, height, speed=speed))
                 pauses = moves = 0
                 for (p0, x0, y0), (p1, x1, y1) in zip(keys, keys[1:]):
                     self.assertGreaterEqual(p1, p0)
@@ -387,33 +387,33 @@ class WorldTests(unittest.TestCase):
                         moves += 1
                         self.assertAlmostEqual(dist / seconds, speed, delta=speed * 0.02)   # constant speed
                 self.assertEqual((moves, pauses), (5, 4))
-        self.assertNotEqual(web_ui.villager_path(1, 960, 640), web_ui.villager_path(2, 960, 640))
+        self.assertNotEqual(pysaiyanweboo.villager_path(1, 960, 640), pysaiyanweboo.villager_path(2, 960, 640))
 
     def test_travel_clock_and_board_math(self):
-        self.assertEqual(web_ui.travel_seconds(0, 0, 3, 4, 5), 1.0)
-        self.assertEqual(web_ui.travel_seconds(10, 10, 10, 10, 96), 0.0)
-        self.assertEqual([web_ui.minutes_until(*case) for case in ((600, 630), (600, 600), (1430, 10), (0, 1439))], [30, 0, 20, 1439])
-        self.assertEqual([web_ui.board_seconds(n) for n in (1, 64, 160, 400)], [8.0, 8.0, 20.0, 50.0])
+        self.assertEqual(pysaiyanweboo.travel_seconds(0, 0, 3, 4, 5), 1.0)
+        self.assertEqual(pysaiyanweboo.travel_seconds(10, 10, 10, 10, 96), 0.0)
+        self.assertEqual([pysaiyanweboo.minutes_until(*case) for case in ((600, 630), (600, 600), (1430, 10), (0, 1439))], [30, 0, 20, 1439])
+        self.assertEqual([pysaiyanweboo.board_seconds(n) for n in (1, 64, 160, 400)], [8.0, 8.0, 20.0, 50.0])
 
     def test_gauge_clock_and_zone_rules(self):
         # 09:00..18:00 in ten cells at 10:00: one hour of nine has passed.
-        self.assertEqual(web_ui.gauge_state(600, 540, 1080, 10), (1, 11, "active"))
-        self.assertEqual(web_ui.gauge_state(540, 540, 1080, 10), (0, 0, "active"))              # the first minute is empty, not "before"
-        self.assertEqual(web_ui.gauge_state(1080, 540, 1080, 10), (10, 100, "after"))           # the end is full
-        self.assertEqual(web_ui.gauge_state(180, 540, 1080, 10), (0, 0, "before"))              # 03:00: the start is nearer than the end
-        self.assertEqual(web_ui.gauge_state(1260, 540, 1080, 10), (10, 100, "after"))           # 21:00: the end is nearer
-        self.assertEqual(web_ui.gauge_state(180, 540, 1260, 10)[2], "before")                   # equidistant: a tie counts as before
-        self.assertEqual(web_ui.gauge_state(60, 1320, 120, 8), (6, 75, "active"))               # 22:00..02:00 runs past midnight: 01:00 is 3 h of 4
+        self.assertEqual(pysaiyanweboo.gauge_state(600, 540, 1080, 10), (1, 11, "active"))
+        self.assertEqual(pysaiyanweboo.gauge_state(540, 540, 1080, 10), (0, 0, "active"))              # the first minute is empty, not "before"
+        self.assertEqual(pysaiyanweboo.gauge_state(1080, 540, 1080, 10), (10, 100, "after"))           # the end is full
+        self.assertEqual(pysaiyanweboo.gauge_state(180, 540, 1080, 10), (0, 0, "before"))              # 03:00: the start is nearer than the end
+        self.assertEqual(pysaiyanweboo.gauge_state(1260, 540, 1080, 10), (10, 100, "after"))           # 21:00: the end is nearer
+        self.assertEqual(pysaiyanweboo.gauge_state(180, 540, 1260, 10)[2], "before")                   # equidistant: a tie counts as before
+        self.assertEqual(pysaiyanweboo.gauge_state(60, 1320, 120, 8), (6, 75, "active"))               # 22:00..02:00 runs past midnight: 01:00 is 3 h of 4
         for start, end, cells in ((540, 1080, 10), (1320, 120, 8), (0, 1439, 20), (1439, 0, 3)):
-            seen = [web_ui.gauge_state(now, start, end, cells) for now in range(1440)]
+            seen = [pysaiyanweboo.gauge_state(now, start, end, cells) for now in range(1440)]
             for filled, percent, phase in seen:
                 self.assertTrue(0 <= filled <= cells and 0 <= percent <= 100 and phase in ("before", "active", "after"))
             active = [s for s in seen if s[2] == "active"]
             self.assertEqual(len(active), (end - start) % 1440)                                  # exactly the window is active
-        self.assertEqual(web_ui.gauge_cells(3, 5, ("A", "b")), "AAAbb")
-        self.assertEqual(web_ui.gauge_cells(0, 3, web_ui.GAUGE_GLYPHS["hourglass"]), "⏳⏳⏳")
-        self.assertEqual([web_ui.clock_label(m) for m in (0, 9, 600, 1439)], ["00:00", "00:09", "10:00", "23:59"])
-        self.assertEqual([web_ui.utc_offset_label(m) for m in (0, 540, 330, -300, -210, 765, -720)],
+        self.assertEqual(pysaiyanweboo.gauge_cells(3, 5, ("A", "b")), "AAAbb")
+        self.assertEqual(pysaiyanweboo.gauge_cells(0, 3, pysaiyanweboo.GAUGE_GLYPHS["hourglass"]), "⏳⏳⏳")
+        self.assertEqual([pysaiyanweboo.clock_label(m) for m in (0, 9, 600, 1439)], ["00:00", "00:09", "10:00", "23:59"])
+        self.assertEqual([pysaiyanweboo.utc_offset_label(m) for m in (0, 540, 330, -300, -210, 765, -720)],
                          ["UTC", "UTC+9", "UTC+5:30", "UTC-5", "UTC-3:30", "UTC+12:45", "UTC-12"])
 
     def test_gauge_is_validated_normalized_and_escaped(self):
@@ -433,40 +433,40 @@ class WorldTests(unittest.TestCase):
             {"text": "x", "gauge": "09:00-18:00"}, {"text": "x", "at": "10:00", "gauge": window},  # at and gauge are exclusive
         ):
             with self.subTest(bad=str(bad)[-70:]), self.assertRaises(ValueError):
-                web_ui.world_validate(board(bad))
+                pysaiyanweboo.world_validate(board(bad))
         with self.assertRaises(ValueError):
-            web_ui.world_validate(board({"text": "x"}, offset_label="yes"))
+            pysaiyanweboo.world_validate(board({"text": "x"}, offset_label="yes"))
         # Every preset works, defaults are filled in, and a custom pair keeps its own glyphs.
-        for name, pair in web_ui.GAUGE_GLYPHS.items():
-            got = web_ui.world_validate(board({"text": "x", "gauge": {**window, "glyphs": name}}))["board"]["items"][0]["gauge"]
+        for name, pair in pysaiyanweboo.GAUGE_GLYPHS.items():
+            got = pysaiyanweboo.world_validate(board({"text": "x", "gauge": {**window, "glyphs": name}}))["board"]["items"][0]["gauge"]
             self.assertEqual(got["glyphs"], list(pair), name)
-        plain = web_ui.world_validate(board({"text": "x", "gauge": window}))
+        plain = pysaiyanweboo.world_validate(board({"text": "x", "gauge": window}))
         self.assertEqual(plain["board"]["items"][0]["gauge"], {**window, "cells": 10, "glyphs": ["⌛", "⏳"]})
         self.assertEqual((plain["board"]["offset_label"], plain["board"]["zones"]), (False, []))
-        self.assertEqual(web_ui.world_validate(plain), plain)                                      # normalizing twice changes nothing
-        custom = web_ui.world_validate(board({"text": "x", "gauge": {**window, "glyphs": ["🔥", "🪵"], "cells": 5}}))
+        self.assertEqual(pysaiyanweboo.world_validate(plain), plain)                                      # normalizing twice changes nothing
+        custom = pysaiyanweboo.world_validate(board({"text": "x", "gauge": {**window, "glyphs": ["🔥", "🪵"], "cells": 5}}))
         self.assertEqual(custom["board"]["items"][0]["gauge"]["glyphs"], ["🔥", "🪵"])
         # Markup: the window and glyphs are data attributes (escaped), the cells start empty so the page works before its script runs.
-        html = web_ui.world_html(board({"text": "<b>Open</b>", "gauge": {**window, "glyphs": ['"<', "&>"], "cells": 3}}, offset_label=True))
+        html = pysaiyanweboo.world_html(board({"text": "<b>Open</b>", "gauge": {**window, "glyphs": ['"<', "&>"], "cells": 3}}, offset_label=True))
         for raw in ("<b>Open</b>", 'data-done=""<"', 'data-todo="&>"'):
             self.assertNotIn(raw, html)
         self.assertIn('data-done="&quot;&lt;" data-todo="&amp;&gt;"', html)
         self.assertIn('data-from="09:00" data-to="18:00" data-cells="3"', html)
         self.assertIn('<span class="ui-board-cells" aria-hidden="true">&amp;&gt;&amp;&gt;&amp;&gt;</span> <span class="ui-board-pct">0%</span>', html)
         self.assertIn(" data-offset-label>", html)
-        self.assertNotIn("data-offset-label", web_ui.world_html(board({"text": "x"})))
+        self.assertNotIn("data-offset-label", pysaiyanweboo.world_html(board({"text": "x"})))
 
     def test_gauge_unicode_visibility_and_scroll_budget(self):
         for glyph in ("\u200d", "\ufe0f", "\u0301", "\u200d\ufe0f", "\u3164", "\uffa0"):
             with self.subTest(glyph=repr(glyph)), self.assertRaises(ValueError):
-                web_ui._gauge_glyph(glyph)
+                pysaiyanweboo._gauge_glyph(glyph)
         for glyph in ("👩\u200d💻", "🇯🇵", "1️⃣", "ABCDEFGH"):
-            self.assertEqual(web_ui._gauge_glyph(glyph), glyph)
+            self.assertEqual(pysaiyanweboo._gauge_glyph(glyph), glyph)
         with self.assertRaisesRegex(ValueError, "requires from and to; cells and glyphs are optional"):
-            web_ui._world_gauge({"extra": 1})
-        gauge = web_ui._world_gauge({"from": "09:00", "to": "18:00", "cells": 3,
+            pysaiyanweboo._world_gauge({"extra": 1})
+        gauge = pysaiyanweboo._world_gauge({"from": "09:00", "to": "18:00", "cells": 3,
                                      "glyphs": ["ABCDEFGH", "👩\u200d💻"]})
-        html = web_ui._board_html({"title": "test", "items": [{"text": "x", "at": None, "zone": None, "gauge": gauge}],
+        html = pysaiyanweboo._board_html({"title": "test", "items": [{"text": "x", "at": None, "zone": None, "gauge": gauge}],
                                    "post": False, "offset_label": False, "offset_minutes": None, "zones": []})
         self.assertIn('data-chars="31"', html)  # text + space + longest cells + " 100%"
 
@@ -480,28 +480,28 @@ class WorldTests(unittest.TestCase):
                   "America/New_York": [(utc(2026, 3, 8, 7), -300, -240), (utc(2026, 11, 1, 6), -240, -300)],
                   "Australia/Sydney": [(utc(2026, 4, 4, 16), 660, 600), (utc(2026, 10, 3, 16), 600, 660)]}
         for tz, cases in golden.items():
-            rows = web_ui.zone_rows(tz)
+            rows = pysaiyanweboo.zone_rows(tz)
             for at, before, after in cases:
                 with self.subTest(tz=tz, at=at):
-                    self.assertEqual((web_ui.zone_offset(rows, at - 1), web_ui.zone_offset(rows, at)), (before, after))
-        self.assertEqual(web_ui.zone_rows("Asia/Tokyo"), (utc(2020, 1, 1), 540))               # no changes: the start row only
-        self.assertEqual(web_ui.zone_offset(web_ui.zone_rows("Asia/Kathmandu"), utc(2026, 6, 1)), 345)
+                    self.assertEqual((pysaiyanweboo.zone_offset(rows, at - 1), pysaiyanweboo.zone_offset(rows, at)), (before, after))
+        self.assertEqual(pysaiyanweboo.zone_rows("Asia/Tokyo"), (utc(2020, 1, 1), 540))               # no changes: the start row only
+        self.assertEqual(pysaiyanweboo.zone_offset(pysaiyanweboo.zone_rows("Asia/Kathmandu"), utc(2026, 6, 1)), 345)
         # Every row is exact against the database, and so are thousands of random instants (reproducible seed).
         rng = random.Random(20261103)
         lo, hi = utc(2020, 1, 1), utc(2040, 1, 1)
         for tz in ("Europe/London", "America/New_York", "Australia/Sydney", "Asia/Kolkata", "America/Sao_Paulo", "Pacific/Auckland", "Africa/Cairo"):
-            rows, zone = web_ui.zone_rows(tz), zoneinfo.ZoneInfo(tz)
+            rows, zone = pysaiyanweboo.zone_rows(tz), zoneinfo.ZoneInfo(tz)
             oracle = lambda t: int(dt.datetime.fromtimestamp(t, dt.timezone.utc).astimezone(zone).utcoffset().total_seconds() // 60)
             for t, offset in zip(rows[2::2], rows[3::2]):
                 self.assertEqual((oracle(t - 1) == offset, oracle(t) == offset), (False, True), (tz, t))
             for _ in range(1500):
                 t = rng.randrange(lo, hi)
-                self.assertEqual(web_ui.zone_offset(rows, t), oracle(t), (tz, t))
-        london = web_ui.zone_rows("Europe/London")
-        self.assertEqual((web_ui.zone_offset(london, 0), web_ui.zone_offset(london, 4_000_000_000)), (0, 0))   # outside the window: nearest end
+                self.assertEqual(pysaiyanweboo.zone_offset(rows, t), oracle(t), (tz, t))
+        london = pysaiyanweboo.zone_rows("Europe/London")
+        self.assertEqual((pysaiyanweboo.zone_offset(london, 0), pysaiyanweboo.zone_offset(london, 4_000_000_000)), (0, 0))   # outside the window: nearest end
         for bad in ("Mars/Base", "../etc/passwd", "Asia//Tokyo", "", "Asia/Tokyo ", 5, None):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
-                web_ui.zone_rows(bad)
+                pysaiyanweboo.zone_rows(bad)
 
     @unittest.skipUnless(_has_tzdata(), "needs the system tz database")
     def test_board_zones_are_validated_and_rendered_with_their_tables(self):
@@ -515,22 +515,22 @@ class WorldTests(unittest.TestCase):
                     board({"text": "x", "zone": "tokyo"}),                                       # a zone needs at or gauge
                     board({"text": "x", "at": "10:00", "zone": 5})):
             with self.subTest(bad=str(bad["board"])[-70:]), self.assertRaises(ValueError):
-                web_ui.world_validate(bad)
+                pysaiyanweboo.world_validate(bad)
         spec = board({"text": "Opens", "at": "09:00", "zone": "tokyo"}, {"text": "Open", "gauge": {"from": "09:00", "to": "18:00"}, "zone": "london"},
                      {"text": "Local", "at": "09:00"})
-        world = web_ui.world_validate(spec)
-        self.assertEqual(web_ui.world_validate(world), world)
+        world = pysaiyanweboo.world_validate(spec)
+        self.assertEqual(pysaiyanweboo.world_validate(world), world)
         self.assertEqual([i["zone"] for i in world["board"]["items"]], ["tokyo", "london", None])
-        html = web_ui.world_html(spec)
+        html = pysaiyanweboo.world_html(spec)
         self.assertNotIn("<b>London</b>", html)
         for z in world["board"]["zones"]:
             match = re.search(rf'data-zone-id="{z["id"]}" data-rows="([^"]*)"', html)
-            self.assertEqual(json.loads(match.group(1)), list(web_ui.zone_rows(z["tz"])))
+            self.assertEqual(json.loads(match.group(1)), list(pysaiyanweboo.zone_rows(z["tz"])))
         self.assertEqual(html.count('data-at="09:00" data-zone="tokyo"'), 2)                    # the visible line and its twin
         self.assertEqual(html.count('data-cells="10" data-zone="london"'), 2)
         self.assertEqual(html.count('data-at="09:00"></span>'), 2)                              # no zone: the viewer's own clock
         self.assertEqual(html.count('class="ui-board-zones"'), 1)                                # the clocks share one row
-        self.assertNotIn("ui-board-zone", web_ui.world_html({**WORLD, "board": {"title": "T", "items": [{"text": "x"}]}}))
+        self.assertNotIn("ui-board-zone", pysaiyanweboo.world_html({**WORLD, "board": {"title": "T", "items": [{"text": "x"}]}}))
 
     def test_world_script_caches_only_display_preferences_and_favorites_and_requests_only_for_the_opt_in_shared_section(self):
         # What a visitor writes stays in the page: no cookies, beacons or sockets, no place names. The one thing kept is a small cache of the
@@ -538,24 +538,24 @@ class WorldTests(unittest.TestCase):
         # The one network call is the shared section's refresh button (opt in with shared_issue): an anonymous GET without credentials, cache or referrer.
         for word in ("sessionStorage", "indexedDB", "cookie", "XMLHttpRequest", "sendBeacon", "WebSocket",
                      "caches", "Intl", "timeZone", "geolocation", "pushState", "postMessage", "Worker"):
-            self.assertTrue(word not in web_ui.WORLD_JS, word)                                # (replaceState only edits the #spot fragment)
+            self.assertTrue(word not in pysaiyanweboo.WORLD_JS, word)                                # (replaceState only edits the #spot fragment)
         # The one thing asked of the browser is a camera stream, shown on a <video> and nothing else: a chosen photo is an object URL on an <img>.
         # Neither is drawn to a canvas, read back, recorded, stored or sent.
-        self.assertEqual(re.findall(r"navigator\.(\w+)", web_ui.WORLD_JS), ["mediaDevices"])
-        self.assertEqual(web_ui.WORLD_JS.count("getUserMedia"), 1)
+        self.assertEqual(re.findall(r"navigator\.(\w+)", pysaiyanweboo.WORLD_JS), ["mediaDevices"])
+        self.assertEqual(pysaiyanweboo.WORLD_JS.count("getUserMedia"), 1)
         for word in ("canvas", "drawImage", "FileReader", "ImageCapture", "MediaRecorder", "toDataURL", "toBlob", "createImageBitmap", "arrayBuffer", "readAsDataURL"):
-            self.assertTrue(word not in web_ui.WORLD_JS, word)
-        self.assertEqual(sorted(re.findall(r"localStorage\.(\w+)", web_ui.WORLD_JS)), ["getItem", "setItem"])
-        self.assertEqual(re.findall(r"save\(\{(\w+)", web_ui.WORLD_JS), ["alpha", "lang", "fav", "names"])  # only these four preferences are written
-        self.assertIn("'ui-world:'+el.id", web_ui.WORLD_JS)
-        self.assertEqual(web_ui.WORLD_JS.count("fetch("), 1)
+            self.assertTrue(word not in pysaiyanweboo.WORLD_JS, word)
+        self.assertEqual(sorted(re.findall(r"localStorage\.(\w+)", pysaiyanweboo.WORLD_JS)), ["getItem", "setItem"])
+        self.assertEqual(re.findall(r"save\(\{(\w+)", pysaiyanweboo.WORLD_JS), ["alpha", "lang", "fav", "names"])  # only these four preferences are written
+        self.assertIn("'ui-world:'+el.id", pysaiyanweboo.WORLD_JS)
+        self.assertEqual(pysaiyanweboo.WORLD_JS.count("fetch("), 1)
         for needle in ('method:"GET"', 'credentials:"omit"', 'cache:"no-store"', 'referrerPolicy:"no-referrer"'):
-            self.assertIn(needle, web_ui.WORLD_SHARED_JS)
-        self.assertIn("fetch(", web_ui.WORLD_SHARED_JS)
+            self.assertIn(needle, pysaiyanweboo.WORLD_SHARED_JS)
+        self.assertIn("fetch(", pysaiyanweboo.WORLD_SHARED_JS)
         plain = {**WORLD, "board": {**WORLD["board"], "shared_issue": None}}
         for needle in ("api.github.com", "data-shared-refresh", "ui-board-shared"):
-            self.assertNotIn(needle, web_ui.world_html(plain))
-            self.assertIn(needle, web_ui.world_html(WORLD))
+            self.assertNotIn(needle, pysaiyanweboo.world_html(plain))
+            self.assertIn(needle, pysaiyanweboo.world_html(WORLD))
 
     def test_actors_player_and_board_are_validated_and_escaped(self):
         floor = WORLD["floors"][0]
@@ -574,13 +574,13 @@ class WorldTests(unittest.TestCase):
         ]
         for spec in bad:
             with self.subTest(spec=str(spec)[-80:]), self.assertRaises(ValueError):
-                web_ui.world_validate(spec)
+                pysaiyanweboo.world_validate(spec)
         hostile = {**WORLD, "board": {"title": "<i>", "items": [{"text": "<script>1</script>", "at": "10:30"}]},
                    "floors": [{**floor, "actors": [{**actor, "label": "<b>x</b>", "body": "<img src=x>"}]}]}
-        html = web_ui.world_html(hostile)
+        html = pysaiyanweboo.world_html(hostile)
         for raw in ("<script>", "<b>x</b>", "<img src=x>", "<i>"):
             self.assertNotIn(raw, html)
-        css = web_ui.world_css(hostile)
+        css = pysaiyanweboo.world_css(hostile)
         self.assertIn("@keyframes ui-walk-demo-x{0.0%{transform:translate(", css)
         self.assertIn("#demo-actor-x{animation:ui-walk-demo-x ", css)
         self.assertIn("prefers-reduced-motion", css)
@@ -590,16 +590,16 @@ class WorldTests(unittest.TestCase):
                  "x" * 100: "x" * 60, "\U0001f600 ok": "\U0001f600 ok", "\U0001f9d1\u200d\U0001f33e hi": "\U0001f9d1\u200d\U0001f33e hi",
                  "a\u3000b\u00a0c": "a b c", "z\u200bz": "zz", "p\x85q": "pq", "<b>x</b>": "<b>x</b>"}
         for raw, expected in cases.items():
-            self.assertEqual(web_ui.clean_message(raw), expected, repr(raw))
-        self.assertEqual(web_ui.clean_message("abcdef", limit=3), "abc")
-        self.assertIn('class="ui-board-post"', web_ui.world_html(WORLD))
+            self.assertEqual(pysaiyanweboo.clean_message(raw), expected, repr(raw))
+        self.assertEqual(pysaiyanweboo.clean_message("abcdef", limit=3), "abc")
+        self.assertIn('class="ui-board-post"', pysaiyanweboo.world_html(WORLD))
         quiet = {**WORLD, "board": {**WORLD["board"], "post": False}}
-        self.assertNotIn("ui-board-post", web_ui.world_html(quiet))
+        self.assertNotIn("ui-board-post", pysaiyanweboo.world_html(quiet))
         with self.assertRaises(ValueError):
-            web_ui.world_validate({**WORLD, "board": {**WORLD["board"], "post": "yes"}})
+            pysaiyanweboo.world_validate({**WORLD, "board": {**WORLD["board"], "post": "yes"}})
 
     def test_theme_wall_and_cli(self):
-        wall = web_ui.theme_wall(range(12))
+        wall = pysaiyanweboo.theme_wall(range(12))
         self.assertEqual(wall.count('class="ui-wall-cell"'), 12)
         self.assertIn("--ui-radius:", wall)
         run = lambda *args: subprocess.run([sys.executable, "-S", "pysaiyanweboo.py", *args], cwd=ROOT, capture_output=True,
@@ -609,9 +609,9 @@ class WorldTests(unittest.TestCase):
             spec.write_text(run("--example", "world").stdout, encoding="utf-8")
             self.assertEqual(json.loads(spec.read_text(encoding="utf-8")), WORLD)
             shown = run("--world", str(spec), "--theme", "green")
-        self.assertEqual((shown.returncode, shown.stdout), (0, web_ui.world_document(WORLD, theme="green")))
+        self.assertEqual((shown.returncode, shown.stdout), (0, pysaiyanweboo.world_document(WORLD, theme="green")))
         self.assertEqual(run("--example", "nope").returncode, 2)
-        self.assertEqual(run("--theme-wall", "3").stdout, web_ui.theme_wall_document(3))
+        self.assertEqual(run("--theme-wall", "3").stdout, pysaiyanweboo.theme_wall_document(3))
         self.assertEqual(run("--world", "no-such.json").returncode, 2)
 
     def test_site_writes_pages_browser_modules_and_example_data_and_nothing_else(self):
@@ -619,10 +619,10 @@ class WorldTests(unittest.TestCase):
             done = subprocess.run([sys.executable, "-S", "pysaiyanweboo.py", "--site", out], cwd=ROOT, capture_output=True,
                                   text=True, encoding="utf-8", timeout=60)
             self.assertEqual(done.returncode, 0, done.stderr)
-            pages = web_ui.example_pages()
-            modules = {f"js/{name}": source for name, source in web_ui.js_modules().items()}
+            pages = pysaiyanweboo.example_pages()
+            modules = {f"js/{name}": source for name, source in pysaiyanweboo.js_modules().items()}
             data = {f"examples/{name}.json": json.dumps(spec, ensure_ascii=False, indent=2) + "\n"
-                    for name, spec in web_ui.EXAMPLES.items()}
+                    for name, spec in pysaiyanweboo.EXAMPLES.items()}
             self.assertEqual(sorted(done.stdout.split()), sorted([*pages, *modules, *data, "docs/brand/icon.png", "docs/brand/favicon.png"]))
             for name, text in {**pages, **modules, **data}.items():
                 self.assertEqual((Path(out) / name).read_text(encoding="utf-8"), text)
@@ -632,24 +632,24 @@ class StubTests(unittest.TestCase):
     """MCP/API stubs and mocks are one function call; the mock is declarative and evaluated the same in Python and the page."""
 
     def test_stub_spec_is_validated(self):
-        mcp = web_ui.EXAMPLE_STUBS["mcp"]
-        self.assertEqual(web_ui.stub_validate(web_ui.stub_validate(mcp)), web_ui.stub_validate(mcp))
+        mcp = pysaiyanweboo.EXAMPLE_STUBS["mcp"]
+        self.assertEqual(pysaiyanweboo.stub_validate(pysaiyanweboo.stub_validate(mcp)), pysaiyanweboo.stub_validate(mcp))
         for bad in ({**mcp, "schema": "x"}, {**mcp, "extra": 1}, {**mcp, "id": "1a"}, {**mcp, "tags": ["t"] * 7},
                     {**mcp, "field": {"placeholder": "no label"}}, {**mcp, "field": {"label": "x", "extra": 1}},
                     {**mcp, "heading": ""}, {**mcp, "mock": {"k": "x" * 4001}}):
             with self.assertRaises(ValueError):
-                web_ui.stub_validate(bad)
+                pysaiyanweboo.stub_validate(bad)
 
     def test_mock_template_substitutes_the_query_everywhere(self):
         template = {"path": "/api/$input", "list": ["$input", 1, None, True], "nested": {"q": "$input$input"}}
-        self.assertEqual(web_ui.stub_response(template, "a$&b"),
+        self.assertEqual(pysaiyanweboo.stub_response(template, "a$&b"),
                          {"path": "/api/a$&b", "list": ["a$&b", 1, None, True], "nested": {"q": "a$&ba$&b"}})
         self.assertEqual(template["path"], "/api/$input")
 
     def test_html_is_escaped_ids_are_prefixed_and_the_mock_cannot_close_the_script(self):
-        spec = {**web_ui.EXAMPLE_STUBS["api"], "id": "x", "heading": "<b>h</b>", "evidence": "<i>e</i>",
+        spec = {**pysaiyanweboo.EXAMPLE_STUBS["api"], "id": "x", "heading": "<b>h</b>", "evidence": "<i>e</i>",
                 "mock": {"note": "</script><script>1</script>"}}
-        html = web_ui.stub_html(spec, heading_level=2)
+        html = pysaiyanweboo.stub_html(spec, heading_level=2)
         for raw in ("<b>h</b>", "<i>e</i>", "</script><script>"):
             self.assertNotIn(raw, html)
         for ident in ("x-query", "x-run", "x-output", "x-form", "x-mock"):
@@ -658,7 +658,7 @@ class StubTests(unittest.TestCase):
         self.assertIn('value="/api/example"', html)
 
     def test_stub_document_is_a_single_file_page(self):
-        page = web_ui.stub_document(web_ui.EXAMPLE_STUBS["mcp"], theme="github-like")
+        page = pysaiyanweboo.stub_document(pysaiyanweboo.EXAMPLE_STUBS["mcp"], theme="github-like")
         self.assertNotIn('rel="stylesheet"', page)
         self.assertEqual(page.count('<script type="module">'), 1)
         self.assertIn('bindStub({input:"#mcp-query"', page)
@@ -681,8 +681,8 @@ class CatalogueTests(unittest.TestCase):
     """A flat catalogue becomes a map: a floor per group, spots on a grid of multiples of 8, all validated and escaped."""
 
     def test_a_198_screen_catalogue_fits_five_floors(self):
-        world = web_ui.catalogue_world(screens_like(), title="Screens")
-        self.assertEqual(web_ui.world_validate(world), world)
+        world = pysaiyanweboo.catalogue_world(screens_like(), title="Screens")
+        self.assertEqual(pysaiyanweboo.world_validate(world), world)
         self.assertEqual([len(f["spots"]) for f in world["floors"]], [40, 40, 40, 39, 39])
         self.assertEqual([f["label"] for f in world["floors"]], ["navigation", "api", "ui", "data", "advanced"])
         ids = [spot["id"] for f in world["floors"] for spot in f["spots"]]
@@ -697,25 +697,25 @@ class CatalogueTests(unittest.TestCase):
             xs = sorted({x for x, _ in points})
             self.assertTrue(all(b - a >= 160 for a, b in zip(xs, xs[1:])))
         self.assertEqual(world["floors"][0]["spots"][0]["label"], "🌍 Pattern1 <b>x</b>")        # stored as text; escaped when written
-        html = web_ui.world_html(world)
+        html = pysaiyanweboo.world_html(world)
         self.assertNotIn("<b>x</b>", html)
         self.assertNotIn("<i>about</i>", html)
         self.assertEqual(html.count('class="ui-spot"'), 198)
 
     def test_groups_of_more_than_64_continue_and_limits_are_kept(self):
         many = [{"id": f"a{i}", "label": f"A{i}", "group": "all"} for i in range(130)]
-        world = web_ui.catalogue_world(many)
+        world = pysaiyanweboo.catalogue_world(many)
         self.assertEqual([(f["label"], len(f["spots"])) for f in world["floors"]], [("all", 64), ("all 2", 64), ("all 3", 2)])
         for bad in ([], "x", [{"id": "a", "label": "A"}], [{"id": "a", "label": "", "group": "g"}], [{"id": "a", "label": "A", "group": "g", "x": 1}],
                     [{"id": f"a{i}", "label": "A", "group": f"g{i}"} for i in range(9)], [5], [{"id": "a", "label": "A", "group": ""}]):
             with self.subTest(bad=str(bad)[:50]), self.assertRaises(ValueError):
-                web_ui.catalogue_world(bad)
+                pysaiyanweboo.catalogue_world(bad)
         with self.assertRaises(ValueError):
-            web_ui.catalogue_world(many, columns=0)
-        same = web_ui.catalogue_world([{"id": "Screen 1", "label": "A", "group": "g"}, {"id": "screen-1", "label": "B", "group": "g"},
+            pysaiyanweboo.catalogue_world(many, columns=0)
+        same = pysaiyanweboo.catalogue_world([{"id": "Screen 1", "label": "A", "group": "g"}, {"id": "screen-1", "label": "B", "group": "g"},
                                        {"id": "!!", "label": "C", "group": "g"}])
         self.assertEqual([s["id"] for s in same["floors"][0]["spots"]], ["screen-1", "screen-1-2", "x"])   # ids stay unique
-        long = web_ui.catalogue_world([{"id": "a", "label": "L" * 80, "emoji": "🌍", "group": "g"}])
+        long = pysaiyanweboo.catalogue_world([{"id": "a", "label": "L" * 80, "emoji": "🌍", "group": "g"}])
         self.assertEqual(len(long["floors"][0]["spots"][0]["label"]), 40)
 
 
@@ -760,7 +760,7 @@ class CoordinatesTests(unittest.TestCase):
     """The coordinate tool's rules, with flutter_navigation_basic's Dart tests and golden vectors as the oracle."""
 
     def test_the_dart_tests_for_points_dms_and_urls(self):
-        w = web_ui
+        w = pysaiyanweboo
         lat, lon = w.parse_coordinate("35.681236", "139.767125")
         self.assertEqual((w.coordinate_text(lat, lon), w.dms_text(lat, lon)), ("35.681236, 139.767125", "35° 40′ 52.45″ N, 139° 46′ 01.65″ E"))
         self.assertIn("S", w.dms_text(*w.parse_coordinate("-33.8688", "-70.6693")))
@@ -794,7 +794,7 @@ class CoordinatesTests(unittest.TestCase):
         self.assertIn("center=35.681236%2C139.767125&zoom=16", built["osm_preview"])
 
     def test_tolerance_areas_zoom_and_tiles_as_the_dart_tests_say(self):
-        w = web_ui
+        w = pysaiyanweboo
         area = w.tolerance_area(*TOKYO, 100)
         self.assertTrue(area["south"] < TOKYO[0] < area["north"] and area["west"] < TOKYO[1] < area["east"] and not area["wraps"])
         self.assertAlmostEqual(area["north"] - TOKYO[0], 0.000899, delta=0.00001)
@@ -837,14 +837,14 @@ class CoordinatesTests(unittest.TestCase):
         self.assertEqual((w.xyz_tile(0, 0, 0)["path"], w.xyz_tile(-90, 180, 3)["path"]), ("0/0/0", "3/7/7"))                # both edges stay inside the grid
 
     def test_fixed_rounds_like_javascript_and_dart(self):
-        w = web_ui
+        w = pysaiyanweboo
         self.assertEqual([w.fixed(v, n) for v, n in ((0.0078125, 6), (2.5, 0), (0.125, 2), (-0.125, 2), (1.005, 2), (-1e-9, 6), (-0.0, 2), (35.681236, 6), (0.5, 0), (179.999999999996, 2))],
                          ["0.007813", "3", "0.13", "-0.13", "1.00", "-0.000000", "0.00", "35.681236", "1", "180.00"])      # ties go away from zero; 1.005 is really 1.00499999...
 
     def test_the_fuzz_corpus_is_varied_and_reproducible(self):
         texts = coordinate_fuzz_urls()
         self.assertEqual(texts, coordinate_fuzz_urls())
-        found = [web_ui.try_parse_maps_url(t) for t in texts]
+        found = [pysaiyanweboo.try_parse_maps_url(t) for t in texts]
         self.assertGreater(sum(f is not None for f in found), 300)
         self.assertGreater(sum(f is None for f in found), 100)
 
@@ -853,7 +853,7 @@ class CompositionTests(unittest.TestCase):
     """The studio's rules. Expected values are the ones in flutter_navigation_basic's Dart tests (chord_theory, metronome_timing, note_sequence)."""
 
     def test_chord_theory_as_the_dart_tests_say(self):
-        w = web_ui
+        w = pysaiyanweboo
         self.assertEqual(w.convert_progression("C", "I V vi IV", minor=False), ["C", "G", "Am", "F"])
         key = w.transpose_key("C", 2)
         self.assertEqual((key, w.convert_progression(key, "I V vi IV", minor=False)), ("D", ["D", "A", "Bm", "G"]))
@@ -873,7 +873,7 @@ class CompositionTests(unittest.TestCase):
         self.assertEqual([w.diatonic_chord("C", d, minor=False) for d in range(1, 8)], ["C", "Dm", "Em", "F", "G", "Am", "Bdim"])
 
     def test_every_key_and_chord_is_spelled_consistently_and_bad_input_is_refused(self):
-        w = web_ui
+        w = pysaiyanweboo
         for key in w.SELECTABLE_KEYS:
             for minor in (False, True):
                 notes = w.scale(key, minor=minor)
@@ -900,7 +900,7 @@ class CompositionTests(unittest.TestCase):
         self.assertEqual(w.convert_progression("C", "", minor=False), [])
 
     def test_metronome_and_tap_tempo_as_the_dart_tests_say(self):
-        w = web_ui
+        w = pysaiyanweboo
         self.assertEqual((w.beat_micros(120), w.bar_micros(120, 4), w.subdivision_micros(120, 2)), (500_000, 2_000_000, 250_000))
         self.assertEqual(w.metronome_position(750_000, 120, 4, 2), (1, 1, 0.0))                              # position comes from elapsed time
         self.assertEqual(w.metronome_position(2_250_000, 120, 4, 2)[:2], (0, 1))                             # and wraps at the end of the bar
@@ -929,7 +929,7 @@ class CompositionTests(unittest.TestCase):
                          ["500 ms", "2.00 s", "1.13 s", "1000 ms", "1.00 s", "0 ms"])
 
     def test_note_sequences_as_the_dart_tests_say(self):
-        w = web_ui
+        w = pysaiyanweboo
         self.assertEqual(w.parse_notes("C3 d3 F#3 Gb3"), ["C3", "D3", "F♯3", "G♭3"])
         self.assertEqual(w.note_bars(w.parse_notes("C3 D3 C3 D3 G3 A3 G3 C4"), 4, 4, 8), [["C3", "D3", "C3", "D3", "G3", "A3", "G3", "C4"]])
         self.assertEqual(w.note_bars(w.parse_notes("C3 D3 E3 F3 G3 A3 B3 C4"), 4, 4, 4), [["C3", "D3", "E3", "F3"], ["G3", "A3", "B3", "C4"]])
@@ -944,7 +944,7 @@ class CompositionTests(unittest.TestCase):
                 w.notes_per_bar(*args)
 
     def test_the_seeded_song_seed(self):
-        w = web_ui
+        w = pysaiyanweboo
         seeds = [w.song_seed(n) for n in range(2000)]
         self.assertEqual(w.song_seed(5), w.song_seed(5))
         self.assertTrue(all(80 <= x["bpm"] <= 160 and x["tonic"] in w.SEED_KEYS and x["time"] in w.SEED_TIMES and x["progression"] in w.SEED_PROGRESSIONS[x["mode"]] for x in seeds))
@@ -957,7 +957,7 @@ class CompositionTests(unittest.TestCase):
         self.assertEqual(w.song_seed(1), {"tonic": "B♭", "mode": "Minor", "bpm": 122, "time": "6/8", "progression": "i – iv – v – i"})   # frozen: the page must agree
 
 
-DOOR = web_ui.example_data("door")
+DOOR = pysaiyanweboo.example_data("door")
 # The identities the Flutter doc's examples use (docs/testing/page-identities.md), as a door registry.
 FLUTTER_PAGES = [{"emoji": e, "label": l, "href": h} for e, l, h in (("🏠", "Home", "#/"), ("🗺️", "Hub", "#/hub"), ("🥐", "Irony", "#/examples/irony-generator"),
                                                                  ("🌍", "Screen1", "#/screen1"), ("🕶️", "Screen2", "#/screen2"))]
@@ -967,9 +967,9 @@ class DoorTests(unittest.TestCase):
     """Page emoji, the go/return notation, the seeded draw and the pull-down."""
 
     def test_the_example_is_valid_and_validation_is_idempotent(self):
-        door = web_ui.door_validate(DOOR)
-        self.assertEqual(web_ui.door_validate(door), door)
-        self.assertEqual(len({web_ui.emoji_key(p["emoji"]) for p in door["pages"]}), len(door["pages"]))
+        door = pysaiyanweboo.door_validate(DOOR)
+        self.assertEqual(pysaiyanweboo.door_validate(door), door)
+        self.assertEqual(len({pysaiyanweboo.emoji_key(p["emoji"]) for p in door["pages"]}), len(door["pages"]))
 
     def test_bad_registries_are_refused(self):
         page = lambda e, h, **kw: {"emoji": e, "label": "L", "href": h, **kw}
@@ -984,15 +984,15 @@ class DoorTests(unittest.TestCase):
                     {**DOOR, "pages": [page("🏠", "/a"), page("🧭", "/b", group="discover")], "k": 2},   # more drawn than can be
                     {**DOOR, "k": 9}, {**DOOR, "seed": -1}, {**DOOR, "seed": 2**32}, {**DOOR, "current": "./nowhere.html"}):
             with self.subTest(bad=str(bad)[:70]), self.assertRaises(ValueError):
-                web_ui.door_validate(bad)
+                pysaiyanweboo.door_validate(bad)
         for href in ("javascript:alert(1)", "//evil.example/x", "ftp://x/y", "http:///x", "a b", "a\\b", "data:text/html,x", "", "x" * 513, "mailto:a@b", "\x00"):
             with self.subTest(href=href), self.assertRaises(ValueError):
-                web_ui.door_validate({"schema": web_ui.DOOR_SCHEMA, "pages": [page("🏠", href)], "k": 0})
+                pysaiyanweboo.door_validate({"schema": pysaiyanweboo.DOOR_SCHEMA, "pages": [page("🏠", href)], "k": 0})
         for href in ("./a.html", "../a.html#x", "/abs/path", "#/hub", "a/b?c=d", "https://example.com/a", "http://x"):
-            web_ui.door_validate({"schema": web_ui.DOOR_SCHEMA, "pages": [page("🏠", href)], "k": 0})
+            pysaiyanweboo.door_validate({"schema": pysaiyanweboo.DOOR_SCHEMA, "pages": [page("🏠", href)], "k": 0})
 
     def test_emoji_transitions_as_the_flutter_doc_writes_them(self):
-        path = lambda text: web_ui.emoji_path(text, FLUTTER_PAGES)
+        path = lambda text: pysaiyanweboo.emoji_path(text, FLUTTER_PAGES)
         self.assertEqual(path("🏠 ↔︎ 🗺️"), ["#/", "#/hub", "#/"])                              # go and come back (with a variation selector, ignored)
         self.assertEqual(path("🏠 → 🥐"), ["#/", "#/examples/irony-generator"])
         self.assertEqual(path("🏠 → 🗺️ → 🌍 ↔ 🕶️"), ["#/", "#/hub", "#/screen1", "#/screen2", "#/screen1"])   # chains expand left to right
@@ -1004,39 +1004,39 @@ class DoorTests(unittest.TestCase):
                 path(bad)                                                                           # an unknown emoji returns nothing at all
 
     def test_the_seeded_draw(self):
-        self.assertEqual(web_ui.door_draw(1, 10, 3), [6, 1, 0])                                     # frozen: the page must give the same
-        self.assertEqual(web_ui.door_draw(20261103, 6, 3), [1, 3, 5])
+        self.assertEqual(pysaiyanweboo.door_draw(1, 10, 3), [6, 1, 0])                                     # frozen: the page must give the same
+        self.assertEqual(pysaiyanweboo.door_draw(20261103, 6, 3), [1, 3, 5])
         for seed in (0, 1, 2**32 - 1, 12345):
             for count, k in ((1, 1), (5, 0), (5, 5), (64, 3), (193, 3)):
-                draw = web_ui.door_draw(seed, count, k)
+                draw = pysaiyanweboo.door_draw(seed, count, k)
                 self.assertEqual((len(draw), len(set(draw)), all(0 <= i < count for i in draw)), (k, k, True))
-                self.assertEqual(draw, web_ui.door_draw(seed, count, k))
-        self.assertEqual(sorted(web_ui.door_draw(7, 9, 9)), list(range(9)))                         # k = count is a shuffle
+                self.assertEqual(draw, pysaiyanweboo.door_draw(seed, count, k))
+        self.assertEqual(sorted(pysaiyanweboo.door_draw(7, 9, 9)), list(range(9)))                         # k = count is a shuffle
         for bad in ((1, 3, 4), (1, 3, -1)):
             with self.assertRaises(ValueError):
-                web_ui.door_draw(*bad)
+                pysaiyanweboo.door_draw(*bad)
         counts = [0] * 12
         for seed in range(3000):
-            for i in web_ui.door_draw(seed, 12, 3):
+            for i in pysaiyanweboo.door_draw(seed, 12, 3):
                 counts[i] += 1
         self.assertTrue(all(abs(c - 750) < 120 for c in counts), counts)                            # no index is favored (3000 draws x 3 of 12)
-        first = [next(g) for g in [web_ui.mulberry32(s) for s in range(1000)]]
+        first = [next(g) for g in [pysaiyanweboo.mulberry32(s) for s in range(1000)]]
         self.assertTrue(all(0 <= x < 1 for x in first) and len(set(first)) == 1000)
 
     def test_the_pulldown_order_marking_and_markup(self):
-        options = web_ui.door_options(DOOR)
+        options = pysaiyanweboo.door_options(DOOR)
         self.assertEqual(options[0]["href"], "../index.html")                                       # Home first
         self.assertEqual([o["drawn"] for o in options[1:4]], [True] * 3)
         self.assertEqual(sum(o["drawn"] for o in options), 3)
-        self.assertEqual([o["href"] for o in options[4:]], [p["href"] for p in web_ui.door_validate(DOOR)["pages"] if p["group"] == "stable"][1:])
+        self.assertEqual([o["href"] for o in options[4:]], [p["href"] for p in pysaiyanweboo.door_validate(DOOR)["pages"] if p["group"] == "stable"][1:])
         self.assertEqual([o["current"] for o in options].count(True), 1)
-        self.assertNotEqual([o["href"] for o in web_ui.door_options(DOOR, 1)[1:4]], [o["href"] for o in options[1:4]])
-        html = web_ui.door_html({**DOOR, "pages": [{**p, "label": "<b>" + p["label"]} for p in DOOR["pages"]]})
+        self.assertNotEqual([o["href"] for o in pysaiyanweboo.door_options(DOOR, 1)[1:4]], [o["href"] for o in options[1:4]])
+        html = pysaiyanweboo.door_html({**DOOR, "pages": [{**p, "label": "<b>" + p["label"]} for p in DOOR["pages"]]})
         self.assertNotIn("<b>", html)
         self.assertEqual(html.count("selected disabled"), 1)
         self.assertIn("(current)", html)
-        self.assertEqual(web_ui.door_document(DOOR).count("<script"), 1)
-        self.assertNotIn("<link", web_ui.door_document(DOOR))
+        self.assertEqual(pysaiyanweboo.door_document(DOOR).count("<script"), 1)
+        self.assertNotIn("<link", pysaiyanweboo.door_document(DOOR))
 
 
 BASE64_CASES = json.loads((Path(__file__).resolve().parent / "fixtures" / "base64_bridge_cases.json").read_text(encoding="utf-8"))
@@ -1076,73 +1076,73 @@ class ShelfTests(unittest.TestCase):
     def test_ironmate_base64_cases(self):
         self.assertEqual(len(BASE64_CASES["cases"]), 19)
         limit = BASE64_CASES["limits"]["maxInputBytes"]
-        self.assertEqual((limit, web_ui.shelf_max_chars(limit)), (web_ui.SHELF_MAX_IMAGE_BYTES, BASE64_CASES["limits"]["maxBase64Chars"]))
+        self.assertEqual((limit, pysaiyanweboo.shelf_max_chars(limit)), (pysaiyanweboo.SHELF_MAX_IMAGE_BYTES, BASE64_CASES["limits"]["maxBase64Chars"]))
         for case in BASE64_CASES["cases"]:
             with self.subTest(case["id"]):
-                got = web_ui.decode_image_text(case["text"], limit)
+                got = pysaiyanweboo.decode_image_text(case["text"], limit)
                 self.assertEqual(got["ok"], case["expect"] == "ok")
                 self.assertEqual(got["format"] if got["ok"] else got["category"], case["result"])
 
     def test_image_limits_and_text_that_only_looks_like_an_image(self):
-        png = web_ui.decode_image_text(PNG_B64)
+        png = pysaiyanweboo.decode_image_text(PNG_B64)
         self.assertEqual((png["format"], png["mime"]), ("png", "image/png"))
         self.assertEqual(png["bytes"], len(base64.b64decode(PNG_B64)))
-        self.assertEqual(web_ui.decode_image_text(PNG_B64, png["bytes"] - 1), {"ok": False, "category": "too_large"})   # the byte limit is exact
-        self.assertTrue(web_ui.decode_image_text(PNG_B64, png["bytes"])["ok"])
-        self.assertEqual(web_ui.decode_image_text("A" * 100, 10), {"ok": False, "category": "too_large"})
+        self.assertEqual(pysaiyanweboo.decode_image_text(PNG_B64, png["bytes"] - 1), {"ok": False, "category": "too_large"})   # the byte limit is exact
+        self.assertTrue(pysaiyanweboo.decode_image_text(PNG_B64, png["bytes"])["ok"])
+        self.assertEqual(pysaiyanweboo.decode_image_text("A" * 100, 10), {"ok": False, "category": "too_large"})
         jpeg = base64.b64encode(b"\xff\xd8\xff\xe0" + bytes(20)).decode()
         webp = base64.b64encode(b"RIFF\x00\x00\x00\x00WEBPVP8 " + bytes(8)).decode()
-        self.assertEqual([web_ui.decode_image_text(x)["format"] for x in (jpeg, webp, "data:image/jpg;base64," + jpeg)], ["jpeg", "webp", "jpeg"])
-        self.assertEqual(web_ui.decode_image_text("data:image/png;base64," + jpeg), {"ok": False, "category": "mismatch"})
-        self.assertEqual(web_ui.decode_image_text("data:;base64," + png["data"])["ok"], True)           # no declared type: the bytes decide
-        self.assertTrue(web_ui.looks_like_image(PNG_B64) and web_ui.looks_like_image("data:image/x"))
-        self.assertFalse(web_ui.looks_like_image("hello world, this is just a sentence that is long enough to look suspicious at first glance!"))
-        self.assertFalse(web_ui.looks_like_image("A" * 79))
-        self.assertEqual(web_ui.decode_image_text("\u017fttps"), {"ok": False, "category": "bad_base64"})
+        self.assertEqual([pysaiyanweboo.decode_image_text(x)["format"] for x in (jpeg, webp, "data:image/jpg;base64," + jpeg)], ["jpeg", "webp", "jpeg"])
+        self.assertEqual(pysaiyanweboo.decode_image_text("data:image/png;base64," + jpeg), {"ok": False, "category": "mismatch"})
+        self.assertEqual(pysaiyanweboo.decode_image_text("data:;base64," + png["data"])["ok"], True)           # no declared type: the bytes decide
+        self.assertTrue(pysaiyanweboo.looks_like_image(PNG_B64) and pysaiyanweboo.looks_like_image("data:image/x"))
+        self.assertFalse(pysaiyanweboo.looks_like_image("hello world, this is just a sentence that is long enough to look suspicious at first glance!"))
+        self.assertFalse(pysaiyanweboo.looks_like_image("A" * 79))
+        self.assertEqual(pysaiyanweboo.decode_image_text("\u017fttps"), {"ok": False, "category": "bad_base64"})
 
     def test_classify_markdown_prompt_and_bundle(self):
-        classify = web_ui.shelf_classify
+        classify = pysaiyanweboo.shelf_classify
         self.assertEqual([classify(t) for t in ("https://example.com/a?b=c", "  HTTP://X.TEST/  ", "https://a b", "http://", "ftp://x/y", "plain", "")],
                          ["url", "url", "text", "text", "text", "text", "text"])
         self.assertEqual([classify(t) for t in ("# T", "  ## T", "    # four spaces", "- a", "> q", "```py", "x\n* y", "[a](b)", "#nospace", "-x", "a [b](c) d")],
                          ["markdown", "markdown", "text", "markdown", "markdown", "markdown", "markdown", "markdown", "text", "text", "markdown"])
-        self.assertEqual(web_ui.markdown_plain("# T\n> q\n- i\n1. n\n```py\nc `x` **b** ~~s~~ [l](u)\n```"), "T\nq\ni\nn\n\nc x b s l (u)")
-        self.assertEqual(web_ui.build_prompt({}), "# System Prompt Draft")
-        self.assertEqual(web_ui.build_prompt({"goal": " G ", "raw": "r", "must": "  "}, {"mime": "image/png", "bytes": 5}),
+        self.assertEqual(pysaiyanweboo.markdown_plain("# T\n> q\n- i\n1. n\n```py\nc `x` **b** ~~s~~ [l](u)\n```"), "T\nq\ni\nn\n\nc x b s l (u)")
+        self.assertEqual(pysaiyanweboo.build_prompt({}), "# System Prompt Draft")
+        self.assertEqual(pysaiyanweboo.build_prompt({"goal": " G ", "raw": "r", "must": "  "}, {"mime": "image/png", "bytes": 5}),
                          "# System Prompt Draft\n\n## Goal\nG\n\n## Raw source\nr\n\n## Visual reference\nAn image reference is attached in the workbench "
                          "(image/png, 5 bytes).\nUse its layout/content as visual context when the receiving system supports image input.")
-        self.assertEqual(web_ui.shelf_bundle([{"kind": "text", "text": "a"}, {"kind": "image", "mime": "image/png", "data": "QQ=="}, {"kind": "url", "text": "https://x/"}]),
+        self.assertEqual(pysaiyanweboo.shelf_bundle([{"kind": "text", "text": "a"}, {"kind": "image", "mime": "image/png", "data": "QQ=="}, {"kind": "url", "text": "https://x/"}]),
                          "# Context Bundle\n\n## 1. Text\na\n\n## 2. Image\ndata:image/png;base64,QQ==\n\n## 3. URL\nhttps://x/")
 
     def test_the_fuzz_corpus_is_varied_and_reproducible(self):
         texts = shelf_fuzz_texts()
         self.assertEqual(texts, shelf_fuzz_texts())
-        kinds = {web_ui.shelf_classify(t) for t in texts}
-        outcomes = {r["format"] if r["ok"] else r["category"] for r in map(web_ui.decode_image_text, texts)}
+        kinds = {pysaiyanweboo.shelf_classify(t) for t in texts}
+        outcomes = {r["format"] if r["ok"] else r["category"] for r in map(pysaiyanweboo.decode_image_text, texts)}
         self.assertEqual(kinds, {"text", "url", "markdown"})
         self.assertGreaterEqual(len(outcomes), 6, outcomes)
-        self.assertGreater(sum(map(web_ui.looks_like_image, texts)), 100)
+        self.assertGreater(sum(map(pysaiyanweboo.looks_like_image, texts)), 100)
 
     def test_the_page_is_one_file_with_the_filters_in_css(self):
-        css = web_ui.css_source("shelf.css")
-        for kind in web_ui.SHELF_KINDS:
+        css = pysaiyanweboo.css_source("shelf.css")
+        for kind in pysaiyanweboo.SHELF_KINDS:
             self.assertIn(f'#shelf-kind-{kind}:checked) .ui-shelf-item:not([data-kind="{kind}"]){{display:none}}', css)
-        page = web_ui.shelf_document()
+        page = pysaiyanweboo.shelf_document()
         self.assertEqual(page.count("<script"), 1)
         for needle in ("data-shelf-add", "shelf-sort-manual", "data-shelf-prompt"):
             self.assertIn(needle, page)
         self.assertNotIn("<link", page)
 
 
-SHOWCASE = web_ui.example_data("showcase")
+SHOWCASE = pysaiyanweboo.example_data("showcase")
 
 
 class ShowcaseTests(unittest.TestCase):
     """The app shell: data in, page out; sections switch with radios, so the rules are CSS the generator writes."""
 
     def test_example_is_valid_and_validation_is_idempotent(self):
-        show = web_ui.showcase_validate(SHOWCASE)
-        self.assertEqual(web_ui.showcase_validate(show), show)
+        show = pysaiyanweboo.showcase_validate(SHOWCASE)
+        self.assertEqual(pysaiyanweboo.showcase_validate(show), show)
         self.assertEqual([s["id"] for s in show["sections"]], ["overview", "components", "data", "media"])
 
     def test_bad_specs_are_refused(self):
@@ -1160,14 +1160,14 @@ class ShowcaseTests(unittest.TestCase):
                     {**SHOWCASE, "sections": [section, {**section, "id": "b", "controls": "yes"}]},
                     {**SHOWCASE, "favorite": "yes"}, {**SHOWCASE, "themes": 1}, "not a dict", None):
             with self.subTest(bad=str(bad)[:60]), self.assertRaises(ValueError):
-                web_ui.showcase_validate(bad)
+                pysaiyanweboo.showcase_validate(bad)
 
     def test_everything_is_escaped_and_every_icon_and_radio_resolves(self):
         hostile = {**SHOWCASE, "title": "<i>t</i>", "emoji": "<b>", "sections": [
             {"id": "a", "label": "<b>A</b>", "icon": "star", "heading": "<script>1</script>", "lead": "<img src=x>", "tags": ["<u>"],
              "cards": [{"icon": "info", "title": "<s>", "body": "<em>b</em>"}], "table": {"columns": ["<x-col>"], "rows": [["<x-cell>"]]}},
             {"id": "b", "label": "B", "icon": "data", "heading": "H"}]}
-        html = web_ui.showcase_html(hostile)
+        html = pysaiyanweboo.showcase_html(hostile)
         for raw in ("<script>", "<i>t</i>", "<b>A</b>", "<img src=x>", "<u>", "<s>", "<em>", "<x-cell>", "<x-col>", "<b>"):
             self.assertNotIn(raw, html)
         for use in re.findall(r'<use href="#([^"]+)"', html):
@@ -1179,16 +1179,16 @@ class ShowcaseTests(unittest.TestCase):
         self.assertEqual(html.count('class="ui-rail-item"'), html.count('class="ui-bottom-item"'))   # the rail and the bottom bar list the same sections
 
     def test_rules_name_every_section_and_the_page_is_one_file(self):
-        css = web_ui.showcase_css(SHOWCASE)
+        css = pysaiyanweboo.showcase_css(SHOWCASE)
         for sec in SHOWCASE["sections"]:
             self.assertIn(f'#showcase:has(#showcase-sec-{sec["id"]}:checked) .ui-shell-section:not([data-section="{sec["id"]}"]){{display:none}}', css)
             self.assertIn(f'label[for="showcase-sec-{sec["id"]}"]', css)
-        page = web_ui.showcase_document(SHOWCASE)
+        page = pysaiyanweboo.showcase_document(SHOWCASE)
         self.assertEqual(page.count("<script"), 1)                                             # one inline module: ui.js and the two calls
         self.assertIn("bindTheme();bindToggles();", page)
         self.assertNotIn("<link", page)
         for flags, expect in (({"favorite": False, "themes": False}, False), ({}, True)):
-            html = web_ui.showcase_html({**SHOWCASE, **flags})
+            html = pysaiyanweboo.showcase_html({**SHOWCASE, **flags})
             self.assertEqual(("data-ui-toggle" in html, "data-ui-theme-switch" in html), (expect, expect))
 
 
@@ -1236,42 +1236,42 @@ class CurlTests(unittest.TestCase):
         self.assertEqual(len(CURL_CASES), 47)
         for case in CURL_CASES:
             with self.subTest(case["id"]):
-                self.assertEqual(web_ui.parse_curl(case["input"]), case["expected"])
+                self.assertEqual(pysaiyanweboo.parse_curl(case["input"]), case["expected"])
 
     def test_limits_and_errors_never_echo_the_input(self):
         secret = "SECRETXYZ-0123456789"
-        fail = lambda text: web_ui.parse_curl(text)["errors"]
-        edge = "curl http://x/" + "a" * (web_ui.CURL_MAX_BYTES - len("curl http://x/"))
-        self.assertTrue(web_ui.parse_curl(edge)["ok"])                                       # exactly 64 KiB is fine,
+        fail = lambda text: pysaiyanweboo.parse_curl(text)["errors"]
+        edge = "curl http://x/" + "a" * (pysaiyanweboo.CURL_MAX_BYTES - len("curl http://x/"))
+        self.assertTrue(pysaiyanweboo.parse_curl(edge)["ok"])                                       # exactly 64 KiB is fine,
         self.assertEqual(fail(edge + "a"), ["httpDraft.curl.error.inputTooLarge"])             # one byte more is not
-        self.assertEqual(fail("curl http://x/" + "\u3042" * web_ui.CURL_MAX_BYTES), ["httpDraft.curl.error.inputTooLarge"])   # bytes, not characters
+        self.assertEqual(fail("curl http://x/" + "\u3042" * pysaiyanweboo.CURL_MAX_BYTES), ["httpDraft.curl.error.inputTooLarge"])   # bytes, not characters
         many = lambda n: "curl " + " ".join(f"-s" for _ in range(n - 1))
-        self.assertTrue(web_ui.parse_curl(many(web_ui.CURL_MAX_TOKENS) + " http://x")["errors"] == ["httpDraft.curl.error.tooManyTokens"])
+        self.assertTrue(pysaiyanweboo.parse_curl(many(pysaiyanweboo.CURL_MAX_TOKENS) + " http://x")["errors"] == ["httpDraft.curl.error.tooManyTokens"])
         self.assertEqual(fail("curl http://x/\x00"), ["httpDraft.curl.error.nul"])
         self.assertEqual(fail("curl http://x/\ud800"), ["httpDraft.curl.error.encoding"])
         self.assertEqual(fail(5), ["httpDraft.curl.error.inputType"])
         for text in (f"curl http://x/ | sh {secret}", f"curl -H 'Authorization: Bearer {secret}' $(x)", f"curl -d '{secret}", f"wget {secret}",
                      f"curl -X {secret} http://x", f"curl --{secret} http://x", f"curl http://x/ extra-{secret}", f"curl -d @{secret} http://x"):
             with self.subTest(text[:30]):
-                self.assertNotIn(secret, json.dumps(web_ui.parse_curl(text)))
+                self.assertNotIn(secret, json.dumps(pysaiyanweboo.parse_curl(text)))
 
     def test_masking_hides_marked_credentials_and_nothing_else(self):
-        result = web_ui.parse_curl("curl -u me:pw -H 'X-Api-Key: k1' -H 'Cookie: s=2' -H 'Accept: json' -H 'Note: ***' -d 'token=t&a=1' http://x/")
-        shown = web_ui.mask_curl(result)
+        result = pysaiyanweboo.parse_curl("curl -u me:pw -H 'X-Api-Key: k1' -H 'Cookie: s=2' -H 'Accept: json' -H 'Note: ***' -d 'token=t&a=1' http://x/")
+        shown = pysaiyanweboo.mask_curl(result)
         self.assertEqual({h["name"]: h["value"] for h in shown["draft"]["headers"]},
                          {"Authorization": "***", "X-Api-Key": "***", "Cookie": "***", "Accept": "json", "Note": "***"})
         self.assertEqual({f["name"]: (f["value"], f["sensitive"]) for f in shown["draft"]["formFields"]}, {"token": ("t", False), "a": ("1", False)})
         self.assertEqual(result["draft"]["headers"][0]["value"][:6], "Basic ")                      # the original is untouched
         self.assertNotIn("bWU6cHc=", json.dumps(shown))
-        self.assertEqual(web_ui.mask_curl(web_ui.parse_curl("nope"))["draft"], None)
+        self.assertEqual(pysaiyanweboo.mask_curl(pysaiyanweboo.parse_curl("nope"))["draft"], None)
         for name, sensitive in {"Authorization": True, "x-API-KEY": True, "client_secret": True, "My-Key": True, "X_Token": True,
                                 "Accept": False, "Keyboard": False, "Content-Type": False, "\uff21uthorization": True}.items():
-            self.assertEqual(web_ui._curl_sensitive(name), sensitive, name)
+            self.assertEqual(pysaiyanweboo._curl_sensitive(name), sensitive, name)
 
     def test_the_fuzz_corpus_is_varied_and_reproducible(self):
         inputs = curl_fuzz_inputs()
         self.assertEqual(inputs, curl_fuzz_inputs())
-        results = [web_ui.parse_curl(text) for text in inputs]
+        results = [pysaiyanweboo.parse_curl(text) for text in inputs]
         self.assertGreater(sum(r["ok"] for r in results), 400)                                   # plenty of successful parses ...
         self.assertGreater(len({e for r in results for e in r["errors"]}), 8)                    # ... and many different failures
         self.assertGreater(len({r["draft"]["bodyMode"] for r in results if r["ok"]}), 3)
@@ -1288,10 +1288,10 @@ class RepairRegressionTests(unittest.TestCase):
                 super().__init__(); self.ids = []
             def handle_starttag(self, tag, attrs):
                 self.ids.extend(v for k, v in attrs if k == 'id')
-        parser = Ids(); parser.feed(web_ui.world_html(spec))
+        parser = Ids(); parser.feed(pysaiyanweboo.world_html(spec))
         self.assertEqual(len(parser.ids), len(set(parser.ids)))
         self.assertIn('demo-cat-value-all', parser.ids)
-        self.assertIn('#demo-cat-value-all:checked', web_ui.world_css(spec))
+        self.assertIn('#demo-cat-value-all:checked', pysaiyanweboo.world_css(spec))
 
     def test_bundle_asset_base_keeps_scripts_not_styles(self):
         result = subprocess.run([sys.executable, '-S', 'pysaiyanweboo.py', '--css-bundle', '--asset-base', '.', '--with-scripts'],
@@ -1304,13 +1304,13 @@ class RepairRegressionTests(unittest.TestCase):
         from unittest.mock import patch
         import io
         with patch('sys.stdin.read', side_effect=AssertionError('unexpected stdin read')), patch('sys.stdout', new=io.StringIO()) as out:
-            self.assertEqual(web_ui.main(['--theme-wall', '0']), 0)
+            self.assertEqual(pysaiyanweboo.main(['--theme-wall', '0']), 0)
             self.assertIn('ui-wall', out.getvalue())
         with self.assertRaises(ValueError):
-            web_ui.theme_wall_document(-1)
+            pysaiyanweboo.theme_wall_document(-1)
         with patch("sys.stdin.read", side_effect=AssertionError("unexpected stdin read")), patch("sys.stderr", new=io.StringIO()):
             with self.assertRaises(SystemExit) as error:
-                web_ui.main(["--theme-wall", "-1"])
+                pysaiyanweboo.main(["--theme-wall", "-1"])
             self.assertEqual(error.exception.code, 2)
 
 
@@ -1345,11 +1345,11 @@ class PhotoSniffTests(unittest.TestCase):
                 with self.subTest(case["id"]):
                     self.assertEqual(hashlib.sha256(photo_file(case["id"])).hexdigest(), case["sha256"])
                     self.assertEqual(len(photo_file(case["id"])), case["bytes"])
-        self.assertEqual(PHOTO_FIXTURE["limits"], {"maxInputBytes": web_ui.PHOTO_MAX_BYTES, "maxPixels": web_ui.PHOTO_MAX_PIXELS, "maxDocumentLongEdge": web_ui.PHOTO_MAX_EDGE})
-        self.assertEqual(tuple(PHOTO_FIXTURE["outcomeVocabulary"]), web_ui.PHOTO_OUTCOMES)
+        self.assertEqual(PHOTO_FIXTURE["limits"], {"maxInputBytes": pysaiyanweboo.PHOTO_MAX_BYTES, "maxPixels": pysaiyanweboo.PHOTO_MAX_PIXELS, "maxDocumentLongEdge": pysaiyanweboo.PHOTO_MAX_EDGE})
+        self.assertEqual(tuple(PHOTO_FIXTURE["outcomeVocabulary"]), pysaiyanweboo.PHOTO_OUTCOMES)
 
     def test_the_dart_sniff_tests(self):
-        w = web_ui
+        w = pysaiyanweboo
         kinds = {"png_opaque_2x2": None, "png_opaque_64x32": "png", "png_alpha_64x32": "png", "png_markers_64x32": "png", "jpeg_baseline_markers_64x32": "jpeg",
                  "webp_lossy_64x32": "webp", "webp_lossless_64x32": "webp", "webp_alpha_8x4": "webp", "gif_still_1x1": "gif", "avif_ftyp_only": "avif",
                  "heic_synthetic_markers_64x32": "heic", "empty": "empty", "png_truncated": "png", "png_claim_10000x10000": "png"}
@@ -1380,9 +1380,9 @@ class PhotoSniffTests(unittest.TestCase):
         xmp = "http://ns.adobe.com/xap/1.0/\u0000<x/>".encode("latin-1")
         length = len(xmp) + 2
         with_xmp = base[:2] + bytes([0xFF, 0xE1, length >> 8, length & 0xFF]) + xmp + base[2:]
-        self.assertEqual(web_ui.photo_sniff(with_xmp)["orientation"], 6)                    # an XMP APP1 before the EXIF one
-        self.assertEqual(web_ui.photo_sniff(base[:2] + b"\xff\xff" + base[2:])["orientation"], 6)   # fill bytes before a marker
-        self.assertEqual(web_ui.photo_sniff(base[:2] + b"\xff\xff" + base[2:])["kind"], "jpeg")
+        self.assertEqual(pysaiyanweboo.photo_sniff(with_xmp)["orientation"], 6)                    # an XMP APP1 before the EXIF one
+        self.assertEqual(pysaiyanweboo.photo_sniff(base[:2] + b"\xff\xff" + base[2:])["orientation"], 6)   # fill bytes before a marker
+        self.assertEqual(pysaiyanweboo.photo_sniff(base[:2] + b"\xff\xff" + base[2:])["kind"], "jpeg")
 
     @staticmethod
     def jpeg_with(marker, width=640, height=480):
@@ -1393,9 +1393,9 @@ class PhotoSniffTests(unittest.TestCase):
         for marker in range(0xC0, 0xD0):
             data = self.jpeg_with(marker)
             with self.subTest(marker=hex(marker)):
-                self.assertEqual(web_ui.photo_sniff(data)["progressive"], marker in (0xC2, 0xC6, 0xCA, 0xCE))        # Huffman or arithmetic progressive; the rest scan on
-                self.assertEqual(web_ui.photo_header_size(data), (640, 480) if marker not in (0xC4, 0xC8, 0xCC) else None)   # DHT, JPG and DAC are not frames
-        self.assertEqual(web_ui.photo_header_size(self.jpeg_with(0xC0, 65535, 65535)), (65535, 65535))
+                self.assertEqual(pysaiyanweboo.photo_sniff(data)["progressive"], marker in (0xC2, 0xC6, 0xCA, 0xCE))        # Huffman or arithmetic progressive; the rest scan on
+                self.assertEqual(pysaiyanweboo.photo_header_size(data), (640, 480) if marker not in (0xC4, 0xC8, 0xCC) else None)   # DHT, JPG and DAC are not frames
+        self.assertEqual(pysaiyanweboo.photo_header_size(self.jpeg_with(0xC0, 65535, 65535)), (65535, 65535))
 
     def test_progressive_and_orientation_agree_with_pillow(self):
         import io
@@ -1406,22 +1406,22 @@ class PhotoSniffTests(unittest.TestCase):
             with self.subTest(case["id"]):
                 data = photo_file(case["id"])
                 with Image.open(io.BytesIO(data)) as image:
-                    self.assertEqual(web_ui.photo_sniff(data)["progressive"], bool(image.info.get("progressive")))
-                    self.assertEqual(web_ui.photo_sniff(data)["orientation"], image.getexif().get(0x0112))
+                    self.assertEqual(pysaiyanweboo.photo_sniff(data)["progressive"], bool(image.info.get("progressive")))
+                    self.assertEqual(pysaiyanweboo.photo_sniff(data)["orientation"], image.getexif().get(0x0112))
 
     def test_orientation_is_neutralised_in_two_bytes_only(self):
         for orientation in range(1, 9):
             data = photo_file(f"jpeg_exif_orientation_{orientation}_markers_64x32")
-            neutral = web_ui.photo_neutralize_orientation(data)
+            neutral = pysaiyanweboo.photo_neutralize_orientation(data)
             with self.subTest(orientation=orientation):
                 self.assertEqual(len(neutral), len(data))
-                self.assertEqual(web_ui.photo_sniff(neutral)["orientation"], 1)
+                self.assertEqual(pysaiyanweboo.photo_sniff(neutral)["orientation"], 1)
                 self.assertLessEqual(sum(a != b for a, b in zip(data, neutral)), 1 if orientation > 1 else 0)
-                self.assertEqual(web_ui.photo_neutralize_orientation(neutral), neutral)
+                self.assertEqual(pysaiyanweboo.photo_neutralize_orientation(neutral), neutral)
         for case_id in ("png_markers_64x32", "jpeg_baseline_markers_64x32", "empty", "heic_ftyp_heic"):
-            self.assertEqual(web_ui.photo_neutralize_orientation(photo_file(case_id)), photo_file(case_id))
+            self.assertEqual(pysaiyanweboo.photo_neutralize_orientation(photo_file(case_id)), photo_file(case_id))
         big = bytearray(photo_file("jpeg_exif_orientation_6_markers_64x32"))                  # big-endian TIFF: the value is 00 06
-        self.assertEqual(web_ui.photo_sniff(bytes(big))["orientation_big_endian"] in (True, False), True)
+        self.assertEqual(pysaiyanweboo.photo_sniff(bytes(big))["orientation_big_endian"] in (True, False), True)
 
     def test_damaged_files_never_raise(self):
         rng = random.Random(5)
@@ -1435,13 +1435,13 @@ class PhotoSniffTests(unittest.TestCase):
                         mutated[rng.randrange(len(mutated))] = rng.randrange(256)
                 variants.append(bytes(mutated))
             for variant in variants:
-                info = web_ui.photo_sniff(variant)
-                self.assertIn(info["kind"], web_ui.PHOTO_LABELS)
+                info = pysaiyanweboo.photo_sniff(variant)
+                self.assertIn(info["kind"], pysaiyanweboo.PHOTO_LABELS)
                 self.assertIn(info["orientation"], (None, 1, 2, 3, 4, 5, 6, 7, 8))
-                size = web_ui.photo_header_size(variant)
+                size = pysaiyanweboo.photo_header_size(variant)
                 self.assertTrue(size is None or (len(size) == 2 and all(isinstance(v, int) and v >= 0 for v in size)), (case["id"], size))
-                self.assertEqual(len(web_ui.photo_neutralize_orientation(variant)), len(variant))
-                web_ui.photo_decide(variant, photo_pillow_engine)
+                self.assertEqual(len(pysaiyanweboo.photo_neutralize_orientation(variant)), len(variant))
+                pysaiyanweboo.photo_decide(variant, photo_pillow_engine)
 
 
 class PhotoImportTests(unittest.TestCase):
@@ -1455,11 +1455,11 @@ class PhotoImportTests(unittest.TestCase):
                 continue
             with self.subTest(case["id"]):
                 with Image.open(io.BytesIO(photo_file(case["id"]))) as image:
-                    self.assertEqual(web_ui.photo_header_size(photo_file(case["id"])), image.size)
-        self.assertEqual(web_ui.photo_header_size(photo_file("png_claim_10000x10000")), (10000, 10000))
-        self.assertEqual(web_ui.photo_header_size(photo_file("png_truncated")), (64, 32))      # cut after the sizes: the header alone cannot tell it is damaged
+                    self.assertEqual(pysaiyanweboo.photo_header_size(photo_file(case["id"])), image.size)
+        self.assertEqual(pysaiyanweboo.photo_header_size(photo_file("png_claim_10000x10000")), (10000, 10000))
+        self.assertEqual(pysaiyanweboo.photo_header_size(photo_file("png_truncated")), (64, 32))      # cut after the sizes: the header alone cannot tell it is damaged
         for case_id in ("heic_ftyp_heic", "heic_synthetic_markers_64x32", "avif_ftyp_only", "empty"):
-            self.assertIsNone(web_ui.photo_header_size(photo_file(case_id)))
+            self.assertIsNone(pysaiyanweboo.photo_header_size(photo_file(case_id)))
 
     def test_pictures_made_by_pillow_in_every_format_agree(self):
         import io
@@ -1480,15 +1480,15 @@ class PhotoImportTests(unittest.TestCase):
                 buffer = io.BytesIO()
                 image.save(buffer, fmt, **options)
                 with self.subTest(size=(width, height), format=name):
-                    self.assertEqual(web_ui.photo_header_size(buffer.getvalue()), (width, height))
-                    self.assertEqual(web_ui.photo_sniff(buffer.getvalue())["kind"], {"png": "png", "png-rgba": "png", "gif": "gif", "jpeg": "jpeg", "jpeg-progressive": "jpeg"}.get(name, "webp"))
-        built = web_ui.photo_png(3, 2, bytes(range(24)))
+                    self.assertEqual(pysaiyanweboo.photo_header_size(buffer.getvalue()), (width, height))
+                    self.assertEqual(pysaiyanweboo.photo_sniff(buffer.getvalue())["kind"], {"png": "png", "png-rgba": "png", "gif": "gif", "jpeg": "jpeg", "jpeg-progressive": "jpeg"}.get(name, "webp"))
+        built = pysaiyanweboo.photo_png(3, 2, bytes(range(24)))
         with Image.open(io.BytesIO(built)) as image:
             image.load()
             self.assertEqual((image.size, image.mode, list(image.tobytes())), ((3, 2), "RGBA", list(range(24))))
-        self.assertEqual(web_ui.photo_header_size(web_ui.photo_png(40001, 1)), (40001, 1))
+        self.assertEqual(pysaiyanweboo.photo_header_size(pysaiyanweboo.photo_png(40001, 1)), (40001, 1))
         with self.assertRaises(ValueError):
-            web_ui.photo_png(2, 2, b"short")
+            pysaiyanweboo.photo_png(2, 2, b"short")
 
     def test_a_png_must_reach_iend(self):
         import io
@@ -1496,38 +1496,38 @@ class PhotoImportTests(unittest.TestCase):
         for case in PHOTO_FIXTURE["cases"]:
             if case["format"] == "png" and case["data"]:
                 with self.subTest(case["id"]):
-                    self.assertEqual(web_ui.photo_png_complete(photo_file(case["id"])), case["id"] != "png_truncated")
+                    self.assertEqual(pysaiyanweboo.photo_png_complete(photo_file(case["id"])), case["id"] != "png_truncated")
         whole = io.BytesIO()
         Image.new("RGB", (9, 7), (1, 2, 3)).save(whole, "PNG")
         data = whole.getvalue()
-        self.assertTrue(web_ui.photo_png_complete(data))
-        self.assertTrue(web_ui.photo_png_complete(data + b"trailing bytes"))                  # what follows IEND is not the picture's business
+        self.assertTrue(pysaiyanweboo.photo_png_complete(data))
+        self.assertTrue(pysaiyanweboo.photo_png_complete(data + b"trailing bytes"))                  # what follows IEND is not the picture's business
         for n in range(len(data)):
-            self.assertFalse(web_ui.photo_png_complete(data[:n]), n)                          # every cut-off copy is refused
-        self.assertFalse(web_ui.photo_png_complete(b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\x00IEND" + b"\x00" * 4))   # IEND before IHDR
-        self.assertFalse(web_ui.photo_png_complete(data[:8] + b"\xff\xff\xff\xff" + data[12:]))          # a length larger than the file
-        cut = web_ui.photo_decide(data[:-5], lambda d: (9, 7))                                  # whatever the engine would say
+            self.assertFalse(pysaiyanweboo.photo_png_complete(data[:n]), n)                          # every cut-off copy is refused
+        self.assertFalse(pysaiyanweboo.photo_png_complete(b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\x00IEND" + b"\x00" * 4))   # IEND before IHDR
+        self.assertFalse(pysaiyanweboo.photo_png_complete(data[:8] + b"\xff\xff\xff\xff" + data[12:]))          # a length larger than the file
+        cut = pysaiyanweboo.photo_decide(data[:-5], lambda d: (9, 7))                                  # whatever the engine would say
         self.assertEqual((cut["outcome"], cut["message"]), ("rejected:undecodable", "That image format could not be decoded."))
-        self.assertTrue(web_ui.photo_decide(data, lambda d: (9, 7))["ok"])
+        self.assertTrue(pysaiyanweboo.photo_decide(data, lambda d: (9, 7))["ok"])
 
     def test_the_png_probe_is_a_2x2_picture_and_probes_are_what_they_claim(self):
         import io
         from PIL import Image
-        probes = {p["id"]: p for p in web_ui.photo_probes()}
+        probes = {p["id"]: p for p in pysaiyanweboo.photo_probes()}
         self.assertEqual(list(probes), ["png", "jpeg", "jpeg_exif_orientation_6", "webp_lossy", "webp_lossless", "webp_alpha", "gif", "avif", "heic"])
         png = base64.b64decode(probes["png"]["data"])
         with Image.open(io.BytesIO(png)) as image:
             image.load()
             self.assertEqual((image.size, list(image.convert("RGBA").tobytes())), ((2, 2), [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 128]))
-        self.assertEqual(web_ui.photo_header_size(png), (2, 2))
+        self.assertEqual(pysaiyanweboo.photo_header_size(png), (2, 2))
         for probe in probes.values():
             data = base64.b64decode(probe["data"])
-            self.assertEqual("image/" + web_ui.photo_sniff(data)["kind"], probe["mime"])
+            self.assertEqual("image/" + pysaiyanweboo.photo_sniff(data)["kind"], probe["mime"])
             if probe["id"] != "heic":
                 with Image.open(io.BytesIO(data)) as image:
                     image.load()
-        self.assertEqual(web_ui.photo_sniff(base64.b64decode(probes["jpeg_exif_orientation_6"]["data"]))["orientation"], 6)
-        self.assertEqual(web_ui.photo_sniff(base64.b64decode(probes["heic"]["data"]))["brand"] in web_ui.PHOTO_HEIC_BRANDS, True)
+        self.assertEqual(pysaiyanweboo.photo_sniff(base64.b64decode(probes["jpeg_exif_orientation_6"]["data"]))["orientation"], 6)
+        self.assertEqual(pysaiyanweboo.photo_sniff(base64.b64decode(probes["heic"]["data"]))["brand"] in pysaiyanweboo.PHOTO_HEIC_BRANDS, True)
 
     def test_the_decision_order_reproduces_what_flutter_measured(self):
         for case in PHOTO_FIXTURE["cases"]:
@@ -1535,15 +1535,15 @@ class PhotoImportTests(unittest.TestCase):
             if expected in (None, "not_verified"):
                 continue
             with self.subTest(case["id"]):
-                result = web_ui.photo_decide(photo_file(case["id"]), photo_pillow_engine)
+                result = pysaiyanweboo.photo_decide(photo_file(case["id"]), photo_pillow_engine)
                 self.assertEqual(result["outcome"], expected)
-                self.assertIn(result["outcome"], web_ui.PHOTO_OUTCOMES)
+                self.assertIn(result["outcome"], pysaiyanweboo.PHOTO_OUTCOMES)
                 self.assertEqual(result["ok"], expected == "supported")
-        ok = web_ui.photo_decide(photo_file("png_markers_64x32"), photo_pillow_engine)
+        ok = pysaiyanweboo.photo_decide(photo_file("png_markers_64x32"), photo_pillow_engine)
         self.assertEqual((ok["format"], ok["width"], ok["height"], ok["document"], ok["message"], ok["meta"]), ("PNG", 64, 32, (43, 21), "Image loaded", "PNG · 64 × 32"))
 
     def test_bytes_declared_type_and_pixel_edges(self):
-        w = web_ui
+        w = pysaiyanweboo
         self.assertEqual([w.photo_reject_bytes(n) for n in (0, 1, w.PHOTO_MAX_BYTES, w.PHOTO_MAX_BYTES + 1)], ["empty", None, None, "tooLargeBytes"])
         self.assertEqual(w.photo_decide(bytes(w.PHOTO_MAX_BYTES + 1))["outcome"], "rejected:tooLargeBytes")                      # the runtime case in cases.json
         self.assertEqual([w.photo_reject_size(*s) for s in ((8000, 5000), (8000, 5001), (10000, 10000), (1, 0), (0, 5), (-1, 5), (40_000_000, 1), (1, 40_000_001))],
@@ -1570,7 +1570,7 @@ class PhotoImportTests(unittest.TestCase):
 
     def test_document_size_golden_values_and_exact_arithmetic(self):
         from fractions import Fraction
-        w = web_ui
+        w = pysaiyanweboo
         self.assertEqual([w.photo_document_size(*s) for s in ((64, 32), (1, 1), (2, 2), (3, 3), (1080, 1920), (1920, 1080), (8000, 6000), (6000, 8000), (24576, 3), (4096, 4096), (40000000, 1))],
                          [(43, 21), (1, 1), (1, 1), (2, 2), (720, 1280), (1280, 720), (4096, 3072), (3072, 4096), (4096, 1), (2731, 2731), (4096, 1)])
 
@@ -1595,7 +1595,7 @@ class PhotoOrientationTests(unittest.TestCase):
     """EXIF Orientation 1-8: the table, the turn the page applies, and Pillow's own transposes as the oracle."""
 
     def test_the_operation_table_from_the_dart_tests(self):
-        w = web_ui
+        w = pysaiyanweboo
         self.assertEqual([w.photo_orientation_op(o) for o in (0, 1, 9, -1, True, None, 2.0)], [None] * 7)
         self.assertEqual([tuple(w.photo_orientation_op(o).values()) for o in range(2, 9)],
                          [("flipX", 0, True, False), ("rotate", 180, False, False), ("flipY", 0, False, True), ("transpose", 90, True, False),
@@ -1611,14 +1611,14 @@ class PhotoOrientationTests(unittest.TestCase):
             image.putdata([(x * 3 % 256, y * 5 % 256, (x + y * width) % 256) for y in range(height) for x in range(width)])
             for orientation in range(1, 9):
                 expected = image if orientation == 1 else image.transpose(methods[orientation])
-                a, b, c, d, e, f = web_ui.photo_orientation_matrix(orientation, width, height)
-                self.assertEqual(expected.size, web_ui.photo_oriented_size(width, height, orientation))
+                a, b, c, d, e, f = pysaiyanweboo.photo_orientation_matrix(orientation, width, height)
+                self.assertEqual(expected.size, pysaiyanweboo.photo_oriented_size(width, height, orientation))
                 for y in range(height):
                     for x in range(width):
                         tx, ty = math.floor(a * (x + .5) + c * (y + .5) + e), math.floor(b * (x + .5) + d * (y + .5) + f)
                         self.assertEqual(expected.getpixel((tx, ty)), image.getpixel((x, y)), (width, height, orientation, x, y))
-        self.assertEqual(web_ui.photo_orientation_matrix(0, 4, 4), (1, 0, 0, 1, 0, 0))
-        self.assertEqual(web_ui.photo_orientation_matrix(99, 4, 4), (1, 0, 0, 1, 0, 0))
+        self.assertEqual(pysaiyanweboo.photo_orientation_matrix(0, 4, 4), (1, 0, 0, 1, 0, 0))
+        self.assertEqual(pysaiyanweboo.photo_orientation_matrix(99, 4, 4), (1, 0, 0, 1, 0, 0))
 
     def test_neutralised_files_turned_by_the_matrix_equal_pillows_exif_transpose(self):
         import io
@@ -1627,11 +1627,11 @@ class PhotoOrientationTests(unittest.TestCase):
             data = photo_file(f"jpeg_exif_orientation_{orientation}_markers_64x32")
             with Image.open(io.BytesIO(data)) as original:
                 expected = ImageOps.exif_transpose(original).convert("RGB")
-            with Image.open(io.BytesIO(web_ui.photo_neutralize_orientation(data))) as stored:
+            with Image.open(io.BytesIO(pysaiyanweboo.photo_neutralize_orientation(data))) as stored:
                 stored = stored.convert("RGB")
             width, height = stored.size
-            a, b, c, d, e, f = web_ui.photo_orientation_matrix(orientation, width, height)
-            upright = Image.new("RGB", web_ui.photo_oriented_size(width, height, orientation))
+            a, b, c, d, e, f = pysaiyanweboo.photo_orientation_matrix(orientation, width, height)
+            upright = Image.new("RGB", pysaiyanweboo.photo_oriented_size(width, height, orientation))
             for y in range(height):
                 for x in range(width):
                     upright.putpixel((math.floor(a * (x + .5) + c * (y + .5) + e), math.floor(b * (x + .5) + d * (y + .5) + f)), stored.getpixel((x, y)))
@@ -1644,7 +1644,7 @@ class PhotoGeometryTests(unittest.TestCase):
     """Rectangles, shapes and hit targets: the Dart tests' numbers, and the identities that hold for every box."""
 
     def test_the_dart_rectangle_tests(self):
-        w, R = web_ui, web_ui.photo_rect
+        w, R = pysaiyanweboo, pysaiyanweboo.photo_rect
         self.assertEqual(w.photo_rect_sanitized(w.PHOTO_INITIAL_RECT), R(0.2, 0.2, 0.8, 0.8))
         tiny = w.photo_rect_sanitized(R(0.1, 0.1, 0.12, 0.11))
         self.assertGreaterEqual(tiny["right"] - tiny["left"], 0.04 - 1e-12)
@@ -1665,7 +1665,7 @@ class PhotoGeometryTests(unittest.TestCase):
             w.photo_rect_resized(w.PHOTO_INITIAL_RECT, "middle", 0, 0)
 
     def test_the_dart_geometry_table(self):
-        w, R = web_ui, web_ui.photo_rect
+        w, R = pysaiyanweboo, pysaiyanweboo.photo_rect
         cases = [(R(0.2, 0.2, 0.8, 0.8), [(0.5, 0.2), (0.8, 0.5), (0.5, 0.8), (0.2, 0.5)], (0.5, 0.5, 0.3), [(0.5, 0.2), (0.8, 0.8), (0.2, 0.8)], [(0.65, 0.5), (0.5, 0.8), (0.35, 0.5)], (0.5, 0.5)),
                  (R(0.1, 0.25, 0.9, 0.55), [(0.5, 0.25), (0.9, 0.4), (0.5, 0.55), (0.1, 0.4)], (0.5, 0.4, 0.15), [(0.5, 0.25), (0.9, 0.55), (0.1, 0.55)], [(0.7, 0.4), (0.5, 0.55), (0.3, 0.4)], None)]
         pairs = lambda points: [(p["x"], p["y"]) for p in points]
@@ -1700,7 +1700,7 @@ class PhotoGeometryTests(unittest.TestCase):
         self.assertTrue(w.photo_shape_contains(box, "rectangle", 0.19, 0.5, slop=0.02))
 
     def test_hit_targets_and_the_export_numbers(self):
-        w, R = web_ui, web_ui.photo_rect
+        w, R = pysaiyanweboo, pysaiyanweboo.photo_rect
         box = R(0.25, 0.25, 0.75, 0.75)                                                    # 400 x 400 canvas: the frame spans 100..300
         grabbed = {(100, 100): "topLeft", (301, 99): "topRight", (95, 305): "bottomLeft", (310, 300): "bottomRight", (100, 200): "left", (300, 200): "right", (200, 100): "top",
                    (200, 300): "bottom", (200, 200): "move", (110, 110): "topLeft", (104, 200): "left", (150, 150): "move", (50, 50): None, (200, 340): None}
@@ -1735,21 +1735,21 @@ class PhotoStudioTests(unittest.TestCase):
         return {"image": None, "frames": [], "selected_frame": None, "draft_color": "#7e57c2", "draft_shape": None, "stamps": [], "selected_stamp": None, "stamp_scale": 1, **changes}
 
     def test_the_dart_history_tests(self):
-        h = web_ui.PhotoHistory()
-        before = self.state(frames=[{"id": "frame-a", "rect": web_ui.PHOTO_INITIAL_RECT, "shape": "rectangle", "color": "#7e57c2"}])
-        after = {**before, "frames": [{**before["frames"][0], "rect": web_ui.photo_rect(.1, .1, .9, .9)}], "selected_frame": "frame-a"}
+        h = pysaiyanweboo.PhotoHistory()
+        before = self.state(frames=[{"id": "frame-a", "rect": pysaiyanweboo.PHOTO_INITIAL_RECT, "shape": "rectangle", "color": "#7e57c2"}])
+        after = {**before, "frames": [{**before["frames"][0], "rect": pysaiyanweboo.photo_rect(.1, .1, .9, .9)}], "selected_frame": "frame-a"}
         h.begin_gesture(before)
         self.assertTrue(h.end_gesture(after))
         self.assertEqual((h.depth, h.can_undo), (1, True))
         self.assertEqual(h.undo(after), before)
         self.assertEqual((h.depth, h.can_redo), (0, True))
         state = self.state(draft_color="#e53935")
-        h = web_ui.PhotoHistory()
+        h = pysaiyanweboo.PhotoHistory()
         h.begin_gesture(state)
         self.assertFalse(h.end_gesture(state))
         self.assertFalse(h.record_change(state, state))
         self.assertEqual((h.depth, h.can_undo), (0, False))
-        base, h, current = self.state(), web_ui.PhotoHistory(), None
+        base, h, current = self.state(), pysaiyanweboo.PhotoHistory(), None
         for i in range(25):
             self.assertTrue(h.record_change({**base, "stamp_scale": 1.0 + i * 0.01}, {**base, "stamp_scale": 1.0 + (i + 1) * 0.01}))
             current = {**base, "stamp_scale": 1.0 + (i + 1) * 0.01}
@@ -1761,7 +1761,7 @@ class PhotoStudioTests(unittest.TestCase):
             oldest = cursor = h.undo(cursor)
         self.assertAlmostEqual(oldest["stamp_scale"], 1.05, places=9)
         self.assertEqual(h.depth, 0)
-        h = web_ui.PhotoHistory()
+        h = pysaiyanweboo.PhotoHistory()
         for i in range(20):
             h.record_change({**base, "stamp_scale": 1.0 + i * 0.01}, {**base, "stamp_scale": 1.0 + (i + 1) * 0.01})
         same = {**base, "stamp_scale": 9}
@@ -1770,10 +1770,10 @@ class PhotoStudioTests(unittest.TestCase):
         self.assertFalse(h.end_gesture(same))
         self.assertEqual(h.depth, 20)
         a, b, c = (self.state(draft_shape=s) for s in (None, "circle", "triangle"))        # multi undo, redo, and a new edit clears redo
-        h = web_ui.PhotoHistory()
+        h = pysaiyanweboo.PhotoHistory()
         self.assertTrue(h.record_change(a, b) and h.record_change(b, c))
         self.assertEqual((h.undo(c)["draft_shape"], h.undo(b)["draft_shape"], h.undo(a)), ("circle", None, None))
-        h = web_ui.PhotoHistory()
+        h = pysaiyanweboo.PhotoHistory()
         h.record_change(a, b), h.record_change(b, c)
         self.assertEqual(h.undo(c), b)
         self.assertTrue(h.can_redo)
@@ -1784,7 +1784,7 @@ class PhotoStudioTests(unittest.TestCase):
         self.assertTrue(h.record_change(b, d))
         self.assertEqual((h.can_redo, h.redo(d)), (False, None))
         stale = self.state(frames=[{"id": "x"}])
-        h = web_ui.PhotoHistory()
+        h = pysaiyanweboo.PhotoHistory()
         h.begin_gesture(stale)
         h.undo(stale)                                                                      # undo and redo drop an open gesture
         self.assertFalse(h.end_gesture(self.state()))
@@ -1792,7 +1792,7 @@ class PhotoStudioTests(unittest.TestCase):
         self.assertEqual((h.depth, h.can_undo, h.can_redo), (0, False, False))
 
     def test_dragging_makes_a_frame_from_the_origin_in_every_direction(self):
-        w = web_ui
+        w = pysaiyanweboo
         s = w.PhotoStudio(400, 300)
         s.set_shape("rectangle")
         s.pointer_down(1, 20, 15)
@@ -1834,7 +1834,7 @@ class PhotoStudioTests(unittest.TestCase):
         self.assertEqual(s.state["selected_frame"], s.state["frames"][0]["id"])
 
     def test_moving_resizing_and_overlaps(self):
-        w, R = web_ui, web_ui.photo_rect
+        w, R = pysaiyanweboo, pysaiyanweboo.photo_rect
         s = w.PhotoStudio(400, 300)
         s.state = self.state(frames=[{"id": "f1", "rect": R(.2, .2, .8, .8), "shape": "rectangle", "color": "#7e57c2"}], selected_frame="f1")
         s.pointer_down(1, 200, 150)
@@ -1876,7 +1876,7 @@ class PhotoStudioTests(unittest.TestCase):
 
     def test_stamps_taps_spray_and_one_undo_step_per_gesture(self):
         from unittest import mock
-        w = web_ui
+        w = pysaiyanweboo
         s = w.PhotoStudio(400, 400)
         s.arm_stamp("⭐")
         for point in ((80, 120), (320, 280)):
@@ -1934,7 +1934,7 @@ class PhotoStudioTests(unittest.TestCase):
         self.assertEqual(s.history.depth, 2)
 
     def test_dragging_a_stamp_scale_selection_and_editing_actions(self):
-        w, R = web_ui, web_ui.photo_rect
+        w, R = pysaiyanweboo, pysaiyanweboo.photo_rect
         s = w.PhotoStudio(400, 400)
         s.arm_stamp("⭐")
         s.pointer_down(1, 200, 200)
@@ -1989,7 +1989,7 @@ class PhotoStudioTests(unittest.TestCase):
         self.assertIsNone(s.pending_emoji if s.state["draft_shape"] else None)
 
     def test_any_pointer_sequence_keeps_the_state_sound(self):
-        w = web_ui
+        w = pysaiyanweboo
         rng = random.Random(21)
         for run in range(60):
             s = w.PhotoStudio(rng.choice([400, 320, 760]), rng.choice([300, 280, 500]))
@@ -2056,7 +2056,7 @@ class BtkAdapterTests(unittest.TestCase):
         return errors
 
     def test_adapters_meet_the_contract_and_name_real_pages(self):
-        w = web_ui
+        w = pysaiyanweboo
         pages = w.example_pages()
         self.assertEqual(sorted(w.BTK_ADAPTERS), ["web-ui-clipboard-shelf", "web-ui-composition-studio", "web-ui-coordinates", "web-ui-door", "web-ui-image-stamp", "web-ui-image-studio", "web-ui-irony", "web-ui-mcp-lab", "web-ui-mcp-send", "web-ui-native-patterns", "web-ui-pattern-run", "web-ui-patterns", "web-ui-photo-studio", "web-ui-playground", "web-ui-screens", "web-ui-showcase", "web-ui-test-report"])
         for adapter_id in w.BTK_ADAPTERS:
@@ -2090,9 +2090,9 @@ class BtkAdapterTests(unittest.TestCase):
         def run(*args):
             return subprocess.run([sys.executable, "-S", "pysaiyanweboo.py", *args], cwd=ROOT, capture_output=True, text=True, timeout=30)
         listed = run("--btk-adapter", "list")
-        self.assertEqual((listed.returncode, listed.stdout.split()), (0, sorted(web_ui.BTK_ADAPTERS)))
+        self.assertEqual((listed.returncode, listed.stdout.split()), (0, sorted(pysaiyanweboo.BTK_ADAPTERS)))
         one = run("--btk-adapter", "web-ui-photo-studio", "--url", "http://127.0.0.1:9/p.html")
-        self.assertEqual((one.returncode, json.loads(one.stdout)), (0, web_ui.btk_adapter("web-ui-photo-studio", "http://127.0.0.1:9/p.html")))
+        self.assertEqual((one.returncode, json.loads(one.stdout)), (0, pysaiyanweboo.btk_adapter("web-ui-photo-studio", "http://127.0.0.1:9/p.html")))
         bad = run("--btk-adapter", "nope")
         self.assertEqual(bad.returncode, 2)
         self.assertIn("unknown adapter", bad.stderr)
@@ -2100,7 +2100,7 @@ class BtkAdapterTests(unittest.TestCase):
 
 def clip_png(width, height, rgba):
     pixels = bytes(rgba[i % len(rgba)] for i in range(width * 4)) * height
-    return web_ui.photo_png(width, height, pixels)
+    return pysaiyanweboo.photo_png(width, height, pixels)
 
 
 CLIP_PIXELS = [255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 0, 0]
@@ -2146,7 +2146,7 @@ class ClipItem:
         self.calls["getType"] += 1
         fmt = next(f for f in self.formats if f["type"] == kind)
         if fmt.get("error"):
-            raise web_ui.ClipboardFailure(fmt["error"])
+            raise pysaiyanweboo.ClipboardFailure(fmt["error"])
         blob = ClipBlob(base64.b64decode(fmt.get("base64", "")), 32 * 1024 * 1024 + 1 if fmt.get("oversized") else None)
         self.blobs.append(blob)
         return blob
@@ -2167,13 +2167,13 @@ class ClipDouble:
     def _read_text(self):
         self.calls["readText"] += 1
         if self.config.get("textError"):
-            raise web_ui.ClipboardFailure(self.config["textError"])
+            raise pysaiyanweboo.ClipboardFailure(self.config["textError"])
         return self.config.get("text", "")
 
     def _read(self):
         self.calls["read"] += 1
         if self.config.get("readError"):
-            raise web_ui.ClipboardFailure(self.config["readError"])
+            raise pysaiyanweboo.ClipboardFailure(self.config["readError"])
         self.items = [ClipItem(item["formats"], self.calls) for item in self.config.get("items", [])]
         return self.items
 
@@ -2186,7 +2186,7 @@ def clip_importer(data, mime):
     """Ironmate's importImageBytes in miniature: the bytes must be the declared type, decode, and stay within 4 megapixels."""
     from io import BytesIO
     from PIL import Image
-    if web_ui._sniff_image_mime(data) != mime:
+    if pysaiyanweboo._sniff_image_mime(data) != mime:
         raise ValueError("MIME mismatch")
     with Image.open(BytesIO(data)) as image:
         image.load()
@@ -2245,7 +2245,7 @@ class ClipboardTests(unittest.TestCase):
     """The temporary clipboard, the clipboard read order and error codes, the shelf budget, and handing a PNG back as Base64."""
 
     def test_the_temporary_clipboard_like_the_dart_tests(self):
-        w = web_ui
+        w = pysaiyanweboo
         entries, outcome = w.session_clip_save([], "one")
         entries, _ = w.session_clip_save(entries, "two")
         entries, _ = w.session_clip_save(entries, "one")
@@ -2272,10 +2272,10 @@ class ClipboardTests(unittest.TestCase):
             config = clip_resolve(config)
             with self.subTest(name):
                 clip = None if config.get("absent") else ClipDouble(config)
-                result = web_ui.clipboard_pick(clip, clip_importer)
+                result = pysaiyanweboo.clipboard_pick(clip, clip_importer)
                 if code:
                     self.assertEqual((result["ok"], result["code"]), (False, code), result)
-                    self.assertIn(code, web_ui.CLIPBOARD_MESSAGES)
+                    self.assertIn(code, pysaiyanweboo.CLIPBOARD_MESSAGES)
                 else:
                     self.assertTrue(result["ok"], result)
                     self.assertIn(result["source"], ("text", "item"))
@@ -2283,16 +2283,16 @@ class ClipboardTests(unittest.TestCase):
                                                ("empty-clipboard", 1, 1, None)):
             config = next(c for n, c, _ in clip_scenarios() if n == name)
             clip = ClipDouble(clip_resolve(config))
-            result = web_ui.clipboard_pick(clip, clip_importer)
+            result = pysaiyanweboo.clipboard_pick(clip, clip_importer)
             self.assertEqual((clip.calls["read"], clip.calls["readText"], result.get("source")), (reads, read_texts, source), name)
         clip = ClipDouble(clip_resolve(next(c for n, c, _ in clip_scenarios() if n == "binary-over-32MiB-before-read")))
-        web_ui.clipboard_pick(clip, clip_importer)
+        pysaiyanweboo.clipboard_pick(clip, clip_importer)
         self.assertEqual([blob.read_calls for item in clip.items for blob in item.blobs], [0])        # an oversized item is asked for but never read
-        green = web_ui.clipboard_pick(ClipDouble({"text": CLIP_URI, "items": [clip_binary(CLIP_GREEN)]}), lambda d, m: len(d))
+        green = pysaiyanweboo.clipboard_pick(ClipDouble({"text": CLIP_URI, "items": [clip_binary(CLIP_GREEN)]}), lambda d, m: len(d))
         self.assertEqual((green["source"], green["mime"], green["size"]), ("text", "image/png", len(base64.b64decode(CLIP_IMAGE))))
 
     def test_a_smaller_limit_refuses_unread(self):
-        w = web_ui
+        w = pysaiyanweboo
         small = len(base64.b64decode(CLIP_IMAGE))
         self.assertTrue(w.clipboard_pick(ClipDouble({"text": CLIP_URI}), lambda d, m: 1, max_bytes=small)["ok"])
         self.assertEqual(w.clipboard_pick(ClipDouble({"text": CLIP_URI}), lambda d, m: 1, max_bytes=small - 1)["category"], "too_large")
@@ -2303,7 +2303,7 @@ class ClipboardTests(unittest.TestCase):
         self.assertEqual(w.clipboard_pick(ClipDouble({"text": "memo"}), lambda d, m: 1, "shelf", 0)["source"], "plain")
 
     def test_the_shelf_keeps_text_and_reports_why_when_image_text_is_refused(self):
-        w = web_ui
+        w = pysaiyanweboo
         pick = lambda config: w.clipboard_pick(ClipDouble(config), clip_importer, mode="shelf")
         self.assertEqual(pick({"text": "  a memo \n"}), {"ok": True, "source": "plain", "text": "a memo", "refused": None})
         self.assertEqual(pick({"text": "data:image/png;base64,!!!", "items": [clip_binary()]}), {"ok": True, "source": "plain", "text": "data:image/png;base64,!!!", "refused": "bad_base64"})
@@ -2317,7 +2317,7 @@ class ClipboardTests(unittest.TestCase):
         self.assertEqual(pick({"noText": True, "noRead": True})["code"], "clipboard-unsupported")
 
     def test_the_shelf_budget_like_ironmates(self):
-        w = web_ui
+        w = pysaiyanweboo
         self.assertEqual((w.SHELF_MAX_ITEMS, w.SHELF_MAX_TOTAL_BYTES), (20, 32 * 1024 * 1024))
         self.assertEqual([w.shelf_room(19, 0, 1), w.shelf_room(20, 0, 1), w.shelf_room(0, w.SHELF_MAX_TOTAL_BYTES - 5, 5), w.shelf_room(0, w.SHELF_MAX_TOTAL_BYTES - 5, 6),
                           w.shelf_room(0, 0, w.SHELF_MAX_TOTAL_BYTES), w.shelf_room(0, 0, w.SHELF_MAX_TOTAL_BYTES + 1)], [None, "full", None, "budget", None, "budget"])
@@ -2326,7 +2326,7 @@ class ClipboardTests(unittest.TestCase):
     def test_a_png_goes_back_out_as_base64_and_in_again(self):
         import io
         from PIL import Image
-        w = web_ui
+        w = pysaiyanweboo
         rng = random.Random(2)
         for width, height in ((1, 1), (3, 2), (17, 5), (64, 64)):
             buffer = io.BytesIO()
@@ -2353,148 +2353,148 @@ class PlaygroundTests(unittest.TestCase):
     counter_battle_effect_test, counter_battle_effect_ui_test, hold_repeating_button_test, irony_generator_interaction_test) are the golden values."""
 
     def run_actions(self, *steps):
-        state = web_ui.counter_state()
+        state = pysaiyanweboo.counter_state()
         for step in steps:
-            state = web_ui.counter_apply(state, *step)
+            state = pysaiyanweboo.counter_apply(state, *step)
         return state
 
     def test_the_controller_dart_tests(self):
-        state = web_ui.counter_state()
+        state = pysaiyanweboo.counter_state()
         self.assertEqual((state["counter"], state["step"], state["history"]), (0, 1, [0]))
-        self.assertTrue(web_ui.counter_effect(0)["idle"])
+        self.assertTrue(pysaiyanweboo.counter_effect(0)["idle"])
         up = self.run_actions(("increment",))
         self.assertEqual((up["counter"], up["burst"]), (1, 1))
-        self.assertEqual((web_ui.counter_effect(1)["heal"], web_ui.counter_effect(1)["amount"]), (False, 1))
+        self.assertEqual((pysaiyanweboo.counter_effect(1)["heal"], pysaiyanweboo.counter_effect(1)["amount"]), (False, 1))
         down = self.run_actions(("decrement",))
-        self.assertEqual((down["counter"], web_ui.counter_effect(-1)["heal"], web_ui.counter_effect(-1)["amount"]), (-1, True, 1))
+        self.assertEqual((down["counter"], pysaiyanweboo.counter_effect(-1)["heal"], pysaiyanweboo.counter_effect(-1)["amount"]), (-1, True, 1))
         ten = self.run_actions(*[("increment",)] * 10)
-        self.assertEqual((ten["counter"], web_ui.counter_effect(10)["amount"]), (10, 10))
+        self.assertEqual((ten["counter"], pysaiyanweboo.counter_effect(10)["amount"]), (10, 10))
         cleared = self.run_actions(("change", 5), ("reset",))
         self.assertEqual(cleared["counter"], 0)
-        self.assertTrue(web_ui.counter_effect(cleared["counter"])["idle"])
+        self.assertTrue(pysaiyanweboo.counter_effect(cleared["counter"])["idle"])
 
     def test_the_ends_clamp_and_do_not_bump_the_burst(self):
-        top = self.run_actions(("change", web_ui.COUNTER_MAX))
+        top = self.run_actions(("change", pysaiyanweboo.COUNTER_MAX))
         self.assertEqual(top["counter"], 100)
-        self.assertEqual(web_ui.counter_apply(top, "increment"), top)
-        self.assertEqual(web_ui.counter_apply(top, "change", 7), top)
-        bottom = self.run_actions(("change", web_ui.COUNTER_MIN))
+        self.assertEqual(pysaiyanweboo.counter_apply(top, "increment"), top)
+        self.assertEqual(pysaiyanweboo.counter_apply(top, "change", 7), top)
+        bottom = self.run_actions(("change", pysaiyanweboo.COUNTER_MIN))
         self.assertEqual(bottom["counter"], -100)
-        self.assertEqual(web_ui.counter_apply(bottom, "decrement"), bottom)
+        self.assertEqual(pysaiyanweboo.counter_apply(bottom, "decrement"), bottom)
         step10 = self.run_actions(("step", 10), *[("increment",)] * 9)
         self.assertEqual((step10["counter"], step10["burst"]), (90, 9))
-        over = web_ui.counter_apply(step10, "change", 50)
+        over = pysaiyanweboo.counter_apply(step10, "change", 50)
         self.assertEqual((over["counter"], over["burst"], over["history"][:2]), (100, 10, [100, 90]))
 
     def test_step_history_undo_and_restore_follow_the_controller(self):
         state = self.run_actions(("step", 5), ("increment",))
         self.assertEqual((state["counter"], state["history"]), (5, [5, 0]))
-        state = web_ui.counter_apply(state, "decrement")
+        state = pysaiyanweboo.counter_apply(state, "decrement")
         self.assertEqual((state["counter"], state["history"]), (0, [0, 5, 0]))
-        state = web_ui.counter_apply(state, "undo")
+        state = pysaiyanweboo.counter_apply(state, "undo")
         self.assertEqual((state["counter"], state["history"]), (5, [5, 0]))
-        state = web_ui.counter_apply(state, "restore", 2)
+        state = pysaiyanweboo.counter_apply(state, "restore", 2)
         self.assertEqual((state["counter"], state["history"]), (2, [2, 5, 0]))
-        state = web_ui.counter_apply(state, "reset")
+        state = pysaiyanweboo.counter_apply(state, "reset")
         self.assertEqual((state["counter"], state["history"]), (0, [0, 2, 5, 0]))
 
     def test_undo_records_nothing_and_bumps_the_burst_but_only_when_there_is_something_to_undo(self):
-        first = web_ui.counter_state()
-        self.assertEqual(web_ui.counter_apply(first, "undo"), first)
-        moved = web_ui.counter_apply(first, "change", 3)
-        back = web_ui.counter_apply(moved, "undo")
+        first = pysaiyanweboo.counter_state()
+        self.assertEqual(pysaiyanweboo.counter_apply(first, "undo"), first)
+        moved = pysaiyanweboo.counter_apply(first, "change", 3)
+        back = pysaiyanweboo.counter_apply(moved, "undo")
         self.assertEqual(back, {"counter": 0, "step": 1, "burst": 2, "history": [0]})
-        self.assertEqual(web_ui.counter_apply(first, "reset"), first)
-        self.assertEqual(web_ui.counter_apply(moved, "restore", 3), moved)
-        self.assertEqual(web_ui.counter_apply(moved, "restore", 300)["counter"], 100)
+        self.assertEqual(pysaiyanweboo.counter_apply(first, "reset"), first)
+        self.assertEqual(pysaiyanweboo.counter_apply(moved, "restore", 3), moved)
+        self.assertEqual(pysaiyanweboo.counter_apply(moved, "restore", 300)["counter"], 100)
 
     def test_the_history_keeps_the_eight_newest_values(self):
-        state = web_ui.counter_state()
+        state = pysaiyanweboo.counter_state()
         for n in range(1, 13):
-            state = web_ui.counter_apply(state, "change", 1)
-            self.assertEqual(len(state["history"]), min(n + 1, web_ui.COUNTER_HISTORY))
+            state = pysaiyanweboo.counter_apply(state, "change", 1)
+            self.assertEqual(len(state["history"]), min(n + 1, pysaiyanweboo.COUNTER_HISTORY))
         self.assertEqual(state["history"], [12, 11, 10, 9, 8, 7, 6, 5])
         for _ in range(7):
-            state = web_ui.counter_apply(state, "undo")
+            state = pysaiyanweboo.counter_apply(state, "undo")
         self.assertEqual((state["counter"], state["history"]), (5, [5]))
-        self.assertEqual(web_ui.counter_apply(state, "undo"), state)
+        self.assertEqual(pysaiyanweboo.counter_apply(state, "undo"), state)
 
     def test_only_steps_one_five_and_ten_are_accepted(self):
-        state = web_ui.counter_state()
+        state = pysaiyanweboo.counter_state()
         for value in (2, 0, -5, 11, True, 5.0, "5", None):
-            self.assertEqual(web_ui.counter_apply(state, "step", value), state, value)
-        self.assertEqual(web_ui.counter_apply(state, "step", 1), state)
-        self.assertEqual([web_ui.counter_apply(state, "step", s)["step"] for s in web_ui.COUNTER_STEPS], [1, 5, 10])
-        self.assertEqual(web_ui.counter_apply(web_ui.counter_apply(state, "step", 10), "step", 10)["burst"], 0)
+            self.assertEqual(pysaiyanweboo.counter_apply(state, "step", value), state, value)
+        self.assertEqual(pysaiyanweboo.counter_apply(state, "step", 1), state)
+        self.assertEqual([pysaiyanweboo.counter_apply(state, "step", s)["step"] for s in pysaiyanweboo.COUNTER_STEPS], [1, 5, 10])
+        self.assertEqual(pysaiyanweboo.counter_apply(pysaiyanweboo.counter_apply(state, "step", 10), "step", 10)["burst"], 0)
 
     def test_bad_input_is_an_error_not_a_guess(self):
-        state = web_ui.counter_state()
+        state = pysaiyanweboo.counter_state()
         for bad in (("nope",), ("change", "3"), ("change", 1.5), ("change", True), ("restore",), ("restore", None)):
             with self.assertRaises(ValueError, msg=bad):
-                web_ui.counter_apply(state, *bad)
+                pysaiyanweboo.counter_apply(state, *bad)
         for broken in ({**state, "history": []}, {**state, "history": [1]}, {**state, "history": [0, "x"]}, {**state, "counter": True}, {**state, "step": 1.0}):
             with self.assertRaises(ValueError, msg=broken):
-                web_ui.counter_apply(broken, "increment")
-        self.assertEqual(state, web_ui.counter_state(), "the input is never changed")
+                pysaiyanweboo.counter_apply(broken, "increment")
+        self.assertEqual(state, pysaiyanweboo.counter_state(), "the input is never changed")
 
     def test_the_battle_effect_dart_tests(self):
-        self.assertEqual(web_ui.counter_effect(0), {"counter": 0, "amount": 0, "heal": False, "idle": True, "orbs": []})
-        damage = web_ui.counter_effect(3)
+        self.assertEqual(pysaiyanweboo.counter_effect(0), {"counter": 0, "amount": 0, "heal": False, "idle": True, "orbs": []})
+        damage = pysaiyanweboo.counter_effect(3)
         self.assertEqual((damage["heal"], damage["amount"], damage["orbs"]), (False, 3, ["🔥", "💧", "🌳"]))
-        heal = web_ui.counter_effect(-2)
+        heal = pysaiyanweboo.counter_effect(-2)
         self.assertEqual((heal["heal"], heal["amount"], heal["orbs"]), (True, 2, ["❤️", "💚"]))
-        big = web_ui.counter_effect(20)
-        self.assertEqual((big["amount"], len(big["orbs"])), (20, web_ui.COUNTER_MAX_ORBS))
-        self.assertEqual(web_ui.counter_effect(7)["orbs"], ["🔥", "💧", "🌳", "💡", "🔮", "🔥"])
-        self.assertEqual(web_ui.counter_effect(-7)["orbs"], ["❤️", "💚", "✨", "❤️", "💚", "✨"])
-        self.assertEqual([web_ui.counter_label(n) for n in (1, -1, 0, 20, -100)], ["💥 Damage 1", "💚 Heal 1", "Orbs ready…", "💥 Damage 20", "💚 Heal 100"])
+        big = pysaiyanweboo.counter_effect(20)
+        self.assertEqual((big["amount"], len(big["orbs"])), (20, pysaiyanweboo.COUNTER_MAX_ORBS))
+        self.assertEqual(pysaiyanweboo.counter_effect(7)["orbs"], ["🔥", "💧", "🌳", "💡", "🔮", "🔥"])
+        self.assertEqual(pysaiyanweboo.counter_effect(-7)["orbs"], ["❤️", "💚", "✨", "❤️", "💚", "✨"])
+        self.assertEqual([pysaiyanweboo.counter_label(n) for n in (1, -1, 0, 20, -100)], ["💥 Damage 1", "💚 Heal 1", "Orbs ready…", "💥 Damage 20", "💚 Heal 100"])
 
     def test_the_status_ladder_is_first_match_wins(self):
         ladder = {100: "max", 99: "high", 50: "high", 49: "too_much", 10: "too_much", 9: "neutral", 1: "neutral", 0: "neutral", -1: "neutral", -9: "neutral",
                   -10: "reverse", -49: "reverse", -50: "low", -99: "low", -100: "min"}
-        self.assertEqual({n: web_ui.counter_status_key(n) for n in ladder}, ladder)
-        self.assertEqual(set(ladder.values()), set(web_ui.COUNTER_STATUS))
-        self.assertEqual(web_ui.COUNTER_STATUS["too_much"], "Too much 😈")
+        self.assertEqual({n: pysaiyanweboo.counter_status_key(n) for n in ladder}, ladder)
+        self.assertEqual(set(ladder.values()), set(pysaiyanweboo.COUNTER_STATUS))
+        self.assertEqual(pysaiyanweboo.COUNTER_STATUS["too_much"], "Too much 😈")
 
     def test_holding_fires_after_350_ms_and_then_every_70_ms(self):
-        self.assertEqual([web_ui.hold_repeat_count(ms) for ms in (0, 100, 349, 349.9, 350, 419, 419.9, 420, 489, 490, 700, 1050)], [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 6, 11])
-        self.assertGreaterEqual(web_ui.hold_repeat_count(350), 1)
-        self.assertGreaterEqual(web_ui.hold_repeat_count(350 + 70 + 70), 3)
-        self.assertEqual([web_ui.hold_repeat_count(5000, buttons=b) for b in (1, 2, 4, 0)], [web_ui.hold_repeat_count(5000), 0, 0, 0])
-        self.assertEqual([web_ui.hold_swallows_click(ms) for ms in (0, 349, 350, 5000)], [False, False, True, True])
-        self.assertFalse(web_ui.hold_swallows_click(5000, buttons=2))
+        self.assertEqual([pysaiyanweboo.hold_repeat_count(ms) for ms in (0, 100, 349, 349.9, 350, 419, 419.9, 420, 489, 490, 700, 1050)], [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 6, 11])
+        self.assertGreaterEqual(pysaiyanweboo.hold_repeat_count(350), 1)
+        self.assertGreaterEqual(pysaiyanweboo.hold_repeat_count(350 + 70 + 70), 3)
+        self.assertEqual([pysaiyanweboo.hold_repeat_count(5000, buttons=b) for b in (1, 2, 4, 0)], [pysaiyanweboo.hold_repeat_count(5000), 0, 0, 0])
+        self.assertEqual([pysaiyanweboo.hold_swallows_click(ms) for ms in (0, 349, 350, 5000)], [False, False, True, True])
+        self.assertFalse(pysaiyanweboo.hold_swallows_click(5000, buttons=2))
 
     def test_the_ironies_are_the_darts_twenty(self):
-        self.assertEqual(len(web_ui.IRONIES), 20)
-        self.assertEqual(len({text for text, _ in web_ui.IRONIES}), 20)
-        self.assertEqual(list(dict.fromkeys(tone for _, tone in web_ui.IRONIES)), ["Tech", "Work", "Daily", "Human"])
-        self.assertEqual([sum(tone == name for _, tone in web_ui.IRONIES) for name in ("Tech", "Work", "Daily", "Human")], [5, 5, 5, 5])
-        self.assertEqual(web_ui.IRONIES[4][0], "The cloud is just someone else’s computer with better branding.")
+        self.assertEqual(len(pysaiyanweboo.IRONIES), 20)
+        self.assertEqual(len({text for text, _ in pysaiyanweboo.IRONIES}), 20)
+        self.assertEqual(list(dict.fromkeys(tone for _, tone in pysaiyanweboo.IRONIES)), ["Tech", "Work", "Daily", "Human"])
+        self.assertEqual([sum(tone == name for _, tone in pysaiyanweboo.IRONIES) for name in ("Tech", "Work", "Daily", "Human")], [5, 5, 5, 5])
+        self.assertEqual(pysaiyanweboo.IRONIES[4][0], "The cloud is just someone else’s computer with better branding.")
         source = Path("/home/claude/myon-bioinformatics/flutter_navigation_basic/lib/data/ironies.dart")
         if source.is_file():
             dart = re.findall(r"IronyEntry\(text: '((?:[^'\\]|\\.)*)', tone: '(\w+)'\)", source.read_text(encoding="utf-8"))
-            self.assertEqual(tuple(dart), web_ui.IRONIES)
+            self.assertEqual(tuple(dart), pysaiyanweboo.IRONIES)
 
     def test_the_next_irony_is_never_the_one_on_screen_and_every_other_one_can_come(self):
         for count in (2, 3, 20):
             for current in range(count):
-                seen = {web_ui.irony_next(count, current, (k + 0.5) / (count - 1)) for k in range(count - 1)}
+                seen = {pysaiyanweboo.irony_next(count, current, (k + 0.5) / (count - 1)) for k in range(count - 1)}
                 self.assertEqual(seen, set(range(count)) - {current}, (count, current))
-        self.assertIsNone(web_ui.irony_next(1, 0, 0.5))
-        self.assertIsNone(web_ui.irony_next(0, None, 0.5))
-        self.assertIn(web_ui.irony_next(5, None, 0.999999), range(5))
-        self.assertEqual([web_ui.irony_first(20, u) for u in (0, 0.049999, 0.05, 0.999999)], [0, 0, 1, 19])
+        self.assertIsNone(pysaiyanweboo.irony_next(1, 0, 0.5))
+        self.assertIsNone(pysaiyanweboo.irony_next(0, None, 0.5))
+        self.assertIn(pysaiyanweboo.irony_next(5, None, 0.999999), range(5))
+        self.assertEqual([pysaiyanweboo.irony_first(20, u) for u in (0, 0.049999, 0.05, 0.999999)], [0, 0, 1, 19])
         for bad in (-0.1, 1.0, 2):
             with self.assertRaises(ValueError):
-                web_ui.irony_next(5, 0, bad)
+                pysaiyanweboo.irony_next(5, 0, bad)
             with self.assertRaises(ValueError):
-                web_ui.irony_first(5, bad)
+                pysaiyanweboo.irony_first(5, bad)
         with self.assertRaises(ValueError):
-            web_ui.irony_first(0, 0.5)
+            pysaiyanweboo.irony_first(0, 0.5)
         for seed in (7, 11, 13, 17, 0, 4294967295):
-            run = web_ui.irony_sequence(seed, 2000)
+            run = pysaiyanweboo.irony_sequence(seed, 2000)
             self.assertTrue(all(a != b for a, b in zip(run, run[1:])), seed)
-            self.assertEqual(run, web_ui.irony_sequence(seed, 2000))
+            self.assertEqual(run, pysaiyanweboo.irony_sequence(seed, 2000))
             self.assertGreaterEqual(len(set(run)), 19, "a long run reaches (almost) all of them")
 
     # The Dart widget tests pump an 800x600 surface; the body under the app bar is 800x544, the card (max width 520) is centred and the handle sits at the top of it.
@@ -2507,7 +2507,7 @@ class PlaygroundTests(unittest.TestCase):
         return (rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy)
 
     def drop(self, dx, dy):
-        return web_ui.irony_drop(self.ARENA, self.shifted(self.CARD, dx, dy), self.shifted(self.HANDLE, dx, dy))
+        return pysaiyanweboo.irony_drop(self.ARENA, self.shifted(self.CARD, dx, dy), self.shifted(self.HANDLE, dx, dy))
 
     def test_a_small_drag_keeps_the_message(self):
         self.assertEqual(self.drop(48, 32), {"action": "none", "dx": 0.0, "dy": 0.0})
@@ -2525,44 +2525,44 @@ class PlaygroundTests(unittest.TestCase):
             handle = self.shifted(self.HANDLE, 0, dy)
             card = self.shifted(self.CARD, 0, dy)
             self.assertGreater(card[3], 0, "precondition: the card body stays partly visible")
-            result = web_ui.irony_drop(self.ARENA, card, handle)
+            result = pysaiyanweboo.irony_drop(self.ARENA, card, handle)
             self.assertEqual(result["action"], "snap", dy)
             moved = self.shifted(handle, result["dx"], result["dy"])
-            self.assertTrue(web_ui.rect_inside(moved, web_ui.rect_deflate((0, 0, *self.ARENA), 8)), (dy, moved))
+            self.assertTrue(pysaiyanweboo.rect_inside(moved, pysaiyanweboo.rect_deflate((0, 0, *self.ARENA), 8)), (dy, moved))
             self.assertAlmostEqual(moved[1], 8.0)
 
     def test_a_handle_exactly_on_the_safe_inset_stays_where_it_is(self):
-        self.assertEqual(web_ui.irony_drop(self.ARENA, (0, 0, 100, 100), (8, 8, 56, 40))["action"], "none")
-        self.assertEqual(web_ui.irony_drop(self.ARENA, (0, 0, 100, 100), (7.5, 8, 55.5, 40))["action"], "snap")
-        self.assertEqual(web_ui.irony_drop(self.ARENA, (0, 0, 100, 100), (8, 8, 56, 40))["action"], "none")
+        self.assertEqual(pysaiyanweboo.irony_drop(self.ARENA, (0, 0, 100, 100), (8, 8, 56, 40))["action"], "none")
+        self.assertEqual(pysaiyanweboo.irony_drop(self.ARENA, (0, 0, 100, 100), (7.5, 8, 55.5, 40))["action"], "snap")
+        self.assertEqual(pysaiyanweboo.irony_drop(self.ARENA, (0, 0, 100, 100), (8, 8, 56, 40))["action"], "none")
 
     def test_missing_measurements_end_the_drag_quietly(self):
         none = {"action": "none", "dx": 0.0, "dy": 0.0}
-        self.assertEqual(web_ui.irony_drop(self.ARENA, None, self.HANDLE), none)
-        self.assertEqual(web_ui.irony_drop(self.ARENA, None, None), none)
-        self.assertEqual(web_ui.irony_drop(self.ARENA, self.CARD, None), none)
+        self.assertEqual(pysaiyanweboo.irony_drop(self.ARENA, None, self.HANDLE), none)
+        self.assertEqual(pysaiyanweboo.irony_drop(self.ARENA, None, None), none)
+        self.assertEqual(pysaiyanweboo.irony_drop(self.ARENA, self.CARD, None), none)
 
     def test_a_handle_as_large_as_the_arena_is_centred(self):
-        result = web_ui.irony_drop((100, 100), (0, 0, 120, 120), (-10, -10, 110, 110))
+        result = pysaiyanweboo.irony_drop((100, 100), (0, 0, 120, 120), (-10, -10, 110, 110))
         self.assertEqual(result["action"], "snap")
         self.assertEqual((result["dx"], result["dy"]), (0.0, 0.0))
-        shifted = web_ui.irony_drop((100, 100), (-20, -20, 100, 100), (-30, -30, 90, 90))
+        shifted = pysaiyanweboo.irony_drop((100, 100), (-20, -20, 100, 100), (-30, -30, 90, 90))
         self.assertEqual((shifted["dx"], shifted["dy"]), (20.0, 20.0))
 
     def test_rect_rules(self):
-        self.assertTrue(web_ui.rect_overlaps((0, 0, 10, 10), (9, 9, 20, 20)))
-        self.assertFalse(web_ui.rect_overlaps((0, 0, 10, 10), (10, 0, 20, 10)))
-        self.assertFalse(web_ui.rect_overlaps((0, 0, 10, 10), (0, 10, 10, 20)))
-        self.assertTrue(web_ui.rect_inside((1, 1, 9, 9), (0, 0, 10, 10)))
-        self.assertTrue(web_ui.rect_inside((0, 0, 10, 10), (0, 0, 10, 10)))
-        self.assertFalse(web_ui.rect_inside((0, 0, 10.5, 10), (0, 0, 10, 10)))
-        self.assertEqual(web_ui.rect_deflate((0, 0, 100, 50), 8), (8.0, 8.0, 92.0, 42.0))
-        self.assertEqual(web_ui.rect_clamp_inside((-20, 5, 30, 25), (0, 0, 100, 100), 8), (8.0, 8.0, 58.0, 28.0))
+        self.assertTrue(pysaiyanweboo.rect_overlaps((0, 0, 10, 10), (9, 9, 20, 20)))
+        self.assertFalse(pysaiyanweboo.rect_overlaps((0, 0, 10, 10), (10, 0, 20, 10)))
+        self.assertFalse(pysaiyanweboo.rect_overlaps((0, 0, 10, 10), (0, 10, 10, 20)))
+        self.assertTrue(pysaiyanweboo.rect_inside((1, 1, 9, 9), (0, 0, 10, 10)))
+        self.assertTrue(pysaiyanweboo.rect_inside((0, 0, 10, 10), (0, 0, 10, 10)))
+        self.assertFalse(pysaiyanweboo.rect_inside((0, 0, 10.5, 10), (0, 0, 10, 10)))
+        self.assertEqual(pysaiyanweboo.rect_deflate((0, 0, 100, 50), 8), (8.0, 8.0, 92.0, 42.0))
+        self.assertEqual(pysaiyanweboo.rect_clamp_inside((-20, 5, 30, 25), (0, 0, 100, 100), 8), (8.0, 8.0, 58.0, 28.0))
         for bad in ((1, 2, 3), (1, 2, 3, float("nan")), (1, 2, 3, True), "abcd", None):
             with self.assertRaises(ValueError, msg=bad):
-                web_ui.rect_overlaps(bad, (0, 0, 1, 1))
+                pysaiyanweboo.rect_overlaps(bad, (0, 0, 1, 1))
         with self.assertRaises(ValueError):
-            web_ui.irony_drop((float("inf"), 10), self.CARD, self.HANDLE)
+            pysaiyanweboo.irony_drop((float("inf"), 10), self.CARD, self.HANDLE)
 
     def test_a_seeded_fuzz_always_ends_with_the_handle_reachable_or_the_card_gone(self):
         rng = random.Random(20261103)
@@ -2573,26 +2573,26 @@ class PlaygroundTests(unittest.TestCase):
             card_rect = (card[0], card[1], card[0] + cw, card[1] + ch)
             handle = (card[0] + rng.uniform(0, max(cw - hw, 0)), card[1] + rng.uniform(0, max(ch - hh, 0)))
             handle_rect = (handle[0], handle[1], handle[0] + hw, handle[1] + hh)
-            result = web_ui.irony_drop((width, height), card_rect, handle_rect)
-            if not web_ui.rect_overlaps(card_rect, (0, 0, width, height)):
+            result = pysaiyanweboo.irony_drop((width, height), card_rect, handle_rect)
+            if not pysaiyanweboo.rect_overlaps(card_rect, (0, 0, width, height)):
                 self.assertEqual(result["action"], "spawn")
                 continue
             moved = self.shifted(handle_rect, result["dx"], result["dy"])
             self.assertIn(result["action"], ("none", "snap"))
             # the card moves by (clamped centre - centre), as in the Dart page, so it can land a rounding error (1e-13) off the exact inset: allow that
             if hw <= width - 16 and hh <= height - 16:
-                self.assertTrue(web_ui.rect_inside(moved, web_ui.rect_deflate((0, 0, width, height), 8 - 1e-9)), (result, moved, width, height))
+                self.assertTrue(pysaiyanweboo.rect_inside(moved, pysaiyanweboo.rect_deflate((0, 0, width, height), 8 - 1e-9)), (result, moved, width, height))
 
     def test_the_page_is_semantic_and_self_contained(self):
-        html = web_ui.playground_document()
+        html = pysaiyanweboo.playground_document()
         for needle in ('data-ui-play', 'data-counter-increment', 'data-counter-decrement', 'data-counter-reset', 'data-counter-undo', 'data-counter-history', 'data-irony-arena',
                        'data-irony-handle', 'aria-label="Drag to move message"', 'data-irony-next', 'aria-live="polite"', 'name="counter-step"'):
             self.assertIn(needle, html)
         self.assertEqual(html.count('<script'), 1)
         self.assertNotIn('http://', html.split('<style', 1)[0])
-        self.assertIn("examples/playground.html", web_ui.example_pages())
-        self.assertIn("./playground.html", web_ui.example_pages()["examples/index.html"])
-        self.assertEqual(json.loads(re.search(r'data-play="([^"]*)"', html).group(1).replace("&quot;", '"').replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&#x27;", "'"))["status"], web_ui.COUNTER_STATUS)
+        self.assertIn("examples/playground.html", pysaiyanweboo.example_pages())
+        self.assertIn("./playground.html", pysaiyanweboo.example_pages()["examples/index.html"])
+        self.assertEqual(json.loads(re.search(r'data-play="([^"]*)"', html).group(1).replace("&quot;", '"').replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&#x27;", "'"))["status"], pysaiyanweboo.COUNTER_STATUS)
 
 
 def ndjson(events):
@@ -2622,39 +2622,39 @@ class ReportTests(unittest.TestCase):
             {"type": "testStart", "test": {"id": 5, "name": "x", "metadata": {"skip": True, "skipReason": "XFAIL: upper case counts too"}}},
             {"type": "testDone", "testID": 5, "result": "success", "skipped": True},
         ]
-        counts = web_ui.flutter_outcomes(ndjson(events))
+        counts = pysaiyanweboo.flutter_outcomes(ndjson(events))
         self.assertEqual((counts["passed"], counts["xfailed"], counts["skipped"], counts["failed"]), (1, 2, 1, 0))
-        self.assertIn("xfailed=2", web_ui.counts_line(counts))
+        self.assertIn("xfailed=2", pysaiyanweboo.counts_line(counts))
 
     def test_bad_lines_count_as_errors_and_garbage_alone_is_not_ok(self):
         lines = [json.dumps({"type": "testStart", "test": {"id": 1, "name": "works"}}), json.dumps({"type": "testDone", "testID": 1, "result": "success"}), "{not-json", "42", ""]
-        counts = web_ui.flutter_outcomes("\n".join(lines))
+        counts = pysaiyanweboo.flutter_outcomes("\n".join(lines))
         self.assertEqual((counts["passed"], counts["error"]), (1, 2))
-        self.assertFalse(web_ui.counts_summary(counts, source="flutter-json")["ok"])
-        garbage = web_ui.flutter_outcomes("truncated...\n{broken")
+        self.assertFalse(pysaiyanweboo.counts_summary(counts, source="flutter-json")["ok"])
+        garbage = pysaiyanweboo.flutter_outcomes("truncated...\n{broken")
         self.assertEqual(garbage, {"passed": 0, "failed": 0, "skipped": 0, "xfailed": 0, "xpassed": 0, "error": 2})
-        self.assertFalse(web_ui.counts_summary(garbage, source="flutter-json")["ok"])
-        self.assertEqual(web_ui.flutter_outcomes('{"a": NaN}\n{"type": "testStart", "test": [1]}')["error"], 2, "JSON constants and a non-object test are errors")
+        self.assertFalse(pysaiyanweboo.counts_summary(garbage, source="flutter-json")["ok"])
+        self.assertEqual(pysaiyanweboo.flutter_outcomes('{"a": NaN}\n{"type": "testStart", "test": [1]}')["error"], 2, "JSON constants and a non-object test are errors")
 
     def test_the_receipt_round_trips(self):
-        payload = web_ui.counts_summary({"passed": 1, "failed": 0, "skipped": 2, "xfailed": 1, "xpassed": 0, "error": 0}, source="pytest")
+        payload = pysaiyanweboo.counts_summary({"passed": 1, "failed": 0, "skipped": 2, "xfailed": 1, "xpassed": 0, "error": 0}, source="pytest")
         loaded = json.loads(json.dumps(payload))
         self.assertEqual((loaded["ok"], loaded["counts"]["xfailed"], loaded["total"]), (True, 1, 4))
 
     def test_nothing_passed_is_not_green_and_a_failed_load_is_an_error(self):
-        self.assertFalse(web_ui.counts_summary({}, source="x")["ok"])
-        self.assertFalse(web_ui.counts_summary({"skipped": 5}, source="x")["ok"])
-        self.assertTrue(web_ui.counts_summary({"passed": 1, "skipped": 5}, source="x")["ok"])
+        self.assertFalse(pysaiyanweboo.counts_summary({}, source="x")["ok"])
+        self.assertFalse(pysaiyanweboo.counts_summary({"skipped": 5}, source="x")["ok"])
+        self.assertTrue(pysaiyanweboo.counts_summary({"passed": 1, "skipped": 5}, source="x")["ok"])
         broken = ndjson([*flutter_case(1, 0, "loading test/broken_test.dart", result="error", hidden=False), {"type": "done", "success": False}])
-        self.assertEqual(web_ui.flutter_outcomes(broken)["error"], 1)
+        self.assertEqual(pysaiyanweboo.flutter_outcomes(broken)["error"], 1)
         shown = ndjson([*flutter_case(1, 0, "loading test/ok_test.dart"), *flutter_case(2, 0, "real"), {"type": "done", "success": True}])
-        self.assertEqual(web_ui.flutter_outcomes(shown)["passed"], 1, "a successful, visible loading pseudo-test is not a test")
+        self.assertEqual(pysaiyanweboo.flutter_outcomes(shown)["passed"], 1, "a successful, visible loading pseudo-test is not a test")
         ids = ndjson([{"type": "testStart", "test": {"id": True, "name": "a", "metadata": {"skipReason": "known: x"}}}, {"type": "testDone", "testID": True, "result": "success", "skipped": True}])
-        self.assertEqual(web_ui.flutter_outcomes(ids)["skipped"], 1, "a boolean is never a test ID, so the start's skip reason is not linked to the completion")
+        self.assertEqual(pysaiyanweboo.flutter_outcomes(ids)["skipped"], 1, "a boolean is never a test ID, so the start's skip reason is not linked to the completion")
 
     # --- Flutter machine events to JUnit (python/tests/test_flutter_machine_junit.py)
     def convert(self, events):
-        return web_ui.flutter_machine_junit(ndjson(events))
+        return pysaiyanweboo.flutter_machine_junit(ndjson(events))
 
     def test_per_case_failure_is_preserved(self):
         events = [{"type": "testStart", "test": {"id": 1, "name": "passes"}}, {"type": "testDone", "testID": 1, "result": "success"},
@@ -2704,7 +2704,7 @@ class ReportTests(unittest.TestCase):
                 self.convert(events)
         for text in ("{broken", "42", "[]", '{"a": NaN}'):
             with self.assertRaises(ValueError, msg=text):
-                web_ui.flutter_machine_junit(text)
+                pysaiyanweboo.flutter_machine_junit(text)
 
     def test_the_converted_xml_is_exact_and_always_parses(self):
         events = [{"type": "suite", "suite": {"id": 0, "path": 'test/<a>&"b".dart'}}, *flutter_case(1, 0, 'x < y & "z"\ttab'), {"type": "testStart", "test": {"id": 2, "suiteID": 0, "name": "bad"}},
@@ -2720,7 +2720,7 @@ class ReportTests(unittest.TestCase):
                               '  <testcase name="empty failure" classname="test/&lt;a&gt;&amp;&quot;b&quot;.dart">\n    <error message="Flutter test error" />\n  </testcase>\n</testsuite>\n')
         root = self.parse(xml)
         self.assertEqual(root.findall("testcase")[0].get("name"), 'x < y & "z"\ttab')
-        report = web_ui.junit_report(xml)
+        report = pysaiyanweboo.junit_report(xml)
         self.assertEqual((report["counts"]["passed"], report["counts"]["failed"], report["counts"]["xfailed"], report["counts"]["error"]), (1, 1, 1, 1))
 
     def test_a_realistic_stream_gives_the_same_counts_as_junit(self):
@@ -2730,62 +2730,62 @@ class ReportTests(unittest.TestCase):
                   {"type": "testStart", "test": {"id": 6, "suiteID": 0, "name": "skip", "metadata": {"skipReason": "later"}}}, {"type": "testDone", "testID": 6, "result": "success", "skipped": True},
                   {"type": "done", "success": False}]
         text = ndjson(events)
-        self.assertEqual(web_ui.flutter_outcomes(text), web_ui.junit_report(web_ui.flutter_machine_junit(text)["xml"])["counts"])
-        self.assertEqual(web_ui.flutter_outcomes(text), {"passed": 1, "failed": 1, "skipped": 1, "xfailed": 1, "xpassed": 0, "error": 1})
+        self.assertEqual(pysaiyanweboo.flutter_outcomes(text), pysaiyanweboo.junit_report(pysaiyanweboo.flutter_machine_junit(text)["xml"])["counts"])
+        self.assertEqual(pysaiyanweboo.flutter_outcomes(text), {"passed": 1, "failed": 1, "skipped": 1, "xfailed": 1, "xpassed": 0, "error": 1})
 
     # --- JUnit validation and report (python/tests/test_validate_runner_junit.py, test_multi_test_runner.py, test_node_test_runner.py)
     def test_native_junit_cases_are_counted(self):
         xml = '<testsuite tests="3"><testcase name="pass"/><testcase name="fail"><failure message="oops"/></testcase><testcase name="skip"><skipped/></testcase></testsuite>'
-        self.assertEqual(web_ui.junit_inspect(xml), {"tests": 3, "failures": 1, "errors": 0, "skipped": 1})
+        self.assertEqual(pysaiyanweboo.junit_inspect(xml), {"tests": 3, "failures": 1, "errors": 0, "skipped": 1})
 
     def test_nested_suites_are_searched_at_any_depth(self):
         xml = '<testsuite name="root"><testsuite name="group"><testcase name="inner"/></testsuite><testcase name="top"/></testsuite>'
-        self.assertEqual(web_ui.junit_inspect(xml)["tests"], 2)
-        self.assertEqual(web_ui.junit_inspect('<testsuites><testsuite><testsuite><testcase name="deep"/></testsuite></testsuite></testsuites>')["tests"], 1)
+        self.assertEqual(pysaiyanweboo.junit_inspect(xml)["tests"], 2)
+        self.assertEqual(pysaiyanweboo.junit_inspect('<testsuites><testsuite><testsuite><testcase name="deep"/></testsuite></testsuite></testsuites>')["tests"], 1)
 
     def test_invalid_reports_fail_closed(self):
         for xml in ("<testsuite/>", "<testsuite><testcase/></testsuite>", "<testsuite><testcase name='x'></testsuite>", "<not-junit><testcase name='x'/></not-junit>", "", "   ", "<broken",
                     '<testsuite xmlns="urn:x"><testcase name="a"/></testsuite>', '<!DOCTYPE testsuite [<!ENTITY a "b">]><testsuite><testcase name="&a;"/></testsuite>',
                     '<!doctype x><testsuite><testcase name="a"/></testsuite>', '<testsuite><testcase name=""/></testsuite>', "<testsuites/>"):
             with self.assertRaises(ValueError, msg=xml):
-                web_ui.junit_cases(xml)
+                pysaiyanweboo.junit_cases(xml)
         with self.assertRaises(ValueError):
-            web_ui.junit_cases("<testsuite>" + '<testcase name="a"/>' * 60000 + "</testsuite>")
+            pysaiyanweboo.junit_cases("<testsuite>" + '<testcase name="a"/>' * 60000 + "</testsuite>")
         with self.assertRaises(ValueError):
-            web_ui.junit_cases(None)
-        self.assertEqual(len(web_ui.junit_cases("﻿" + '<testsuite><testcase name="a"/></testsuite>')), 1)
-        self.assertEqual(len(web_ui.junit_cases('<?xml version="1.0" encoding="UTF-8"?>\n<testsuite><testcase name="a"/></testsuite>')), 1)
+            pysaiyanweboo.junit_cases(None)
+        self.assertEqual(len(pysaiyanweboo.junit_cases("﻿" + '<testsuite><testcase name="a"/></testsuite>')), 1)
+        self.assertEqual(len(pysaiyanweboo.junit_cases('<?xml version="1.0" encoding="UTF-8"?>\n<testsuite><testcase name="a"/></testsuite>')), 1)
 
     def test_a_report_counts_outcomes_and_keeps_messages_out(self):
         xml = ('<testsuites><testsuite><testcase classname="c" name="ok"/><testcase classname="c" name="bad"><failure message="SECRET_TOKEN">trace</failure></testcase>'
                '<testcase classname="c" name="boom"><error>text only</error></testcase><testcase name="gap"><skipped message="Known: later"/></testcase>'
                '<testcase name="xf"><skipped type="pytest.xfail" message="reason"/></testcase><testcase name="skip"><skipped/></testcase></testsuite></testsuites>')
-        report = web_ui.junit_report(xml)
+        report = pysaiyanweboo.junit_report(xml)
         self.assertEqual(report["counts"], {"passed": 1, "failed": 1, "skipped": 1, "xfailed": 2, "xpassed": 0, "error": 1})
         self.assertEqual((report["total"], report["ok"], report["schema"]), (6, False, "junit-report/1"))
         self.assertEqual([(f["name"], f["kind"]) for f in report["failures"]], [("bad", "failure"), ("boom", "error")])
         self.assertEqual(report["failures"][0]["message_sha256"], hashlib.sha256(b"SECRET_TOKEN").hexdigest())
         self.assertEqual(report["failures"][1]["message_sha256"], hashlib.sha256(b"text only").hexdigest())
         self.assertNotIn("SECRET_TOKEN", json.dumps(report))
-        shown = web_ui.junit_report(xml, messages=True)
+        shown = pysaiyanweboo.junit_report(xml, messages=True)
         self.assertEqual([f["message"] for f in shown["failures"]], ["SECRET_TOKEN", "text only"])
 
     def test_the_node_report_golden(self):
         xml = '<testsuites><testcase name="ok"/><testcase name="bad"><failure message="boom">stack</failure></testcase><testcase name="skip"><skipped/></testcase></testsuites>'
-        report = web_ui.junit_report(xml, messages=True)
+        report = pysaiyanweboo.junit_report(xml, messages=True)
         self.assertEqual((report["counts"]["passed"], report["counts"]["failed"], report["counts"]["skipped"], report["total"]), (1, 1, 1, 3))
         self.assertEqual([(f["name"], f["message"]) for f in report["failures"]], [("bad", "boom")])
-        self.assertEqual([c["name"] for c in web_ui.junit_cases(xml)], ["ok", "bad", "skip"])
+        self.assertEqual([c["name"] for c in pysaiyanweboo.junit_cases(xml)], ["ok", "bad", "skip"])
 
     def test_a_message_longer_than_the_limit_is_cut_by_characters_not_bytes(self):
         xml = f'<testsuite><testcase classname="{"é" * 300}" name="{"😀" * 300}"><failure message="{"x" * 3000}"/></testcase></testsuite>'
-        failure = web_ui.junit_report(xml, messages=True)["failures"][0]
+        failure = pysaiyanweboo.junit_report(xml, messages=True)["failures"][0]
         self.assertEqual((len(failure["class"]), len(failure["name"]), len(failure["message"])), (200, 200, 2000))
         self.assertEqual(failure["name"], "😀" * 200)
 
     def test_text_after_a_comment_or_cdata_is_the_message(self):
         xml = '<testsuite><testcase name="a"><failure>one<!-- c -->two<![CDATA[ <three> ]]><b/>ignored</failure></testcase></testsuite>'
-        self.assertEqual(web_ui.junit_cases(xml)[0]["message"], "onetwo <three>")
+        self.assertEqual(pysaiyanweboo.junit_cases(xml)[0]["message"], "onetwo <three>")
 
     # --- failure history (python/tests/test_junit_history.py)
     def sample(self, test="test_one", kind="failure", report="run-specific"):
@@ -2793,16 +2793,16 @@ class ReportTests(unittest.TestCase):
                 "value": {"class": "test_oracle", "test": test, "kind": kind}}
 
     def test_the_fingerprint_ignores_run_specific_context(self):
-        a = web_ui.junit_history_load(json.dumps(self.sample(report="first")) + "\n")
-        b = web_ui.junit_history_load(json.dumps(self.sample(report="second")) + "\n")
+        a = pysaiyanweboo.junit_history_load(json.dumps(self.sample(report="first")) + "\n")
+        b = pysaiyanweboo.junit_history_load(json.dumps(self.sample(report="second")) + "\n")
         self.assertEqual(a[0]["fingerprint"], b[0]["fingerprint"])
         self.assertTrue(a[0]["fingerprint"].startswith("junit-basic-v1:"))
         token = json.dumps({"class": "test_oracle", "kind": "failure", "repository": "myon-bioinformatics/flutter_navigation_basic", "test": "test_one"}, separators=(",", ":"))
         self.assertEqual(a[0]["fingerprint"], "junit-basic-v1:" + hashlib.sha256(token.encode()).hexdigest())
 
     def test_new_recurring_and_resolved_with_counts(self):
-        rows = lambda name, count: web_ui.junit_history_load([self.sample(name)] * count)
-        report = web_ui.junit_history(rows("same", 2) + rows("new", 1), rows("old", 1) + rows("same", 1), commit_sha=self.SHA, run_id="42", previous_commit_sha="b" * 40, previous_run_id="41")
+        rows = lambda name, count: pysaiyanweboo.junit_history_load([self.sample(name)] * count)
+        report = pysaiyanweboo.junit_history(rows("same", 2) + rows("new", 1), rows("old", 1) + rows("same", 1), commit_sha=self.SHA, run_id="42", previous_commit_sha="b" * 40, previous_run_id="41")
         self.assertEqual(report["summary"], {"new": 1, "recurring": 1, "resolved": 1})
         recurring = next(x for x in report["findings"] if x["status"] == "recurring")
         self.assertEqual((recurring["previous_count"], recurring["current_count"]), (1, 2))
@@ -2810,38 +2810,38 @@ class ReportTests(unittest.TestCase):
         self.assertEqual((report["schema"], report["fingerprint_scope"]), ("junit-history/1", "repository+class+test+kind (not root cause)"))
 
     def test_an_error_and_a_failure_have_distinct_fingerprints(self):
-        found = web_ui.junit_history_load([self.sample(kind=k) for k in ("failure", "error")])
+        found = pysaiyanweboo.junit_history_load([self.sample(kind=k) for k in ("failure", "error")])
         self.assertEqual(len({x["fingerprint"] for x in found}), 2)
 
     def test_bad_history_input_is_an_error(self):
         for kwargs in ({"commit_sha": "invalid", "run_id": "42"}, {"commit_sha": self.SHA, "run_id": "4x"}, {"commit_sha": self.SHA, "run_id": "42", "previous_commit_sha": "zz"},
                        {"commit_sha": self.SHA, "run_id": "42", "previous_run_id": "-1"}, {"commit_sha": self.SHA + "\n", "run_id": "42"}):
             with self.assertRaises(ValueError, msg=kwargs):
-                web_ui.junit_history([], [], **kwargs)
+                pysaiyanweboo.junit_history([], [], **kwargs)
         for records in ([{"category": "test_failure", "context": {}, "value": {}}], [{"category": "test_failure", "context": [], "value": {}}],
                         [{"category": "test_failure", "context": {"repository": "a/b"}, "value": {"class": "", "test": "t", "kind": "failure"}}], '{"category": "test_failure"}\n{broken'):
             with self.assertRaises(ValueError, msg=records):
-                web_ui.junit_history_load(records)
-        self.assertEqual(web_ui.junit_history_load([{"category": "other"}, 5, None]), [])
+                pysaiyanweboo.junit_history_load(records)
+        self.assertEqual(pysaiyanweboo.junit_history_load([{"category": "other"}, 5, None]), [])
 
     def test_identities_come_straight_from_a_report_without_parameters_or_messages(self):
         xml = ('<testsuite><testcase classname="tests.test_a[py3]" name="test_x[1-2]"><failure message="m1"/></testcase><testcase classname="tests.test_a" name="test_x[3-4]"><error message="m2"/></testcase>'
                '<testcase name="solo"><failure/></testcase><testcase name="fine"/></testsuite>')
-        got = web_ui.junit_failure_records(xml, "o/n")
+        got = pysaiyanweboo.junit_failure_records(xml, "o/n")
         self.assertEqual([r["value"] for r in got["records"]], [{"class": "tests.test_a", "test": "test_x", "kind": "failure"}, {"class": "tests.test_a", "test": "test_x", "kind": "error"},
                                                                    {"class": "(none)", "test": "solo", "kind": "failure"}])
         self.assertFalse(got["truncated"])
         self.assertNotIn("m1", json.dumps(got))
         many = '<testsuite>' + "".join(f'<testcase name="t{i}"><failure/></testcase>' for i in range(7)) + "</testsuite>"
-        self.assertEqual((len(web_ui.junit_failure_records(many, "o/n", max_cases=5)["records"]), web_ui.junit_failure_records(many, "o/n", max_cases=5)["truncated"]), (5, True))
-        self.assertFalse(web_ui.junit_failure_records(many, "o/n", max_cases=7)["truncated"])
+        self.assertEqual((len(pysaiyanweboo.junit_failure_records(many, "o/n", max_cases=5)["records"]), pysaiyanweboo.junit_failure_records(many, "o/n", max_cases=5)["truncated"]), (5, True))
+        self.assertFalse(pysaiyanweboo.junit_failure_records(many, "o/n", max_cases=7)["truncated"])
         for repo in ("", "no-slash", "a/b/c", "a/ b", None):
             with self.assertRaises(ValueError, msg=repo):
-                web_ui.junit_failure_records(xml, repo)
+                pysaiyanweboo.junit_failure_records(xml, repo)
 
     def test_two_reports_diff_into_new_recurring_and_resolved(self):
         suite = lambda *names: "<testsuite>" + "".join(f'<testcase classname="c" name="{n}"><failure/></testcase>' for n in names) + '<testcase name="fine"/></testsuite>'
-        diff = web_ui.junit_diff(suite("same", "new", "same[2]"), suite("same", "gone"))
+        diff = pysaiyanweboo.junit_diff(suite("same", "new", "same[2]"), suite("same", "gone"))
         self.assertEqual(diff["summary"], {"new": 1, "recurring": 1, "resolved": 1})
         recurring = next(f for f in diff["findings"] if f["status"] == "recurring")
         self.assertEqual((recurring["current_count"], recurring["previous_count"]), (2, 1), "a parameterized failure shares its identity")
@@ -2851,32 +2851,32 @@ class ReportTests(unittest.TestCase):
     def test_the_failure_ledger_accumulates_without_raw_text_and_rejects_corruption(self):
         failure = {"kind": "failure", "message_sha256": "a" * 64}
         attempts = [{"failures": [failure]}]
-        once = web_ui.failure_ledger_update(None, "node", attempts)
-        twice = web_ui.failure_ledger_update(once, "node", attempts)
+        once = pysaiyanweboo.failure_ledger_update(None, "node", attempts)
+        twice = pysaiyanweboo.failure_ledger_update(once, "node", attempts)
         self.assertEqual((once["schema"], next(iter(once["patterns"].values()))["occurrences"], next(iter(twice["patterns"].values()))["occurrences"]), ("failure-patterns/1", 1, 2))
         self.assertEqual(next(iter(once["patterns"].values()))["occurrences"], 1, "the input ledger is not changed")
         for broken in ({"schema": "x", "patterns": {}}, {"schema": "failure-patterns/1", "patterns": []}, [], "text"):
             with self.assertRaises(ValueError, msg=broken):
-                web_ui.failure_ledger_update(broken, "node", attempts)
+                pysaiyanweboo.failure_ledger_update(broken, "node", attempts)
         many = [{"failures": [{"kind": "failure", "message_sha256": f"{i:064x}"} for i in range(501)]}]
         with self.assertRaises(ValueError):
-            web_ui.failure_ledger_update(None, "node", many)
+            pysaiyanweboo.failure_ledger_update(None, "node", many)
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "patterns.json"
-            web_ui.failure_ledger_file(path, "node", attempts)
-            web_ui.failure_ledger_file(path, "node", attempts)
+            pysaiyanweboo.failure_ledger_file(path, "node", attempts)
+            pysaiyanweboo.failure_ledger_file(path, "node", attempts)
             self.assertEqual(next(iter(json.loads(path.read_text())["patterns"].values()))["occurrences"], 2)
             path.write_text("{broken")
             with self.assertRaises(ValueError):
-                web_ui.failure_ledger_file(path, "node", attempts)
+                pysaiyanweboo.failure_ledger_file(path, "node", attempts)
             self.assertEqual(path.read_text(), "{broken")
 
     def test_attempt_records_say_when_a_retry_recovered(self):
         first, second = {"exit_code": 1}, {"exit_code": 0}
-        self.assertEqual({k: web_ui.attempt_history("deno", ["a.ts"], [first, second])[k] for k in ("initial_failed", "flaky_recovered")}, {"initial_failed": True, "flaky_recovered": True})
-        self.assertFalse(web_ui.attempt_history("deno", ["a.ts"], [first, first])["flaky_recovered"])
-        self.assertFalse(web_ui.attempt_history("deno", ["a.ts"], [second])["initial_failed"])
-        self.assertFalse(web_ui.attempt_history("deno", ["a.ts"], [first])["flaky_recovered"])
+        self.assertEqual({k: pysaiyanweboo.attempt_history("deno", ["a.ts"], [first, second])[k] for k in ("initial_failed", "flaky_recovered")}, {"initial_failed": True, "flaky_recovered": True})
+        self.assertFalse(pysaiyanweboo.attempt_history("deno", ["a.ts"], [first, first])["flaky_recovered"])
+        self.assertFalse(pysaiyanweboo.attempt_history("deno", ["a.ts"], [second])["initial_failed"])
+        self.assertFalse(pysaiyanweboo.attempt_history("deno", ["a.ts"], [first])["flaky_recovered"])
 
     # --- allowlisted runners (python/tests/test_multi_test_runner.py, test_node_test_runner.py)
     def test_runner_commands_are_allowlisted(self):
@@ -2886,25 +2886,25 @@ class ReportTests(unittest.TestCase):
             for file in ("e2e/test.spec.ts", "test.ts", "test_pw.py"):
                 (root / file).write_text("test")
             report = root / "report.xml"
-            deno, cwd, env = web_ui.runner_command("deno", root=root, files=["test.ts"], report=report)
+            deno, cwd, env = pysaiyanweboo.runner_command("deno", root=root, files=["test.ts"], report=report)
             self.assertEqual((deno[:3], cwd, env), (["deno", "test", "--junit-path"], root.resolve(), {}))
-            node, cwd, env = web_ui.runner_command("playwright-node", root=root, files=["e2e/test.spec.ts"], report=report)
+            node, cwd, env = pysaiyanweboo.runner_command("playwright-node", root=root, files=["e2e/test.spec.ts"], report=report)
             self.assertEqual((node[:4], cwd, env["PLAYWRIGHT_JUNIT_OUTPUT_FILE"]), (["npx", "--no-install", "playwright", "test"], root.resolve() / "e2e", str(report.resolve())))
             self.assertEqual(node[-1], "test.spec.ts")
-            py, _, _ = web_ui.runner_command("playwright-python", root=root, files=["test_pw.py"], report=report)
+            py, _, _ = pysaiyanweboo.runner_command("playwright-python", root=root, files=["test_pw.py"], report=report)
             self.assertEqual(py[:3], [sys.executable, "-m", "pytest"])
             for files in ([], ["../escape.py"], ["not-found.ts"]):
                 with self.assertRaises(ValueError, msg=files):
-                    web_ui.runner_command("deno", root=root, files=files, report=report)
+                    pysaiyanweboo.runner_command("deno", root=root, files=files, report=report)
             (root.parent / "outside.spec.ts").write_text("test")
             for runner, files in (("playwright-node", ["test.ts"]), ("make", ["test.ts"]), ("deno", ["../outside.spec.ts"])):
                 with self.assertRaises(ValueError, msg=runner):
-                    web_ui.runner_command(runner, root=root, files=files, report=report)
+                    pysaiyanweboo.runner_command(runner, root=root, files=files, report=report)
             (root.parent / "outside.spec.ts").unlink()
 
     def suite(self, tmp, invoke, **kwargs):
         (tmp / "test_pw.py").write_text("test")
-        return web_ui.run_test_suite("playwright-python", root=tmp, files=["test_pw.py"], report=kwargs.pop("report", tmp / "r.xml"), history=kwargs.pop("history", tmp / "history.json"),
+        return pysaiyanweboo.run_test_suite("playwright-python", root=tmp, files=["test_pw.py"], report=kwargs.pop("report", tmp / "r.xml"), history=kwargs.pop("history", tmp / "history.json"),
                                      invoke=invoke, **kwargs)
 
     def test_a_retry_keeps_the_first_failure_and_hashes_the_message(self):
@@ -2982,17 +2982,17 @@ class ReportTests(unittest.TestCase):
             js.write_text("import test from 'node:test';\ntest('passes', () => {});\ntest('fails', () => {throw new Error('sentinel failure')});\n")
             report, receipt = tmp / "node.xml", tmp / "summary.json"
             with mock.patch("sys.stdout"):
-                self.assertEqual(web_ui.node_test_run(root=tmp, files=[js.name], report=report, receipt=receipt), 1)
+                self.assertEqual(pysaiyanweboo.node_test_run(root=tmp, files=[js.name], report=report, receipt=receipt), 1)
                 data = json.loads(receipt.read_text())
                 self.assertEqual((data["failed"], data["passed"]), (1, 1))
                 self.assertIn("sentinel failure", data["failures"][0]["message"])
-                self.assertEqual(web_ui.node_test_run(root=tmp, files=[js.name], report=report, receipt=receipt, name_pattern="^passes$"), 0)
+                self.assertEqual(pysaiyanweboo.node_test_run(root=tmp, files=[js.name], report=report, receipt=receipt, name_pattern="^passes$"), 0)
                 self.assertEqual(json.loads(receipt.read_text())["failed"], 0)
                 receipt.write_text('{"ok":true}')
-                self.assertNotEqual(web_ui.node_test_run(root=tmp, files=[js.name], report=report, receipt=receipt, name_pattern="^never-matches$"), 0)
+                self.assertNotEqual(pysaiyanweboo.node_test_run(root=tmp, files=[js.name], report=report, receipt=receipt, name_pattern="^never-matches$"), 0)
                 self.assertFalse(receipt.exists())
                 for style in (js.name, "./" + js.name, str(js)):
-                    self.assertNotEqual(web_ui.node_test_run(root=tmp, files=[style], report=report, name_pattern="^never-matches$"), 0, style)
+                    self.assertNotEqual(pysaiyanweboo.node_test_run(root=tmp, files=[style], report=report, name_pattern="^never-matches$"), 0, style)
 
     def test_node_runner_fails_closed_without_node_or_files(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3001,15 +3001,15 @@ class ReportTests(unittest.TestCase):
             report.write_text('<testsuites><testcase name="stale"/></testsuites>')
             receipt.write_text('{"ok":true}')
             with mock.patch("sys.stderr"):
-                self.assertEqual(web_ui.node_test_run(root=tmp, files=["x.test.mjs"], report=report, receipt=receipt, node="__node_does_not_exist__"), 127)
+                self.assertEqual(pysaiyanweboo.node_test_run(root=tmp, files=["x.test.mjs"], report=report, receipt=receipt, node="__node_does_not_exist__"), 127)
                 self.assertEqual((report.exists(), receipt.exists()), (False, False))
-                self.assertEqual(web_ui.node_test_run(root=tmp, files=[], report=report), 2)
+                self.assertEqual(pysaiyanweboo.node_test_run(root=tmp, files=[], report=report), 2)
 
     # --- a child that is meant to fail (python/tests/test_expected_child_failure.py)
     def child(self, expect, code, **kwargs):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "evidence"
-            status, receipt = web_ui.expected_child_failure([sys.executable, "-c", code], expect_exit=expect, output_dir=out, **kwargs)
+            status, receipt = pysaiyanweboo.expected_child_failure([sys.executable, "-c", code], expect_exit=expect, output_dir=out, **kwargs)
             return status, receipt, {n: (out / n).read_bytes() for n in ("stdout.bin", "stderr.bin")}, json.loads((out / "receipt.json").read_text())
 
     def test_an_expected_failure_is_recorded_without_failing_the_outer_test(self):
@@ -3026,11 +3026,11 @@ class ReportTests(unittest.TestCase):
     def test_zero_cannot_be_an_expected_failure(self):
         for expect in ([0], [], [7, 0]):
             with self.assertRaises(ValueError, msg=expect):
-                web_ui.expected_child_failure([sys.executable, "-c", "pass"], expect_exit=expect, output_dir=Path(tempfile.gettempdir()) / "unused-evidence")
+                pysaiyanweboo.expected_child_failure([sys.executable, "-c", "pass"], expect_exit=expect, output_dir=Path(tempfile.gettempdir()) / "unused-evidence")
         with self.assertRaises(ValueError):
-            web_ui.expected_child_failure([sys.executable], expect_exit=[7], output_dir=Path(tempfile.gettempdir()) / "unused-evidence", timeout=0)
+            pysaiyanweboo.expected_child_failure([sys.executable], expect_exit=[7], output_dir=Path(tempfile.gettempdir()) / "unused-evidence", timeout=0)
         with self.assertRaises(ValueError):
-            web_ui.expected_child_failure([], expect_exit=[7], output_dir=Path(tempfile.gettempdir()) / "unused-evidence")
+            pysaiyanweboo.expected_child_failure([], expect_exit=[7], output_dir=Path(tempfile.gettempdir()) / "unused-evidence")
 
     def test_a_timeout_is_bounded_and_recorded(self):
         status, receipt, _, _ = self.child([7], "import time; time.sleep(5)", timeout=0.2)
@@ -3044,21 +3044,21 @@ class ReportTests(unittest.TestCase):
     # --- what the page shows
     def test_the_page_reads_either_kind_and_explains_what_it_could_not_do(self):
         junit = '<testsuite><testcase name="a"/><testcase classname="c" name="b"><failure message="m"/></testcase></testsuite>'
-        read = web_ui.report_read(junit)
+        read = pysaiyanweboo.report_read(junit)
         self.assertEqual((read["kind"], read["line"], read["ok"], len(read["failures"])), ("junit", "passed=1 failed=1 skipped=0 xfailed=0 xpassed=0 error=0 total=2 ok=false", False, 1))
         stream = ndjson([{"type": "suite", "suite": {"id": 0, "path": "t.dart"}}, *flutter_case(1, 0, "ok"), *flutter_case(2, 0, "bad", result="failure"), {"type": "done", "success": False}])
-        flutter = web_ui.report_read(stream)
+        flutter = pysaiyanweboo.report_read(stream)
         self.assertEqual((flutter["kind"], flutter["counts"]["failed"], flutter["failures"][0]["name"], flutter["junit"] is not None, flutter["convert_error"]), ("flutter", 1, "bad", True, None))
-        partial = web_ui.report_read(ndjson(flutter_case(1, 0, "ok")))
+        partial = pysaiyanweboo.report_read(ndjson(flutter_case(1, 0, "ok")))
         self.assertEqual((partial["junit"], partial["convert_error"], partial["failures"]), (None, "incomplete Flutter machine report", []))
-        self.assertIn("diff", web_ui.report_read(junit, junit))
-        self.assertNotIn("diff", web_ui.report_read(junit, "   "))
+        self.assertIn("diff", pysaiyanweboo.report_read(junit, junit))
+        self.assertNotIn("diff", pysaiyanweboo.report_read(junit, "   "))
         with self.assertRaises(ValueError):
-            web_ui.report_read(stream, junit)
+            pysaiyanweboo.report_read(stream, junit)
         for text in ("", "plain words", "[1]"):
             with self.assertRaises(ValueError, msg=text):
-                web_ui.report_read(text)
-        self.assertEqual([web_ui.report_kind(t) for t in ("<a/>", "  \n<a/>", "﻿<a/>", "{}", " {", "x", "")], ["junit", "junit", "junit", "flutter", "flutter", None, None])
+                pysaiyanweboo.report_read(text)
+        self.assertEqual([pysaiyanweboo.report_kind(t) for t in ("<a/>", "  \n<a/>", "﻿<a/>", "{}", " {", "x", "")], ["junit", "junit", "junit", "flutter", "flutter", None, None])
 
     def test_the_command_line_reads_reports_and_converts_events(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3083,7 +3083,7 @@ class ReportTests(unittest.TestCase):
             counts = run("--flutter-events", str(events), "--to", str(tmp / "out.xml"))
             self.assertEqual(counts.returncode, 0, counts.stderr)
             self.assertIn("passed=1", counts.stdout)
-            self.assertEqual(web_ui.junit_inspect((tmp / "out.xml").read_text())["tests"], 1)
+            self.assertEqual(pysaiyanweboo.junit_inspect((tmp / "out.xml").read_text())["tests"], 1)
             events.write_text("{broken")
             self.assertEqual(run("--flutter-events", str(events)).returncode, 1)
             self.assertEqual(run("--flutter-events", str(events), "--to", str(tmp / "never.xml")).returncode, 2)
@@ -3102,7 +3102,7 @@ class McpTests(unittest.TestCase):
     META = "io.modelcontextprotocol/protocolVersion"
 
     def routes(self, session="sess-1", **kwargs):
-        return web_ui.McpRoutes(web_ui.McpFoundation(lambda: session), **kwargs)
+        return pysaiyanweboo.McpRoutes(pysaiyanweboo.McpFoundation(lambda: session), **kwargs)
 
     def post(self, routes, body, headers=None, method="POST", path="/mcp"):
         return routes.handle(method, path, headers or {}, json.dumps(body) if not isinstance(body, str) and body is not None else body)
@@ -3121,17 +3121,17 @@ class McpTests(unittest.TestCase):
 
     # --- JSON-RPC
     def test_a_request_is_parsed_or_refused(self):
-        ok = web_ui.rpc_request_parse({"jsonrpc": "2.0", "id": 1, "method": "ping"})
-        self.assertEqual((ok["method"], web_ui.rpc_is_notification(ok)), ("ping", False))
-        self.assertTrue(web_ui.rpc_is_notification(web_ui.rpc_request_parse('{"jsonrpc":"2.0","method":"x"}')))
-        self.assertTrue(web_ui.rpc_is_notification(web_ui.rpc_request_parse('{"jsonrpc":"2.0","id":null,"method":"x"}')))
+        ok = pysaiyanweboo.rpc_request_parse({"jsonrpc": "2.0", "id": 1, "method": "ping"})
+        self.assertEqual((ok["method"], pysaiyanweboo.rpc_is_notification(ok)), ("ping", False))
+        self.assertTrue(pysaiyanweboo.rpc_is_notification(pysaiyanweboo.rpc_request_parse('{"jsonrpc":"2.0","method":"x"}')))
+        self.assertTrue(pysaiyanweboo.rpc_is_notification(pysaiyanweboo.rpc_request_parse('{"jsonrpc":"2.0","id":null,"method":"x"}')))
         for bad in ({"jsonrpc": "1.0", "method": "ping"}, {"jsonrpc": "2.0"}, {"jsonrpc": "2.0", "method": ""}, {"jsonrpc": "2.0", "method": 5}, "[1]", "{broken", "NaN", '{"jsonrpc":"2.0","method":"a","x":NaN}', None, 42, []):
-            self.assertIsNone(web_ui.rpc_request_parse(bad), bad)
-        self.assertEqual(web_ui.rpc_request("ping"), {"jsonrpc": "2.0", "method": "ping"})
-        self.assertEqual(list(web_ui.rpc_request("a", id=1, params={})), ["jsonrpc", "id", "method", "params"])
+            self.assertIsNone(pysaiyanweboo.rpc_request_parse(bad), bad)
+        self.assertEqual(pysaiyanweboo.rpc_request("ping"), {"jsonrpc": "2.0", "method": "ping"})
+        self.assertEqual(list(pysaiyanweboo.rpc_request("a", id=1, params={})), ["jsonrpc", "id", "method", "params"])
 
     def test_a_response_must_have_exactly_one_of_result_and_error(self):
-        parse = web_ui.rpc_response_parse
+        parse = pysaiyanweboo.rpc_response_parse
         for bad in ({"jsonrpc": "1.0", "id": 1, "result": {"ok": True}}, {"jsonrpc": "2.0", "id": 1, "result": {}, "error": {"code": -1, "message": "x"}}, {"jsonrpc": "2.0", "id": 1},
                     {"jsonrpc": "2.0", "id": 1, "error": {"code": "-32603", "message": "x"}}, {"jsonrpc": "2.0", "id": 1, "error": {"code": -32603, "message": 42}},
                     {"jsonrpc": "2.0", "id": 1, "error": {"message": "x"}}, {"jsonrpc": "2.0", "id": 1, "error": {"code": -32603}}, {"jsonrpc": "2.0", "id": 1, "error": "text"},
@@ -3147,28 +3147,28 @@ class McpTests(unittest.TestCase):
 
     # --- PKCE and OAuth metadata
     def test_pkce_matches_rfc_7636_appendix_b(self):
-        self.assertEqual(web_ui.pkce_challenge_s256("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
-        pair = web_ui.pkce_pair(web_ui.mulberry32(42).__next__, 64)
-        self.assertEqual((len(pair["codeVerifier"]), pair["codeChallengeMethod"], pair["codeChallenge"]), (64, "S256", web_ui.pkce_challenge_s256(pair["codeVerifier"])))
+        self.assertEqual(pysaiyanweboo.pkce_challenge_s256("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+        pair = pysaiyanweboo.pkce_pair(pysaiyanweboo.mulberry32(42).__next__, 64)
+        self.assertEqual((len(pair["codeVerifier"]), pair["codeChallengeMethod"], pair["codeChallenge"]), (64, "S256", pysaiyanweboo.pkce_challenge_s256(pair["codeVerifier"])))
         self.assertTrue(re.fullmatch(r"[A-Za-z0-9._~-]{64}", pair["codeVerifier"]))
-        self.assertEqual(len(web_ui.pkce_pair(None, 43)["codeVerifier"]), 43)
-        self.assertEqual(len(web_ui.pkce_pair(None, 128)["codeVerifier"]), 128)
+        self.assertEqual(len(pysaiyanweboo.pkce_pair(None, 43)["codeVerifier"]), 43)
+        self.assertEqual(len(pysaiyanweboo.pkce_pair(None, 128)["codeVerifier"]), 128)
         for length in (42, 129, 0):
             with self.assertRaises(ValueError):
-                web_ui.pkce_pair(None, length)
+                pysaiyanweboo.pkce_pair(None, length)
 
     AS_DOC = {"issuer": "https://auth.example.test/", "authorization_endpoint": "https://auth.example.test/authorize", "token_endpoint": "https://auth.example.test/token", "response_types_supported": ["code"]}
 
     def test_oauth_metadata_never_invents_what_a_server_left_out(self):
-        full = web_ui.oauth_server_metadata({**self.AS_DOC, "code_challenge_methods_supported": ["S256"], "scopes_supported": ["mcp"]})
+        full = pysaiyanweboo.oauth_server_metadata({**self.AS_DOC, "code_challenge_methods_supported": ["S256"], "scopes_supported": ["mcp"]})
         self.assertTrue(full["supportsPkceS256"])
-        omitted = web_ui.oauth_server_metadata(self.AS_DOC)
+        omitted = pysaiyanweboo.oauth_server_metadata(self.AS_DOC)
         self.assertEqual((omitted["code_challenge_methods_supported"], omitted["supportsPkceS256"], omitted["token_endpoint_auth_methods_supported"], omitted["grant_types_supported"]),
                          ([], False, ["client_secret_basic"], ["authorization_code", "implicit"]))
-        empty = web_ui.oauth_server_metadata({**self.AS_DOC, "code_challenge_methods_supported": [], "token_endpoint_auth_methods_supported": ["none"]})
+        empty = pysaiyanweboo.oauth_server_metadata({**self.AS_DOC, "code_challenge_methods_supported": [], "token_endpoint_auth_methods_supported": ["none"]})
         self.assertEqual((empty["supportsPkceS256"], empty["token_endpoint_auth_methods_supported"]), (False, ["none"]))
-        self.assertTrue(web_ui.oauth_server_metadata({**self.AS_DOC, "code_challenge_methods_supported": ["s256"]})["supportsPkceS256"])
-        prm = web_ui.oauth_resource_metadata({"resource": "https://mcp.example.test/", "authorization_servers": ["https://auth.example.test/"], "scopes_supported": ["mcp"]})
+        self.assertTrue(pysaiyanweboo.oauth_server_metadata({**self.AS_DOC, "code_challenge_methods_supported": ["s256"]})["supportsPkceS256"])
+        prm = pysaiyanweboo.oauth_resource_metadata({"resource": "https://mcp.example.test/", "authorization_servers": ["https://auth.example.test/"], "scopes_supported": ["mcp"]})
         self.assertEqual((len(prm["authorization_servers"]), prm["bearer_methods_supported"]), (1, ["header"]))
 
     def test_oauth_metadata_rejects_the_wrong_types(self):
@@ -3177,14 +3177,14 @@ class McpTests(unittest.TestCase):
                     {**self.AS_DOC, "registration_endpoint": 123}, {**self.AS_DOC, "registration_endpoint": ""}, {**self.AS_DOC, "issuer": ""}, {**self.AS_DOC, "token_endpoint": None},
                     {**self.AS_DOC, "scopes_supported": None}, {**self.AS_DOC, "code_challenge_methods_supported": "S256"}, [], "x"):
             with self.assertRaises(ValueError, msg=bad):
-                web_ui.oauth_server_metadata(bad)
+                pysaiyanweboo.oauth_server_metadata(bad)
         resource = {"resource": "https://mcp.example.test/", "authorization_servers": ["https://auth.example.test/"]}
         for bad in ({**resource, "authorization_servers": ["https://auth.example.test/", 1]}, {**resource, "authorization_servers": [""]}, {**resource, "authorization_servers": []},
                     {**resource, "resource_name": 9}, {**resource, "resource": ""}, {**resource, "bearer_methods_supported": "header"}, {"authorization_servers": ["a"]}, []):
             with self.assertRaises(ValueError, msg=bad):
-                web_ui.oauth_resource_metadata(bad)
-        self.assertEqual(web_ui.oauth_resource_metadata({**resource, "scopes_supported": None, "bearer_methods_supported": None})["bearer_methods_supported"], ["header"])
-        self.assertEqual(str(self.fail_message(web_ui.oauth_server_metadata, {**without, "issuer": ""})), "missing OAuth metadata field: response_types_supported", "Dart checks the arrays before the issuer")
+                pysaiyanweboo.oauth_resource_metadata(bad)
+        self.assertEqual(pysaiyanweboo.oauth_resource_metadata({**resource, "scopes_supported": None, "bearer_methods_supported": None})["bearer_methods_supported"], ["header"])
+        self.assertEqual(str(self.fail_message(pysaiyanweboo.oauth_server_metadata, {**without, "issuer": ""})), "missing OAuth metadata field: response_types_supported", "Dart checks the arrays before the issuer")
 
     @staticmethod
     def fail_message(fn, *args):
@@ -3196,11 +3196,11 @@ class McpTests(unittest.TestCase):
 
     # --- Bearer audience
     def jwt(self, aud, exp):
-        return web_ui.demo_bearer_token(aud, exp).rsplit(".", 1)[0] + ".sig"
+        return pysaiyanweboo.demo_bearer_token(aud, exp).rsplit(".", 1)[0] + ".sig"
 
     def test_bearer_audience_missing_expired_wrong_and_ok(self):
         now = 1789387200       # 2026-09-14 12:00 UTC, the Dart tests' clock
-        inspect = lambda header, aud="https://mcp.example.test": web_ui.bearer_inspect(header, aud, now)["status"]
+        inspect = lambda header, aud="https://mcp.example.test": pysaiyanweboo.bearer_inspect(header, aud, now)["status"]
         self.assertEqual(inspect(None), "missing")
         self.assertEqual(inspect(""), "missing")
         self.assertEqual(inspect("Bearer " + self.jwt("https://mcp.example.test", 1)), "expired")
@@ -3215,33 +3215,33 @@ class McpTests(unittest.TestCase):
         self.assertEqual(inspect("Bearer " + self.jwt("https://other.test", 1)), "expired", "expiry is reported before the audience")
         self.assertEqual(inspect("Bearer " + self.jwt("https://mcp.example.test", now)), "expired", "an expiry that is not after now is expired")
         self.assertEqual(inspect("Bearer " + self.jwt("https://mcp.example.test", now + 1)), "ok")
-        self.assertEqual(web_ui.bearer_inspect("Bearer " + self.jwt("a", 9999999999), "a", now), {"status": "ok", "audience": "a", "expires_at": 9999999999})
+        self.assertEqual(pysaiyanweboo.bearer_inspect("Bearer " + self.jwt("a", 9999999999), "a", now), {"status": "ok", "audience": "a", "expires_at": 9999999999})
         for bad in ("not-a-jwt", "Bearer not-a-jwt", "Bearer", "Basic abc.def.ghi", "Bearer a b", " Bearer x.y.z", "Bearer x.%%%.z", "Bearer x.W10.z", "Bearer x.bm90LWpzb24.z"):
             self.assertEqual(inspect(bad), "malformed", bad)
         self.assertEqual(inspect("Bearer x.e30=.z"), "wrong_audience", "a payload with no aud has no audience to match")
         self.assertEqual(inspect("bearer " + self.jwt("https://mcp.example.test", 9999999999)), "ok", "the scheme is case-insensitive")
         self.assertEqual(inspect("Bearer\t" + self.jwt("https://mcp.example.test", 9999999999)), "ok")
-        no_exp = web_ui.demo_bearer_token("a", 1).split(".")
-        no_exp[1] = web_ui._b64url_nopad(b'{"aud":"a"}')
-        self.assertEqual(web_ui.bearer_inspect("Bearer " + ".".join(no_exp), "a", now)["status"], "ok", "no exp: no expiry")
+        no_exp = pysaiyanweboo.demo_bearer_token("a", 1).split(".")
+        no_exp[1] = pysaiyanweboo._b64url_nopad(b'{"aud":"a"}')
+        self.assertEqual(pysaiyanweboo.bearer_inspect("Bearer " + ".".join(no_exp), "a", now)["status"], "ok", "no exp: no expiry")
 
     # --- Foundation handler
     def initialize(self, handler, params=None, rid=1):
-        request = web_ui.rpc_request("initialize", id=rid, params=params if params is not None else {"protocolVersion": self.LEGACY, "capabilities": {}, "clientInfo": {"name": "test", "version": "0"}})
+        request = pysaiyanweboo.rpc_request("initialize", id=rid, params=params if params is not None else {"protocolVersion": self.LEGACY, "capabilities": {}, "clientInfo": {"name": "test", "version": "0"}})
         return handler.handle_rpc(request)
 
     def test_the_session_flow_initialize_list_call(self):
-        handler = web_ui.McpFoundation(lambda: "sess-1")
+        handler = pysaiyanweboo.McpFoundation(lambda: "sess-1")
         response, session = self.initialize(handler)
         self.assertEqual((session, response["result"]["protocolVersion"]), ("sess-1", self.LEGACY))
-        listed, _ = handler.handle_rpc(web_ui.rpc_request("tools/list", id=2), "sess-1")
+        listed, _ = handler.handle_rpc(pysaiyanweboo.rpc_request("tools/list", id=2), "sess-1")
         self.assertTrue(listed["result"]["tools"])
-        called, _ = handler.handle_rpc(web_ui.rpc_request("tools/call", id=3, params={"name": "echo", "arguments": {"text": "hi"}}), "sess-1")
+        called, _ = handler.handle_rpc(pysaiyanweboo.rpc_request("tools/call", id=3, params={"name": "echo", "arguments": {"text": "hi"}}), "sess-1")
         self.assertEqual(called["result"]["content"][0]["text"], "hi")
         self.assertEqual(called["result"]["isError"], False)
 
     def test_an_unsupported_client_version_negotiates_down_to_the_pin(self):
-        response, session = self.initialize(web_ui.McpFoundation(lambda: "sess-1"), {"protocolVersion": "1999-01-01", "capabilities": {}, "clientInfo": {"name": "x", "version": "0"}})
+        response, session = self.initialize(pysaiyanweboo.McpFoundation(lambda: "sess-1"), {"protocolVersion": "1999-01-01", "capabilities": {}, "clientInfo": {"name": "x", "version": "0"}})
         self.assertEqual((response["result"]["protocolVersion"], session), (self.LEGACY, "sess-1"))
 
     def test_initialize_rejects_missing_and_malformed_fields_without_a_session(self):
@@ -3254,36 +3254,36 @@ class McpTests(unittest.TestCase):
                  {"protocolVersion": v, "capabilities": {}, "clientInfo": {"name": "", "version": "0"}}, {"protocolVersion": v, "capabilities": {}, "clientInfo": {"name": "x", "version": ""}},
                  {"protocolVersion": v, "capabilities": {}, "clientInfo": {"name": 1, "version": "0"}}, {"protocolVersion": v, "capabilities": {}, "clientInfo": {"name": "x", "version": 2}}, "nope", None]
         for params in cases:
-            handler = web_ui.McpFoundation(lambda: "sess-1")
-            response, session = handler.handle_rpc(web_ui.rpc_request("initialize", id=1, params=params))
-            self.assertEqual((response["error"]["code"], session, handler.session("sess-1")), (web_ui.RPC_INVALID_PARAMS, None, None), params)
+            handler = pysaiyanweboo.McpFoundation(lambda: "sess-1")
+            response, session = handler.handle_rpc(pysaiyanweboo.rpc_request("initialize", id=1, params=params))
+            self.assertEqual((response["error"]["code"], session, handler.session("sess-1")), (pysaiyanweboo.RPC_INVALID_PARAMS, None, None), params)
 
     def test_requests_that_need_a_session_say_so(self):
-        handler = web_ui.McpFoundation(lambda: "sess-1")
-        no_session, _ = handler.handle_rpc(web_ui.rpc_request("tools/list", id=1))
-        self.assertEqual(no_session["error"]["code"], web_ui.RPC_SESSION_REQUIRED)
-        initialized, _ = handler.handle_rpc(web_ui.rpc_request("notifications/initialized"))
-        self.assertEqual(initialized["error"]["code"], web_ui.RPC_SESSION_REQUIRED)
-        unknown, returned = handler.handle_rpc(web_ui.rpc_request("ping", id=2), "nope")
-        self.assertEqual((unknown["error"]["code"], returned), (web_ui.RPC_SESSION_INVALID, "nope"))
+        handler = pysaiyanweboo.McpFoundation(lambda: "sess-1")
+        no_session, _ = handler.handle_rpc(pysaiyanweboo.rpc_request("tools/list", id=1))
+        self.assertEqual(no_session["error"]["code"], pysaiyanweboo.RPC_SESSION_REQUIRED)
+        initialized, _ = handler.handle_rpc(pysaiyanweboo.rpc_request("notifications/initialized"))
+        self.assertEqual(initialized["error"]["code"], pysaiyanweboo.RPC_SESSION_REQUIRED)
+        unknown, returned = handler.handle_rpc(pysaiyanweboo.rpc_request("ping", id=2), "nope")
+        self.assertEqual((unknown["error"]["code"], returned), (pysaiyanweboo.RPC_SESSION_INVALID, "nope"))
         self.initialize(handler)
-        for request in (web_ui.rpc_request("resources/list", id=2), web_ui.rpc_request("prompts/get", id=3, params={"name": "greet"}), web_ui.rpc_request("ping", id=4),
-                        web_ui.rpc_request("notifications/initialized"), web_ui.rpc_request("resources/read", id=5, params={"uri": "demo://readme"})):
+        for request in (pysaiyanweboo.rpc_request("resources/list", id=2), pysaiyanweboo.rpc_request("prompts/get", id=3, params={"name": "greet"}), pysaiyanweboo.rpc_request("ping", id=4),
+                        pysaiyanweboo.rpc_request("notifications/initialized"), pysaiyanweboo.rpc_request("resources/read", id=5, params={"uri": "demo://readme"})):
             self.assertNotIn("error", handler.handle_rpc(request, "sess-1")[0], request)
-        self.assertEqual(handler.handle_rpc(web_ui.rpc_request("ping", id=4), "sess-1")[0]["result"], {})
-        for bad in (web_ui.rpc_request("tools/call", id=6, params={"name": "nope"}), web_ui.rpc_request("tools/call", id=6, params={"name": "echo", "arguments": {"text": 5}}),
-                    web_ui.rpc_request("tools/call", id=6, params={"name": "echo"}), web_ui.rpc_request("resources/read", id=6, params={"uri": "x"}), web_ui.rpc_request("prompts/get", id=6, params={"name": "x"})):
-            self.assertEqual(handler.handle_rpc(bad, "sess-1")[0]["error"]["code"], web_ui.RPC_INVALID_PARAMS, bad)
+        self.assertEqual(handler.handle_rpc(pysaiyanweboo.rpc_request("ping", id=4), "sess-1")[0]["result"], {})
+        for bad in (pysaiyanweboo.rpc_request("tools/call", id=6, params={"name": "nope"}), pysaiyanweboo.rpc_request("tools/call", id=6, params={"name": "echo", "arguments": {"text": 5}}),
+                    pysaiyanweboo.rpc_request("tools/call", id=6, params={"name": "echo"}), pysaiyanweboo.rpc_request("resources/read", id=6, params={"uri": "x"}), pysaiyanweboo.rpc_request("prompts/get", id=6, params={"name": "x"})):
+            self.assertEqual(handler.handle_rpc(bad, "sess-1")[0]["error"]["code"], pysaiyanweboo.RPC_INVALID_PARAMS, bad)
 
     def test_default_session_ids_are_high_entropy_and_do_not_repeat(self):
-        ids = [web_ui.mcp_session_id() for _ in range(20)]
+        ids = [pysaiyanweboo.mcp_session_id() for _ in range(20)]
         self.assertEqual(len(set(ids)), 20)
         for item in ids:
             self.assertTrue(re.fullmatch(r"[A-Za-z0-9_-]{24}", item), item)
-        seeded = web_ui.mulberry32(5)
-        self.assertEqual(web_ui.mcp_session_id(seeded.__next__), web_ui.mcp_session_id(web_ui.mulberry32(5).__next__))
-        self.assertEqual(len(web_ui.mcp_session_id(seeded.__next__, 5)), 7)
-        handler = web_ui.McpFoundation()
+        seeded = pysaiyanweboo.mulberry32(5)
+        self.assertEqual(pysaiyanweboo.mcp_session_id(seeded.__next__), pysaiyanweboo.mcp_session_id(pysaiyanweboo.mulberry32(5).__next__))
+        self.assertEqual(len(pysaiyanweboo.mcp_session_id(seeded.__next__, 5)), 7)
+        handler = pysaiyanweboo.McpFoundation()
         a = self.initialize(handler)[1]
         b = self.initialize(handler)[1]
         self.assertNotEqual(a, b)
@@ -3316,7 +3316,7 @@ class McpTests(unittest.TestCase):
         routes = self.routes("sess-auth", expected_audience="http://127.0.0.1:8787/mcp", clock=lambda: 1789387200)
         session = self.post(routes, self.init_body())["headers"]["mcp-session-id"]
         note = {"jsonrpc": "2.0", "method": "notifications/initialized"}
-        token = lambda aud, exp: "Bearer " + web_ui.demo_bearer_token(aud, exp)
+        token = lambda aud, exp: "Bearer " + pysaiyanweboo.demo_bearer_token(aud, exp)
         expired = self.post(routes, note, {"mcp-session-id": session, "authorization": token("http://127.0.0.1:8787/mcp", 1577836800)})
         self.assertEqual((expired["status"], expired["body"]["error"], expired["body"]["reason"]), (401, "unauthorized", {"reason": "expired"}))
         wrong = self.post(routes, note, {"mcp-session-id": session, "authorization": token("http://evil.example/mcp", 4070908800)})
@@ -3327,11 +3327,11 @@ class McpTests(unittest.TestCase):
         self.assertEqual(self.post(routes, note, {"mcp-session-id": session})["status"], 202, "no Authorization header: no gate")
 
     def test_discovery_follows_the_listen_port(self):
-        routes = web_ui.McpRoutes.for_port(9999)
+        routes = pysaiyanweboo.McpRoutes.for_port(9999)
         self.assertEqual((routes.issuer, routes.resource, routes.expected_audience), ("http://127.0.0.1:9999", "http://127.0.0.1:9999/mcp", "http://127.0.0.1:9999/mcp"))
-        self.assertTrue(web_ui.mcp_origin_allows(routes.allowed_origins, "http://127.0.0.1:9999"))
-        self.assertFalse(web_ui.mcp_origin_allows(routes.allowed_origins, "http://127.0.0.1:8787"))
-        self.assertTrue(web_ui.mcp_origin_allows(routes.allowed_origins, None) and web_ui.mcp_origin_allows(routes.allowed_origins, ""))
+        self.assertTrue(pysaiyanweboo.mcp_origin_allows(routes.allowed_origins, "http://127.0.0.1:9999"))
+        self.assertFalse(pysaiyanweboo.mcp_origin_allows(routes.allowed_origins, "http://127.0.0.1:8787"))
+        self.assertTrue(pysaiyanweboo.mcp_origin_allows(routes.allowed_origins, None) and pysaiyanweboo.mcp_origin_allows(routes.allowed_origins, ""))
         server = routes.handle("GET", "/.well-known/oauth-authorization-server", {}, None)
         self.assertEqual((server["status"], server["body"]["issuer"], server["body"]["authorization_endpoint"], server["body"]["token_endpoint"]),
                          (200, "http://127.0.0.1:9999", "http://127.0.0.1:9999/oauth/authorize", "http://127.0.0.1:9999/oauth/token"))
@@ -3352,7 +3352,7 @@ class McpTests(unittest.TestCase):
         routes = self.routes()
         for body in ("{broken", "[]", '{"jsonrpc":"1.0","method":"x"}', None, ""):
             out = routes.handle("POST", "/mcp", {}, body)
-            self.assertEqual((out["status"], out["body"]["error"]["code"], out["body"]["id"]), (400, web_ui.RPC_PARSE_ERROR, None), body)
+            self.assertEqual((out["status"], out["body"]["error"]["code"], out["body"]["id"]), (400, pysaiyanweboo.RPC_PARSE_ERROR, None), body)
 
     # --- the current-official era
     def test_server_discover_and_modern_calls_need_no_session(self):
@@ -3380,17 +3380,17 @@ class McpTests(unittest.TestCase):
         self.assertEqual(modern("resources/read", 72, {"uri": "demo://readme"}, "demo://readme")["resultType"], "complete")
         self.assertEqual(modern("prompts/get", 74, {"name": "greet"}, "greet")["resultType"], "complete")
         ping = self.post(routes, {"jsonrpc": "2.0", "id": 9, "method": "ping", "params": {"_meta": self.modern_meta()}}, self.modern_headers("ping"))
-        self.assertEqual((ping["status"], ping["body"]["error"]["code"]), (200, web_ui.RPC_SESSION_REQUIRED), "ping has no modern form here: the routes answer 200 with the JSON-RPC error")
-        shaped = web_ui.McpFoundation()._modern_or_session({"id": 1, "method": "x", "params": {"_meta": {self.META: self.CURRENT}}}, None, lambda _s: web_ui.rpc_result(1, 5))
+        self.assertEqual((ping["status"], ping["body"]["error"]["code"]), (200, pysaiyanweboo.RPC_SESSION_REQUIRED), "ping has no modern form here: the routes answer 200 with the JSON-RPC error")
+        shaped = pysaiyanweboo.McpFoundation()._modern_or_session({"id": 1, "method": "x", "params": {"_meta": {self.META: self.CURRENT}}}, None, lambda _s: pysaiyanweboo.rpc_result(1, 5))
         self.assertEqual(shaped[0]["result"], {"resultType": "complete", "value": 5})
 
     def test_a_modern_unknown_method_is_404_and_a_legacy_one_is_200(self):
         routes = self.routes("sess-modern")
         modern = self.post(routes, {"jsonrpc": "2.0", "id": 75, "method": "totally/unknown", "params": {"_meta": self.modern_meta()}}, self.modern_headers("totally/unknown"))
-        self.assertEqual((modern["status"], modern["body"]["error"]["code"]), (404, web_ui.RPC_METHOD_NOT_FOUND))
+        self.assertEqual((modern["status"], modern["body"]["error"]["code"]), (404, pysaiyanweboo.RPC_METHOD_NOT_FOUND))
         session = self.post(routes, self.init_body())["headers"]["mcp-session-id"]
         legacy = self.post(routes, {"jsonrpc": "2.0", "id": 84, "method": "totally/unknown"}, {"mcp-session-id": session})
-        self.assertEqual((legacy["status"], legacy["body"]["error"]["code"], legacy["headers"]["mcp-protocol-version"]), (200, web_ui.RPC_METHOD_NOT_FOUND, self.LEGACY))
+        self.assertEqual((legacy["status"], legacy["body"]["error"]["code"], legacy["headers"]["mcp-protocol-version"]), (200, pysaiyanweboo.RPC_METHOD_NOT_FOUND, self.LEGACY))
 
     def modern_failure(self, headers, body, expect_status=400):
         out = self.post(self.routes(), body, headers)
@@ -3409,13 +3409,13 @@ class McpTests(unittest.TestCase):
         self.assertIn("clientCapabilities", self.modern_failure(headers, discover({**meta, "io.modelcontextprotocol/clientCapabilities": "nope"}))["message"])
         self.assertIn("clientCapabilities", self.modern_failure(headers, discover({self.META: self.CURRENT, "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "0"}}))["message"])
         missing_method = self.modern_failure({"mcp-protocol-version": self.CURRENT}, discover(meta, 4))
-        self.assertEqual((missing_method["code"], missing_method["message"]), (web_ui.RPC_HEADER_MISMATCH, "Mcp-Method header is required"))
+        self.assertEqual((missing_method["code"], missing_method["message"]), (pysaiyanweboo.RPC_HEADER_MISMATCH, "Mcp-Method header is required"))
         unsupported = self.modern_failure(self.modern_headers("server/discover", version="2099-01-01"), discover(self.modern_meta("2099-01-01"), 5))
-        self.assertEqual((unsupported["code"], unsupported["data"]), (web_ui.RPC_UNSUPPORTED_VERSION, {"supported": [self.LEGACY, self.CURRENT], "requested": "2099-01-01"}))
+        self.assertEqual((unsupported["code"], unsupported["data"]), (pysaiyanweboo.RPC_UNSUPPORTED_VERSION, {"supported": [self.LEGACY, self.CURRENT], "requested": "2099-01-01"}))
         mismatch = self.modern_failure(headers, discover(self.modern_meta(self.LEGACY), 81))
-        self.assertEqual((mismatch["code"], mismatch["message"], mismatch["data"]), (web_ui.RPC_HEADER_MISMATCH, "MCP-Protocol-Version does not match body _meta", {"header": self.CURRENT, "meta": self.LEGACY}))
+        self.assertEqual((mismatch["code"], mismatch["message"], mismatch["data"]), (pysaiyanweboo.RPC_HEADER_MISMATCH, "MCP-Protocol-Version does not match body _meta", {"header": self.CURRENT, "meta": self.LEGACY}))
         method_mismatch = self.modern_failure(self.modern_headers("tools/list"), discover(meta, 80))
-        self.assertEqual((method_mismatch["code"], method_mismatch["data"]), (web_ui.RPC_HEADER_MISMATCH, {"header": "tools/list", "method": "server/discover"}))
+        self.assertEqual((method_mismatch["code"], method_mismatch["data"]), (pysaiyanweboo.RPC_HEADER_MISMATCH, {"header": "tools/list", "method": "server/discover"}))
         self.assertIn("Mcp-Method", method_mismatch["message"])
         call = lambda: {"jsonrpc": "2.0", "id": 82, "method": "tools/call", "params": {"name": "echo", "arguments": {"text": "x"}, "_meta": meta}}
         self.assertIn("Mcp-Name", self.modern_failure(self.modern_headers("tools/call"), call())["message"])
@@ -3426,11 +3426,11 @@ class McpTests(unittest.TestCase):
 
     def test_header_only_and_meta_only_modern_markers(self):
         header_only = self.modern_failure({"mcp-protocol-version": self.CURRENT, "mcp-method": "totally/unknown"}, {"jsonrpc": "2.0", "id": 10, "method": "totally/unknown"})
-        self.assertEqual(header_only["code"], web_ui.RPC_HEADER_MISMATCH)
+        self.assertEqual(header_only["code"], pysaiyanweboo.RPC_HEADER_MISMATCH)
         meta_only = self.modern_failure({"mcp-method": "totally/unknown"}, {"jsonrpc": "2.0", "id": 15, "method": "totally/unknown", "params": {"_meta": self.modern_meta()}})
         self.assertIn("MCP-Protocol-Version", meta_only["message"])
         legacy_versions = self.modern_failure({"mcp-protocol-version": self.LEGACY, "mcp-method": "x"}, {"jsonrpc": "2.0", "id": 16, "method": "x", "params": {"_meta": self.modern_meta(self.LEGACY)}})
-        self.assertEqual(legacy_versions["code"], web_ui.RPC_UNSUPPORTED_VERSION)
+        self.assertEqual(legacy_versions["code"], pysaiyanweboo.RPC_UNSUPPORTED_VERSION)
         no_meta = self.modern_failure({"mcp-protocol-version": self.CURRENT}, {"jsonrpc": "2.0", "id": 17, "method": "x", "params": []})
         self.assertEqual(no_meta["message"], "params._meta is required")
         no_version = self.modern_failure({"mcp-protocol-version": self.CURRENT}, {"jsonrpc": "2.0", "id": 18, "method": "x", "params": {"_meta": {}}})
@@ -3439,135 +3439,135 @@ class McpTests(unittest.TestCase):
     def test_header_names_travel_as_a_base64_sentinel_when_they_must(self):
         unicode_name, spaced, sentinel = "エコー", " leading ", "=?base64?YQ==?="
         for value in (unicode_name, spaced, sentinel, "trailing ", "tab\t", "x" + chr(127), "=?foo?="):
-            self.assertTrue(web_ui.mcp_header_needs_encoding(value), repr(value))
+            self.assertTrue(pysaiyanweboo.mcp_header_needs_encoding(value), repr(value))
         for value in ("echo", "demo://readme", "a b", "", "=?", "?=", "=?x"):
-            self.assertFalse(web_ui.mcp_header_needs_encoding(value), repr(value))
-        encoded = web_ui.mcp_header_encode(unicode_name)
+            self.assertFalse(pysaiyanweboo.mcp_header_needs_encoding(value), repr(value))
+        encoded = pysaiyanweboo.mcp_header_encode(unicode_name)
         self.assertTrue(encoded.startswith("=?base64?"))
-        self.assertEqual(web_ui.mcp_header_decode(encoded), unicode_name)
-        self.assertEqual(web_ui.mcp_header_decode(spaced), spaced)
-        self.assertEqual(web_ui.mcp_header_decode(web_ui.mcp_header_encode(spaced)), spaced)
-        self.assertEqual(web_ui.mcp_header_decode(web_ui.mcp_header_encode(sentinel)), sentinel)
-        self.assertIsNone(web_ui.mcp_header_decode("=?base64?!!!?="))
-        self.assertIsNone(web_ui.mcp_header_decode("=?notbase64?YQ==?="))
-        self.assertIsNone(web_ui.mcp_header_decode("=?base64?YQ?="), "padding is required")
-        self.assertIsNone(web_ui.mcp_header_decode("=?base64?Y=Q=?="))
-        self.assertIsNone(web_ui.mcp_header_decode("=?base64?/w==?="), "bytes that are not UTF-8")
-        self.assertEqual(web_ui.mcp_header_decode("=?base64?YQ==?="), "a")
-        self.assertEqual((web_ui.mcp_header_encode("echo"), web_ui.mcp_header_decode("echo")), ("echo", "echo"))
-        self.assertEqual(web_ui.mcp_header_decode("=?base64?" + base64.b64encode("﻿x".encode()).decode() + "?="), "﻿x", "a BOM is kept")
+        self.assertEqual(pysaiyanweboo.mcp_header_decode(encoded), unicode_name)
+        self.assertEqual(pysaiyanweboo.mcp_header_decode(spaced), spaced)
+        self.assertEqual(pysaiyanweboo.mcp_header_decode(pysaiyanweboo.mcp_header_encode(spaced)), spaced)
+        self.assertEqual(pysaiyanweboo.mcp_header_decode(pysaiyanweboo.mcp_header_encode(sentinel)), sentinel)
+        self.assertIsNone(pysaiyanweboo.mcp_header_decode("=?base64?!!!?="))
+        self.assertIsNone(pysaiyanweboo.mcp_header_decode("=?notbase64?YQ==?="))
+        self.assertIsNone(pysaiyanweboo.mcp_header_decode("=?base64?YQ?="), "padding is required")
+        self.assertIsNone(pysaiyanweboo.mcp_header_decode("=?base64?Y=Q=?="))
+        self.assertIsNone(pysaiyanweboo.mcp_header_decode("=?base64?/w==?="), "bytes that are not UTF-8")
+        self.assertEqual(pysaiyanweboo.mcp_header_decode("=?base64?YQ==?="), "a")
+        self.assertEqual((pysaiyanweboo.mcp_header_encode("echo"), pysaiyanweboo.mcp_header_decode("echo")), ("echo", "echo"))
+        self.assertEqual(pysaiyanweboo.mcp_header_decode("=?base64?" + base64.b64encode("﻿x".encode()).decode() + "?="), "﻿x", "a BOM is kept")
         routes = self.routes()
         called = self.post(routes, {"jsonrpc": "2.0", "id": 76, "method": "tools/call", "params": {"name": unicode_name, "arguments": {"text": "hi"}, "_meta": self.modern_meta()}},
                            {**self.modern_headers("tools/call"), "mcp-name": encoded})
         self.assertNotEqual(called["status"], 400)
-        self.assertNotEqual(called["body"].get("error", {}).get("code"), web_ui.RPC_HEADER_MISMATCH)
-        headers = web_ui.mcp_streamable_headers(protocol_version=self.CURRENT, method="tools/call", name=unicode_name)
+        self.assertNotEqual(called["body"].get("error", {}).get("code"), pysaiyanweboo.RPC_HEADER_MISMATCH)
+        headers = pysaiyanweboo.mcp_streamable_headers(protocol_version=self.CURRENT, method="tools/call", name=unicode_name)
         self.assertEqual(headers["mcp-name"], encoded)
         self.assertEqual(list(headers), ["content-type", "accept", "mcp-protocol-version", "mcp-method", "mcp-name"])
-        legacy = web_ui.mcp_streamable_headers(session_id="s", accept_event_stream=False)
+        legacy = pysaiyanweboo.mcp_streamable_headers(session_id="s", accept_event_stream=False)
         self.assertEqual(legacy, {"content-type": "application/json", "accept": "application/json", "mcp-protocol-version": self.LEGACY, "mcp-session-id": "s"})
-        self.assertNotIn("mcp-session-id", web_ui.mcp_streamable_headers(session_id=""))
+        self.assertNotIn("mcp-session-id", pysaiyanweboo.mcp_streamable_headers(session_id=""))
 
     # --- the client (mcp_integration_test.dart)
     def test_both_echo_demos_over_the_handler_and_over_the_routes(self):
-        for make in (lambda: web_ui.mcp_foundation_transport(web_ui.McpFoundation()), lambda: web_ui.mcp_in_process(self.routes("sess-demo"))):
-            legacy = web_ui.McpClient(make()).run_echo_demo("ping")
+        for make in (lambda: pysaiyanweboo.mcp_foundation_transport(pysaiyanweboo.McpFoundation()), lambda: pysaiyanweboo.mcp_in_process(self.routes("sess-demo"))):
+            legacy = pysaiyanweboo.McpClient(make()).run_echo_demo("ping")
             self.assertEqual((legacy["ok"], bool(legacy["session_id"]), len(legacy["log"])), (True, True, 4))
             self.assertEqual(legacy["last_response"]["result"]["content"][0]["text"], "ping")
-            modern = web_ui.McpClient(make()).run_modern_echo_demo("modern-ping")
+            modern = pysaiyanweboo.McpClient(make()).run_modern_echo_demo("modern-ping")
             self.assertEqual((modern["ok"], modern["session_id"]), (True, None))
             self.assertEqual(modern["last_response"]["result"]["content"][0]["text"], "modern-ping")
             self.assertEqual(modern["last_response"]["result"]["resultType"], "complete")
-        self.assertEqual(web_ui.McpClient(web_ui.mcp_in_process(self.routes("sess-demo"))).run_echo_demo("x")["session_id"], "sess-demo")
-        client = web_ui.McpClient(web_ui.mcp_in_process(self.routes("sess-1")))
+        self.assertEqual(pysaiyanweboo.McpClient(pysaiyanweboo.mcp_in_process(self.routes("sess-demo"))).run_echo_demo("x")["session_id"], "sess-demo")
+        client = pysaiyanweboo.McpClient(pysaiyanweboo.mcp_in_process(self.routes("sess-1")))
         client.run_echo_demo()
         self.assertEqual((client.ping()["result"], client.list_resources()["result"]["resources"][0]["name"], client.list_prompts()["result"]["prompts"][0]["name"]), ({}, "README", "greet"))
 
     def transport(self, responder):
-        return lambda headers, body: responder(headers, web_ui.rpc_request_parse(body))
+        return lambda headers, body: responder(headers, pysaiyanweboo.rpc_request_parse(body))
 
     def test_a_rejected_initialized_notification_stops_the_demo(self):
         def respond(headers, request):
             if request["method"] == "initialize":
-                return {"status_code": 200, "headers": {"mcp-session-id": "sess-reject-init"}, "body": web_ui.rpc_result(request["id"], {"protocolVersion": self.LEGACY, "capabilities": {}, "serverInfo": {"name": "t", "version": "1"}})}
+                return {"status_code": 200, "headers": {"mcp-session-id": "sess-reject-init"}, "body": pysaiyanweboo.rpc_result(request["id"], {"protocolVersion": self.LEGACY, "capabilities": {}, "serverInfo": {"name": "t", "version": "1"}})}
             if request["method"] == "notifications/initialized":
                 return {"status_code": 404, "headers": {}, "body": {"error": "session_invalid"}}
             return {"status_code": 500, "headers": {}, "body": {"error": "unexpected"}}
-        result = web_ui.McpClient(self.transport(respond)).run_echo_demo("nope")
+        result = pysaiyanweboo.McpClient(self.transport(respond)).run_echo_demo("nope")
         self.assertFalse(result["ok"])
         self.assertTrue(any("rejected" in line for line in result["log"]))
         self.assertEqual(len(result["log"]), 2)
 
     def test_a_failed_initialize_does_not_keep_a_session_id(self):
-        failing = self.transport(lambda headers, request: {"status_code": 401, "headers": {"mcp-session-id": "should-not-keep"}, "body": web_ui.rpc_result(request["id"], {"protocolVersion": self.LEGACY})})
-        client = web_ui.McpClient(failing)
+        failing = self.transport(lambda headers, request: {"status_code": 401, "headers": {"mcp-session-id": "should-not-keep"}, "body": pysaiyanweboo.rpc_result(request["id"], {"protocolVersion": self.LEGACY})})
+        client = pysaiyanweboo.McpClient(failing)
         init = client.initialize()
-        self.assertEqual((init["error"]["code"], client.session_id), (web_ui.RPC_UNAUTHORIZED, None))
-        lying = self.transport(lambda headers, request: {"status_code": 500, "headers": {"mcp-session-id": "sess-should-not-adopt"}, "body": web_ui.rpc_result(request["id"], {"protocolVersion": self.LEGACY})})
-        client = web_ui.McpClient(lying)
+        self.assertEqual((init["error"]["code"], client.session_id), (pysaiyanweboo.RPC_UNAUTHORIZED, None))
+        lying = self.transport(lambda headers, request: {"status_code": 500, "headers": {"mcp-session-id": "sess-should-not-adopt"}, "body": pysaiyanweboo.rpc_result(request["id"], {"protocolVersion": self.LEGACY})})
+        client = pysaiyanweboo.McpClient(lying)
         init = client.initialize()
-        self.assertEqual((init["error"]["code"], init["error"]["message"], client.session_id), (web_ui.RPC_INTERNAL_ERROR, "HTTP 500 with result-shaped body", None))
-        forbidden = web_ui.McpClient(self.transport(lambda headers, request: {"status_code": 403, "headers": {}, "body": {"error": "forbidden"}}))
-        self.assertEqual(forbidden.initialize()["error"]["code"], web_ui.RPC_FORBIDDEN)
-        plain = web_ui.McpClient(self.transport(lambda headers, request: {"status_code": 502, "headers": {}, "body": {"error": {"nested": 1}}}))
+        self.assertEqual((init["error"]["code"], init["error"]["message"], client.session_id), (pysaiyanweboo.RPC_INTERNAL_ERROR, "HTTP 500 with result-shaped body", None))
+        forbidden = pysaiyanweboo.McpClient(self.transport(lambda headers, request: {"status_code": 403, "headers": {}, "body": {"error": "forbidden"}}))
+        self.assertEqual(forbidden.initialize()["error"]["code"], pysaiyanweboo.RPC_FORBIDDEN)
+        plain = pysaiyanweboo.McpClient(self.transport(lambda headers, request: {"status_code": 502, "headers": {}, "body": {"error": {"nested": 1}}}))
         self.assertEqual(plain.initialize()["error"]["message"], '{"nested":1}')
-        self.assertEqual(web_ui.McpClient(self.transport(lambda headers, request: {"status_code": 200, "headers": {}, "body": "text"})).initialize()["error"]["message"], "unexpected transport body")
+        self.assertEqual(pysaiyanweboo.McpClient(self.transport(lambda headers, request: {"status_code": 200, "headers": {}, "body": "text"})).initialize()["error"]["message"], "unexpected transport body")
 
     def test_a_malformed_json_rpc_error_becomes_a_failure_not_a_crash(self):
         for body in ({"jsonrpc": "2.0", "id": 1, "error": {"code": "-32603", "message": "x"}}, {"jsonrpc": "2.0", "id": 1, "error": {"code": -32603, "message": 42}},
                      {"jsonrpc": "2.0", "id": 1, "error": {"message": "x"}}, {"jsonrpc": "2.0", "id": 1, "error": {"code": -32603}}, {"jsonrpc": "2.0", "id": 99, "result": {}},
                      {"jsonrpc": "2.0", "id": 1}, {"jsonrpc": "1.0", "id": 1, "result": {}}):
-            client = web_ui.McpClient(self.transport(lambda headers, request, body=body: {"status_code": 200, "headers": {"mcp-session-id": "sess-should-not-adopt"}, "body": body}))
+            client = pysaiyanweboo.McpClient(self.transport(lambda headers, request, body=body: {"status_code": 200, "headers": {"mcp-session-id": "sess-should-not-adopt"}, "body": body}))
             init = client.initialize()
             self.assertIn("invalid JSON-RPC response", init["error"]["message"], body)
             self.assertIsNone(client.session_id)
 
     def test_notification_status_parity(self):
         modern = {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {"_meta": self.modern_meta()}}
-        headers = web_ui.mcp_streamable_headers(protocol_version=self.CURRENT, method="notifications/initialized")
+        headers = pysaiyanweboo.mcp_streamable_headers(protocol_version=self.CURRENT, method="notifications/initialized")
         post = lambda transport: transport(headers, json.dumps(modern))
-        unauthorized = post(web_ui.mcp_foundation_transport(web_ui.McpFoundation(), {"status": "unauthorized", "reason": "expired"}))
+        unauthorized = post(pysaiyanweboo.mcp_foundation_transport(pysaiyanweboo.McpFoundation(), {"status": "unauthorized", "reason": "expired"}))
         self.assertEqual((unauthorized["status_code"], unauthorized["body"]["error"], unauthorized["body"]["message"], unauthorized["body"]["reason"]), (401, "unauthorized", "unauthorized", {"reason": "expired"}))
-        forbidden = post(web_ui.mcp_foundation_transport(web_ui.McpFoundation(), {"status": "forbidden", "reason": "wrong_audience"}))
+        forbidden = post(pysaiyanweboo.mcp_foundation_transport(pysaiyanweboo.McpFoundation(), {"status": "forbidden", "reason": "wrong_audience"}))
         self.assertEqual((forbidden["status_code"], forbidden["body"]["error"]), (403, "forbidden"))
-        rejected = post(web_ui.mcp_foundation_transport(web_ui.McpFoundation()))
-        self.assertEqual((rejected["status_code"], rejected["body"]["error"], rejected["body"]["code"]), (400, "notification_rejected", web_ui.RPC_SESSION_REQUIRED))
-        transport = web_ui.mcp_foundation_transport(web_ui.McpFoundation(lambda: "sess-notif-ok"))
+        rejected = post(pysaiyanweboo.mcp_foundation_transport(pysaiyanweboo.McpFoundation()))
+        self.assertEqual((rejected["status_code"], rejected["body"]["error"], rejected["body"]["code"]), (400, "notification_rejected", pysaiyanweboo.RPC_SESSION_REQUIRED))
+        transport = pysaiyanweboo.mcp_foundation_transport(pysaiyanweboo.McpFoundation(lambda: "sess-notif-ok"))
         init = transport({}, json.dumps(self.init_body()))
         session = init["headers"]["mcp-session-id"]
         accepted = transport({"mcp-session-id": session}, json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}))
         self.assertEqual((init["status_code"], accepted["status_code"], accepted["body"]), (200, 202, None))
 
     def test_the_foundation_transport_maps_session_errors_to_http_statuses(self):
-        transport = web_ui.mcp_foundation_transport(web_ui.McpFoundation())
+        transport = pysaiyanweboo.mcp_foundation_transport(pysaiyanweboo.McpFoundation())
         missing = transport({}, json.dumps({"jsonrpc": "2.0", "id": 1, "method": "totally/unknown"}))
         self.assertEqual((missing["status_code"], missing["body"]["error"]), (400, "session_required"))
         unknown = transport({"mcp-session-id": "no-such-session"}, json.dumps({"jsonrpc": "2.0", "id": 1, "method": "totally/unknown"}))
         self.assertEqual((unknown["status_code"], unknown["body"]["error"]), (404, "session_not_found"))
-        ping = transport(web_ui.mcp_streamable_headers(protocol_version=self.CURRENT, method="ping"), json.dumps({"jsonrpc": "2.0", "id": 9, "method": "ping", "params": {"_meta": self.modern_meta()}}))
-        self.assertEqual((ping["status_code"], ping["body"]["error"]["code"]), (400, web_ui.RPC_SESSION_REQUIRED), "the in-process transport maps a session error to 400; the routes answer 200")
+        ping = transport(pysaiyanweboo.mcp_streamable_headers(protocol_version=self.CURRENT, method="ping"), json.dumps({"jsonrpc": "2.0", "id": 9, "method": "ping", "params": {"_meta": self.modern_meta()}}))
+        self.assertEqual((ping["status_code"], ping["body"]["error"]["code"]), (400, pysaiyanweboo.RPC_SESSION_REQUIRED), "the in-process transport maps a session error to 400; the routes answer 200")
         origin = transport({"origin": "https://evil.example"}, json.dumps(self.init_body()))
         self.assertEqual(origin["status_code"], 200, "the in-process transport ignores Origin")
         parse = transport({}, "{broken")
-        self.assertEqual((parse["status_code"], parse["body"]["error"]["code"]), (400, web_ui.RPC_PARSE_ERROR))
+        self.assertEqual((parse["status_code"], parse["body"]["error"]["code"]), (400, pysaiyanweboo.RPC_PARSE_ERROR))
 
     def test_the_lab_exchange_wraps_the_routes(self):
         routes = self.routes("sess-lab")
-        sent = web_ui.mcp_exchange(routes, {"body": self.init_body()})
+        sent = pysaiyanweboo.mcp_exchange(routes, {"body": self.init_body()})
         self.assertEqual((sent["status"], sent["headers"]["mcp-session-id"]), (200, "sess-lab"))
-        self.assertEqual(web_ui.mcp_exchange(routes, {"method": "GET", "path": "/nope"})["status"], 404)
-        self.assertEqual(web_ui.mcp_exchange(routes, {"method": "GET", "path": "/mcp"})["status"], 405)
+        self.assertEqual(pysaiyanweboo.mcp_exchange(routes, {"method": "GET", "path": "/nope"})["status"], 404)
+        self.assertEqual(pysaiyanweboo.mcp_exchange(routes, {"method": "GET", "path": "/mcp"})["status"], 405)
         for bad in ({"headers": []}, {"headers": {"a": 1}}):
             with self.assertRaises(ValueError):
-                web_ui.mcp_exchange(routes, bad)
+                pysaiyanweboo.mcp_exchange(routes, bad)
 
     def test_the_page_is_self_contained_and_in_the_index(self):
-        html = web_ui.mcp_document()
+        html = pysaiyanweboo.mcp_document()
         for needle in ("data-ui-mcp", "data-mcp-send", "data-mcp-template=\"toolsCall\"", "data-mcp-demo-legacy", "data-mcp-codec-in", "data-mcp-verifier", "data-mcp-auth", "data-mcp-meta", "aria-live=\"polite\""):
             self.assertIn(needle, html)
         self.assertEqual(html.count("<script"), 1)
-        self.assertIn("examples/mcp-lab.html", web_ui.example_pages())
-        self.assertIn("./mcp-lab.html", web_ui.example_pages()["examples/index.html"])
+        self.assertIn("examples/mcp-lab.html", pysaiyanweboo.example_pages())
+        self.assertIn("./mcp-lab.html", pysaiyanweboo.example_pages()["examples/index.html"])
         self.assertIn("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", html)
 
 
@@ -3583,7 +3583,7 @@ def typed(value):
 class PatternTests(unittest.TestCase):
     """The 792-pattern references. The golden values are the original flutter_navigation_basic oracles' own outputs (recorded, never produced by this code)."""
 
-    go = staticmethod(web_ui.pattern_run)
+    go = staticmethod(pysaiyanweboo.pattern_run)
 
     def refused(self, family, request, message=None):
         with self.assertRaises(ValueError) as caught:
@@ -3611,7 +3611,7 @@ class PatternTests(unittest.TestCase):
                     self.assertEqual(typed(self.go(case["family"], case["request"])), typed(case["ok"]))
                 else:
                     self.refused(case["family"], case["request"], case["error"])
-        self.assertEqual(set(seen), set(web_ui.PATTERN_RUNNERS) - {"native", "screen", "contract"}, "those three have their own golden files: assets/screens.json, app_text.json, numbered_routes.toml and contract_golden.json")
+        self.assertEqual(set(seen), set(pysaiyanweboo.PATTERN_RUNNERS) - {"native", "screen", "contract"}, "those three have their own golden files: assets/screens.json, app_text.json, numbered_routes.toml and contract_golden.json")
         for family in set(seen) - {"text", "structure"}:      # the two example-only families have nothing to refuse except an unknown mode
             self.assertEqual(seen[family], {"ok", "error"}, family)
 
@@ -3834,16 +3834,16 @@ class PatternTests(unittest.TestCase):
         self.refused("order", {"mode": "shuffle"}, "unsupported ordering mode")
 
     def test_text_search_is_an_and_over_an_inverted_index(self):
-        docs = web_ui.PATTERN_TEXT_DOCUMENTS
-        self.assertEqual(web_ui.pattern_text_search(docs, "portable search"), ["doc-2"])
-        self.assertEqual(web_ui.pattern_text_search(docs, "the PORTABLE"), ["doc-1", "doc-2"])
-        self.assertEqual(web_ui.pattern_text_search(docs, "and the"), [])
-        self.assertEqual(web_ui.pattern_inverted_index(docs)["search"], ["doc-2", "doc-3"])
-        self.assertEqual(web_ui.pattern_tokens("Ａ b_c 12"), ["b", "c", "12"], "ASCII alphanumerics only")
+        docs = pysaiyanweboo.PATTERN_TEXT_DOCUMENTS
+        self.assertEqual(pysaiyanweboo.pattern_text_search(docs, "portable search"), ["doc-2"])
+        self.assertEqual(pysaiyanweboo.pattern_text_search(docs, "the PORTABLE"), ["doc-1", "doc-2"])
+        self.assertEqual(pysaiyanweboo.pattern_text_search(docs, "and the"), [])
+        self.assertEqual(pysaiyanweboo.pattern_inverted_index(docs)["search"], ["doc-2", "doc-3"])
+        self.assertEqual(pysaiyanweboo.pattern_tokens("Ａ b_c 12"), ["b", "c", "12"], "ASCII alphanumerics only")
         with self.assertRaises(TypeError):
-            web_ui.pattern_tokens(5)
+            pysaiyanweboo.pattern_tokens(5)
         with self.assertRaises(ValueError):
-            web_ui.pattern_inverted_index([{"id": "", "text": "x"}])
+            pysaiyanweboo.pattern_inverted_index([{"id": "", "text": "x"}])
         self.refused("text", {"mode": "fuzzy"}, "unsupported text-processing mode")
 
     def test_windows_clamp_and_keyset_follows_the_last_item(self):
@@ -3859,8 +3859,8 @@ class PatternTests(unittest.TestCase):
         self.refused("window", {"mode": "scroll"}, "unsupported mode")
         self.refused("window", {"mode": "window", "commands": ["jump"]}, "unsupported command")
         self.refused("window", {"mode": "window", "commands": "next"}, "commands must be strings")
-        state = web_ui.pattern_window_initial("window")
-        self.assertEqual(web_ui.pattern_window_step(state, "next")["offset"], 4)
+        state = pysaiyanweboo.pattern_window_initial("window")
+        self.assertEqual(pysaiyanweboo.pattern_window_step(state, "next")["offset"], 4)
         self.assertEqual(state["offset"], 0, "a step never changes the state it is given")
         self.refused("window", {"mode": "window", "commands": ["x"] * 1001}, "commands must be strings")
 
@@ -3897,12 +3897,12 @@ class PatternTests(unittest.TestCase):
         self.refused("convert", {"operation": "unit", "value": 1e308, "from": "km", "to": "m"}, "unit conversion overflow")
         self.assertFalse(self.go("validate", {"operation": "url", "value": "https://[::1"})["valid"], "urlsplit itself refuses an unclosed IPv6 host")
         with self.assertRaises(TypeError):
-            web_ui.pattern_without_stop_words(["a", 1])
+            pysaiyanweboo.pattern_without_stop_words(["a", 1])
         with self.assertRaises(TypeError):
-            web_ui.pattern_window_step([], "next")
-        self.assertEqual(web_ui.pattern_owner(199), "undecided")
-        with mock.patch.dict(web_ui.PATTERN_TITLES, {"api": "OnlyOne"}), self.assertRaises(ValueError):
-            web_ui.pattern_catalogue()
+            pysaiyanweboo.pattern_window_step([], "next")
+        self.assertEqual(pysaiyanweboo.pattern_owner(199), "undecided")
+        with mock.patch.dict(pysaiyanweboo.PATTERN_TITLES, {"api": "OnlyOne"}), self.assertRaises(ValueError):
+            pysaiyanweboo.pattern_catalogue()
 
     def test_edges_of_every_limit_and_type_check(self):
         # inclusive bounds
@@ -3919,7 +3919,7 @@ class PatternTests(unittest.TestCase):
         self.assertEqual(self.go("search", {"operation": "fuzzy", "query": "cat", "values": ["cat", "cap"], "max_distance": 0}), ["cat"])
         self.refused("search", {"operation": "fuzzy", "query": "cat", "values": [], "max_distance": True}, "invalid edit distance")
         self.refused("search", {"operation": "fuzzy", "query": "cat", "values": [], "max_distance": 11}, "invalid edit distance")
-        self.assertEqual((web_ui._pat_distance("", "abc"), web_ui._pat_distance("kitten", "sitting"), web_ui._pat_distance("abc", "")), (3, 3, 3))
+        self.assertEqual((pysaiyanweboo._pat_distance("", "abc"), pysaiyanweboo._pat_distance("kitten", "sitting"), pysaiyanweboo._pat_distance("abc", "")), (3, 3, 3))
         # case folding, not lower-casing; a stem only touches plain ASCII words
         self.assertEqual(self.go("search", {"operation": "tokenize", "text": "STRASSE Straße"}), ["strasse", "strasse"])
         self.assertEqual(self.go("search", {"operation": "stem", "text": "cafés 123s"}), ["cafés", "123s"])
@@ -3978,19 +3978,19 @@ class PatternTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.go("select", {"operation": "distinct", "values": [float("nan")]})
         # windows and collections
-        window = lambda **state: web_ui.pattern_window_step({"mode": "window", "offset": 0, "limit": 4, "total": 12, **state}, "next")
+        window = lambda **state: pysaiyanweboo.pattern_window_step({"mode": "window", "offset": 0, "limit": 4, "total": 12, **state}, "next")
         self.assertEqual(window(limit=1)["offset"], 1)
         for bad in ({"limit": 0}, {"offset": -1}, {"total": -1}, {"offset": True}, {"limit": 0.5}, {"total": "12"}):
             with self.assertRaises(ValueError, msg=bad):
                 window(**bad)
-        step = lambda command, **state: web_ui.pattern_window_step({"mode": "window", "offset": 0, "limit": 4, "total": 12, **state}, command)["offset"]
+        step = lambda command, **state: pysaiyanweboo.pattern_window_step({"mode": "window", "offset": 0, "limit": 4, "total": 12, **state}, command)["offset"]
         self.assertEqual((step("page-size-3", total=3), step("page-size-3", total=2), step("offset-6", total=4), step("offset-6", total=3)), (0, 0, 0, 0))
-        self.assertEqual(web_ui.pattern_window_render({"mode": "window", "offset": 0, "limit": 4, "total": 0}), {"schema": "collection-window/1", "mode": "window", "state": {"mode": "window", "offset": 0, "limit": 4, "total": 0}, "page": 0, "pages": 0, "values": []})
-        self.assertEqual(web_ui.pattern_window_render({"mode": "window", "offset": 8, "limit": 4, "total": 10})["pages"], 3)
+        self.assertEqual(pysaiyanweboo.pattern_window_render({"mode": "window", "offset": 0, "limit": 4, "total": 0}), {"schema": "collection-window/1", "mode": "window", "state": {"mode": "window", "offset": 0, "limit": 4, "total": 0}, "page": 0, "pages": 0, "values": []})
+        self.assertEqual(pysaiyanweboo.pattern_window_render({"mode": "window", "offset": 8, "limit": 4, "total": 10})["pages"], 3)
         for state in ([], None, {"mode": "dragging", "items": [], "selected": []}, {"mode": "checklist", "items": "ab", "selected": []}, {"mode": "checklist", "items": ["a"], "selected": "a"},
                       {"mode": "checklist", "items": ["a", "a"], "selected": []}, {"mode": "checklist", "items": ["a", 1], "selected": []}, {"mode": "checklist", "items": ["a"], "selected": ["z"]}):
             with self.assertRaises(ValueError, msg=state):
-                web_ui.pattern_collection_step(state, "toggle", "a")
+                pysaiyanweboo.pattern_collection_step(state, "toggle", "a")
         self.assertEqual(len(self.go("window", {"mode": "window", "commands": ["next"] * 1000})["values"]), 4)
         self.refused("window", {"mode": "window", "commands": ["next"] * 1001}, "commands must be strings")
         self.refused("window", {"mode": "window", "commands": ["next", 5]}, "commands must be strings")
@@ -4005,17 +4005,17 @@ class PatternTests(unittest.TestCase):
         self.assertEqual([self.go("validate", {"operation": "email", "value": mail(n)})["valid"] for n in (254, 255)], [True, False])
         self.assertEqual(step("next", total=4), 0)
         self.assertEqual(step("next", total=0), 0)
-        render = lambda **state: web_ui.pattern_window_render({"mode": "window", "offset": 0, "limit": 4, "total": 12, **state})
+        render = lambda **state: pysaiyanweboo.pattern_window_render({"mode": "window", "offset": 0, "limit": 4, "total": 12, **state})
         self.assertEqual([(render(offset=o, total=t)["page"], render(offset=o, total=t)["pages"]) for o, t in ((0, 8), (4, 8), (8, 12), (4, 12), (0, 1), (0, 4), (0, 5))],
                          [(1, 2), (2, 2), (3, 3), (2, 3), (1, 1), (1, 1), (1, 2)])
         with self.assertRaises(ValueError):
             self.go("transform", {"operation": "constraint", "condition": {"operator": "equals", "value": float("nan")}, "values": [1]})
         with self.assertRaises(ValueError):
             self.go("page", {"operation": "cursor", "items": [float("nan")], "limit": 1})
-        self.assertEqual(web_ui.PATTERN_ORDER_EXAMPLES["top-n"], [7, 1, 9, 3, 8, 2])
-        self.assertEqual(web_ui.PATTERN_ORDER_EXAMPLES["basic"], [9, 2, 5, 1, 3])
-        self.assertEqual(web_ui.PATTERN_ORDER_EXAMPLES["sorted-set"], [5, 2, 5, 1, 3, 2])
-        self.assertEqual((web_ui._pat_distance("ab", "a"), web_ui._pat_distance("a", "ab"), web_ui._pat_distance("flaw", "lawn"), web_ui._pat_distance("", "")), (1, 1, 2, 0))
+        self.assertEqual(pysaiyanweboo.PATTERN_ORDER_EXAMPLES["top-n"], [7, 1, 9, 3, 8, 2])
+        self.assertEqual(pysaiyanweboo.PATTERN_ORDER_EXAMPLES["basic"], [9, 2, 5, 1, 3])
+        self.assertEqual(pysaiyanweboo.PATTERN_ORDER_EXAMPLES["sorted-set"], [5, 2, 5, 1, 3, 2])
+        self.assertEqual((pysaiyanweboo._pat_distance("ab", "a"), pysaiyanweboo._pat_distance("a", "ab"), pysaiyanweboo._pat_distance("flaw", "lawn"), pysaiyanweboo._pat_distance("", "")), (1, 1, 2, 0))
         self.assertEqual(len(self.go("reduce", {"mode": "redux", "initial": 0, "actions": [{"type": "reset"}] * 1000})["history"]), 1001)
         self.refused("reduce", {"mode": "redux", "initial": 0, "actions": [{"type": "reset"}] * 1001}, "actions must be array of at most 1000")
         self.assertEqual([self.go("convert", {"operation": "mask", "value": "abcd", "keep_last": k})["value"] for k in (3, 4, 5)], ["*bcd", "****", "****"])
@@ -4131,7 +4131,7 @@ class PatternTests(unittest.TestCase):
             ids[0] += 1
             callbacks[ids[0]] = fn
             return ids[0]
-        trigger = web_ui.PatternDebouncer(seen.append, 20, set_timeout, lambda key: callbacks.pop(key, None))
+        trigger = pysaiyanweboo.PatternDebouncer(seen.append, 20, set_timeout, lambda key: callbacks.pop(key, None))
         trigger("first")
         trigger("last")
         self.assertEqual(len(callbacks), 1)
@@ -4144,7 +4144,7 @@ class PatternTests(unittest.TestCase):
         self.assertEqual(len(callbacks), 0)
         for args in ((None, 1), (seen.append, -1), (seen.append, float("nan")), (seen.append, "5"), (seen.append, None)):
             with self.assertRaises(TypeError, msg=args):
-                web_ui.PatternDebouncer(args[0], args[1], set_timeout, lambda key: None)
+                pysaiyanweboo.PatternDebouncer(args[0], args[1], set_timeout, lambda key: None)
         run = lambda calls, delay=20: self.go("interaction", {"operation": "debounce", "delay_ms": delay, "calls": calls})["result"]
         self.assertEqual(run([{"at_ms": 0, "value": "a"}, {"at_ms": 5, "value": "b"}, {"at_ms": 60, "value": "c"}]), [{"at_ms": 25, "value": "b"}, {"at_ms": 80, "value": "c"}])
         self.assertEqual(run([{"at_ms": 0, "value": "a"}, {"at_ms": 20, "value": "b"}]), [{"at_ms": 40, "value": "b"}], "a call at the moment the timer is due still replaces it")
@@ -4157,7 +4157,7 @@ class PatternTests(unittest.TestCase):
         self.refused("interaction", {"operation": "debounce", "delay_ms": 60001, "calls": []}, "delay_ms must be 0..60000")
 
     def test_strict_parsing(self):
-        parse = web_ui.pattern_parse
+        parse = pysaiyanweboo.pattern_parse
         self.assertEqual(typed(parse('{"a":[1,1.0,true,null]}')), '{"a": [1, 1.0, true, null]}')
         for text in ("NaN", "[Infinity]", '{"a":-Infinity}', "1e999", "[1e400]", "[" * 100000):
             with self.subTest(text=text[:12]), self.assertRaises(ValueError):
@@ -4167,11 +4167,11 @@ class PatternTests(unittest.TestCase):
         run = lambda *args, **kw: subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), *args], capture_output=True, timeout=60, **kw)
         done = run("--pattern", "reduce", input=json.dumps({"mode": "redux", "initial": 1, "actions": [{"type": "increment", "value": 2}]}).encode())
         self.assertEqual((done.returncode, json.loads(done.stdout)), (0, {"history": [1, 3], "mode": "redux", "schema": "state-reducer/1", "state": 3}))
-        for stdin in (b'{"mode":"redux","initial":NaN,"actions":[]}', b"[1", b'{"mode":"x"}', "{\"a\":\"".encode() + b"\xff\"}", b" " * (web_ui.PATTERN_MAX_INPUT + 1)):
+        for stdin in (b'{"mode":"redux","initial":NaN,"actions":[]}', b"[1", b'{"mode":"x"}', "{\"a\":\"".encode() + b"\xff\"}", b" " * (pysaiyanweboo.PATTERN_MAX_INPUT + 1)):
             done = run("--pattern", "reduce", input=stdin)
             self.assertEqual((done.returncode, done.stdout), (2, b""), stdin[:20])
             self.assertTrue(done.stderr.startswith("⛔ invalid pattern request: ".encode()))
-        self.assertEqual(run("--pattern", "list").stdout.decode().split(), sorted(web_ui.PATTERN_RUNNERS))
+        self.assertEqual(run("--pattern", "list").stdout.decode().split(), sorted(pysaiyanweboo.PATTERN_RUNNERS))
         done = run("--pattern", "nonsense", input=b"{}")
         self.assertEqual(done.returncode, 2)
         self.assertIn(b"unknown pattern family", done.stderr)
@@ -4180,10 +4180,10 @@ class PatternTests(unittest.TestCase):
 
     # --- the catalogue ---------------------------------------------------------------------------------------------------------------------------
     def test_the_catalogue_lists_all_792_patterns(self):
-        rows = web_ui.pattern_catalogue()
+        rows = pysaiyanweboo.pattern_catalogue()
         self.assertEqual(len(rows), 792)
         self.assertEqual(len({r["id"] for r in rows}), 792)
-        for key, letter, _ in web_ui.PATTERN_CATEGORIES:
+        for key, letter, _ in pysaiyanweboo.PATTERN_CATEGORIES:
             own = [r for r in rows if r["category"] == key]
             self.assertEqual([r["number"] for r in own], list(range(1, 199)))
             self.assertTrue(all(r["id"] == f"{letter}{r['number']:03d}" for r in own))
@@ -4195,11 +4195,11 @@ class PatternTests(unittest.TestCase):
         self.assertEqual({r["id"] for r in rows if "family" in r}, {r["id"] for r in rows if r["category"] == "data"})
 
     def test_themes_follow_the_ranges_of_patterns_md(self):
-        for key, ranges in web_ui.PATTERN_THEMES.items():
+        for key, ranges in pysaiyanweboo.PATTERN_THEMES.items():
             self.assertEqual(ranges[0][0], 1, key)
             self.assertEqual(ranges[-1][1], 198, key)
             self.assertTrue(all(a[1] + 1 == b[0] for a, b in zip(ranges, ranges[1:])), key)
-        theme = web_ui.pattern_theme
+        theme = pysaiyanweboo.pattern_theme
         self.assertEqual((theme("data", 30), theme("data", 31), theme("data", 185), theme("data", 186)), ("フィルタリング・ソート・検索", "ページング・無限スクロール・仮想化", "並び替え・追加・入れ替え機能", "バッチ処理・トランザクション・イベント駆動"))
         self.assertEqual(theme("ui", 175), "プラットフォーム固有 (iOS/Android/Web/macOS)")
         with self.assertRaises(ValueError):
@@ -4208,11 +4208,11 @@ class PatternTests(unittest.TestCase):
     def test_every_reference_function_belongs_to_the_patterns_that_the_original_assigned(self):
         families: dict[str, list[int]] = {}
         for number in range(1, 199):
-            family = web_ui.pattern_family(number)
+            family = pysaiyanweboo.pattern_family(number)
             if family:
                 families.setdefault(family, []).append(number)
-        self.assertEqual(set(families) | {"screen", "contract"}, set(web_ui.PATTERN_RUNNERS), "the screen family implements screens and the contract family checks them, not data-processing patterns")
-        self.assertEqual(families["native"], sorted(web_ui.PATTERN_NATIVE | web_ui.PATTERN_GESTURES))
+        self.assertEqual(set(families) | {"screen", "contract"}, set(pysaiyanweboo.PATTERN_RUNNERS), "the screen family implements screens and the contract family checks them, not data-processing patterns")
+        self.assertEqual(families["native"], sorted(pysaiyanweboo.PATTERN_NATIVE | pysaiyanweboo.PATTERN_GESTURES))
         self.assertEqual(families["select"], [1, 2, 3, 30, 86, 113])
         self.assertEqual(families["query"], [11, 12, 14, 15, 16, 17, 18])
         self.assertEqual(families["window"], [34, 36, 37, 38, 39, 40, 41, 42, 43, 44])
@@ -4221,16 +4221,16 @@ class PatternTests(unittest.TestCase):
         self.assertEqual(families["reduce"], [164, 165])
         self.assertEqual((families["future"], families["concurrency"], families["event_loop"], families["interaction"]), (list(range(121, 127)), list(range(138, 144)), list(range(146, 151)), [4, 35]))
         self.assertEqual(families["stream"], list(range(127, 136)) + [144, 145])
-        owner = web_ui.pattern_owner
+        owner = pysaiyanweboo.pattern_owner
         self.assertEqual([owner(n) for n in (4, 35, 121, 135, 138, 150)], ["javascript"] * 6)
         self.assertEqual([owner(n) for n in (136, 137, 151, 163, 166, 170, 171, 184)], ["flutter_native"] * 8)
         self.assertEqual([owner(n) for n in (50, 60, 61, 90, 91, 112)], ["python_assets / flutter_layout", "python_assets / flutter_layout", "python_cache / runtime_specific", "python_cache / runtime_specific", "python", "python_validation / flutter_form"])
         self.assertEqual((owner(8), owner(113), owner(35)), ("python", "python", "javascript"), "the first row that contains a number decides (35 is JavaScript, not a window)")
-        self.assertEqual(web_ui.pattern_family(35), "interaction")
+        self.assertEqual(pysaiyanweboo.pattern_family(35), "interaction")
 
     def test_finding_patterns(self):
-        rows = web_ui.pattern_catalogue()
-        ids = lambda **kw: [r["id"] for r in web_ui.pattern_find(rows, **kw)]
+        rows = pysaiyanweboo.pattern_catalogue()
+        ids = lambda **kw: [r["id"] for r in pysaiyanweboo.pattern_find(rows, **kw)]
         self.assertEqual(ids(query="filternested"), ["D003"])
         self.assertEqual(ids(query="ＦＩＬＴＥＲ ｎｅｓｔｅｄ"), ["D003"], "NFKC and case folded")
         self.assertEqual(ids(query="d003"), ["D003"])
@@ -4243,40 +4243,40 @@ class PatternTests(unittest.TestCase):
 
     # --- the patterns page -----------------------------------------------------------------------------------------------------------------------
     def test_every_family_has_an_example_and_the_page_runs_nineteen_of_them(self):
-        examples = web_ui.pattern_examples()
-        self.assertEqual(sorted(examples), sorted(web_ui.PATTERN_RUNNERS))
-        self.assertEqual(set(web_ui.PATTERN_RUNNERS) - set(web_ui.PATTERN_TWINS), {"search", "convert", "validate", "contract"})
-        self.assertEqual(len(web_ui.PATTERN_TWINS), 19)
+        examples = pysaiyanweboo.pattern_examples()
+        self.assertEqual(sorted(examples), sorted(pysaiyanweboo.PATTERN_RUNNERS))
+        self.assertEqual(set(pysaiyanweboo.PATTERN_RUNNERS) - set(pysaiyanweboo.PATTERN_TWINS), {"search", "convert", "validate", "contract"})
+        self.assertEqual(len(pysaiyanweboo.PATTERN_TWINS), 19)
         for family, example in examples.items():
             with self.subTest(family):
-                self.assertEqual(typed(example["result"]), typed(self.go(family, web_ui.PATTERN_EXAMPLES[family])))
+                self.assertEqual(typed(example["result"]), typed(self.go(family, pysaiyanweboo.PATTERN_EXAMPLES[family])))
                 json.dumps(example, allow_nan=False)
-        for family in web_ui.PATTERN_TWINS:
-            self.assertNotIn("1.0", json.dumps(web_ui.PATTERN_EXAMPLES[family]), "a page reads 1.0 as 1")
+        for family in pysaiyanweboo.PATTERN_TWINS:
+            self.assertNotIn("1.0", json.dumps(pysaiyanweboo.PATTERN_EXAMPLES[family]), "a page reads 1.0 as 1")
 
     def test_the_page_is_one_self_contained_document(self):
-        page = web_ui.patterns_document()
+        page = pysaiyanweboo.patterns_document()
         self.assertEqual(page.count('<script type="module">'), 1)
         self.assertEqual(page.count('id="patterns"'), 1)
         self.assertNotRegex(page, r"https?://(?!github\.com/myon-bioinformatics/flutter_navigation_basic/blob/[0-9a-f]{40}/\")", "the only address in the page is the pinned source of the screen family's links answer, as data")
         for hook in ("data-patterns-query", "data-patterns-category", "data-patterns-family", "data-patterns-count", "data-patterns-more", "data-patterns-list", "data-patterns-run-family",
                      "data-patterns-request", "data-patterns-run", "data-patterns-example", "data-patterns-status", "data-patterns-result", 'id="patterns-run-title"'):
             self.assertEqual(page.count(hook) if hook.startswith("id=") else len(re.findall(r"(?<= )%s(?=[ >])" % re.escape(hook), page)), 1, hook)
-        self.assertEqual(len(re.findall(r'<option value="(?:%s)"' % "|".join(web_ui.PATTERN_RUNNERS), page)), 2 * len(web_ui.PATTERN_RUNNERS))
+        self.assertEqual(len(re.findall(r'<option value="(?:%s)"' % "|".join(pysaiyanweboo.PATTERN_RUNNERS), page)), 2 * len(pysaiyanweboo.PATTERN_RUNNERS))
         self.assertIn('<option value="query" selected>', page)
         self.assertEqual(len(re.findall(r'<option value="(?:navigation|api|ui|data)">', page)), 4)
         self.assertIn("globalThis.webUiPatterns=api", page)
-        self.assertIn(".ui-patterns", web_ui.bundled_css())
-        self.assertTrue(all(int(px) % 8 == 0 for px in re.findall(r"(\d+)px", web_ui._CSS["patterns.css"])), "pixel sizes are multiples of 8")
-        self.assertIn("examples/patterns.html", web_ui.example_pages())
-        self.assertIn('href="./patterns.html"', web_ui.example_pages()["examples/index.html"])
+        self.assertIn(".ui-patterns", pysaiyanweboo.bundled_css())
+        self.assertTrue(all(int(px) % 8 == 0 for px in re.findall(r"(\d+)px", pysaiyanweboo._CSS["patterns.css"])), "pixel sizes are multiples of 8")
+        self.assertIn("examples/patterns.html", pysaiyanweboo.example_pages())
+        self.assertIn('href="./patterns.html"', pysaiyanweboo.example_pages()["examples/index.html"])
 
     def test_the_js_constants_are_the_python_values(self):
-        source = web_ui._JS["patterns.js"]
-        want = {"PATTERN_CATEGORIES": web_ui.PATTERN_CATEGORIES, "PATTERN_THEMES": web_ui.PATTERN_THEMES, "PATTERN_TITLES": web_ui.PATTERN_TITLES,
-                "PATTERN_PRODUCERS": [[list(n), r, f] for n, r, f in web_ui.PATTERN_PRODUCERS], "PATTERN_NATIVE": sorted(web_ui.PATTERN_NATIVE),
-                "PATTERN_GESTURES": sorted(web_ui.PATTERN_GESTURES), "PATTERN_FAMILIES": sorted(web_ui.PATTERN_RUNNERS), "PATTERN_TWINS": list(web_ui.PATTERN_TWINS),
-                "PATTERN_EXAMPLES": web_ui.pattern_examples()}
+        source = pysaiyanweboo._JS["patterns.js"]
+        want = {"PATTERN_CATEGORIES": pysaiyanweboo.PATTERN_CATEGORIES, "PATTERN_THEMES": pysaiyanweboo.PATTERN_THEMES, "PATTERN_TITLES": pysaiyanweboo.PATTERN_TITLES,
+                "PATTERN_PRODUCERS": [[list(n), r, f] for n, r, f in pysaiyanweboo.PATTERN_PRODUCERS], "PATTERN_NATIVE": sorted(pysaiyanweboo.PATTERN_NATIVE),
+                "PATTERN_GESTURES": sorted(pysaiyanweboo.PATTERN_GESTURES), "PATTERN_FAMILIES": sorted(pysaiyanweboo.PATTERN_RUNNERS), "PATTERN_TWINS": list(pysaiyanweboo.PATTERN_TWINS),
+                "PATTERN_EXAMPLES": pysaiyanweboo.pattern_examples()}
         for name, value in want.items():
             found = re.search(r"^export const %s=(.*);$" % name, source, re.M)
             self.assertIsNotNone(found, name)
@@ -4286,11 +4286,11 @@ class PatternTests(unittest.TestCase):
 
     def test_the_platform_adapters_check_the_page(self):
         for name, fragment in (("web-ui-patterns", None), ("web-ui-pattern-run", "patterns-run-title")):
-            adapter = web_ui.btk_adapter(name)
+            adapter = pysaiyanweboo.btk_adapter(name)
             self.assertEqual(adapter["url"], "http://127.0.0.1:8000/examples/patterns.html" + ("" if fragment is None else "#" + fragment))
             self.assertNotEqual(adapter["click"]["before"], adapter["click"]["after"])
             self.assertTrue(all(selector.startswith("#patterns") for selector in adapter["elements"]))
-        self.assertEqual((web_ui.BTK_ADAPTERS["web-ui-patterns"]["click"]["before"], web_ui.BTK_ADAPTERS["web-ui-patterns"]["click"]["after"]), ("48", "96"))
+        self.assertEqual((pysaiyanweboo.BTK_ADAPTERS["web-ui-patterns"]["click"]["before"], pysaiyanweboo.BTK_ADAPTERS["web-ui-patterns"]["click"]["after"]), ("48", "96"))
 
     # --- invariants on random input --------------------------------------------------------------------------------------------------------------
     def test_random_invariants(self):
@@ -4340,37 +4340,37 @@ def studio_canon(value):
 def studio_call(fn, arg):
     """The Python reference for each function recorded from Ironmate's studio/core.js."""
     if fn == "jsnum":
-        return web_ui.js_number(arg)
+        return pysaiyanweboo.js_number(arg)
     if fn == "jsjson":
-        return web_ui.js_json(arg)
+        return pysaiyanweboo.js_json(arg)
     if fn == "heatColor":
-        return web_ui.studio_heat_color(*arg)
+        return pysaiyanweboo.studio_heat_color(*arg)
     if fn == "matrix":
-        return web_ui.studio_matrix(arg)
+        return pysaiyanweboo.studio_matrix(arg)
     if fn == "validate":
-        return web_ui.studio_validate(arg)
+        return pysaiyanweboo.studio_validate(arg)
     if fn == "mosaic":
-        return list(web_ui.studio_mosaic_rgba(bytes(arg[0]), *arg[1:]))
+        return list(pysaiyanweboo.studio_mosaic_rgba(bytes(arg[0]), *arg[1:]))
     if fn == "arrow":
-        return web_ui.studio_arrow_geometry(*arg)
+        return pysaiyanweboo.studio_arrow_geometry(*arg)
     if fn == "outputSize":
-        return web_ui.studio_output_size(*arg)
+        return pysaiyanweboo.studio_output_size(*arg)
     if fn == "pngPayload":
-        return web_ui.studio_png_payload(bytes(arg))
+        return pysaiyanweboo.studio_png_payload(bytes(arg))
     if fn == "textLayout":
-        return web_ui.studio_text_layout(arg)
+        return pysaiyanweboo.studio_text_layout(arg)
     if fn == "layerSVG":
-        return web_ui.studio_layer_svg(arg)
+        return pysaiyanweboo.studio_layer_svg(arg)
     if fn == "svg":
-        return web_ui.studio_svg(arg[0], None, arg[1])
+        return pysaiyanweboo.studio_svg(arg[0], None, arg[1])
     if fn == "words":
-        return web_ui.studio_words(arg)
+        return pysaiyanweboo.studio_words(arg)
     if fn == "graphemes":
-        return web_ui.studio_graphemes(arg)
+        return pysaiyanweboo.studio_graphemes(arg)
     if fn == "sincos":
-        return [web_ui.studio_sin(arg), web_ui.studio_cos(arg)]
+        return [pysaiyanweboo.studio_sin(arg), pysaiyanweboo.studio_cos(arg)]
     if fn in ("demo", "stampDemo"):
-        scene = web_ui.studio_demo_scene() if fn == "demo" else web_ui.studio_stamp_demo_scene()
+        scene = pysaiyanweboo.studio_demo_scene() if fn == "demo" else pysaiyanweboo.studio_stamp_demo_scene()
         for i, layer in enumerate(scene["layers"]):
             layer["id"] = f"L{i}"
         return scene
@@ -4379,7 +4379,7 @@ def studio_call(fn, arg):
         states = []
         for op, scene in arg:
             if op == "new":
-                history = web_ui.StudioHistory(scene)
+                history = pysaiyanweboo.StudioHistory(scene)
             elif op == "commit":
                 history.commit(scene)
             elif op == "undo":
@@ -4387,7 +4387,7 @@ def studio_call(fn, arg):
             else:
                 history.redo()
             states.append([history.index, len(history.items)])
-        return {"states": states, "items": history.items, "workspace": web_ui.studio_workspace_text(history)}
+        return {"states": states, "items": history.items, "workspace": pysaiyanweboo.studio_workspace_text(history)}
     raise AssertionError(fn)
 
 
@@ -4395,10 +4395,10 @@ class ImageStudioTests(unittest.TestCase):
     """The Ironmate image studio. The golden values are Ironmate's studio/core.js own outputs (recorded by Node, never produced by this code)."""
 
     def blank(self, **patch):
-        return {"schema": web_ui.STUDIO_SCHEMA, "width": 64, "height": 64, "background": "none", "layers": [], **patch}
+        return {"schema": pysaiyanweboo.STUDIO_SCHEMA, "width": 64, "height": 64, "background": "none", "layers": [], **patch}
 
     def history(self):
-        history = web_ui.StudioHistory(self.blank())
+        history = pysaiyanweboo.StudioHistory(self.blank())
         following = history.current
         following["background"] = "#123456"
         history.commit(following)
@@ -4406,7 +4406,7 @@ class ImageStudioTests(unittest.TestCase):
         return history
 
     def run_cli(self, *argv, stdin=None):
-        done = subprocess.run([sys.executable, "-S", str(Path(web_ui.__file__)), *map(str, argv)], input=stdin, capture_output=True, timeout=60, cwd=ROOT)
+        done = subprocess.run([sys.executable, "-S", str(Path(pysaiyanweboo.__file__)), *map(str, argv)], input=stdin, capture_output=True, timeout=60, cwd=ROOT)
         return done.returncode, done.stdout, done.stderr.decode("utf-8")
 
     def test_cli_ignores_site_customization_and_parent_working_directory(self):
@@ -4418,7 +4418,7 @@ class ImageStudioTests(unittest.TestCase):
                 encoding="utf-8",
             )
             scene = tmp / "scene.json"
-            scene.write_text(web_ui.js_json(self.blank()), encoding="utf-8")
+            scene.write_text(pysaiyanweboo.js_json(self.blank()), encoding="utf-8")
             relative_scene = os.path.relpath(scene, ROOT)
             with mock.patch.dict(os.environ, {"PYTHONPATH": str(tmp)}):
                 # Prove this interpreter would load the hook without -S.
@@ -4434,7 +4434,7 @@ class ImageStudioTests(unittest.TestCase):
                 finally:
                     os.chdir(previous)
                 self.assertEqual((code, err), (0, ""))
-                self.assertEqual(out.decode("utf-8"), web_ui.studio_render(self.blank()) + "\n")
+                self.assertEqual(out.decode("utf-8"), pysaiyanweboo.studio_render(self.blank()) + "\n")
                 self.assertFalse(marker.exists(), "CLI must skip site customization")
 
     # --- the originals' own outputs -------------------------------------------------------------------------------------------------------------
@@ -4445,7 +4445,7 @@ class ImageStudioTests(unittest.TestCase):
             counts[fn] = counts.get(fn, 0) + 1
             with self.subTest(fn=fn, n=counts[fn]):
                 if "error" in case:
-                    with self.assertRaises(web_ui.StudioError) as caught:
+                    with self.assertRaises(pysaiyanweboo.StudioError) as caught:
                         studio_call(fn, arg)
                     self.assertEqual(str(caught.exception), case["error"])
                 else:
@@ -4457,35 +4457,35 @@ class ImageStudioTests(unittest.TestCase):
     # --- Ironmate's tests/test_image_studio.py -------------------------------------------------------------------------------------------------
     def test_heatmap_keeps_values_gaps_labels_and_source(self):
         source = {"data": [{"type": "heatmap", "z": [[-2.123456789012345, None, 4], [0, 1, 2]], "x": [2024, 2025, 2026], "y": ["中日", "巨人"], "zmin": -4, "zmax": 8}], "layout": {"title": {"text": "source"}}}
-        scene = web_ui.studio_heatmap_scene(source)
+        scene = pysaiyanweboo.studio_heatmap_scene(source)
         layer = scene["layers"][0]
         self.assertEqual((layer["z"], layer["xlabels"], layer["ylabels"], layer["low"], layer["high"]), ([[-2.123456789012345, None, 4], [0, 1, 2]], [2024, 2025, 2026], ["中日", "巨人"], -4, 8))
         self.assertIs(scene["source"], source)
         self.assertIsNone(layer["z"][0][1])
-        self.assertEqual(web_ui.studio_validate(scene), scene, "a scene made from a matrix is already valid")
+        self.assertEqual(pysaiyanweboo.studio_validate(scene), scene, "a scene made from a matrix is already valid")
 
     def test_unsafe_or_empty_matrices_are_refused(self):
         for source in ([[True]], [[float("inf")]], [[2 ** 53]], [[1e100]], [[2 ** 1024]], [[1], [1, 2]], [], {"data": []}):
-            with self.subTest(source=repr(source)[:30]), self.assertRaises(web_ui.StudioError):
-                web_ui.studio_heatmap_scene(source)
+            with self.subTest(source=repr(source)[:30]), self.assertRaises(pysaiyanweboo.StudioError):
+                pysaiyanweboo.studio_heatmap_scene(source)
 
     def test_transparent_rgb_does_not_pollute_a_block_average(self):
         # one opaque red pixel and one fully transparent blue pixel average to half-transparent red, not purple
-        got = web_ui.studio_mosaic_rgba(bytes([255, 0, 0, 255, 0, 0, 255, 0]), 2, 1, 2, 256)
+        got = pysaiyanweboo.studio_mosaic_rgba(bytes([255, 0, 0, 255, 0, 0, 255, 0]), 2, 1, 2, 256)
         self.assertEqual(list(got), [255, 0, 0, 128] * 2)
 
     def test_svg_escapes_text_and_keeps_gaps_visible(self):
-        scene = web_ui.studio_heatmap_scene([[1, None, 2]])
+        scene = pysaiyanweboo.studio_heatmap_scene([[1, None, 2]])
         scene["layers"].append({"id": "text", "kind": "text", "name": "custom", "x": 10, "y": 20, "w": 500, "h": 100, "opacity": 0.5, "rotation": 30, "fontSize": 40, "fill": "#112233", "text": "<script>alert(1)</script> & 🌱\n次へ"})
-        svg = web_ui.studio_svg(scene)
+        svg = pysaiyanweboo.studio_svg(scene)
         self.assertNotIn("<script>", svg)
         self.assertIn("&lt;script&gt;", svg)
         self.assertIn("欠測", svg)
         self.assertIn("🌱", svg)
 
     def test_history_saves_a_copy_undoes_and_branches(self):
-        scene = web_ui.studio_heatmap_scene([[1, None, 2]])
-        history = web_ui.StudioHistory(scene)
+        scene = pysaiyanweboo.studio_heatmap_scene([[1, None, 2]])
+        history = pysaiyanweboo.StudioHistory(scene)
         edit = history.current
         edit["layers"][0]["levels"] = 4
         history.commit(edit)
@@ -4503,7 +4503,7 @@ class ImageStudioTests(unittest.TestCase):
         self.assertEqual(len(history.items), 2, "an edit that changes nothing is not recorded")
 
     def test_forty_states_at_most(self):
-        history = web_ui.StudioHistory(self.blank())
+        history = pysaiyanweboo.StudioHistory(self.blank())
         for i in range(60):
             scene = history.current
             scene["width"] = 64 + i + 1
@@ -4511,23 +4511,23 @@ class ImageStudioTests(unittest.TestCase):
         self.assertEqual((len(history.items), history.index, history.items[0]["width"], history.items[-1]["width"]), (40, 39, 64 + 21 + 0, 64 + 60))
 
     def test_untrusted_scenes_with_outside_images_or_bad_geometry_are_refused(self):
-        scene = web_ui.studio_heatmap_scene([[1]])
-        nan = web_ui.studio_clone(scene)
+        scene = pysaiyanweboo.studio_heatmap_scene([[1]])
+        nan = pysaiyanweboo.studio_clone(scene)
         nan["layers"][0]["rotation"] = float("nan")
-        outside = web_ui.studio_clone(scene)
+        outside = pysaiyanweboo.studio_clone(scene)
         outside["layers"][0] = {**outside["layers"][0], "kind": "image", "src": "https://example.com/a.png", "cell": 1, "levels": 256}
-        twin = web_ui.studio_clone(scene)
-        twin["layers"].append(web_ui.studio_clone(twin["layers"][0]))
+        twin = pysaiyanweboo.studio_clone(scene)
+        twin["layers"].append(pysaiyanweboo.studio_clone(twin["layers"][0]))
         for bad in (nan, outside, twin):
-            with self.assertRaises(web_ui.StudioError):
-                web_ui.studio_svg(bad)
+            with self.assertRaises(pysaiyanweboo.StudioError):
+                pysaiyanweboo.studio_svg(bad)
 
     # --- Ironmate's tests/studio_workspace.test.cjs ---------------------------------------------------------------------------------------------
     def test_workspace_restores_index_redo_branch_unicode_and_is_detached(self):
         history = self.history()
         history.items[1]["source"] = {"note": "🌱日本語"}
-        text = web_ui.studio_workspace_text(history)
-        restored = web_ui.studio_workspace_history(text)
+        text = pysaiyanweboo.studio_workspace_text(history)
+        restored = pysaiyanweboo.studio_workspace_history(text)
         self.assertEqual(restored.index, 0)
         self.assertEqual(restored.current, history.current)
         self.assertEqual(restored.redo(), history.items[1])
@@ -4536,129 +4536,129 @@ class ImageStudioTests(unittest.TestCase):
         self.assertIn("🌱日本語", text, "Unicode is written as it is")
 
     def test_workspace_validates_index_schema_count_and_every_scene(self):
-        record = json.loads(web_ui.studio_workspace_text(self.history()))
+        record = json.loads(pysaiyanweboo.studio_workspace_text(self.history()))
         for patch in ({"schema": "wrong"}, {"index": -1}, {"index": 2}, {"index": 0.5}, {"items": []}, {"items": [self.blank()] * 41}, {"items": [self.blank(), self.blank(width=-1)]}, {"items": "x"}, {"index": True}):
-            with self.subTest(patch=str(patch)[:40]), self.assertRaises(web_ui.StudioError):
-                web_ui.studio_workspace_history(json.dumps({**record, **patch}))
-        history = web_ui.StudioHistory(self.blank())
+            with self.subTest(patch=str(patch)[:40]), self.assertRaises(pysaiyanweboo.StudioError):
+                pysaiyanweboo.studio_workspace_history(json.dumps({**record, **patch}))
+        history = pysaiyanweboo.StudioHistory(self.blank())
         history.index = 1
-        with self.assertRaises(web_ui.StudioError):
-            web_ui.studio_workspace_text(history)
+        with self.assertRaises(pysaiyanweboo.StudioError):
+            pysaiyanweboo.studio_workspace_text(history)
         for bad in (None, 5, b"{}", "", "[]", "{", "null"):
-            with self.subTest(bad=repr(bad)), self.assertRaises((web_ui.StudioError, ValueError)):
-                web_ui.studio_workspace_history(bad)
+            with self.subTest(bad=repr(bad)), self.assertRaises((pysaiyanweboo.StudioError, ValueError)):
+                pysaiyanweboo.studio_workspace_history(bad)
 
     def test_workspace_limit_is_32_mib_of_utf8_inclusive(self):
-        text = web_ui.studio_workspace_text(self.history())
-        limit = web_ui.STUDIO_WORKSPACE_MAX_BYTES
+        text = pysaiyanweboo.studio_workspace_text(self.history())
+        limit = pysaiyanweboo.STUDIO_WORKSPACE_MAX_BYTES
         exact = text + " " * (limit - len(text.encode("utf-8")))
         self.assertEqual(len(exact.encode("utf-8")), limit)
-        self.assertEqual(web_ui.studio_workspace_history(exact).current, self.blank())
-        with self.assertRaisesRegex(web_ui.StudioError, "32MiB"):
-            web_ui.studio_workspace_history(exact + " ")
+        self.assertEqual(pysaiyanweboo.studio_workspace_history(exact).current, self.blank())
+        with self.assertRaisesRegex(pysaiyanweboo.StudioError, "32MiB"):
+            pysaiyanweboo.studio_workspace_history(exact + " ")
         # below 32M characters yet above 32 MiB as UTF-8
         large = json.loads(text)
         large["items"][0]["source"] = "🌱" * 8_388_608
         multibyte = json.dumps(large, ensure_ascii=False)
         self.assertLess(len(multibyte), limit)
         self.assertGreater(len(multibyte.encode("utf-8")), limit)
-        with self.assertRaisesRegex(web_ui.StudioError, "32MiB"):
-            web_ui.studio_workspace_history(multibyte)
+        with self.assertRaisesRegex(pysaiyanweboo.StudioError, "32MiB"):
+            pysaiyanweboo.studio_workspace_history(multibyte)
 
     def test_writer_refuses_repeated_images_over_budget_and_accepts_a_trimmed_history(self):
         scene = self.blank()
         scene["layers"].append({"id": "img", "kind": "image", "x": 0, "y": 0, "w": 64, "h": 64, "rotation": 0, "opacity": 1, "src": "data:image/png;base64," + "A" * 8_000_000, "cell": 1, "levels": 256})
-        history = web_ui.StudioHistory(scene)
+        history = pysaiyanweboo.StudioHistory(scene)
         history.items = [scene] * 5
         history.index = 2
-        with self.assertRaisesRegex(web_ui.StudioError, "32MiB"):
-            web_ui.studio_workspace_text(history)
+        with self.assertRaisesRegex(pysaiyanweboo.StudioError, "32MiB"):
+            pysaiyanweboo.studio_workspace_text(history)
         self.assertEqual(len(history.items), 5, "a refused save does not touch the history")
-        trimmed = web_ui.StudioHistory(history.current)
-        self.assertEqual(web_ui.studio_workspace_history(web_ui.studio_workspace_text(trimmed)).current, history.current)
+        trimmed = pysaiyanweboo.StudioHistory(history.current)
+        self.assertEqual(pysaiyanweboo.studio_workspace_history(pysaiyanweboo.studio_workspace_text(trimmed)).current, history.current)
 
     # --- the scene and its parts ---------------------------------------------------------------------------------------------------------------
     def test_refusal_messages_are_the_originals_japanese_text(self):
         cases = [(self.blank(schema="x"), "シーンの形式・サイズが不正です（最大100レイヤー、4MP）"), (self.blank(width=0), "シーンの形式・サイズが不正です（最大100レイヤー、4MP）")]
         for scene, message in cases:
-            with self.assertRaises(web_ui.StudioError) as caught:
-                web_ui.studio_validate(scene)
+            with self.assertRaises(pysaiyanweboo.StudioError) as caught:
+                pysaiyanweboo.studio_validate(scene)
             self.assertEqual(str(caught.exception), message)
-        with self.assertRaises(web_ui.StudioError):
-            web_ui.studio_validate(self.blank(layers=[web_ui.studio_base_layer("rect", "a")] * 101))
-        with self.assertRaises(web_ui.StudioError):
-            web_ui.studio_validate(self.blank(width=4096, height=4096))
-        self.assertEqual(web_ui.studio_validate(self.blank(width=2048, height=2048))["width"], 2048)
+        with self.assertRaises(pysaiyanweboo.StudioError):
+            pysaiyanweboo.studio_validate(self.blank(layers=[pysaiyanweboo.studio_base_layer("rect", "a")] * 101))
+        with self.assertRaises(pysaiyanweboo.StudioError):
+            pysaiyanweboo.studio_validate(self.blank(width=4096, height=4096))
+        self.assertEqual(pysaiyanweboo.studio_validate(self.blank(width=2048, height=2048))["width"], 2048)
 
     def test_a_click_places_every_tool_where_it_was_pressed(self):
         for tool in ("rect", "ellipse", "triangle", "text", "stamp", "arrow", "clock"):
-            layer = web_ui.studio_place(tool, "a", 123.5, 45, text="x")
+            layer = pysaiyanweboo.studio_place(tool, "a", 123.5, 45, text="x")
             self.assertEqual((layer["x"], layer["y"]), (123.5, 45), tool)
-        with self.assertRaises(web_ui.StudioError):
-            web_ui.studio_place("star", "a", 0, 0)
+        with self.assertRaises(pysaiyanweboo.StudioError):
+            pysaiyanweboo.studio_place("star", "a", 0, 0)
 
     def test_the_two_demo_scenes_are_valid_and_drawn(self):
-        for scene in (web_ui.studio_demo_scene(), web_ui.studio_stamp_demo_scene(), web_ui.studio_blank()):
-            self.assertEqual(web_ui.studio_validate(scene), scene)
-            svg = web_ui.studio_svg(scene)
+        for scene in (pysaiyanweboo.studio_demo_scene(), pysaiyanweboo.studio_stamp_demo_scene(), pysaiyanweboo.studio_blank()):
+            self.assertEqual(pysaiyanweboo.studio_validate(scene), scene)
+            svg = pysaiyanweboo.studio_svg(scene)
             self.assertTrue(svg.startswith('<svg xmlns="http://www.w3.org/2000/svg"'))
             ET.fromstring(svg)
-        kinds = {layer["kind"] for layer in web_ui.studio_demo_scene()["layers"]} | {layer["kind"] for layer in web_ui.studio_stamp_demo_scene()["layers"]}
+        kinds = {layer["kind"] for layer in pysaiyanweboo.studio_demo_scene()["layers"]} | {layer["kind"] for layer in pysaiyanweboo.studio_stamp_demo_scene()["layers"]}
         self.assertGreaterEqual(len(kinds), 4)
 
     def test_every_layer_kind_is_drawn_as_well_formed_svg(self):
         scene = self.blank(width=400, height=300, background="#FFFFFF")
-        scene["layers"] = [web_ui.studio_place(tool, tool, 40 + 8 * i, 40 + 8 * i) for i, tool in enumerate(("rect", "ellipse", "triangle", "arrow", "clock"))]
-        scene["layers"].append(web_ui.studio_text_layer("Hello, 世界 🌱", "t", 20, 200))
-        scene["layers"].append(web_ui.studio_matrix_layer([[1, 2], [3, None]], "h", 400, 300))
-        document = ET.fromstring(web_ui.studio_svg(scene))
+        scene["layers"] = [pysaiyanweboo.studio_place(tool, tool, 40 + 8 * i, 40 + 8 * i) for i, tool in enumerate(("rect", "ellipse", "triangle", "arrow", "clock"))]
+        scene["layers"].append(pysaiyanweboo.studio_text_layer("Hello, 世界 🌱", "t", 20, 200))
+        scene["layers"].append(pysaiyanweboo.studio_matrix_layer([[1, 2], [3, None]], "h", 400, 300))
+        document = ET.fromstring(pysaiyanweboo.studio_svg(scene))
         self.assertEqual(document.get("width"), "400")
         ids = [g.get("data-layer") for g in document.iter("{http://www.w3.org/2000/svg}g") if g.get("data-layer")]
         self.assertEqual(ids, ["rect", "ellipse", "triangle", "arrow", "clock", "t", "h"])
 
     def test_scale_and_output_size(self):
-        self.assertEqual(web_ui.studio_output_size(self.blank(width=333, height=720), 2), {"width": 666, "height": 1440})
+        self.assertEqual(pysaiyanweboo.studio_output_size(self.blank(width=333, height=720), 2), {"width": 666, "height": 1440})
         for scale in (0.2, 9, "x", 0):
-            with self.assertRaises(web_ui.StudioError):
-                web_ui.studio_output_size(self.blank(), scale)
-        with self.assertRaises(web_ui.StudioError):
-            web_ui.studio_output_size(self.blank(width=4096, height=4096), 8)
-        svg = web_ui.studio_svg(self.blank(width=100, height=64), None, 4)
+            with self.assertRaises(pysaiyanweboo.StudioError):
+                pysaiyanweboo.studio_output_size(self.blank(), scale)
+        with self.assertRaises(pysaiyanweboo.StudioError):
+            pysaiyanweboo.studio_output_size(self.blank(width=4096, height=4096), 8)
+        svg = pysaiyanweboo.studio_svg(self.blank(width=100, height=64), None, 4)
         self.assertIn('width="400" height="256" viewBox="0 0 100 64"', svg)
 
     def test_text_wraps_by_words_and_by_characters_for_long_words(self):
-        layer = {**web_ui.studio_text_layer("a very long line of ordinary words that should wrap into several lines", "t", 0, 0, wrap=True), "w": 120, "fontSize": 16}
-        paragraphs = web_ui.studio_text_layout(layer)
+        layer = {**pysaiyanweboo.studio_text_layer("a very long line of ordinary words that should wrap into several lines", "t", 0, 0, wrap=True), "w": 120, "fontSize": 16}
+        paragraphs = pysaiyanweboo.studio_text_layout(layer)
         self.assertEqual(len(paragraphs), 1)
         lines = paragraphs[0]
         self.assertGreater(len(lines), 2)
         self.assertEqual("".join(lines).replace(" ", ""), layer["text"].replace(" ", ""))
-        self.assertTrue(all(web_ui.studio_measure(line, layer) <= layer["w"] for line in lines))
-        glued = web_ui.studio_text_layout({**layer, "text": "x" * 40, "w": 100})[0]
-        self.assertTrue(all(web_ui.studio_measure(line, layer) <= 100 for line in glued) and "".join(glued) == "x" * 40)
-        self.assertEqual(web_ui.studio_words("Hello, world! can't stop 3.14"), ["Hello", ",", " ", "world", "!", " ", "can't", " ", "stop", " ", "3.14"])
-        self.assertEqual(web_ui.studio_graphemes("é🇯🇵👨‍👩‍👧x"), ["é", "🇯🇵", "👨‍👩‍👧", "x"])
+        self.assertTrue(all(pysaiyanweboo.studio_measure(line, layer) <= layer["w"] for line in lines))
+        glued = pysaiyanweboo.studio_text_layout({**layer, "text": "x" * 40, "w": 100})[0]
+        self.assertTrue(all(pysaiyanweboo.studio_measure(line, layer) <= 100 for line in glued) and "".join(glued) == "x" * 40)
+        self.assertEqual(pysaiyanweboo.studio_words("Hello, world! can't stop 3.14"), ["Hello", ",", " ", "world", "!", " ", "can't", " ", "stop", " ", "3.14"])
+        self.assertEqual(pysaiyanweboo.studio_graphemes("é🇯🇵👨‍👩‍👧x"), ["é", "🇯🇵", "👨‍👩‍👧", "x"])
 
     def test_a_line_may_be_exactly_as_wide_as_the_box(self):
         measure = lambda text: len(text) * 10
-        layer = {**web_ui.studio_text_layer("abcd efgh ij", "t", 0, 0, wrap=True), "fontSize": 10}
+        layer = {**pysaiyanweboo.studio_text_layer("abcd efgh ij", "t", 0, 0, wrap=True), "fontSize": 10}
         for width, want in ((40, ["abcd", "efgh", "ij"]), (39, ["abc", "d", "efg", "h", "ij"]), (50, ["abcd", "efgh", "ij"]), (90, ["abcd efgh", "ij"]), (89, ["abcd", "efgh ij"]), (110, ["abcd efgh", "ij"]),
                            (120, ["abcd efgh ij"]), (119, ["abcd efgh", "ij"])):
-            self.assertEqual(web_ui.studio_text_layout({**layer, "w": width}, measure), [want], width)
+            self.assertEqual(pysaiyanweboo.studio_text_layout({**layer, "w": width}, measure), [want], width)
         # a word longer than the box is cut between characters, and a character exactly filling the box stays
-        self.assertEqual(web_ui.studio_text_layout({**layer, "text": "abcdefghij", "w": 30}, measure), [["abc", "def", "ghi", "j"]])
-        self.assertEqual(web_ui.studio_text_layout({**layer, "text": "abcdefghij", "w": 25}, measure), [["ab", "cd", "ef", "gh", "ij"]])
-        self.assertEqual(web_ui.studio_text_layout({**layer, "text": "ab", "w": 5}, measure), [["a", "b"]], "a glyph wider than the box is never squeezed")
+        self.assertEqual(pysaiyanweboo.studio_text_layout({**layer, "text": "abcdefghij", "w": 30}, measure), [["abc", "def", "ghi", "j"]])
+        self.assertEqual(pysaiyanweboo.studio_text_layout({**layer, "text": "abcdefghij", "w": 25}, measure), [["ab", "cd", "ef", "gh", "ij"]])
+        self.assertEqual(pysaiyanweboo.studio_text_layout({**layer, "text": "ab", "w": 5}, measure), [["a", "b"]], "a glyph wider than the box is never squeezed")
 
     def test_the_workspace_writer_stops_at_exactly_32_mib(self):
-        limit = web_ui.STUDIO_WORKSPACE_MAX_BYTES
+        limit = pysaiyanweboo.STUDIO_WORKSPACE_MAX_BYTES
         scene = self.blank(source="")
-        empty = len(web_ui.studio_workspace_text(web_ui.StudioHistory(scene)).encode("utf-8"))
-        fits = web_ui.StudioHistory(self.blank(source="x" * (limit - empty)))
-        self.assertEqual(len(web_ui.studio_workspace_text(fits).encode("utf-8")), limit)
-        over = web_ui.StudioHistory(self.blank(source="x" * (limit - empty + 1)))
-        with self.assertRaisesRegex(web_ui.StudioError, "32MiB"):
-            web_ui.studio_workspace_text(over)
+        empty = len(pysaiyanweboo.studio_workspace_text(pysaiyanweboo.StudioHistory(scene)).encode("utf-8"))
+        fits = pysaiyanweboo.StudioHistory(self.blank(source="x" * (limit - empty)))
+        self.assertEqual(len(pysaiyanweboo.studio_workspace_text(fits).encode("utf-8")), limit)
+        over = pysaiyanweboo.StudioHistory(self.blank(source="x" * (limit - empty + 1)))
+        with self.assertRaisesRegex(pysaiyanweboo.StudioError, "32MiB"):
+            pysaiyanweboo.studio_workspace_text(over)
 
     def test_clock_hands_use_the_fdlibm_sin_and_cos_of_node(self):
         # Node 22's Math.sin and Math.cos; glibc gives -0.5984721441039565 for sin(-2.5), one bit away, and other engines and versions differ in the last bit too
@@ -4666,21 +4666,21 @@ class ImageStudioTests(unittest.TestCase):
                             (7.9, 0.998941341839772, -0.04600212563953695), (0.5235987755982988, 0.49999999999999994, 0.8660254037844387),
                             (1.0471975511965976, 0.8660254037844386, 0.5000000000000001), (5.497787143782139, -0.707106781186547, 0.707106781186548),
                             (0.1, 0.09983341664682815, 0.9950041652780257), (2.356194490192345, 0.7071067811865476, -0.7071067811865475)):
-            self.assertEqual((web_ui.studio_sin(x), web_ui.studio_cos(x)), (sin, cos), x)
+            self.assertEqual((pysaiyanweboo.studio_sin(x), pysaiyanweboo.studio_cos(x)), (sin, cos), x)
         for x in (0, math.pi / 2, math.pi, -math.pi, 2 * math.pi, 6.9):
-            self.assertAlmostEqual(web_ui.studio_sin(x), math.sin(x), places=12)
-            self.assertAlmostEqual(web_ui.studio_cos(x), math.cos(x), places=12)
-        with self.assertRaises(web_ui.StudioError):
-            web_ui.studio_sin(12345.6789)
+            self.assertAlmostEqual(pysaiyanweboo.studio_sin(x), math.sin(x), places=12)
+            self.assertAlmostEqual(pysaiyanweboo.studio_cos(x), math.cos(x), places=12)
+        with self.assertRaises(pysaiyanweboo.StudioError):
+            pysaiyanweboo.studio_sin(12345.6789)
 
     def test_studio_json_is_read_the_way_json_parse_reads_it(self):
-        self.assertEqual(web_ui.studio_parse("[9007199254740993, 9007199254740995, 1e2, -0, 1.5]"), [9007199254740992, 9007199254740996.0, 100.0, 0, 1.5])
-        self.assertEqual(web_ui.js_number(web_ui.studio_parse("9007199254740995")), "9007199254740996")
+        self.assertEqual(pysaiyanweboo.studio_parse("[9007199254740993, 9007199254740995, 1e2, -0, 1.5]"), [9007199254740992, 9007199254740996.0, 100.0, 0, 1.5])
+        self.assertEqual(pysaiyanweboo.js_number(pysaiyanweboo.studio_parse("9007199254740995")), "9007199254740996")
         for text in ("1" + "0" * 400, "1e999", "NaN", "Infinity", "-Infinity", "[" * 100000):
             with self.subTest(text=text[:12]), self.assertRaises(ValueError):
-                web_ui.studio_parse(text)
-        with self.assertRaises(web_ui.StudioError):
-            web_ui.studio_heatmap_scene([[2 ** 1024]])
+                pysaiyanweboo.studio_parse(text)
+        with self.assertRaises(pysaiyanweboo.StudioError):
+            pysaiyanweboo.studio_heatmap_scene([[2 ** 1024]])
         with tempfile.TemporaryDirectory() as tmp:
             big = Path(tmp) / "big.json"
             big.write_text('[[1' + '0' * 400 + ']]', encoding="utf-8")
@@ -4688,24 +4688,24 @@ class ImageStudioTests(unittest.TestCase):
             self.assertEqual(self.run_cli("--studio-render", big)[0], 2)
 
     def test_javascript_number_and_json_text(self):
-        self.assertEqual([web_ui.js_number(x) for x in (1.0, 0.1 + 0.2, 1e21, 1e-7, 123456789.123456789, -0.0, 100, 2 ** 53)], ["1", "0.30000000000000004", "1e+21", "1e-7", "123456789.12345679", "0", "100", "9007199254740992"])
-        self.assertEqual(web_ui.js_json({"b": 1, "2": 2, "1": 3, "a": [1.0, None, True, "é\n\""]}), '{"1":3,"2":2,"b":1,"a":[1,null,true,"é\\n\\""]}')
-        self.assertEqual(web_ui.js_json({"a": [1, {"b": 2}], "c": []}, 2), '{\n  "a": [\n    1,\n    {\n      "b": 2\n    }\n  ],\n  "c": []\n}')
+        self.assertEqual([pysaiyanweboo.js_number(x) for x in (1.0, 0.1 + 0.2, 1e21, 1e-7, 123456789.123456789, -0.0, 100, 2 ** 53)], ["1", "0.30000000000000004", "1e+21", "1e-7", "123456789.12345679", "0", "100", "9007199254740992"])
+        self.assertEqual(pysaiyanweboo.js_json({"b": 1, "2": 2, "1": 3, "a": [1.0, None, True, "é\n\""]}), '{"1":3,"2":2,"b":1,"a":[1,null,true,"é\\n\\""]}')
+        self.assertEqual(pysaiyanweboo.js_json({"a": [1, {"b": 2}], "c": []}, 2), '{\n  "a": [\n    1,\n    {\n      "b": 2\n    }\n  ],\n  "c": []\n}')
 
     # --- images --------------------------------------------------------------------------------------------------------------------------------
     def test_png_codec_round_trips_and_refuses_what_it_cannot_read(self):
         rng = random.Random(7)
         rgba = bytes(rng.randrange(256) for _ in range(5 * 3 * 4))
-        data = web_ui.studio_png_encode(5, 3, rgba)
-        self.assertEqual(web_ui.studio_png_decode(data), (5, 3, rgba))
-        self.assertEqual(web_ui.studio_png_payload(data)["mimeType"], "image/png")
+        data = pysaiyanweboo.studio_png_encode(5, 3, rgba)
+        self.assertEqual(pysaiyanweboo.studio_png_decode(data), (5, 3, rgba))
+        self.assertEqual(pysaiyanweboo.studio_png_payload(data)["mimeType"], "image/png")
         broken = bytearray(data)
         broken[-20] ^= 1
         for bad in (b"GIF89a", bytes(broken), data[:30], b"\x89PNG\r\n\x1a\n"):
-            with self.subTest(bad=bad[:12]), self.assertRaises(web_ui.StudioError):
-                web_ui.studio_png_decode(bad)
-        with self.assertRaises(web_ui.StudioError):
-            web_ui.studio_png_encode(2, 2, b"\0" * 5)
+            with self.subTest(bad=bad[:12]), self.assertRaises(pysaiyanweboo.StudioError):
+                pysaiyanweboo.studio_png_decode(bad)
+        with self.assertRaises(pysaiyanweboo.StudioError):
+            pysaiyanweboo.studio_png_encode(2, 2, b"\0" * 5)
 
     def test_png_filters_and_colour_types_that_browsers_write_are_read(self):
         def png(width, height, color, rows, palette=b"", trns=b""):
@@ -4714,20 +4714,20 @@ class ImageStudioTests(unittest.TestCase):
             out += (chunk(b"PLTE", palette) if palette else b"") + (chunk(b"tRNS", trns) if trns else b"")
             return out + chunk(b"IDAT", zlib.compress(b"".join(rows))) + chunk(b"IEND", b"")
         # RGB, grey, grey+alpha and palette, each with the filter a browser might choose
-        self.assertEqual(web_ui.studio_png_decode(png(2, 1, 2, [b"\x00" + bytes([1, 2, 3, 4, 5, 6])]))[2], bytes([1, 2, 3, 255, 4, 5, 6, 255]))
-        self.assertEqual(web_ui.studio_png_decode(png(2, 1, 0, [b"\x00" + bytes([9, 200])]))[2], bytes([9, 9, 9, 255, 200, 200, 200, 255]))
-        self.assertEqual(web_ui.studio_png_decode(png(1, 1, 4, [b"\x00" + bytes([7, 128])]))[2], bytes([7, 7, 7, 128]))
-        self.assertEqual(web_ui.studio_png_decode(png(2, 1, 3, [b"\x00" + bytes([1, 0])], palette=bytes([10, 20, 30, 40, 50, 60]), trns=bytes([255, 100])))[2], bytes([40, 50, 60, 100, 10, 20, 30, 255]))
-        sub = web_ui.studio_png_decode(png(3, 1, 0, [b"\x01" + bytes([10, 5, 5])]))[2]
+        self.assertEqual(pysaiyanweboo.studio_png_decode(png(2, 1, 2, [b"\x00" + bytes([1, 2, 3, 4, 5, 6])]))[2], bytes([1, 2, 3, 255, 4, 5, 6, 255]))
+        self.assertEqual(pysaiyanweboo.studio_png_decode(png(2, 1, 0, [b"\x00" + bytes([9, 200])]))[2], bytes([9, 9, 9, 255, 200, 200, 200, 255]))
+        self.assertEqual(pysaiyanweboo.studio_png_decode(png(1, 1, 4, [b"\x00" + bytes([7, 128])]))[2], bytes([7, 7, 7, 128]))
+        self.assertEqual(pysaiyanweboo.studio_png_decode(png(2, 1, 3, [b"\x00" + bytes([1, 0])], palette=bytes([10, 20, 30, 40, 50, 60]), trns=bytes([255, 100])))[2], bytes([40, 50, 60, 100, 10, 20, 30, 255]))
+        sub = pysaiyanweboo.studio_png_decode(png(3, 1, 0, [b"\x01" + bytes([10, 5, 5])]))[2]
         self.assertEqual(sub, bytes([10, 10, 10, 255, 15, 15, 15, 255, 20, 20, 20, 255]))
-        up = web_ui.studio_png_decode(png(2, 2, 0, [b"\x00" + bytes([10, 20]), b"\x02" + bytes([1, 2])]))[2]
+        up = pysaiyanweboo.studio_png_decode(png(2, 2, 0, [b"\x00" + bytes([10, 20]), b"\x02" + bytes([1, 2])]))[2]
         self.assertEqual(up[8:], bytes([11, 11, 11, 255, 22, 22, 22, 255]))
-        average = web_ui.studio_png_decode(png(2, 2, 0, [b"\x00" + bytes([10, 20]), b"\x03" + bytes([4, 4])]))[2]
+        average = pysaiyanweboo.studio_png_decode(png(2, 2, 0, [b"\x00" + bytes([10, 20]), b"\x03" + bytes([4, 4])]))[2]
         self.assertEqual(average[8:], bytes([9, 9, 9, 255, 18, 18, 18, 255]))
-        paeth = web_ui.studio_png_decode(png(2, 2, 0, [b"\x00" + bytes([10, 20]), b"\x04" + bytes([1, 1])]))[2]
+        paeth = pysaiyanweboo.studio_png_decode(png(2, 2, 0, [b"\x00" + bytes([10, 20]), b"\x04" + bytes([1, 1])]))[2]
         self.assertEqual(paeth[8:], bytes([11, 11, 11, 255, 21, 21, 21, 255]))
-        with self.assertRaises(web_ui.StudioError):
-            web_ui.studio_png_decode(png(1, 1, 0, [b"\x09" + bytes([0])]))
+        with self.assertRaises(pysaiyanweboo.StudioError):
+            pysaiyanweboo.studio_png_decode(png(1, 1, 0, [b"\x09" + bytes([0])]))
 
     def png_file(self, width, height, color, rows, depth=8, interlace=0, palette=b"", trns=b"", crc_ok=True, iend=True, idat=True):
         def chunk(kind, body):
@@ -4775,7 +4775,7 @@ class ImageStudioTests(unittest.TestCase):
                         rows.append(self.filtered(kind, row, previous, bpp))
                         previous = row
                     data = self.png_file(width, height, color, rows, palette=palette if color == 3 else b"", trns=trns if color == 3 else b"")
-                    got_width, got_height, rgba = web_ui.studio_png_decode(data)
+                    got_width, got_height, rgba = pysaiyanweboo.studio_png_decode(data)
                     self.assertEqual((got_width, got_height), (width, height))
                     with Image.open(io.BytesIO(data)) as image:
                         image.load()
@@ -4789,12 +4789,12 @@ class ImageStudioTests(unittest.TestCase):
         data = self.png_file(3, 5, 6, rows)
         with Image.open(io.BytesIO(data)) as image:
             image.load()
-            self.assertEqual(web_ui.studio_png_decode(data)[2], image.convert("RGBA").tobytes())
+            self.assertEqual(pysaiyanweboo.studio_png_decode(data)[2], image.convert("RGBA").tobytes())
 
     def test_a_png_the_studio_cannot_use_is_refused_with_its_reason(self):
         zeros = lambda w, h, c=4: [b"\x00" + bytes(w * c)] * h
         ok = self.png_file(2, 2, 6, zeros(2, 2))
-        self.assertEqual(web_ui.studio_png_decode(ok)[:2], (2, 2))
+        self.assertEqual(pysaiyanweboo.studio_png_decode(ok)[:2], (2, 2))
         unsupported = "8ビット・非インターレースの4MP以下のPNGに対応しています"
         broken = "PNGが壊れています"
         cases = [(self.png_file(2, 2, 6, zeros(2, 2), depth=16), unsupported), (self.png_file(2, 2, 6, zeros(2, 2), interlace=1), unsupported), (self.png_file(2, 2, 1, zeros(2, 2)), unsupported),
@@ -4803,122 +4803,122 @@ class ImageStudioTests(unittest.TestCase):
                  (self.png_file(2, 2, 6, zeros(2, 1)), broken), (self.png_file(2, 2, 6, [b"\x09" + bytes(8)] * 2), broken), (ok[:-3], broken), (ok[:20], broken), (b"\x89PNG\r\n\x1a\n", broken),
                  (b"GIF89a" + bytes(40), "PNGではありません")]
         for data, message in cases:
-            with self.assertRaises(web_ui.StudioError) as caught:
-                web_ui.studio_png_decode(data)
+            with self.assertRaises(pysaiyanweboo.StudioError) as caught:
+                pysaiyanweboo.studio_png_decode(data)
             self.assertEqual(str(caught.exception), message)
-        self.assertEqual(web_ui.studio_png_decode(self.png_file(2048, 2048, 0, [b"\x00" + bytes(2048)] * 2048))[:2], (2048, 2048), "4 MP exactly is fine")
-        self.assertEqual(web_ui.studio_png_decode(self.png_file(2, 2, 6, zeros(2, 2), iend=False))[:2], (2, 2), "a file that stops after its image data is still read")
+        self.assertEqual(pysaiyanweboo.studio_png_decode(self.png_file(2048, 2048, 0, [b"\x00" + bytes(2048)] * 2048))[:2], (2048, 2048), "4 MP exactly is fine")
+        self.assertEqual(pysaiyanweboo.studio_png_decode(self.png_file(2, 2, 6, zeros(2, 2), iend=False))[:2], (2, 2), "a file that stops after its image data is still read")
         trailing = ok + b"junk"
-        self.assertEqual(web_ui.studio_png_decode(trailing)[:2], (2, 2))
+        self.assertEqual(pysaiyanweboo.studio_png_decode(trailing)[:2], (2, 2))
 
     def test_every_limit_is_exact(self):
         def refused(call, message=None):
-            with self.assertRaises(web_ui.StudioError) as caught:
+            with self.assertRaises(pysaiyanweboo.StudioError) as caught:
                 call()
             if message:
                 self.assertEqual(str(caught.exception), message)
         # the PNG hand-off: 32 MiB exactly, one byte over, the signature, eight bytes at least
         signature = bytes([137, 80, 78, 71, 13, 10, 26, 10])
         limit = 32 * 1024 * 1024
-        self.assertEqual(web_ui.studio_png_payload(signature + bytes(limit - 8))["bytes"], limit)
-        refused(lambda: web_ui.studio_png_payload(signature + bytes(limit - 7)), "32MiB以下のPNGが必要です")
-        self.assertEqual(web_ui.studio_png_payload(signature)["bytes"], 8)
-        refused(lambda: web_ui.studio_png_payload(signature[:7]))
-        refused(lambda: web_ui.studio_png_payload(b"x" * 20))
+        self.assertEqual(pysaiyanweboo.studio_png_payload(signature + bytes(limit - 8))["bytes"], limit)
+        refused(lambda: pysaiyanweboo.studio_png_payload(signature + bytes(limit - 7)), "32MiB以下のPNGが必要です")
+        self.assertEqual(pysaiyanweboo.studio_png_payload(signature)["bytes"], 8)
+        refused(lambda: pysaiyanweboo.studio_png_payload(signature[:7]))
+        refused(lambda: pysaiyanweboo.studio_png_payload(b"x" * 20))
         # numbers in a matrix: 2**53 - 1 is the largest safe whole number
-        self.assertEqual(web_ui.studio_matrix([[2 ** 53 - 1, -(2 ** 53 - 1)]])["high"], 2 ** 53 - 1)
+        self.assertEqual(pysaiyanweboo.studio_matrix([[2 ** 53 - 1, -(2 ** 53 - 1)]])["high"], 2 ** 53 - 1)
         for bad in (2 ** 53, -(2 ** 53), float(2 ** 53), 2.0 ** 60, 2 ** 54):
-            refused(lambda: web_ui.studio_matrix([[bad]]))
-        refused(lambda: web_ui.studio_matrix({"z": [[1]], "zmin": 2 ** 53}), "色の範囲には有限の安全な数値を指定してください")
-        self.assertEqual(web_ui.studio_matrix([[None, None]])["low"], 0)
-        self.assertEqual(web_ui.studio_matrix([[None, None]])["high"], 1)
+            refused(lambda: pysaiyanweboo.studio_matrix([[bad]]))
+        refused(lambda: pysaiyanweboo.studio_matrix({"z": [[1]], "zmin": 2 ** 53}), "色の範囲には有限の安全な数値を指定してください")
+        self.assertEqual(pysaiyanweboo.studio_matrix([[None, None]])["low"], 0)
+        self.assertEqual(pysaiyanweboo.studio_matrix([[None, None]])["high"], 1)
         # sizes of a scene: 64 to 4096 a side, 4 MP, 100 layers, ids of 100 UTF-16 units
         for width, height, ok in ((64, 64, True), (63, 64, False), (64, 63, False), (4096, 1024, True), (4096, 1025, False), (4097, 64, False), (2048, 2048, True), (2049, 2048, False)):
             scene = self.blank(width=width, height=height)
             if ok:
-                self.assertEqual(web_ui.studio_validate(scene)["width"], width)
+                self.assertEqual(pysaiyanweboo.studio_validate(scene)["width"], width)
             else:
-                refused(lambda: web_ui.studio_validate(scene), "シーンの形式・サイズが不正です（最大100レイヤー、4MP）")
-        layer = lambda i: web_ui.studio_base_layer("rect", f"r{i}") | {"fill": "none", "stroke": "none", "strokeWidth": 0}
-        self.assertEqual(len(web_ui.studio_validate(self.blank(layers=[layer(i) for i in range(100)]))["layers"]), 100)
-        refused(lambda: web_ui.studio_validate(self.blank(layers=[layer(i) for i in range(101)])))
-        self.assertEqual(len(web_ui.studio_validate(self.blank(layers=[layer(0) | {"id": "x" * 100}]))["layers"]), 1)
-        refused(lambda: web_ui.studio_validate(self.blank(layers=[layer(0) | {"id": "x" * 101}])), "レイヤーのIDまたは種類が不正です")
-        self.assertEqual(len(web_ui.studio_validate(self.blank(layers=[layer(0) | {"id": "😀" * 50}]))["layers"]), 1, "100 UTF-16 units")
-        refused(lambda: web_ui.studio_validate(self.blank(layers=[layer(0) | {"id": "😀" * 51}])))
+                refused(lambda: pysaiyanweboo.studio_validate(scene), "シーンの形式・サイズが不正です（最大100レイヤー、4MP）")
+        layer = lambda i: pysaiyanweboo.studio_base_layer("rect", f"r{i}") | {"fill": "none", "stroke": "none", "strokeWidth": 0}
+        self.assertEqual(len(pysaiyanweboo.studio_validate(self.blank(layers=[layer(i) for i in range(100)]))["layers"]), 100)
+        refused(lambda: pysaiyanweboo.studio_validate(self.blank(layers=[layer(i) for i in range(101)])))
+        self.assertEqual(len(pysaiyanweboo.studio_validate(self.blank(layers=[layer(0) | {"id": "x" * 100}]))["layers"]), 1)
+        refused(lambda: pysaiyanweboo.studio_validate(self.blank(layers=[layer(0) | {"id": "x" * 101}])), "レイヤーのIDまたは種類が不正です")
+        self.assertEqual(len(pysaiyanweboo.studio_validate(self.blank(layers=[layer(0) | {"id": "😀" * 50}]))["layers"]), 1, "100 UTF-16 units")
+        refused(lambda: pysaiyanweboo.studio_validate(self.blank(layers=[layer(0) | {"id": "😀" * 51}])))
         for field, low, high in (("x", -8192, 8192), ("y", -8192, 8192), ("w", 1, 8192), ("h", 1, 8192), ("rotation", -360, 360), ("opacity", 0, 1), ("strokeWidth", 0, 64)):
             for value, ok in ((low, True), (high, True), (low - 1, False), (high + 1, False)):
-                call = lambda: web_ui.studio_validate(self.blank(layers=[layer(0) | {field: value}]))
+                call = lambda: pysaiyanweboo.studio_validate(self.blank(layers=[layer(0) | {field: value}]))
                 self.assertEqual(call()["layers"][0][field], value) if ok else refused(call)
         # text: 2000 UTF-16 units, 4 to 512 px
-        text = web_ui.studio_text_layer("a", "t", 0, 0)
-        self.assertEqual(len(web_ui.studio_validate(self.blank(layers=[text | {"text": "a" * 2000}]))["layers"]), 1)
-        refused(lambda: web_ui.studio_validate(self.blank(layers=[text | {"text": "a" * 2001}])), "テキストが不正です")
-        self.assertEqual(len(web_ui.studio_validate(self.blank(layers=[text | {"text": "😀" * 1000}]))["layers"]), 1)
-        refused(lambda: web_ui.studio_validate(self.blank(layers=[text | {"text": "😀" * 1001}])))
+        text = pysaiyanweboo.studio_text_layer("a", "t", 0, 0)
+        self.assertEqual(len(pysaiyanweboo.studio_validate(self.blank(layers=[text | {"text": "a" * 2000}]))["layers"]), 1)
+        refused(lambda: pysaiyanweboo.studio_validate(self.blank(layers=[text | {"text": "a" * 2001}])), "テキストが不正です")
+        self.assertEqual(len(pysaiyanweboo.studio_validate(self.blank(layers=[text | {"text": "😀" * 1000}]))["layers"]), 1)
+        refused(lambda: pysaiyanweboo.studio_validate(self.blank(layers=[text | {"text": "😀" * 1001}])))
         for size, ok in ((4, True), (512, True), (3.9, False), (512.1, False)):
-            call = lambda: web_ui.studio_validate(self.blank(layers=[text | {"fontSize": size}]))
+            call = lambda: pysaiyanweboo.studio_validate(self.blank(layers=[text | {"fontSize": size}]))
             self.assertEqual(call()["layers"][0]["fontSize"], size) if ok else refused(call, "テキストが不正です")
         # images: a PNG data URI of at most 12,000,000 characters, 20,000,000 in all; a mosaic cell 1..512 and 2..256 levels
-        image = lambda n, i=0: web_ui.studio_image_layer("data:image/png;base64," + "A" * (n - 22), 1, 1, f"i{i}") | {"w": 1, "h": 1}
-        self.assertEqual(len(web_ui.studio_validate(self.blank(layers=[image(12000000)]))["layers"]), 1)
-        refused(lambda: web_ui.studio_validate(self.blank(layers=[image(12000001)])), "画像は埋め込みPNGが必要です")
-        self.assertEqual(len(web_ui.studio_validate(self.blank(layers=[image(10000000, 0), image(10000000, 1)]))["layers"]), 2)
-        refused(lambda: web_ui.studio_validate(self.blank(layers=[image(10000000, 0), image(10000001, 1)])), "シーンの画像合計は20MB以下にしてください")
-        self.assertEqual(len(web_ui.studio_validate(self.blank(layers=[image(100, 0), image(100, 1)]))["layers"]), 2, "the total starts from zero")
+        image = lambda n, i=0: pysaiyanweboo.studio_image_layer("data:image/png;base64," + "A" * (n - 22), 1, 1, f"i{i}") | {"w": 1, "h": 1}
+        self.assertEqual(len(pysaiyanweboo.studio_validate(self.blank(layers=[image(12000000)]))["layers"]), 1)
+        refused(lambda: pysaiyanweboo.studio_validate(self.blank(layers=[image(12000001)])), "画像は埋め込みPNGが必要です")
+        self.assertEqual(len(pysaiyanweboo.studio_validate(self.blank(layers=[image(10000000, 0), image(10000000, 1)]))["layers"]), 2)
+        refused(lambda: pysaiyanweboo.studio_validate(self.blank(layers=[image(10000000, 0), image(10000001, 1)])), "シーンの画像合計は20MB以下にしてください")
+        self.assertEqual(len(pysaiyanweboo.studio_validate(self.blank(layers=[image(100, 0), image(100, 1)]))["layers"]), 2, "the total starts from zero")
         for field, low, high in (("cell", 1, 512), ("levels", 2, 256)):
             for value, ok in ((low, True), (high, True), (low - 1, False), (high + 1, False), (low + 0.5, False)):
-                call = lambda: web_ui.studio_validate(self.blank(layers=[image(100) | {field: value}]))
+                call = lambda: pysaiyanweboo.studio_validate(self.blank(layers=[image(100) | {field: value}]))
                 self.assertEqual(call()["layers"][0][field], value) if ok else refused(call, "モザイク設定が不正です")
-        refused(lambda: web_ui.studio_validate(self.blank(layers=[image(100) | {"cell": 0, "levels": 256}])))
-        refused(lambda: web_ui.studio_validate(self.blank(layers=[image(100) | {"cell": 1, "levels": 1}])))
+        refused(lambda: pysaiyanweboo.studio_validate(self.blank(layers=[image(100) | {"cell": 0, "levels": 256}])))
+        refused(lambda: pysaiyanweboo.studio_validate(self.blank(layers=[image(100) | {"cell": 1, "levels": 1}])))
         # a workspace holds 1 to 40 states
         for count, ok in ((1, True), (40, True), (41, False), (0, False)):
-            record = json.dumps({"schema": web_ui.STUDIO_WORKSPACE_SCHEMA, "items": [self.blank()] * count, "index": 0})
-            self.assertEqual(len(web_ui.studio_workspace_history(record).items), count) if ok else refused(lambda: web_ui.studio_workspace_history(record), "作業履歴の形式が不正です")
-        history = web_ui.StudioHistory(self.blank())
+            record = json.dumps({"schema": pysaiyanweboo.STUDIO_WORKSPACE_SCHEMA, "items": [self.blank()] * count, "index": 0})
+            self.assertEqual(len(pysaiyanweboo.studio_workspace_history(record).items), count) if ok else refused(lambda: pysaiyanweboo.studio_workspace_history(record), "作業履歴の形式が不正です")
+        history = pysaiyanweboo.StudioHistory(self.blank())
         history.items = [self.blank()] * 40
-        self.assertEqual(len(json.loads(web_ui.studio_workspace_text(history))["items"]), 40)
+        self.assertEqual(len(json.loads(pysaiyanweboo.studio_workspace_text(history))["items"]), 40)
         history.items = [self.blank()] * 41
-        refused(lambda: web_ui.studio_workspace_text(history), "作業履歴の形式が不正です")
+        refused(lambda: pysaiyanweboo.studio_workspace_text(history), "作業履歴の形式が不正です")
         # the mosaic's own checks
         for args in ((b"\0" * 4, 1, 1, 0), (b"\0" * 4, 1, 1, 513), (b"\0" * 4, 1, 1, 1, 1), (b"\0" * 4, 1, 1, 1, 257), (b"\0" * 4, 0, 1, 1), (b"\0" * 4, 1, 0, 1), (b"\0" * 3, 1, 1, 1), (b"\0" * 4, 1.5, 1, 1)):
-            refused(lambda: web_ui.studio_mosaic_rgba(*args), "モザイク入力が不正です")
-        self.assertEqual(len(web_ui.studio_mosaic_rgba(b"\0" * 4, 1, 1, 512, 2)), 4)
-        self.assertEqual(len(web_ui.studio_mosaic_rgba(b"\0" * 4 * 4, 2, 2, 1, 256)), 16)
+            refused(lambda: pysaiyanweboo.studio_mosaic_rgba(*args), "モザイク入力が不正です")
+        self.assertEqual(len(pysaiyanweboo.studio_mosaic_rgba(b"\0" * 4, 1, 1, 512, 2)), 4)
+        self.assertEqual(len(pysaiyanweboo.studio_mosaic_rgba(b"\0" * 4 * 4, 2, 2, 1, 256)), 16)
 
     def test_defaults_text_boxes_and_json_text(self):
-        arrow = web_ui.studio_place("arrow", "a", 1, 2)
-        self.assertEqual((arrow["headStyle"], arrow["headPlacement"], arrow["fill"], arrow["stroke"], arrow["headSize"], arrow["strokeWidth"]), ("beginner", "tip", web_ui.STUDIO_FILL, web_ui.STUDIO_STROKE, 28, 4))
-        clock = web_ui.studio_place("clock", "c", 1, 2)
+        arrow = pysaiyanweboo.studio_place("arrow", "a", 1, 2)
+        self.assertEqual((arrow["headStyle"], arrow["headPlacement"], arrow["fill"], arrow["stroke"], arrow["headSize"], arrow["strokeWidth"]), ("beginner", "tip", pysaiyanweboo.STUDIO_FILL, pysaiyanweboo.STUDIO_STROKE, 28, 4))
+        clock = pysaiyanweboo.studio_place("clock", "c", 1, 2)
         self.assertEqual((clock["hour"], clock["minute"], clock["name"], clock["w"], clock["h"]), (10, 10, "時計 10:10", 160, 160))
-        text = web_ui.studio_place("text", "t", 1, 2)
+        text = pysaiyanweboo.studio_place("text", "t", 1, 2)
         self.assertEqual((text["mono"], text["wrap"], text["font"], text["text"]), (True, False, "sans", ""))
-        rect = web_ui.studio_place("rect", "r", 1, 2)
-        self.assertEqual((rect["fill"], rect["w"], rect["h"], rect["outline"] if "outline" in rect else None), (web_ui.STUDIO_FILL, 180, 120, None))
+        rect = pysaiyanweboo.studio_place("rect", "r", 1, 2)
+        self.assertEqual((rect["fill"], rect["w"], rect["h"], rect["outline"] if "outline" in rect else None), (pysaiyanweboo.STUDIO_FILL, 180, 120, None))
         # a text stamp is as wide as its longest line (48 px a character, 120 to 700) and as high as its lines (62.4 px each, 70 at least)
         for value, w, h in (("", 120, 70), ("ab", 120, 70), ("abc", 144, 70), ("a" * 14, 672, 70), ("a" * 15, 700, 70), ("a\nbcde", 192, 2 * 48 * 1.3), ("ab\nc\nd", 120, 3 * 48 * 1.3), ("😀😀😀", 144, 70)):
-            layer = web_ui.studio_text_layer(value, "t", 0, 0)
+            layer = pysaiyanweboo.studio_text_layer(value, "t", 0, 0)
             self.assertEqual((layer["w"], layer["h"]), (w, h), value)
-        self.assertEqual(web_ui.studio_text_layer("123456789012345", "t", 0, 0)["name"], "文字 / 123456789012")
-        self.assertEqual(web_ui.studio_text_layer("😀" * 14, "t", 0, 0)["name"], "文字 / " + "😀" * 12, "a name takes twelve characters, not twelve UTF-16 units")
-        self.assertEqual(web_ui.js_json({"é": "日本", "k": "\u2028"}), '{"é":"日本","k":"\u2028"}'.replace("\\u2028", "\u2028"))
-        self.assertEqual(web_ui.js_json({"b": 1, "a": {"2": 1, "1": 2, "x": 3}}), '{"b":1,"a":{"1":2,"2":1,"x":3}}')
-        self.assertEqual(web_ui.js_json([float("nan"), float("inf")]), "[null,null]")
+        self.assertEqual(pysaiyanweboo.studio_text_layer("123456789012345", "t", 0, 0)["name"], "文字 / 123456789012")
+        self.assertEqual(pysaiyanweboo.studio_text_layer("😀" * 14, "t", 0, 0)["name"], "文字 / " + "😀" * 12, "a name takes twelve characters, not twelve UTF-16 units")
+        self.assertEqual(pysaiyanweboo.js_json({"é": "日本", "k": "\u2028"}), '{"é":"日本","k":"\u2028"}'.replace("\\u2028", "\u2028"))
+        self.assertEqual(pysaiyanweboo.js_json({"b": 1, "a": {"2": 1, "1": 2, "x": 3}}), '{"b":1,"a":{"1":2,"2":1,"x":3}}')
+        self.assertEqual(pysaiyanweboo.js_json([float("nan"), float("inf")]), "[null,null]")
 
     def test_an_image_layer_is_mosaicked_from_its_embedded_original(self):
         rgba = bytes([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255])
-        src = "data:image/png;base64," + base64.b64encode(web_ui.studio_png_encode(2, 2, rgba)).decode("ascii")
-        scene = self.blank(width=64, height=64, layers=[web_ui.studio_image_layer(src, 2, 2, "img", 64)])
-        plain = web_ui.studio_render(scene)
+        src = "data:image/png;base64," + base64.b64encode(pysaiyanweboo.studio_png_encode(2, 2, rgba)).decode("ascii")
+        scene = self.blank(width=64, height=64, layers=[pysaiyanweboo.studio_image_layer(src, 2, 2, "img", 64)])
+        plain = pysaiyanweboo.studio_render(scene)
         self.assertIn(src, plain, "a layer that keeps every pixel passes its image through")
         scene["layers"][0]["cell"] = 2
-        mosaic = web_ui.studio_render(scene)
+        mosaic = pysaiyanweboo.studio_render(scene)
         self.assertNotIn(src, mosaic)
         one = re.search(r"data:image/png;base64,([A-Za-z0-9+/=]+)", mosaic).group(1)
-        width, height, pixels = web_ui.studio_png_decode(base64.b64decode(one))
+        width, height, pixels = pysaiyanweboo.studio_png_decode(base64.b64decode(one))
         self.assertEqual((width, height), (2, 2))
-        self.assertEqual(pixels, bytes(web_ui.studio_mosaic_rgba(rgba, 2, 2, 2, 256)))
+        self.assertEqual(pixels, bytes(pysaiyanweboo.studio_mosaic_rgba(rgba, 2, 2, 2, 256)))
         self.assertEqual(len(set(pixels[i:i + 4] for i in range(0, 16, 4))), 1)
 
     # --- the command line ----------------------------------------------------------------------------------------------------------------------
@@ -4926,14 +4926,14 @@ class ImageStudioTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             scene = tmp / "scene.json"
-            scene.write_text(web_ui.js_json(web_ui.studio_demo_scene(), 2), encoding="utf-8")
+            scene.write_text(pysaiyanweboo.js_json(pysaiyanweboo.studio_demo_scene(), 2), encoding="utf-8")
             code, out, err = self.run_cli("--studio-render", scene)
             self.assertEqual((code, err), (0, ""))
-            self.assertEqual(out.decode("utf-8"), web_ui.studio_render(web_ui.studio_demo_scene()) + "\n")
+            self.assertEqual(out.decode("utf-8"), pysaiyanweboo.studio_render(pysaiyanweboo.studio_demo_scene()) + "\n")
             code, out, _ = self.run_cli("--studio-render", scene, "--scale", "2")
             self.assertIn('width="2560" height="1440"', out.decode("utf-8"))
             code, out, _ = self.run_cli("--studio-render", scene, "--format", "json")
-            self.assertEqual(json.loads(out), web_ui.studio_validate(web_ui.studio_demo_scene()))
+            self.assertEqual(json.loads(out), pysaiyanweboo.studio_validate(pysaiyanweboo.studio_demo_scene()))
             matrix = tmp / "matrix.json"
             matrix.write_text("[[1,null,3]]", encoding="utf-8")
             result = tmp / "scene-out.json"
@@ -4949,7 +4949,7 @@ class ImageStudioTests(unittest.TestCase):
             self.assertEqual(self.run_cli("--studio-heatmap", matrix, "-o", result, "--force")[0], 0)
             self.assertEqual(json.loads(result.read_text(encoding="utf-8"))["layers"][0]["z"], [[2, 3]])
             png = tmp / "a.png"
-            png.write_bytes(web_ui.studio_png_encode(1, 1, bytes([1, 2, 3, 4])))
+            png.write_bytes(pysaiyanweboo.studio_png_encode(1, 1, bytes([1, 2, 3, 4])))
             code, out, _ = self.run_cli("--studio-base64", png)
             self.assertEqual(base64.b64decode(out.strip()), png.read_bytes())
             code, out, _ = self.run_cli("--studio-base64", png, "--data-uri")
@@ -4977,35 +4977,35 @@ class ImageStudioTests(unittest.TestCase):
 
     # --- the page ------------------------------------------------------------------------------------------------------------------------------
     def test_the_page_is_one_self_contained_document_with_every_control_the_script_uses(self):
-        page = web_ui.imagestudio_document()
+        page = pysaiyanweboo.imagestudio_document()
         self.assertEqual(page.count('<script type="module">'), 1)
         self.assertEqual(page.count('id="imagestudio"'), 1)
         self.assertNotRegex(page, r"https?://(?!www\.w3\.org/2000/svg)")
-        html = web_ui.imagestudio_html()
+        html = pysaiyanweboo.imagestudio_html()
         names = re.findall(r'data-is="([a-z0-9]+)"', html)
         self.assertEqual(len(names), len(set(names)), "every control has its own name")
-        source = web_ui._JS["imagestudio.js"]
+        source = pysaiyanweboo._JS["imagestudio.js"]
         used = set(re.findall(r"\bel\.([a-z0-9]+)\b", source)) | set(re.findall(r'"([a-z]+)"', " ".join(re.findall(r"for\((?:const|let) \w+ of ?\[([^\]]*)\]\)el\[", source))))
         self.assertEqual(used - set(names), set(), "the script uses only controls the page has")
         self.assertEqual(set(names) - used, set(), "every control is used by the script")
-        self.assertEqual(len(re.findall(r'name="is-tool"', html)), len(web_ui.STUDIO_TOOLS))
-        self.assertEqual(len(re.findall(r"data-stamp=", html)), len(web_ui.STUDIO_EMOJI) + len(web_ui.STUDIO_KAOMOJI))
+        self.assertEqual(len(re.findall(r'name="is-tool"', html)), len(pysaiyanweboo.STUDIO_TOOLS))
+        self.assertEqual(len(re.findall(r"data-stamp=", html)), len(pysaiyanweboo.STUDIO_EMOJI) + len(pysaiyanweboo.STUDIO_KAOMOJI))
         self.assertIn("globalThis.webUiImageStudio=api", page)
-        self.assertIn(".ui-imagestudio", web_ui.bundled_css())
-        self.assertTrue(all(int(px) % 8 == 0 for px in re.findall(r"(\d+)px", web_ui._CSS["imagestudio.css"])), "pixel sizes are multiples of 8")
-        self.assertIn("examples/image-studio.html", web_ui.example_pages())
-        self.assertIn('href="./image-studio.html"', web_ui.example_pages()["examples/index.html"])
+        self.assertIn(".ui-imagestudio", pysaiyanweboo.bundled_css())
+        self.assertTrue(all(int(px) % 8 == 0 for px in re.findall(r"(\d+)px", pysaiyanweboo._CSS["imagestudio.css"])), "pixel sizes are multiples of 8")
+        self.assertIn("examples/image-studio.html", pysaiyanweboo.example_pages())
+        self.assertIn('href="./image-studio.html"', pysaiyanweboo.example_pages()["examples/index.html"])
         self.assertNotIn("</script", source.lower())
         self.assertNotIn('"""', source)
 
     def test_the_js_constants_are_the_python_values(self):
-        source = web_ui._JS["imagestudio.js"]
-        want = {"SCHEMA": web_ui.STUDIO_SCHEMA, "WORKSPACE_SCHEMA": web_ui.STUDIO_WORKSPACE_SCHEMA, "WORKSPACE_MAX_BYTES": web_ui.STUDIO_WORKSPACE_MAX_BYTES, "PALETTE": list(web_ui.STUDIO_PALETTE),
-                "FILL": web_ui.STUDIO_FILL, "STROKE": web_ui.STUDIO_STROKE, "BACKGROUND": web_ui.STUDIO_BACKGROUND, "WSPACE": web_ui._STU_WSPACE, "MIDLETTER": web_ui._STU_MIDLETTER,
-                "MIDNUM": web_ui._STU_MIDNUM, "MIDNUMLET": web_ui._STU_MIDNUMLET, "NEWLINE": web_ui._STU_NEWLINE, "KATAKANA": [list(r) for r in web_ui._STU_KATAKANA],
-                "HAN_HIRAGANA": [list(r) for r in web_ui._STU_HAN_HIRAGANA], "PICTOGRAPHIC": [list(r) for r in web_ui._STU_PICTOGRAPHIC], "WORD_OVERRIDES": [[k, [list(r) for r in rs]] for k, rs in web_ui._STU_WORD_OVERRIDES],
-                "GRAPHEME_OVERRIDES": [[k, [list(r) for r in rs]] for k, rs in web_ui._STU_GRAPHEME_OVERRIDES]}
-        text = web_ui._studio_js_constants()
+        source = pysaiyanweboo._JS["imagestudio.js"]
+        want = {"SCHEMA": pysaiyanweboo.STUDIO_SCHEMA, "WORKSPACE_SCHEMA": pysaiyanweboo.STUDIO_WORKSPACE_SCHEMA, "WORKSPACE_MAX_BYTES": pysaiyanweboo.STUDIO_WORKSPACE_MAX_BYTES, "PALETTE": list(pysaiyanweboo.STUDIO_PALETTE),
+                "FILL": pysaiyanweboo.STUDIO_FILL, "STROKE": pysaiyanweboo.STUDIO_STROKE, "BACKGROUND": pysaiyanweboo.STUDIO_BACKGROUND, "WSPACE": pysaiyanweboo._STU_WSPACE, "MIDLETTER": pysaiyanweboo._STU_MIDLETTER,
+                "MIDNUM": pysaiyanweboo._STU_MIDNUM, "MIDNUMLET": pysaiyanweboo._STU_MIDNUMLET, "NEWLINE": pysaiyanweboo._STU_NEWLINE, "KATAKANA": [list(r) for r in pysaiyanweboo._STU_KATAKANA],
+                "HAN_HIRAGANA": [list(r) for r in pysaiyanweboo._STU_HAN_HIRAGANA], "PICTOGRAPHIC": [list(r) for r in pysaiyanweboo._STU_PICTOGRAPHIC], "WORD_OVERRIDES": [[k, [list(r) for r in rs]] for k, rs in pysaiyanweboo._STU_WORD_OVERRIDES],
+                "GRAPHEME_OVERRIDES": [[k, [list(r) for r in rs]] for k, rs in pysaiyanweboo._STU_GRAPHEME_OVERRIDES]}
+        text = pysaiyanweboo._studio_js_constants()
         self.assertIn(text, source, "the module starts from these lines")
         found, decoder = {}, json.JSONDecoder()
         for line in text.splitlines():
@@ -5021,12 +5021,12 @@ class ImageStudioTests(unittest.TestCase):
 
     def test_the_platform_adapters_check_the_page(self):
         for name, fragment in (("web-ui-image-studio", None), ("web-ui-image-stamp", "is-tools-title")):
-            adapter = web_ui.btk_adapter(name)
+            adapter = pysaiyanweboo.btk_adapter(name)
             self.assertEqual(adapter["url"], "http://127.0.0.1:8000/examples/image-studio.html" + ("" if fragment is None else "#" + fragment))
             self.assertNotEqual(adapter["click"]["before"], adapter["click"]["after"])
             self.assertTrue(all("imagestudio" in selector or selector.startswith("#is-") for selector in adapter["elements"]))
             self.assertFalse(any(selector.startswith("select") or "[data-is=\"scale\"]" in selector for selector in adapter["elements"]), "a select is covered through its label")
-        self.assertEqual(len(web_ui.studio_demo_scene()["layers"]), int(web_ui.BTK_ADAPTERS["web-ui-image-studio"]["click"]["before"]))
+        self.assertEqual(len(pysaiyanweboo.studio_demo_scene()["layers"]), int(pysaiyanweboo.BTK_ADAPTERS["web-ui-image-studio"]["click"]["before"]))
 
     def test_random_scenes_survive_validation_and_a_workspace_round_trip(self):
         rng = random.Random(2026)
@@ -5034,15 +5034,15 @@ class ImageStudioTests(unittest.TestCase):
         for _ in range(60):
             scene = self.blank(width=rng.randint(64, 900), height=rng.randint(64, 700), background=rng.choice(["none", "#FFFFFF", "#18A7A1"]))
             for i in range(rng.randint(0, 6)):
-                scene["layers"].append(web_ui.studio_place(rng.choice(kinds), f"L{i}", rng.randint(-50, 900), rng.randint(-50, 700), outline=rng.random() < 0.5))
-            history = web_ui.StudioHistory(scene)
+                scene["layers"].append(pysaiyanweboo.studio_place(rng.choice(kinds), f"L{i}", rng.randint(-50, 900), rng.randint(-50, 700), outline=rng.random() < 0.5))
+            history = pysaiyanweboo.StudioHistory(scene)
             checked = history.current
-            edit = web_ui.studio_clone(checked)
-            edit["layers"].append(web_ui.studio_text_layer(rng.choice(["a", "日本語", "x y z", "🌱"]), "text", rng.randint(0, 100), rng.randint(0, 100)))
+            edit = pysaiyanweboo.studio_clone(checked)
+            edit["layers"].append(pysaiyanweboo.studio_text_layer(rng.choice(["a", "日本語", "x y z", "🌱"]), "text", rng.randint(0, 100), rng.randint(0, 100)))
             history.commit(edit)
-            restored = web_ui.studio_workspace_history(web_ui.studio_workspace_text(history))
+            restored = pysaiyanweboo.studio_workspace_history(pysaiyanweboo.studio_workspace_text(history))
             self.assertEqual((restored.index, restored.items), (history.index, history.items))
-            ET.fromstring(web_ui.studio_svg(restored.current))
+            ET.fromstring(pysaiyanweboo.studio_svg(restored.current))
 
 
 SCREENS_ASSET = json.loads((Path(__file__).resolve().parent / "fixtures" / "screens_asset.json").read_text(encoding="utf-8"))["screens"]
@@ -5055,7 +5055,7 @@ class ScreensTests(unittest.TestCase):
     """The 198 numbered screens, the Hub and the display catalogue. The golden values are the original's own files (assets/screens.json, assets/display/app_text.json and
     ci/numbered_routes.toml, copied byte for byte); the expected texts of the cases below are the ones its Dart tests assert."""
 
-    go = staticmethod(web_ui.pattern_run)
+    go = staticmethod(pysaiyanweboo.pattern_run)
 
     def refused(self, request, message=None):
         with self.assertRaises(ValueError) as caught:
@@ -5064,7 +5064,7 @@ class ScreensTests(unittest.TestCase):
             self.assertEqual(str(caught.exception), message)
 
     def test_the_catalogue_is_the_original_asset(self):
-        rows = web_ui.screens_catalogue()
+        rows = pysaiyanweboo.screens_catalogue()
         self.assertEqual((len(rows), len(SCREENS_ASSET)), (198, 198))
         self.assertEqual(sum(1 for row in rows if "detail" in row), 22)
         for number, (got, want) in enumerate(zip(rows, SCREENS_ASSET), 1):
@@ -5076,19 +5076,19 @@ class ScreensTests(unittest.TestCase):
                 self.assertEqual(sorted(got["detail"]), sorted(want["detail"]))
 
     def test_the_display_catalogue_is_the_original_text(self):
-        self.assertEqual(list(web_ui.SCREEN_TEXT), list(SCREEN_TEXT_GOLDEN["locales"]))
-        self.assertEqual(len(web_ui.SCREEN_TEXT), 11)
+        self.assertEqual(list(pysaiyanweboo.SCREEN_TEXT), list(SCREEN_TEXT_GOLDEN["locales"]))
+        self.assertEqual(len(pysaiyanweboo.SCREEN_TEXT), 11)
         for locale, texts in SCREEN_TEXT_GOLDEN["locales"].items():
-            self.assertEqual(list(texts), list(web_ui.SCREEN_TEXT_KEYS), locale)
+            self.assertEqual(list(texts), list(pysaiyanweboo.SCREEN_TEXT_KEYS), locale)
             for key, want in texts.items():
-                self.assertEqual(web_ui.screen_text(locale, key), want, (locale, key))
+                self.assertEqual(pysaiyanweboo.screen_text(locale, key), want, (locale, key))
 
     def test_locales_fall_back_the_way_the_display_catalogue_does(self):
-        text = web_ui.screen_text
+        text = pysaiyanweboo.screen_text
         self.assertEqual(text("jpn", "generic.backToHub"), "ハブに戻る")
         for raw, want in (("ja", "jpn"), ("JA", "jpn"), (" jpn ", "jpn"), ("\u3000ara\u3000", "ara"), ("in", "ind"), ("id", "ind"), ("zh", "zho"), ("zz", "eng"), ("", "eng"), (None, "eng"), (5, "eng"),
                           ("ja-JP", "eng"), ("ＪＰＮ", "eng"), ("\u200bjpn", "eng"), ("\ufeffjpn", "jpn"), ("\u0085eng\u0085", "eng")):
-            self.assertEqual(web_ui.screen_locale(raw), want, raw)
+            self.assertEqual(pysaiyanweboo.screen_locale(raw), want, raw)
         self.assertEqual(text("jpn", "no.such.key"), "no.such.key", "a key that is not in the catalogue is its own text")
         self.assertEqual(text("jpn", "no.such.key", (("x", 1),)), "no.such.key")
         template = text("eng", "patternTemplate.listItem")
@@ -5102,111 +5102,111 @@ class ScreensTests(unittest.TestCase):
         routes = NUMBERED_ROUTES["routes"]
         self.assertEqual(len(routes), 198)
         for number in range(1, 199):
-            route = web_ui.screen_route(number)
+            route = pysaiyanweboo.screen_route(number)
             self.assertEqual(route["widget"], routes[f"{number:03d}"], number)
             self.assertEqual(route["kind"] == "generic", route["widget"] == NUMBERED_ROUTES["generic_widget"])
-        self.assertEqual(sorted({r["kind"] for r in map(web_ui.screen_route, range(1, 199))}), ["conversion", "dedicated", "generic", "interactive", "parallel", "validation"])
+        self.assertEqual(sorted({r["kind"] for r in map(pysaiyanweboo.screen_route, range(1, 199))}), ["conversion", "dedicated", "generic", "interactive", "parallel", "validation"])
         for number in (0, 199, -1, True, 1.5, "1", None):
             with self.assertRaises(ValueError, msg=repr(number)):
-                web_ui.screen_route(number)
+                pysaiyanweboo.screen_route(number)
 
     def test_198_screens_are_distributed_across_11_templates_in_blocks_of_18(self):
         counts: dict[str, int] = {}
         for number in range(1, 199):
-            counts[web_ui.screen_template(number)] = counts.get(web_ui.screen_template(number), 0) + 1
-            self.assertEqual(web_ui.screen_template(number), web_ui.SCREEN_TEMPLATES[(number - 1) // 18])
-        self.assertEqual(counts, {name: 18 for name in web_ui.SCREEN_TEMPLATES})
+            counts[pysaiyanweboo.screen_template(number)] = counts.get(pysaiyanweboo.screen_template(number), 0) + 1
+            self.assertEqual(pysaiyanweboo.screen_template(number), pysaiyanweboo.SCREEN_TEMPLATES[(number - 1) // 18])
+        self.assertEqual(counts, {name: 18 for name in pysaiyanweboo.SCREEN_TEMPLATES})
         self.assertEqual(len(counts), 11)
-        for name in web_ui.SCREEN_TEMPLATES:
-            self.assertEqual(web_ui.screen_template(1, name), name)
+        for name in pysaiyanweboo.SCREEN_TEMPLATES:
+            self.assertEqual(pysaiyanweboo.screen_template(1, name), name)
         for bad in ("nope", "LIST", "Grid"):
-            self.assertEqual(web_ui.screen_template(100, bad), "list", "an unknown template name falls back to a list")
-        self.assertEqual({web_ui.screen_template(100, None), web_ui.screen_template(100, ""), web_ui.screen_template(100)}, {"bottomNavigation"}, "no override means the block")
+            self.assertEqual(pysaiyanweboo.screen_template(100, bad), "list", "an unknown template name falls back to a list")
+        self.assertEqual({pysaiyanweboo.screen_template(100, None), pysaiyanweboo.screen_template(100, ""), pysaiyanweboo.screen_template(100)}, {"bottomNavigation"}, "no override means the block")
 
     def test_a_screen_without_a_detail_shows_translated_back_text_and_the_four_pattern_chips(self):
-        view = web_ui.screen_view(3, "jpn")
+        view = pysaiyanweboo.screen_view(3, "jpn")
         self.assertEqual(view["back"], "ハブに戻る")
         self.assertEqual([chip["text"] for chip in view["chips"]], ["ナビゲーション: BasicReplace", "API: HttpPut", "テーマ: " + view["chips"][2]["text"].split(": ", 1)[1], "データ: " + view["chips"][3]["text"].split(": ", 1)[1]])
         self.assertEqual(view["chips"][0]["avatar"], "ナ")
-        eng = web_ui.screen_view(3, "eng")
+        eng = pysaiyanweboo.screen_view(3, "eng")
         self.assertEqual(eng["chips"][0]["text"], "Navigation: BasicReplace")
         self.assertEqual((eng["lang"], eng["dir"], view["lang"]), ("en", "ltr", "ja"))
-        self.assertEqual(web_ui.screen_view(3, "ara")["dir"], "rtl")
-        self.assertEqual([web_ui.screen_view(3, code)["dir"] for code in web_ui.SCREEN_LOCALES].count("rtl"), 1)
+        self.assertEqual(pysaiyanweboo.screen_view(3, "ara")["dir"], "rtl")
+        self.assertEqual([pysaiyanweboo.screen_view(3, code)["dir"] for code in pysaiyanweboo.SCREEN_LOCALES].count("rtl"), 1)
         self.assertIsNone(view["tabs"])
 
     def test_a_screen_with_a_detail_has_translated_tabs_and_use_case_headers(self):
-        view = web_ui.screen_view(37, "jpn")
-        self.assertEqual([tab["label"] for tab in view["tabs"]], [web_ui.screen_text("jpn", "generic.tabUseCase"), web_ui.screen_text("jpn", "generic.tabUiSample")])
-        self.assertEqual([section["heading"] for section in view["useCase"]["sections"]], [web_ui.screen_text("jpn", f"generic.section{name}") for name in ("Purpose", "When", "Points", "Pitfall", "Snippet")])
+        view = pysaiyanweboo.screen_view(37, "jpn")
+        self.assertEqual([tab["label"] for tab in view["tabs"]], [pysaiyanweboo.screen_text("jpn", "generic.tabUseCase"), pysaiyanweboo.screen_text("jpn", "generic.tabUiSample")])
+        self.assertEqual([section["heading"] for section in view["useCase"]["sections"]], [pysaiyanweboo.screen_text("jpn", f"generic.section{name}") for name in ("Purpose", "When", "Points", "Pitfall", "Snippet")])
         self.assertEqual(view["chips"], [])
         self.assertEqual(len(view["useCase"]["chips"]), 4)
         detail = SCREENS_ASSET[36]["detail"]
         self.assertEqual([s.get("text") or s.get("points") or s.get("code") for s in view["useCase"]["sections"]], [detail["purpose"], detail["when"], detail["points"], detail["pitfall"], detail["snippet"]])
         self.assertEqual(view["tab"], "usecase")
-        shown = web_ui.screen_view(37, "eng", web_ui.screen_step(37, None, {"type": "tab", "tab": "ui"}))
+        shown = pysaiyanweboo.screen_view(37, "eng", pysaiyanweboo.screen_step(37, None, {"type": "tab", "tab": "ui"}))
         self.assertEqual((shown["tab"], shown["body"]["template"]), ("ui", "form"))
 
     def test_the_hub_lists_198_and_searches_like_the_catalogue_search(self):
-        hub = web_ui.screen_hub("eng")
+        hub = pysaiyanweboo.screen_hub("eng")
         self.assertEqual((hub["count"], len(hub["items"]), hub["mode"], hub["empty"]), ("198 / 198", 198, "grid", None))
-        self.assertEqual(hub["title"], web_ui.screen_text("eng", "hub.title"))
-        self.assertEqual(hub["tooltips"], {"api": web_ui.screen_text("eng", "mockApi.title"), "mcp": web_ui.screen_text("eng", "mcp.title"), "list": web_ui.screen_text("eng", "hub.listViewTooltip"),
-                                           "grid": web_ui.screen_text("eng", "hub.gridViewTooltip")})
-        self.assertEqual(web_ui.screen_hub("jpn", "", "list")["tooltips"]["list"], "リスト表示")
-        found = web_ui.screen_hub("eng", "Transformed Result List")
+        self.assertEqual(hub["title"], pysaiyanweboo.screen_text("eng", "hub.title"))
+        self.assertEqual(hub["tooltips"], {"api": pysaiyanweboo.screen_text("eng", "mockApi.title"), "mcp": pysaiyanweboo.screen_text("eng", "mcp.title"), "list": pysaiyanweboo.screen_text("eng", "hub.listViewTooltip"),
+                                           "grid": pysaiyanweboo.screen_text("eng", "hub.gridViewTooltip")})
+        self.assertEqual(pysaiyanweboo.screen_hub("jpn", "", "list")["tooltips"]["list"], "リスト表示")
+        found = pysaiyanweboo.screen_hub("eng", "Transformed Result List")
         self.assertEqual(([item["id"] for item in found["items"]], found["count"]), ([5], "1 / 198"))
-        nothing = web_ui.screen_hub("jpn", "このような画面はありません")
-        self.assertEqual((nothing["items"], nothing["count"], nothing["empty"]), ([], "0 / 198", web_ui.screen_text("jpn", "hub.empty")))
-        self.assertEqual([item["id"] for item in web_ui.screen_hub("eng", "  SCREEN7  ")["items"]], [7, *range(70, 80)], "trimmed, case-insensitive, and the order of the source")
-        self.assertEqual([item["id"] for item in web_ui.screen_hub("eng", "\u3000screen198\u3000")["items"]], [198])
-        self.assertEqual(len(web_ui.screen_hub("eng", "navigation")["items"]), len(web_ui.screen_search(web_ui.screens_catalogue(), "NAVIGATION")))
+        nothing = pysaiyanweboo.screen_hub("jpn", "このような画面はありません")
+        self.assertEqual((nothing["items"], nothing["count"], nothing["empty"]), ([], "0 / 198", pysaiyanweboo.screen_text("jpn", "hub.empty")))
+        self.assertEqual([item["id"] for item in pysaiyanweboo.screen_hub("eng", "  SCREEN7  ")["items"]], [7, *range(70, 80)], "trimmed, case-insensitive, and the order of the source")
+        self.assertEqual([item["id"] for item in pysaiyanweboo.screen_hub("eng", "\u3000screen198\u3000")["items"]], [198])
+        self.assertEqual(len(pysaiyanweboo.screen_hub("eng", "navigation")["items"]), len(pysaiyanweboo.screen_search(pysaiyanweboo.screens_catalogue(), "NAVIGATION")))
         for bad in ("flat", "", None):
             with self.assertRaises(ValueError):
-                web_ui.screen_hub("eng", "", bad)
+                pysaiyanweboo.screen_hub("eng", "", bad)
         with self.assertRaises(ValueError):
-            web_ui.screen_hub("eng", "x" * 10001)
-        self.assertEqual(web_ui.screen_hub("eng", "x" * 10000)["count"], "0 / 198")
+            pysaiyanweboo.screen_hub("eng", "x" * 10001)
+        self.assertEqual(pysaiyanweboo.screen_hub("eng", "x" * 10000)["count"], "0 / 198")
 
     def test_screen_6_is_the_catalogue_search_and_keeps_its_state(self):
-        view = web_ui.screen_view(6, "eng")
+        view = pysaiyanweboo.screen_view(6, "eng")
         self.assertEqual((view["body"]["template"], view["body"]["count"], view["body"]["clear"]), ("catalog", "198 / 198", None))
-        state = web_ui.screen_step(6, None, {"type": "input", "value": "Transformed Result List"})
-        searched = web_ui.screen_view(6, "eng", state)["body"]
-        self.assertEqual(([item["id"] for item in searched["items"]], searched["count"], searched["clear"]), ([5], "1 / 198", web_ui.screen_text("eng", "clipboardWorkbench.clear")))
+        state = pysaiyanweboo.screen_step(6, None, {"type": "input", "value": "Transformed Result List"})
+        searched = pysaiyanweboo.screen_view(6, "eng", state)["body"]
+        self.assertEqual(([item["id"] for item in searched["items"]], searched["count"], searched["clear"]), ([5], "1 / 198", pysaiyanweboo.screen_text("eng", "clipboardWorkbench.clear")))
         self.assertEqual(searched["items"][0]["heading"], "Screen 5 · " + SCREENS_ASSET[4]["useCaseJa"])
-        japanese = web_ui.screen_step(6, state, {"type": "input", "value": "存在しない検索語"})
-        empty = web_ui.screen_view(6, "jpn", japanese)["body"]
-        self.assertEqual((empty["items"], empty["count"], empty["empty"]), ([], "0 / 198", web_ui.screen_text("jpn", "hub.empty")))
-        cleared = web_ui.screen_step(6, japanese, {"type": "clear"})
-        self.assertEqual((cleared["query"], web_ui.screen_view(6, "jpn", cleared)["body"]["count"]), ("", "198 / 198"))
-        self.assertEqual(web_ui.screen_view(6, "eng")["tabs"], None, "screen 6 never shows the detail tabs")
+        japanese = pysaiyanweboo.screen_step(6, state, {"type": "input", "value": "存在しない検索語"})
+        empty = pysaiyanweboo.screen_view(6, "jpn", japanese)["body"]
+        self.assertEqual((empty["items"], empty["count"], empty["empty"]), ([], "0 / 198", pysaiyanweboo.screen_text("jpn", "hub.empty")))
+        cleared = pysaiyanweboo.screen_step(6, japanese, {"type": "clear"})
+        self.assertEqual((cleared["query"], pysaiyanweboo.screen_view(6, "jpn", cleared)["body"]["count"]), ("", "198 / 198"))
+        self.assertEqual(pysaiyanweboo.screen_view(6, "eng")["tabs"], None, "screen 6 never shows the detail tabs")
 
     def test_each_template_shows_what_the_original_template_shows(self):
-        pick = {name: 1 + 18 * i for i, name in enumerate(web_ui.SCREEN_TEMPLATES)}
+        pick = {name: 1 + 18 * i for i, name in enumerate(pysaiyanweboo.SCREEN_TEMPLATES)}
         pick["list"] = 2
-        bodies = {name: web_ui.screen_view(number, "eng")["body"] for name, number in pick.items()}
+        bodies = {name: pysaiyanweboo.screen_view(number, "eng")["body"] for name, number in pick.items()}
         self.assertEqual(len(bodies["list"]["items"]), 6)
-        self.assertEqual(bodies["list"]["items"][2], {"avatar": "3", "title": web_ui.screen_text("eng", "patternTemplate.listItem", (("title", SCREENS_ASSET[1]["title"]), ("n", 3))), "subtitle": SCREENS_ASSET[1]["description"]})
+        self.assertEqual(bodies["list"]["items"][2], {"avatar": "3", "title": pysaiyanweboo.screen_text("eng", "patternTemplate.listItem", (("title", SCREENS_ASSET[1]["title"]), ("n", 3))), "subtitle": SCREENS_ASSET[1]["description"]})
         self.assertEqual((bodies["detail"]["heading"], bodies["detail"]["description"]), (SCREENS_ASSET[18]["title"], SCREENS_ASSET[18]["description"]))
-        self.assertEqual(bodies["detail"]["screenId"], web_ui.screen_text("eng", "patternTemplate.screenIdLabel", (("screenDataId", 19),)))
+        self.assertEqual(bodies["detail"]["screenId"], pysaiyanweboo.screen_text("eng", "patternTemplate.screenIdLabel", (("screenDataId", 19),)))
         self.assertEqual((bodies["form"]["value"], bodies["form"]["snackbar"]), ("", None))
-        self.assertEqual(bodies["search"]["result"]["title"], web_ui.screen_text("eng", "patternTemplate.typeToFilter"))
+        self.assertEqual(bodies["search"]["result"]["title"], pysaiyanweboo.screen_text("eng", "patternTemplate.typeToFilter"))
         self.assertEqual((len(bodies["tabs"]["tabs"]), bodies["tabs"]["selected"], bodies["tabs"]["panels"][1]), (3, 0, {"icon": "code"}))
-        self.assertEqual(bodies["bottomNavigation"]["destination"], web_ui.screen_text("eng", "patternTemplate.destination", (("n", 1), ("title", SCREENS_ASSET[90]["title"]))))
+        self.assertEqual(bodies["bottomNavigation"]["destination"], pysaiyanweboo.screen_text("eng", "patternTemplate.destination", (("n", 1), ("title", SCREENS_ASSET[90]["title"]))))
         self.assertEqual(len(bodies["drawer"]["items"]), 3)
         self.assertEqual((bodies["dialog"]["dialog"], len(bodies["grid"]["cards"]), bodies["grid"]["cards"][7]), (None, 8, SCREENS_ASSET[144]["title"] + "\n#8"))
         self.assertEqual((bodies["asyncState"]["loading"], bodies["settings"]["enabled"]), (False, True))
 
     def test_the_templates_react_to_their_own_events(self):
-        step, view = web_ui.screen_step, web_ui.screen_view
+        step, view = pysaiyanweboo.screen_step, pysaiyanweboo.screen_view
         state = step(38, None, {"type": "input", "value": "hello"})
         state = step(38, state, {"type": "submit"})
-        self.assertEqual(view(38, "eng", state)["body"]["snackbar"], web_ui.screen_text("eng", "patternTemplate.submitted", (("value", "hello"),)))
+        self.assertEqual(view(38, "eng", state)["body"]["snackbar"], pysaiyanweboo.screen_text("eng", "patternTemplate.submitted", (("value", "hello"),)))
         state = step(38, state, {"type": "input", "value": "edited"})
-        self.assertEqual(view(38, "eng", state)["body"]["snackbar"], web_ui.screen_text("eng", "patternTemplate.submitted", (("value", "hello"),)), "a submitted value stays until the next submit")
+        self.assertEqual(view(38, "eng", state)["body"]["snackbar"], pysaiyanweboo.screen_text("eng", "patternTemplate.submitted", (("value", "hello"),)), "a submitted value stays until the next submit")
         state = step(56, None, {"type": "input", "value": "abc"})
-        self.assertEqual(view(56, "eng", state)["body"]["result"]["title"], web_ui.screen_text("eng", "patternTemplate.resultFor", (("query", "abc"),)))
+        self.assertEqual(view(56, "eng", state)["body"]["result"]["title"], pysaiyanweboo.screen_text("eng", "patternTemplate.resultFor", (("query", "abc"),)))
         state = step(74, None, {"type": "select", "index": 2})
         self.assertEqual((view(74, "eng", state)["body"]["selected"], view(74, "eng", state)["body"]["panels"][2]), (2, {"text": SCREENS_ASSET[73]["description"]}))
         state = step(92, None, {"type": "select", "index": 1})
@@ -5218,7 +5218,7 @@ class ScreensTests(unittest.TestCase):
         self.assertFalse(view(184, "eng", state)["body"]["enabled"])
 
     def test_the_async_template_ends_500_milliseconds_after_it_starts(self):
-        step = web_ui.screen_step
+        step = pysaiyanweboo.screen_step
         state = step(164, None, {"type": "start"})
         self.assertEqual((state["loading"], state["elapsed"]), (True, 0))
         state = step(164, state, {"type": "tick", "ms": 499})
@@ -5240,45 +5240,45 @@ class ScreensTests(unittest.TestCase):
                                        (38, {"type": 5}, "event must be an object with a type")):
             with self.subTest(number=number, event=event):
                 with self.assertRaises(ValueError) as caught:
-                    web_ui.screen_step(number, None, event)
+                    pysaiyanweboo.screen_step(number, None, event)
                 self.assertEqual(str(caught.exception), message)
-        self.assertEqual(web_ui.screen_step(38, None, {"type": "input", "value": "x" * 10000})["value"], "x" * 10000)
+        self.assertEqual(pysaiyanweboo.screen_step(38, None, {"type": "input", "value": "x" * 10000})["value"], "x" * 10000)
         for state in ({"tab": "x"}, {"unknown": 1}, {"index": 3}, {"elapsed": 501}, {"loading": 1}, {"submitted": 5}, "state", []):
             with self.subTest(state=state), self.assertRaises(ValueError):
-                web_ui.screen_view(38, "eng", state)
+                pysaiyanweboo.screen_view(38, "eng", state)
 
     def test_every_screen_opens_in_every_language(self):
         for number in range(1, 199):
-            route = web_ui.screen_route(number)
-            for locale in web_ui.SCREEN_LOCALES:
+            route = pysaiyanweboo.screen_route(number)
+            for locale in pysaiyanweboo.SCREEN_LOCALES:
                 if route["kind"] == "generic":
-                    view = web_ui.screen_view(number, locale)
+                    view = pysaiyanweboo.screen_view(number, locale)
                     self.assertEqual((view["screen"], view["locale"], view["dir"]), (number, locale, "rtl" if locale == "ara" else "ltr"))
                     self.assertTrue(view["title"] and view["headline"] and view["subline"])
                 elif route["kind"] in ("validation", "conversion"):
-                    self.assertEqual(web_ui.screen_links_view(number, locale)["screen"], number)
+                    self.assertEqual(pysaiyanweboo.screen_links_view(number, locale)["screen"], number)
 
     def test_the_source_link_screens_name_their_pattern_and_pin_the_audited_commit(self):
-        view = web_ui.screen_links_view(91)
+        view = pysaiyanweboo.screen_links_view(91)
         self.assertEqual((view["title"], view["family"], view["page"], view["widget"]), ("Pattern 091: ValidationBasic", "validate", "patterns.html", "ValidationPatternLinks"))
         self.assertEqual([link["label"] for link in view["links"]], ["Python実装", "Pythonテスト", "ローカル入力画面", "利用方法・制約"])
-        self.assertTrue(all(link["url"] == web_ui.SCREEN_SOURCE_BASE + link["path"] for link in view["links"]))
-        self.assertRegex(web_ui.SCREEN_SOURCE_BASE, r"^https://github\.com/myon-bioinformatics/flutter_navigation_basic/blob/[0-9a-f]{40}/$")
-        self.assertEqual(web_ui.screen_links_view(110)["title"], "Pattern 110: DataMasking")
-        self.assertEqual(web_ui.screen_links_view(103)["family"], "convert")
-        self.assertEqual([web_ui.screen_links_view(n)["title"].split(": ")[1] for n in range(91, 100)], list(web_ui.SCREEN_VALIDATION_NAMES))
+        self.assertTrue(all(link["url"] == pysaiyanweboo.SCREEN_SOURCE_BASE + link["path"] for link in view["links"]))
+        self.assertRegex(pysaiyanweboo.SCREEN_SOURCE_BASE, r"^https://github\.com/myon-bioinformatics/flutter_navigation_basic/blob/[0-9a-f]{40}/$")
+        self.assertEqual(pysaiyanweboo.screen_links_view(110)["title"], "Pattern 110: DataMasking")
+        self.assertEqual(pysaiyanweboo.screen_links_view(103)["family"], "convert")
+        self.assertEqual([pysaiyanweboo.screen_links_view(n)["title"].split(": ")[1] for n in range(91, 100)], list(pysaiyanweboo.SCREEN_VALIDATION_NAMES))
         for number in (1, 5, 106, 136, 171):
             with self.assertRaises(ValueError):
-                web_ui.screen_links_view(number)
+                pysaiyanweboo.screen_links_view(number)
 
     def test_the_family_takes_requests_the_way_the_other_families_do(self):
         result = self.go("screen", {"operation": "view", "screen": 38, "locale": "jpn", "events": [{"type": "input", "value": "x"}, {"type": "submit"}]})
         self.assertEqual((result["schema"], result["operation"], result["state"]["submitted"], result["result"]["locale"]), ("screens/1", "view", "x", "jpn"))
         self.assertEqual(self.go("screen", {"operation": "search", "query": "Transformed Result List"})["result"], [5])
         self.assertEqual(self.go("screen", {"operation": "route", "screen": 171.0})["result"]["widget"], "InteractivePatternExample")
-        self.assertEqual(self.go("screen", {"operation": "text", "key": "hub.empty", "locale": "ja"})["result"], web_ui.screen_text("jpn", "hub.empty"))
+        self.assertEqual(self.go("screen", {"operation": "text", "key": "hub.empty", "locale": "ja"})["result"], pysaiyanweboo.screen_text("jpn", "hub.empty"))
         self.assertEqual(self.go("screen", {"operation": "text", "key": "patternTemplate.listItem", "arguments": [["title", "T"], ["n", 2.0]]})["result"],
-                         web_ui.screen_text("eng", "patternTemplate.listItem", (("title", "T"), ("n", 2))))
+                         pysaiyanweboo.screen_text("eng", "patternTemplate.listItem", (("title", "T"), ("n", 2))))
         self.assertEqual(self.go("screen", {"operation": "text", "key": "x", "arguments": [["a", 2 ** 53]]})["result"], "x")
         for request, message in (([], "request object"), ({}, "operation must be view, hub, search, text, route or links"), ({"operation": []}, "operation must be view, hub, search, text, route or links"),
                                  ({"operation": "view"}, "screen must be an integer 1..198"), ({"operation": "view", "screen": 0}, "screen must be an integer 1..198"),
@@ -5290,13 +5290,13 @@ class ScreensTests(unittest.TestCase):
                                  ({"operation": "links", "screen": 1}, "screen 1 is not a source-links screen")):
             with self.subTest(request=request):
                 self.refused(request, message)
-        self.assertEqual(self.go("screen", web_ui.pattern_parse('{"operation": "route", "screen": 5.0}'))["result"]["widget"], "Screen5Page")
+        self.assertEqual(self.go("screen", pysaiyanweboo.pattern_parse('{"operation": "route", "screen": 5.0}'))["result"]["widget"], "Screen5Page")
 
 
 class NativeTests(unittest.TestCase):
     """The native examples (patterns 136-137, 151-175, 183-184). The expected texts and transitions are the ones the original's widget tests assert."""
 
-    go = staticmethod(web_ui.pattern_run)
+    go = staticmethod(pysaiyanweboo.pattern_run)
 
     def run_actions(self, number, actions):
         return self.go("native", {"pattern": number, "actions": actions})
@@ -5307,11 +5307,11 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(str(caught.exception), message)
 
     def test_the_catalogue_names_the_27_native_patterns(self):
-        self.assertEqual(len(web_ui.NATIVE_NUMBERS), 27)
-        self.assertEqual(set(web_ui.NATIVE_NUMBERS), set(web_ui.PATTERN_NATIVE) | set(web_ui.PATTERN_GESTURES))
-        self.assertEqual({web_ui.pattern_family(n) for n in web_ui.NATIVE_NUMBERS}, {"native"})
-        self.assertEqual({web_ui.pattern_owner(n) for n in web_ui.NATIVE_NUMBERS}, {"flutter_native"})
-        self.assertEqual([n for n in range(1, 199) if web_ui.pattern_family(n) == "native"], list(web_ui.NATIVE_NUMBERS))
+        self.assertEqual(len(pysaiyanweboo.NATIVE_NUMBERS), 27)
+        self.assertEqual(set(pysaiyanweboo.NATIVE_NUMBERS), set(pysaiyanweboo.PATTERN_NATIVE) | set(pysaiyanweboo.PATTERN_GESTURES))
+        self.assertEqual({pysaiyanweboo.pattern_family(n) for n in pysaiyanweboo.NATIVE_NUMBERS}, {"native"})
+        self.assertEqual({pysaiyanweboo.pattern_owner(n) for n in pysaiyanweboo.NATIVE_NUMBERS}, {"flutter_native"})
+        self.assertEqual([n for n in range(1, 199) if pysaiyanweboo.pattern_family(n) == "native"], list(pysaiyanweboo.NATIVE_NUMBERS))
 
     def test_the_six_getx_patterns_run_without_a_fake_getx_and_count_up_and_reset(self):
         titles = {151: "GetxState", 152: "GetxObservable", 153: "GetxController", 154: "GetxBinding", 155: "GetxWorker", 156: "GetxService"}
@@ -5421,8 +5421,8 @@ class NativeTests(unittest.TestCase):
 
     def test_refusals_name_what_is_wrong(self):
         self.refused([], "request object")
-        self.refused({}, "pattern must be one of " + ", ".join(map(str, web_ui.NATIVE_NUMBERS)))
-        self.refused({"pattern": 164}, "pattern must be one of " + ", ".join(map(str, web_ui.NATIVE_NUMBERS)))
+        self.refused({}, "pattern must be one of " + ", ".join(map(str, pysaiyanweboo.NATIVE_NUMBERS)))
+        self.refused({"pattern": 164}, "pattern must be one of " + ", ".join(map(str, pysaiyanweboo.NATIVE_NUMBERS)))
         self.refused({"pattern": 171, "x": 1}, "unknown request keys")
         self.refused({"pattern": 171, "actions": "x"}, "actions must be an array of at most 1000")
         self.refused({"pattern": 171, "actions": [{"type": "insert"}] * 1001}, "actions must be an array of at most 1000")
@@ -5439,7 +5439,7 @@ class ContractTests(unittest.TestCase):
     """``--pattern contract``: the verdicts of flutter_navigation_basic's own checks (metadata_contracts, header_contracts, gesture_paint), recorded by tools/contract_golden.py on seeded
     mutations of the screens asset, the screen texts, a header snapshot and synthetic screenshots, and the rules this port adds."""
 
-    go = staticmethod(web_ui.pattern_run)
+    go = staticmethod(pysaiyanweboo.pattern_run)
 
     @staticmethod
     def apply(document, operations):
@@ -5496,7 +5496,7 @@ class ContractTests(unittest.TestCase):
         for case in CONTRACT_GOLDEN["screens"][::9]:
             text = json.dumps({"operation": "screens", "screens": self.apply(SCREENS_ASSET, case["mutation"])})
             try:
-                answer = web_ui.pattern_run("contract", web_ui.pattern_parse(text))["ok"]
+                answer = pysaiyanweboo.pattern_run("contract", pysaiyanweboo.pattern_parse(text))["ok"]
             except ValueError:
                 answer = False
             self.assertEqual(answer, case["valid"], "the same through JSON text, as --pattern reads it")
@@ -5653,9 +5653,9 @@ class ContractTests(unittest.TestCase):
             with self.subTest(request=request), self.assertRaises(ValueError):
                 self.go("contract", request)
         with self.assertRaises(ValueError):
-            self.go("contract", {"operation": "screens", "screens": [{}] * (web_ui.CONTRACT_MAX_ROWS + 1)})
+            self.go("contract", {"operation": "screens", "screens": [{}] * (pysaiyanweboo.CONTRACT_MAX_ROWS + 1)})
         with self.assertRaises(ValueError):
-            self.go("contract", {"operation": "layout", "viewport": {"width": 1, "height": 1}, "boxes": {str(i): {"x": 0, "y": 0, "width": 1, "height": 1} for i in range(web_ui.CONTRACT_MAX_BOXES + 1)}})
+            self.go("contract", {"operation": "layout", "viewport": {"width": 1, "height": 1}, "boxes": {str(i): {"x": 0, "y": 0, "width": 1, "height": 1} for i in range(pysaiyanweboo.CONTRACT_MAX_BOXES + 1)}})
 
     def test_the_row_and_box_caps_are_exactly_400_and_200(self):
         row = {}
@@ -5689,7 +5689,7 @@ class ContractTests(unittest.TestCase):
                          ["screen 1: useCaseKey does not start with integration.", "screen 2: useCaseKey does not start with auth."])
 
     def test_an_empty_english_table_has_its_own_message(self):
-        locales = {code: {} for code in web_ui.SCREEN_BCP47}
+        locales = {code: {} for code in pysaiyanweboo.SCREEN_BCP47}
         self.assertEqual(self.go("contract", {"operation": "locales", "locales": locales})["failures"], ["eng must be an object with at least one key"])
 
     def test_a_row_starts_below_the_lowest_edge_of_the_rows_above_and_min_height_is_not_negative(self):
@@ -5712,7 +5712,7 @@ class ContractTests(unittest.TestCase):
                 raster[(y * width + left) * 4:(y * width + left + 12) * 4] = bytes(color) * 12
         before, after = bytearray(gray), bytearray(gray)
         card(before, 8, (10, 20, 30, 255)); card(before, 40, (200, 100, 50, 255)); card(after, 8, (200, 100, 50, 255)); card(after, 40, (10, 20, 30, 255))
-        png = lambda raster: base64.b64encode(web_ui.photo_png(width, height, bytes(raster))).decode()
+        png = lambda raster: base64.b64encode(pysaiyanweboo.photo_png(width, height, bytes(raster))).decode()
 
         def swap(first, second):
             return {"operation": "swap", "before": png(before), "after": png(after), "geometry": {"device_scale_factor": 1, "viewport": {"width": width, "height": height}, "slots": [first, second]}}
@@ -5750,9 +5750,9 @@ class ContractTests(unittest.TestCase):
                 self.go("contract", {**request, "geometry": {**case["geometry"], "device_scale_factor": scale}})
 
     def test_the_family_is_python_only_and_its_example_passes(self):
-        self.assertNotIn("contract", web_ui.PATTERN_TWINS)
-        self.assertIn("contract", web_ui.PATTERN_RUNNERS)
-        self.assertEqual(web_ui.pattern_examples()["contract"]["result"], {"operation": "layout", "ok": True, "failures": [], "truncated": 0})
+        self.assertNotIn("contract", pysaiyanweboo.PATTERN_TWINS)
+        self.assertIn("contract", pysaiyanweboo.PATTERN_RUNNERS)
+        self.assertEqual(pysaiyanweboo.pattern_examples()["contract"]["result"], {"operation": "layout", "ok": True, "failures": [], "truncated": 0})
 
     def test_requests_are_not_changed_and_answers_are_plain_json(self):
         request = {"operation": "screens", "screens": json.loads(json.dumps(SCREENS_ASSET[:3])), "count": 3}
@@ -5762,7 +5762,7 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(json.loads(json.dumps(answer, allow_nan=False)), answer)
 
     def test_the_command_line_runs_it_on_stdin(self):
-        request = json.dumps(web_ui.PATTERN_EXAMPLES["contract"])
+        request = json.dumps(pysaiyanweboo.PATTERN_EXAMPLES["contract"])
         done = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--pattern", "contract"], input=request, capture_output=True, text=True, timeout=60)
         self.assertEqual((done.returncode, json.loads(done.stdout)), (0, {"failures": [], "ok": True, "operation": "layout", "truncated": 0}))
         done = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--pattern", "contract"], input='{"operation":"layout"}', capture_output=True, text=True, timeout=60)
@@ -5785,7 +5785,7 @@ class PatternBridgeTests(unittest.TestCase):
         self.started = []
 
         def start(allow=()):
-            server = web_ui.pattern_bridge(0, allow)
+            server = pysaiyanweboo.pattern_bridge(0, allow)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             self.started.append((server, thread))
@@ -5816,35 +5816,35 @@ class PatternBridgeTests(unittest.TestCase):
 
     def post(self, family, body, **headers):
         payload = body if isinstance(body, bytes) else json.dumps(body).encode("utf-8")
-        return self.ask("POST", web_ui.PATTERN_BRIDGE_PREFIX + family, payload, {"Content-Type": "application/json", **headers})
+        return self.ask("POST", pysaiyanweboo.PATTERN_BRIDGE_PREFIX + family, payload, {"Content-Type": "application/json", **headers})
 
     def test_it_binds_loopback_only_and_serves_the_patterns_page_with_its_marker(self):
         self.assertEqual(self.server.server_address[0], "127.0.0.1")
         for path in ("/", "/patterns.html", "/?x=1"):
             status, headers, body = self.ask("GET", path)
             self.assertEqual((status, headers["content-type"]), (200, "text/html; charset=utf-8"), path)
-            self.assertEqual(body.decode("utf-8"), web_ui.patterns_document(bridge="/pattern/"))
+            self.assertEqual(body.decode("utf-8"), pysaiyanweboo.patterns_document(bridge="/pattern/"))
         self.assertIn('data-patterns-bridge="/pattern/"', body.decode("utf-8"))
-        self.assertNotIn("data-patterns-bridge", web_ui.patterns_document(), "a page that is not served by the bridge has no way to reach it")
+        self.assertNotIn("data-patterns-bridge", pysaiyanweboo.patterns_document(), "a page that is not served by the bridge has no way to reach it")
         self.assertEqual((headers["cache-control"], headers["x-content-type-options"], headers["referrer-policy"], headers["x-frame-options"]), ("no-store", "nosniff", "no-referrer", "DENY"))
 
     def test_the_marker_is_only_the_bridges_own_prefix(self):
         for bad in ("/pattern", "//evil.example/", "http://evil.example/pattern/", "", " "):
             with self.assertRaises(ValueError, msg=repr(bad)):
-                web_ui.patterns_html(bad)
+                pysaiyanweboo.patterns_html(bad)
 
     def test_every_family_answers_what_the_command_line_prints(self):
-        for family in sorted(web_ui.PATTERN_RUNNERS):
-            request = web_ui.PATTERN_EXAMPLES[family]
+        for family in sorted(pysaiyanweboo.PATTERN_RUNNERS):
+            request = pysaiyanweboo.PATTERN_EXAMPLES[family]
             status, headers, body = self.post(family, request)
-            expected = json.dumps(web_ui.pattern_run(family, request), ensure_ascii=False, sort_keys=True, allow_nan=False)
+            expected = json.dumps(pysaiyanweboo.pattern_run(family, request), ensure_ascii=False, sort_keys=True, allow_nan=False)
             self.assertEqual((status, body.decode("utf-8"), headers["content-type"], headers["cache-control"]), (200, expected, "application/json; charset=utf-8", "no-store"), family)
 
     def test_the_text_of_a_refusal_is_the_command_lines(self):
         cases = [("contract", {"operation": "layout"}), ("validate", {"operation": "nope"}), ("search", []), ("score", {"operation": "tfidf"}), ("query", None)]
         for family, request in cases:
             with self.assertRaises(ValueError) as caught:
-                web_ui.pattern_run(family, request)
+                pysaiyanweboo.pattern_run(family, request)
             status, headers, body = self.post(family, request)
             self.assertEqual((status, json.loads(body)), (400, {"error": str(caught.exception)}), family)
 
@@ -5861,14 +5861,14 @@ class PatternBridgeTests(unittest.TestCase):
         self.assertEqual(self.ask("POST", "/pattern", b"{}", {"Content-Type": "application/json"})[0], 404)
         self.assertEqual(self.ask("GET", "/nothing")[0], 404)
         status, headers, data = self.ask("GET", "/pattern/")
-        self.assertEqual((status, json.loads(data)), (200, {"families": sorted(web_ui.PATTERN_RUNNERS), "browser": sorted(web_ui.PATTERN_TWINS), "max_body": 65536}))
+        self.assertEqual((status, json.loads(data)), (200, {"families": sorted(pysaiyanweboo.PATTERN_RUNNERS), "browser": sorted(pysaiyanweboo.PATTERN_TWINS), "max_body": 65536}))
         for method in ("PUT", "PATCH", "DELETE", "HEAD"):
             status, headers, data = self.ask(method, "/pattern/search", b"{}" if method != "HEAD" else None)
             self.assertEqual((status, headers["allow"]), (405, "GET, POST, OPTIONS"), method)
             self.assertEqual(data, b"" if method == "HEAD" else json.dumps({"error": "method not allowed"}).encode(), method)
 
     def test_a_path_is_exact_apart_from_its_query(self):
-        body = json.dumps(web_ui.PATTERN_EXAMPLES["search"]).encode()
+        body = json.dumps(pysaiyanweboo.PATTERN_EXAMPLES["search"]).encode()
         headers = {"Content-Type": "application/json"}
         self.assertEqual(self.ask("POST", "/pattern/search?x=1", body, headers)[0], 200, "a query string is not part of the family")
         for path in ("/pattern/search/", "/pattern/Search", "/pattern/search%20", "/pattern//search", "/pattern/search/x", "/pattern/"):
@@ -5881,13 +5881,13 @@ class PatternBridgeTests(unittest.TestCase):
         server = self.start(["https://pages.example"])
         port = server.server_address[1]
         status, headers, data = self.ask("GET", "/pattern/", headers={"Origin": "https://pages.example"}, port=port)
-        self.assertEqual((status, headers["access-control-allow-origin"], headers["vary"], json.loads(data)["families"]), (200, "https://pages.example", "Origin", sorted(web_ui.PATTERN_RUNNERS)))
+        self.assertEqual((status, headers["access-control-allow-origin"], headers["vary"], json.loads(data)["families"]), (200, "https://pages.example", "Origin", sorted(pysaiyanweboo.PATTERN_RUNNERS)))
         self.assertEqual(self.ask("GET", "/pattern/", headers={"Origin": "https://other.example"}, port=port)[0], 403)
         status, headers, _ = self.ask("GET", "/pattern/", port=port)
         self.assertEqual((status, "access-control-allow-origin" in headers), (200, False))
 
     def test_the_media_type_and_the_length_are_checked_before_the_body_is_read(self):
-        ok = json.dumps(web_ui.PATTERN_EXAMPLES["search"]).encode()
+        ok = json.dumps(pysaiyanweboo.PATTERN_EXAMPLES["search"]).encode()
         for headers in ({}, {"Content-Type": "text/plain"}, {"Content-Type": "application/x-www-form-urlencoded"}, {"Content-Type": "application/jsonp"}, {"Content-Type": "text/json"}):
             self.assertEqual(self.ask("POST", "/pattern/search", ok, headers)[0], 415, headers)
         for headers in ({"Content-Type": "application/json"}, {"Content-Type": "application/json; charset=utf-8"}, {"Content-Type": "Application/JSON"}):
@@ -5904,7 +5904,7 @@ class PatternBridgeTests(unittest.TestCase):
         self.assertEqual((over[0], json.loads(over[2])), (413, {"error": "request is larger than 65536 bytes"}), "refused before any of the body is read")
 
     def test_a_body_of_exactly_the_cap_is_run_and_one_more_byte_is_not(self):
-        request = json.dumps(web_ui.PATTERN_EXAMPLES["search"]).encode()
+        request = json.dumps(pysaiyanweboo.PATTERN_EXAMPLES["search"]).encode()
         padded = request + b" " * (65536 - len(request))
         self.assertEqual(len(padded), 65536)
         self.assertEqual(self.post("search", padded)[0], 200)
@@ -5912,7 +5912,7 @@ class PatternBridgeTests(unittest.TestCase):
 
     def test_a_body_that_never_arrives_is_answered_408_and_one_that_stops_early_400(self):
         import socket
-        with mock.patch.object(web_ui._PatternBridgeHandler, "timeout", 1):
+        with mock.patch.object(pysaiyanweboo._PatternBridgeHandler, "timeout", 1):
             for sent, status in ((b"", 408), (b"{", 408)):
                 with socket.create_connection(("127.0.0.1", self.port), timeout=10) as sock:
                     sock.sendall(f"POST /pattern/search HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\nContent-Type: application/json\r\nContent-Length: 50\r\n\r\n".encode() + sent)
@@ -5928,7 +5928,7 @@ class PatternBridgeTests(unittest.TestCase):
                     answer += chunk
             self.assertIn(b" 400 ", answer.split(b"\r\n", 1)[0])
             self.assertEqual(json.loads(answer.split(b"\r\n\r\n", 1)[1]), {"error": "the request body ended early"}, "a body that stops early is not run as the JSON it happens to be")
-        self.assertEqual((web_ui._PatternBridgeHandler.timeout, web_ui.PATTERN_BRIDGE_TIMEOUT), (10, 10), "the real wait for a body is bounded")
+        self.assertEqual((pysaiyanweboo._PatternBridgeHandler.timeout, pysaiyanweboo.PATTERN_BRIDGE_TIMEOUT), (10, 10), "the real wait for a body is bounded")
 
     def test_the_host_must_name_the_bound_loopback_address_and_port(self):
         port = self.port
@@ -5938,12 +5938,12 @@ class PatternBridgeTests(unittest.TestCase):
             for method, path in (("GET", "/"), ("GET", "/pattern/"), ("OPTIONS", "/pattern/search"), ("PUT", "/pattern/search")):
                 status, _, data = self.ask(method, path, headers={"Host": host})
                 self.assertEqual((status, json.loads(data)), (403, {"error": "origin not allowed"}), (host, method, path))
-            self.assertEqual(self.post("search", web_ui.PATTERN_EXAMPLES["search"], Host=host)[0], 403, host)
+            self.assertEqual(self.post("search", pysaiyanweboo.PATTERN_EXAMPLES["search"], Host=host)[0], 403, host)
         self.assertEqual(self.ask("GET", "/", host=False)[0], 403, "no Host at all")
 
     def test_a_foreign_origin_is_refused_everywhere_and_the_own_origin_is_echoed_never_a_wildcard(self):
         port = self.port
-        request = web_ui.PATTERN_EXAMPLES["search"]
+        request = pysaiyanweboo.PATTERN_EXAMPLES["search"]
         for origin in ("http://evil.example", "https://127.0.0.1:" + str(port), f"http://127.0.0.1:{port + 1}", f"http://localhost:{port + 1}", "null", "*", "http://127.0.0.1", ""):
             self.assertEqual(self.post("search", request, Origin=origin)[0], 403, origin)
             self.assertEqual(self.ask("OPTIONS", "/pattern/search", headers={"Origin": origin})[0], 403, origin)
@@ -5971,60 +5971,60 @@ class PatternBridgeTests(unittest.TestCase):
         server = self.start(["http://localhost:8080", "https://pages.example", "HTTP://Example.COM:3000"])
         port = server.server_address[1]
         for origin in ("http://localhost:8080", "https://pages.example", "http://example.com:3000"):
-            status, headers, _ = self.ask("POST", "/pattern/search", json.dumps(web_ui.PATTERN_EXAMPLES["search"]).encode(), {"Content-Type": "application/json", "Origin": origin}, port=port)
+            status, headers, _ = self.ask("POST", "/pattern/search", json.dumps(pysaiyanweboo.PATTERN_EXAMPLES["search"]).encode(), {"Content-Type": "application/json", "Origin": origin}, port=port)
             self.assertEqual((status, headers["access-control-allow-origin"]), (200, origin))
             status, headers, _ = self.ask("OPTIONS", "/pattern/search", headers={"Origin": origin, "Access-Control-Request-Private-Network": "true"}, port=port)
             self.assertEqual((status, headers["access-control-allow-private-network"]), (204, "true"))
         for origin in ("http://localhost:8081", "http://pages.example", "https://pages.example:443", "https://sub.pages.example", "http://example.com"):
             self.assertEqual(self.ask("POST", "/pattern/search", b"{}", {"Content-Type": "application/json", "Origin": origin}, port=port)[0], 403, origin)
-        self.assertEqual(self.post("search", web_ui.PATTERN_EXAMPLES["search"], Origin="http://localhost:8080")[0], 403, "the first bridge was not told about it")
+        self.assertEqual(self.post("search", pysaiyanweboo.PATTERN_EXAMPLES["search"], Origin="http://localhost:8080")[0], 403, "the first bridge was not told about it")
 
     def test_an_origin_for_allow_origin_is_scheme_host_and_port_only(self):
-        self.assertEqual([web_ui.bridge_origin(value) for value in ("http://localhost:8080", "https://a.example", "http://127.0.0.1", "HTTP://A.EXAMPLE:80", "http://[::1]:9")],
+        self.assertEqual([pysaiyanweboo.bridge_origin(value) for value in ("http://localhost:8080", "https://a.example", "http://127.0.0.1", "HTTP://A.EXAMPLE:80", "http://[::1]:9")],
                          ["http://localhost:8080", "https://a.example", "http://127.0.0.1", "http://a.example:80", "http://[::1]:9"])
         for bad in ("*", "http://*", "*.example", "http://a.*", "http://a/b", "http://a/", "http://a?x=1", "http://a#x", "http://a?", "http://a#", "ftp://a", "file:///x", "http://u@a", "http://u:p@a", "http://a b", " http://a",
                     "", "localhost:8080", "//a", "http://", "http://a:99999", "http://a:x", None, 5, ["http://a"], b"http://a"):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
-                web_ui.bridge_origin(bad)
+                pysaiyanweboo.bridge_origin(bad)
 
     def test_the_port_is_checked_and_a_used_port_is_an_error(self):
         for bad in (-1, 65536, True, "80", 1.5, None):
             with self.subTest(port=bad), self.assertRaises(ValueError):
-                web_ui.pattern_bridge(bad)
+                pysaiyanweboo.pattern_bridge(bad)
         with self.assertRaises(OSError):
-            web_ui.pattern_bridge(self.port)
+            pysaiyanweboo.pattern_bridge(self.port)
         with self.assertRaises(ValueError):
-            web_ui.pattern_bridge(0, ["*"])
+            pysaiyanweboo.pattern_bridge(0, ["*"])
 
     def test_a_failure_inside_a_reference_is_500_without_its_text_and_a_long_refusal_is_cut(self):
-        with mock.patch.object(web_ui, "pattern_run", side_effect=RuntimeError("secret path /etc/passwd")):
+        with mock.patch.object(pysaiyanweboo, "pattern_run", side_effect=RuntimeError("secret path /etc/passwd")):
             status, _, data = self.post("search", {})
         self.assertEqual((status, json.loads(data)), (500, {"error": "internal error"}))
-        with mock.patch.object(web_ui, "pattern_run", side_effect=ValueError("x" * 5000)):
+        with mock.patch.object(pysaiyanweboo, "pattern_run", side_effect=ValueError("x" * 5000)):
             status, _, data = self.post("search", {})
         self.assertEqual((status, len(json.loads(data)["error"])), (400, 1000))
-        with mock.patch.object(web_ui, "pattern_run", return_value={"v": float("nan")}):
+        with mock.patch.object(pysaiyanweboo, "pattern_run", return_value={"v": float("nan")}):
             self.assertEqual(self.post("search", {})[0], 400, "a value JSON cannot hold is refused, not sent as NaN")
 
     def test_many_requests_at_once_each_get_their_own_answer(self):
         import concurrent.futures
-        families = sorted(web_ui.PATTERN_RUNNERS)
+        families = sorted(pysaiyanweboo.PATTERN_RUNNERS)
 
         def one(index):
             family = families[index % len(families)]
-            status, _, body = self.post(family, web_ui.PATTERN_EXAMPLES[family])
+            status, _, body = self.post(family, pysaiyanweboo.PATTERN_EXAMPLES[family])
             return family, status, json.loads(body)
         with concurrent.futures.ThreadPoolExecutor(12) as pool:
             results = list(pool.map(one, range(96)))
         for family, status, answer in results:
-            self.assertEqual((status, answer), (200, web_ui.pattern_run(family, web_ui.PATTERN_EXAMPLES[family])), family)
+            self.assertEqual((status, answer), (200, pysaiyanweboo.pattern_run(family, pysaiyanweboo.PATTERN_EXAMPLES[family])), family)
 
     def test_nothing_is_logged(self):
         import io
         from contextlib import redirect_stderr
         stream = io.StringIO()
         with redirect_stderr(stream):
-            self.post("search", web_ui.PATTERN_EXAMPLES["search"])
+            self.post("search", pysaiyanweboo.PATTERN_EXAMPLES["search"])
             self.ask("GET", "/nothing")
         self.assertEqual(stream.getvalue(), "")
 
@@ -6039,7 +6039,7 @@ class PatternBridgeTests(unittest.TestCase):
             self.assertIsNotNone(match, line)
             port = int(match.group(1))
             status, _, body = self.ask("GET", "/", port=port)
-            self.assertEqual((status, body.decode("utf-8")), (200, web_ui.patterns_document(bridge="/pattern/")))
+            self.assertEqual((status, body.decode("utf-8")), (200, pysaiyanweboo.patterns_document(bridge="/pattern/")))
             status, headers, _ = self.ask("OPTIONS", "/pattern/search", headers={"Origin": "http://localhost:8080"}, port=port)
             self.assertEqual((status, headers["access-control-allow-origin"]), (204, "http://localhost:8080"))
         finally:

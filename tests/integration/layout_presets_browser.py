@@ -14,10 +14,10 @@ sys.path.insert(0, str(ROOT / "tools"))
 import capture_matrix  # noqa: E402
 import layout_presets  # noqa: E402
 
-import web_ui  # noqa: E402
+import pysaiyanweboo  # noqa: E402
 
-PAGES = web_ui.example_data("flutter-pages")
-SPEC = web_ui.example_data("layout-presets")
+PAGES = pysaiyanweboo.example_data("flutter-pages")
+SPEC = pysaiyanweboo.example_data("layout-presets")
 # A preset meant to break on phones: tiles wider than the screen.
 BROKEN = {**SPEC, "presets": SPEC["presets"] + [{"id": "poster", "label": "Poster",
           "vars": {"--ui-matrix-col": "480px", "--ui-matrix-gap": "8px", "--ui-matrix-pad": "8px"}}]}

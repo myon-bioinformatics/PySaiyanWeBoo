@@ -47,7 +47,7 @@ research. Both use the same API:
 
 ```python
 from pathlib import Path
-from web_ui import catalog_document, example_data
+from pysaiyanweboo import catalog_document, example_data
 
 for name in ("catalog-report", "catalog-projects"):
     page = catalog_document(example_data(name))

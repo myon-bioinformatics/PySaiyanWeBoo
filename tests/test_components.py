@@ -7,7 +7,7 @@ import sys
 import pytest
 
 from support import node26
-import web_ui as ui
+import pysaiyanweboo as ui
 
 ROOT = Path(__file__).resolve().parents[1]
 ROOM = {"id": "notes", "emoji": "📝", "title": "Notes", "html": '<div id="notes"><p>notes</p></div>'}
