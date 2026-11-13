@@ -705,7 +705,7 @@ def test_failure_evidence_contract_rejects_unsafe_mutations():
 
 
 # ═══ 🚀 node launch ═══════════════════════════════════════════════════════════════════════════════════════
-# Parity between legacy subprocess Node helpers and vendored node_launch.
+# Parity between legacy subprocess Node helpers and vendored njs_launch.
 
 _STDIN_CLOSED_PAYLOAD = "x" * 70000 + "\n"
 _BINARY_STDOUT = b"\xff\xfetest"
@@ -891,10 +891,10 @@ def _complete_fake_run(argv: list[str], **kwargs) -> subprocess.CompletedProcess
 
 
 @pytest.fixture(autouse=True)
-def _node_launch_process_layer_stub(monkeypatch):
-    node_launch = ui._node_launch_module()
-    real_run = node_launch.subprocess.run
-    real_popen = node_launch.subprocess.Popen
+def _njs_launch_process_layer_stub(monkeypatch):
+    njs_launch = ui._njs_launch_module()
+    real_run = njs_launch.subprocess.run
+    real_popen = njs_launch.subprocess.Popen
 
     def fake_run(args, *pargs, **kwargs):
         if args and not isinstance(args, (str, bytes)):
@@ -925,8 +925,8 @@ def _node_launch_process_layer_stub(monkeypatch):
             **kwargs,
         )
 
-    monkeypatch.setattr(node_launch.subprocess, "run", fake_run)
-    monkeypatch.setattr(node_launch.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(njs_launch.subprocess, "run", fake_run)
+    monkeypatch.setattr(njs_launch.subprocess, "Popen", fake_popen)
     yield
     _FAKE_NODE_SPECS.clear()
 
@@ -1048,7 +1048,7 @@ def test_explicit_missing_node_path_raises_file_not_found(tmp_path):
 
 def test_node_not_on_path_raises_runtime_error(tmp_path, monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda name, **kw: None)
-    ui._node_launch_module().clear_probe_cache()
+    ui._njs_launch_module().clear_probe_cache()
     script = tmp_path / "check.mjs"
     script.write_text("", encoding="utf-8")
 
@@ -1065,7 +1065,7 @@ def test_node_v20_on_path_names_found_version(tmp_path, monkeypatch):
         "which",
         lambda name, **kw: str(script) if name == "node" else None,
     )
-    ui._node_launch_module().clear_probe_cache()
+    ui._njs_launch_module().clear_probe_cache()
     with pytest.raises(RuntimeError, match=r"Node 26 or newer.*found Node 20"):
         ui.run_node(tmp_path / "check.mjs")
 
@@ -1089,7 +1089,7 @@ def test_node_v20_rejected_while_legacy_would_run(tmp_path):
 def test_below_node_26_names_found_version(tmp_path, monkeypatch, major, explicit):
     script = _write_fake_node(tmp_path, version=f"v{major}.0.0", on_eval="pass")
     monkeypatch.setattr(shutil, "which", lambda name, **kw: str(script) if name == "node" else None)
-    ui._node_launch_module().clear_probe_cache()
+    ui._njs_launch_module().clear_probe_cache()
     kwargs = {"node": script} if explicit else {}
     with pytest.raises(RuntimeError, match=rf"Node 26 or newer.*found Node {major}"):
         ui.run_node(tmp_path / "check.mjs", **kwargs)
@@ -1117,17 +1117,17 @@ def test_timeout_cmd_includes_resolved_node(tmp_path, monkeypatch):
     script = _write_fake_node(tmp_path, version="v26.0.0", on_eval="import time; time.sleep(60)")
     entry = tmp_path / "demo.js"
     entry.write_text("", encoding="utf-8")
-    node_launch = ui._node_launch_module()
+    njs_launch = ui._njs_launch_module()
 
     def hang(*args, **kwargs):
-        raise node_launch.LaunchError(
-            "node_launch: Node process timed out",
+        raise njs_launch.LaunchError(
+            "njs_launch: Node process timed out",
             code="ELAUNCHFAILURE",
             stdout=b"",
             stderr=b"",
         )
 
-    monkeypatch.setattr(node_launch, "run", hang)
+    monkeypatch.setattr(njs_launch, "run", hang)
     with pytest.raises(subprocess.TimeoutExpired) as info:
         ui.run_node(entry, node=script, timeout=7)
     assert info.value.timeout == 7
@@ -1140,17 +1140,17 @@ def test_timeout_matches_legacy(monkeypatch, tmp_path):
     entry.write_text("", encoding="utf-8")
     cmd = [str(script), str(entry)]
     timeout = 11.0
-    node_launch = ui._node_launch_module()
+    njs_launch = ui._njs_launch_module()
 
     def launch_timeout(*args, **kwargs):
-        raise node_launch.LaunchError(
-            "node_launch: Node process timed out",
+        raise njs_launch.LaunchError(
+            "njs_launch: Node process timed out",
             code="ELAUNCHFAILURE",
             stdout=b"",
             stderr=b"",
         )
 
-    monkeypatch.setattr(node_launch, "run", launch_timeout)
+    monkeypatch.setattr(njs_launch, "run", launch_timeout)
 
     def old():
         raise subprocess.TimeoutExpired(cmd=cmd, timeout=timeout)
@@ -1211,8 +1211,8 @@ def test_bytes_stdout_preserved(tmp_path):
     )
     entry = tmp_path / "demo.js"
     entry.write_text("", encoding="utf-8")
-    node_launch = ui._node_launch_module()
-    raw = node_launch.run(entry, node=script, timeout=30, check=False)
+    njs_launch = ui._njs_launch_module()
+    raw = njs_launch.run(entry, node=script, timeout=30, check=False)
     assert raw.stdout == _BINARY_STDOUT
     done = ui.run_node(entry, node=script, timeout=30)
     assert done.stdout == _BINARY_STDOUT.decode("utf-8", errors="replace")
@@ -1242,17 +1242,17 @@ def test_timeout_expired_keeps_raw_output_and_stderr_bytes(tmp_path, monkeypatch
     script = _write_fake_node(tmp_path, version="v26.0.0", on_eval="pass")
     entry = tmp_path / "demo.js"
     entry.write_text("", encoding="utf-8")
-    node_launch = ui._node_launch_module()
+    njs_launch = ui._njs_launch_module()
 
     def timed_out(*args, **kwargs):
-        raise node_launch.LaunchError(
-            "node_launch: Node process timed out",
+        raise njs_launch.LaunchError(
+            "njs_launch: Node process timed out",
             code="ELAUNCHFAILURE",
             stdout=b"out\r\nline\r",
             stderr=b"err\r\n",
         )
 
-    monkeypatch.setattr(node_launch, "run", timed_out)
+    monkeypatch.setattr(njs_launch, "run", timed_out)
     with pytest.raises(subprocess.TimeoutExpired) as info:
         ui.run_node(entry, node=script, timeout=3)
     assert info.value.output == b"out\r\nline\r"
@@ -1297,7 +1297,7 @@ def test_mutation_subprocess_broken_raise_fails_v20_path_test():
     rc = _pytest_on_mutated_web_ui(
         [
             (
-                "                node_launch._probe_node_once(discovered, node_launch.DEFAULT_PROBE_TIMEOUT)",
+                "                njs_launch._probe_node_once(discovered, njs_launch.DEFAULT_PROBE_TIMEOUT)",
                 "                pass  # mutation: skip PATH version reprobe",
             )
         ],
@@ -1310,8 +1310,8 @@ def test_mutation_subprocess_broken_run_fails_normal_parity_test():
     rc = _pytest_on_mutated_web_ui(
         [
             (
-                "            completed = node_launch.run(",
-                "            completed = subprocess.CompletedProcess(command, 0, b\"mutated\", b\"\")  # mutation\n            if False: node_launch.run(",
+                "            completed = njs_launch.run(",
+                "            completed = subprocess.CompletedProcess(command, 0, b\"mutated\", b\"\")  # mutation\n            if False: njs_launch.run(",
             )
         ],
         f"{__name__}::test_normal_run_matches_legacy",
@@ -1684,7 +1684,7 @@ def test_parts_document_shows_every_theme_in_its_own_frame():
 # Exercise copied artifacts in isolated stdlib-only interpreters.
 
 def test_embedded_launcher_matches_locked_vendor():
-    assert pysaiyanweboo._EMBEDDED_NODE_LAUNCH_SOURCE.encode() == (ROOT / 'vendor/node_launch.py').read_bytes()
+    assert pysaiyanweboo._EMBEDDED_NJS_LAUNCH_SOURCE.encode() == (ROOT / 'vendor/njs_launch.py').read_bytes()
 
 
 @pytest.mark.parametrize('vendor', [False, True])
@@ -1693,7 +1693,7 @@ def test_copied_artifact(tmp_path, vendor, case):
     shutil.copyfile(ROOT / 'pysaiyanweboo.py', tmp_path / 'pysaiyanweboo.py')
     if vendor:
         (tmp_path / 'vendor').mkdir()
-        shutil.copyfile(ROOT / 'vendor/node_launch.py', tmp_path / 'vendor/node_launch.py')
+        shutil.copyfile(ROOT / 'vendor/njs_launch.py', tmp_path / 'vendor/njs_launch.py')
     code = '''
 import pysaiyanweboo as u
 import subprocess
@@ -1702,7 +1702,7 @@ import subprocess
         'html': '''
 u.shutil.which = lambda *a: None
 assert 'hello' in u.render_document('hello')
-assert u._NODE_LAUNCH is None
+assert u._NJS_LAUNCH is None
 ''',
         'success': '''
 p = u.run_node('-e', 'process.stdout.write("hello"+String.fromCharCode(13,10)); process.stderr.write("err"+String.fromCharCode(13));')
@@ -1714,7 +1714,7 @@ p = u.run_node('-e', 'console.error("bad"); process.exit(7)')
 assert p.returncode == 7 and p.stderr == 'bad\\n'
 try:
     u.run_node('-e', 'process.exit(7)', check=True)
-except u._node_launch_module().LaunchError as e:
+except u._njs_launch_module().LaunchError as e:
     assert e.status == 7
 else:
     raise AssertionError('missing CalledProcessError')
@@ -1737,7 +1737,7 @@ else:
     raise AssertionError('missing failure')
 ''',
         'old': '''
-launcher = u._node_launch_module()
+launcher = u._njs_launch_module()
 launcher.subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a[0], 0, b'v20.0.0', b'')
 try:
     u.run_node('-e', '42')
@@ -1794,8 +1794,8 @@ def test_vendor_lock_lists_expected_sources():
         ("myon-bioinformatics/Ironmate", "LICENSE", "tools/vendor/LICENSE"),
         (
             "myon-bioinformatics/myon-bioinformatics",
-            "node_launch.py",
-            "vendor/node_launch.py",
+            "njs_launch.py",
+            "vendor/njs_launch.py",
         ),
         ("myon-bioinformatics/myon-bioinformatics", "py_launch.cjs", "vendor/py_launch.cjs"),
     }
@@ -1804,11 +1804,12 @@ def test_vendor_lock_lists_expected_sources():
     assert all(e["ref"] == e["commit"] for e in _lock_entries())
 
 
-@pytest.mark.parametrize("destination", ["vendor/node_launch.py", "vendor/py_launch.cjs"])
-def test_launchers_pin_the_accepted_parent_merge(destination):
+@pytest.mark.parametrize("destination,commit", [("vendor/njs_launch.py", "0d20801e2e372a72426ce85cee7ac04d701e71b5"),   # the rename's merge (parent #266)
+                                                ("vendor/py_launch.cjs", "384f5dd532076062f7833038764e9a62322c387c")])
+def test_launchers_pin_the_accepted_parent_merge(destination, commit):
     entry = next(e for e in _lock_entries() if e["destination"] == destination)
     assert entry["repository"] == "myon-bioinformatics/myon-bioinformatics"
-    assert entry["ref"] == entry["commit"] == "384f5dd532076062f7833038764e9a62322c387c"
+    assert entry["ref"] == entry["commit"] == commit
     data = (ROOT / destination).read_bytes()
     assert hashlib.sha256(data).hexdigest() == entry["sha256"]
     assert hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest() == entry["blob_sha"]
@@ -1970,3 +1971,12 @@ def test_vendor_lock_matches_checked_in_bytes() -> None:
         blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
         assert blob == entry["blob_sha"], entry["destination"]
         assert hashlib.sha256(data).hexdigest() == entry["sha256"], entry["destination"]
+
+
+@pytest.mark.parametrize("name", ["EmbeddedModulesTests", "StaticContractTest", "CatalogTests"])
+def test_documented_stdlib_unittest_recipes_still_run(name):
+    # README, docs/unittest-discovery.md and docs/catalog-pages.md run these classes with `python -S -m unittest` (no pytest installed).
+    done = subprocess.run([sys.executable, "-S", "-m", "unittest", "discover", "-s", "tests", "-p", "test_pages.py", "-k", name],
+                          cwd=ROOT, capture_output=True, text=True, timeout=120)
+    ran = re.search(r"^Ran (\d+) tests?", done.stderr, re.M)
+    assert done.returncode == 0 and ran and int(ran.group(1)) > 0, done.stderr[-2000:]

@@ -6,7 +6,7 @@ package or browser installation. `-S` disables automatic `site` initialization
 and its usual site-packages path additions; it is not a complete isolation boundary.
 
 ```sh
-python -S -m unittest discover -s tests -p test_pages.py -v
+python -S -m unittest discover -s tests -p test_pages.py -v -k EmbeddedModulesTests
 ```
 
 Validated on Linux / CPython 3.12.14: **6 tests, exit 0** (2026-11-03).

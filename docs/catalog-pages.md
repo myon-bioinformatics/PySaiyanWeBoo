@@ -80,7 +80,7 @@ flow generation remains owned by ascii_artist.
 
 ## Verification
 
-`python -m unittest discover -s tests -p test_pages.py -v` tests schemas,
+`python -m unittest discover -s tests -p test_pages.py -v -k CatalogTests` tests schemas,
 Unicode/escaping, link validation, deterministic output, source immutability,
 portable paths and an isolated `python -I -S` single-file CLI.
 

@@ -25,15 +25,14 @@ from posixpath import normpath
 from unittest import mock
 from urllib.parse import urljoin, urlsplit
 
-import pytest
 
 import pysaiyanweboo
 import pysaiyanweboo as ui
 from pysaiyanweboo import (
-    EMBEDDED_UI_JS, _node_launch_module, bundled_css, filter_request, module_asset, module_csp_hash, module_script, plotly_figure, render_document,
+    EMBEDDED_UI_JS, _njs_launch_module, bundled_css, filter_request, module_asset, module_csp_hash, module_script, plotly_figure, render_document,
     run_node, shared_scripts,
 )
-from support import flutter_case, node26, node_js
+from support import flutter_case, node26, node_js, pytest  # pytest: the real one, or a stand-in under python -S
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -207,9 +206,9 @@ class PythonWrapperTests(unittest.TestCase):
         self.assertEqual(result.stdout, 'seen\n')
 
     def test_run_node_reports_missing_executable(self):
-        node_launch = _node_launch_module()
-        node_launch.clear_probe_cache()
-        with mock.patch.object(node_launch.shutil, 'which', return_value=None):
+        njs_launch = _njs_launch_module()
+        njs_launch.clear_probe_cache()
+        with mock.patch.object(njs_launch.shutil, 'which', return_value=None):
             with self.assertRaises(RuntimeError):
                 run_node('missing.js')
 
