@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 122899)
-Total output lines: 6892
-
 """Required Chromium contract: python tests/integration/controls_browser.py -v.
 
 Invoked explicitly by the browser CI job; missing Playwright/browser is an error.
@@ -2758,7 +2755,1271 @@ class ClipboardBrowserTests(PageCase):
             python_clip = None if config.get('absent') else t.ClipDouble(t.clip_resolve(config))
             expected = web_ui_module().clipboard_pick(python_clip, t.clip_importer)
             expected = {k: v for k, v in expected.items()}
-            self.assertEqual…22899 tokens truncated…c['required'] = r.sample('abc', r.randint(0, 2)) if r.random() < 0.9 else ['a', 'a']
+            self.assertEqual(seen_name, name)
+            self.assertEqual({k: result[k] for k in expected}, expected, name)
+            if python_clip is not None:
+                reads = sum(blob.read_calls for item in python_clip.items for blob in item.blobs)
+                self.assertEqual((calls['read'], calls['readText'], calls['getType'], calls['arrayBuffer']), (python_clip.calls['read'], python_clip.calls['readText'], python_clip.calls['getType'], reads), name)
+            if code:
+                self.assertEqual(result['code'], code, name)
+
+    def test_shelf_mode_and_limits_equal_pythons(self):
+        t = self.t
+        w = web_ui_module()
+        page = self.page('shelf.html')
+        configs = [{"text": "  a memo \n"}, {"text": "data:image/png;base64,!!!", "items": [t.clip_binary()]}, {"text": t.CLIP_URI}, {"text": "memo", "items": [t.clip_binary()]}, {"textError": "NotAllowedError", "items": [t.clip_binary()]},
+                   {"text": "memo", "readError": "NotAllowedError"}, {"text": "memo", "items": [t.clip_binary(t.CLIP_IMAGE, "image/jpeg")]}, {"textError": "NotAllowedError", "readError": "NotAllowedError"}, {}, {"noText": True, "noRead": True},
+                   {"text": "memo", "noRead": True}, {"noText": True, "items": [t.clip_binary()]}]
+        script = "async ([configs, png, limits]) => { " + (self.DOUBLE % json.dumps(t.CLIP_IMAGE)) + """
+            const out = []; for (const config of configs) for (const limit of limits) { const {clip} = makeClip(config); out.push(await webUiShelf.clipboardPick(clip, importer, 'shelf', limit)) } return out }"""
+        limits = [32 * 1024 * 1024, 0, 60, len(base64.b64decode(t.CLIP_IMAGE))]
+        got = page.evaluate(script, [configs, t.CLIP_IMAGE, limits])
+        index = 0
+        for config in configs:
+            for limit in limits:
+                clip = t.ClipDouble(config)
+                expected = w.clipboard_pick(clip, t.clip_importer, 'shelf', limit)
+                self.assertEqual({k: got[index][k] for k in expected}, expected, (config, limit))
+                index += 1
+
+    def test_text_rules_equal_pythons(self):
+        import random
+        import re
+        w = web_ui_module()
+        t = self.t
+        page = self.page('shelf.html')
+        rng = random.Random(14)
+        texts = ['', ' ', 'memo', t.CLIP_IMAGE, t.CLIP_URI, t.CLIP_IMAGE + '=', ' \ufeff' + t.CLIP_URI + '\n', 'DATA:IMAGE/PNG;charset=utf-8;BASE64,' + t.CLIP_IMAGE, 'data:image/png;base64,!!!', 'data:image/gif;base64,R0lGODlh', 'data:text/plain;base64,aGk=',
+                 'data:image/png,abc', 'data:image', 'data:imagex', base64.b64encode(b'ordinary text, not an image at all, just long enough').decode(), 'iVBORw0KGgo' * 3, '/9j/' * 8, 'UklGRg' * 4,
+                 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==', 'x' * 100] + t.shelf_fuzz_texts()[:200]
+        got = page.evaluate("texts => texts.map(t => { try { return {ok: webUiShelf.clipboardTextImage(t)} } catch (e) { return {error: e.code, category: e.category} } })", texts)
+        for text, result in zip(texts, got):
+            try:
+                expected = {'ok': w.clipboard_text_image(text)}
+            except w.ClipboardError as error:
+                expected = {'error': error.code, 'category': error.category}
+            self.assertEqual(result, expected, text[:60])
+        # the temporary clipboard: seeded sequences of texts, one emoji or surrogate among them
+        words = ['one', 'two', 'three', '', '😀', '@rep:x:100000', '@rep:x:100001', '@rep:😀:50000', '@rep:😀:50001', 'é', 'one']          # long texts are named, then built on both sides
+        runs = [[rng.choice(words + [f'entry {rng.randrange(60)}']) for _ in range(90)] for _ in range(20)]
+        runs.append([f'entry {i}' for i in range(45)] + ['entry 20', 'entry 44', 'entry 3', 'entry 30'])        # past the 30-entry limit, then repeats from inside and outside it
+        expand = lambda s: re.sub(r"@rep:(.):(\d+)", lambda m: m.group(1) * int(m.group(2)), s)
+        got = page.evaluate("""runs => runs.map(run => { let entries = [], trace = []; for (const raw of run) { const text = raw.replace(/@rep:(.|..):(\\d+)/gu, (m, u, n) => u.repeat(+n));
+            const [next, outcome] = webUiShelf.sessionClipSave(entries, text); entries = next; trace.push([outcome, entries.length, entries[0] === undefined ? null : entries[0].length]) } return trace })""", runs)
+        for run, trace in zip(runs, got):
+            entries, expected = [], []
+            for text in map(expand, run):
+                entries, outcome = w.session_clip_save(entries, text)
+                expected.append([outcome, len(entries), None if not entries else w.utf16_length(entries[0])])
+            self.assertEqual(trace, expected)
+        units = lambda s: list(__import__('struct').unpack('<%dH' % (len(s.encode('utf-16-le', 'surrogatepass')) // 2), s.encode('utf-16-le', 'surrogatepass')))
+        samples = ['', 'a', 'é', 'あ', '😀', '\ud800', 'x\udc00y', 'aé あ😀', '\ud83d', '😀\ud83d']
+        got = page.evaluate("samples => samples.map(u => webUiShelf.shelfTextSize(String.fromCharCode(...u)))", [units(s) for s in samples])
+        self.assertEqual(got, [w.shelf_text_size(s) for s in samples])
+        rooms = [[c, u, s] for c in (0, 19, 20, 25) for u in (0, 100, w.SHELF_MAX_TOTAL_BYTES - 5, w.SHELF_MAX_TOTAL_BYTES) for s in (0, 5, 6, w.SHELF_MAX_TOTAL_BYTES)]
+        self.assertEqual(page.evaluate("v => v.map(a => webUiShelf.shelfRoom(...a))", rooms), [w.shelf_room(*a) for a in rooms])
+        blobs = [w.photo_png(3, 2, bytes(range(24))), w.photo_png(1, 1), b'\x89PNG\r\n\x1a\n' + bytes(range(256)) * 8, b'GIF89a', b'', b'\x89PNG\r\n\x1a\n']
+        for data in blobs:
+            for as_uri in (True, False):
+                try:
+                    expected = w.png_base64_text(data, as_uri)
+                except ValueError:
+                    expected = 'error'
+                self.assertEqual(page.evaluate("([d, u]) => { try { return webUiShelf.pngBase64Text(Uint8Array.from(d), u) } catch (e) { return 'error' } }", [list(data), as_uri]), expected)
+
+    @staticmethod
+    def press(page, selector, root='[data-ui-shelf]'):
+        """Click and wait until the page has finished the read that click started."""
+        page.click(selector)
+        page.wait_for_function("root => !document.querySelector(root).hasAttribute('data-busy')", arg=root, timeout=120000)
+
+    def stub_clipboard(self, page, text='', reads=None):
+        """Replace the page's clipboard with one that records what is written and answers reads from ``text`` and ``reads``."""
+        page.evaluate("""([text, items]) => { window.__written = []; Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {
+            writeText: async t => { window.__written.push(t) }, readText: async () => { if (text === null) throw new DOMException('denied', 'NotAllowedError'); return text },
+            read: async () => items === null ? (() => { throw new DOMException('denied', 'NotAllowedError') })() : items.map(it => ({types: [it.type], getType: async () => new Blob([Uint8Array.from(atob(it.base64), c => c.charCodeAt(0))], {type: it.type})})) }}) }""",
+                      [text, reads if reads is None else reads])
+
+    def test_the_temporary_clipboard_page(self):
+        page = self.page('shelf.html')
+        entries = lambda: page.evaluate("() => document.querySelector('[data-ui-tempclip]').tempclip.entries")
+        status = lambda: page.inner_text('[data-tc-status]')
+        self.assertEqual((status(), page.is_visible('[data-tc-empty]'), page.is_disabled('[data-tc-clear]')), ('', True, True))
+        for text in ('one', 'two', 'one'):
+            page.fill('#tempclip-input', text)
+            page.click('[data-tc-save-text]')
+        self.assertEqual((entries(), status(), page.input_value('#tempclip-input')), (['one', 'two'], 'Saved to temporary clipboard', ''))
+        page.click('[data-tc-save-text]')                                                      # nothing typed: nothing to save
+        self.assertEqual((status(), entries()), ('No copied text to save', ['one', 'two']))
+        self.stub_clipboard(page, 'Copied before opening menu')
+        page.click('[data-tc-save]')
+        self.assertEqual(entries(), ['Copied before opening menu', 'one', 'two'])
+        page.click('[data-tc-list] li:nth-child(2) button')
+        self.assertEqual((page.evaluate('() => window.__written'), status()), (['one'], 'Copied to system clipboard'))
+        self.stub_clipboard(page, 'x' * 100001)
+        page.click('[data-tc-save]')
+        self.assertEqual((status(), len(entries())), ('Text is too large to save', 3))
+        self.stub_clipboard(page, None)                                                        # reading is refused
+        page.click('[data-tc-save]')
+        self.assertEqual(status(), 'Cannot read system clipboard')
+        page.evaluate("() => { Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText: async () => { throw new DOMException('no', 'NotAllowedError') }}}) }")
+        page.click('[data-tc-list] li:first-child button')
+        self.assertEqual(status(), 'Cannot copy to system clipboard')
+        for number in range(35):
+            page.fill('#tempclip-input', f'entry {number}')
+            page.click('[data-tc-save-text]')
+        self.assertEqual((len(entries()), entries()[0], entries()[-1], page.get_attribute('[data-ui-tempclip]', 'data-entries')), (30, 'entry 34', 'entry 5', '30'))
+        self.assertEqual(page.get_attribute('[data-tc-list] li:first-child button', 'aria-label'), 'Copy saved text: entry 34')
+        page.click('[data-tc-clear]')
+        self.assertEqual((entries(), status(), page.is_visible('[data-tc-empty]')), ([], 'Temporary clipboard cleared', True))
+        self.assertEqual(page.evaluate('() => [localStorage.length, sessionStorage.length, document.cookie]'), [0, 0, ''])         # nothing is kept anywhere
+
+    def test_the_shelf_reads_the_clipboard_and_keeps_its_item_limit(self):
+        t = self.t
+        w = web_ui_module()
+        page = self.page('shelf.html')
+        status = lambda: page.inner_text('[data-shelf-status]')
+        count = lambda: int(page.get_attribute('[data-ui-shelf]', 'data-items'))
+        self.stub_clipboard(page, 'a note to keep')
+        self.press(page, '[data-shelf-paste]')
+        self.assertEqual((count(), status()), (1, 'Added.'))
+        self.stub_clipboard(page, '', [{'type': 'image/png', 'base64': t.CLIP_IMAGE}])
+        self.press(page, '[data-shelf-paste]')
+        self.assertEqual((count(), status(), page.locator('[data-kind="image"]').count()), (2, 'Image added (png, %d bytes).' % len(base64.b64decode(t.CLIP_IMAGE)), 1))
+        self.stub_clipboard(page, 'data:image/png;base64,!!!')
+        self.press(page, '[data-shelf-paste]')
+        self.assertEqual((count(), status()), (3, 'Added as text: it looked like an image but was refused (bad_base64).'))
+        self.stub_clipboard(page, None, None)
+        self.press(page, '[data-shelf-paste]')
+        self.assertEqual((count(), status()), (3, w.CLIPBOARD_MESSAGES['clipboard-denied']))
+        self.stub_clipboard(page, '', [{'type': 'image/png', 'base64': base64.b64encode(b'not a png').decode()}])
+        self.press(page, '[data-shelf-paste]')
+        self.assertEqual((count(), status()), (3, w.CLIPBOARD_MESSAGES['clipboard-invalid-image']))
+        self.stub_clipboard(page, '', [])
+        self.press(page, '[data-shelf-paste]')
+        self.assertEqual(status(), w.CLIPBOARD_MESSAGES['clipboard-no-image'])
+        # the item limit
+        for number in range(20 - 3):
+            page.fill('#shelf-input', f'item {number}')
+            page.click('[data-shelf-add]')
+        self.assertEqual(count(), 20)
+        page.fill('#shelf-input', 'one too many')
+        page.click('[data-shelf-add]')
+        self.assertEqual((count(), status(), page.input_value('#shelf-input')), (20, 'The shelf holds at most 20 items.', 'one too many'))
+        page.click('[data-shelf-clear]')
+        self.assertEqual(count(), 0)
+        # clearing while the clipboard is being read drops that read
+        page.evaluate("""() => { window.__release = null; Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {readText: () => new Promise(r => { window.__release = () => r('late text') })}}) }""")
+        page.click('[data-shelf-paste]')
+        page.click('[data-shelf-clear]')
+        page.evaluate('() => window.__release()')
+        page.wait_for_function("() => document.querySelector('[data-shelf-status]').textContent.includes('cleared while')")
+        self.assertEqual(count(), 0)
+
+    def synthetic_events_work(self, page):
+        """Whether this engine lets a page build paste and drop events that carry files (some ignore ``clipboardData`` / ``dataTransfer`` in the constructor)."""
+        return page.evaluate("""() => { try { const dt = new DataTransfer(); dt.items.add(new File(['x'], 'x.png', {type: 'image/png'}));
+            return new ClipboardEvent('paste', {clipboardData: dt}).clipboardData === dt && new DragEvent('drop', {dataTransfer: dt}).dataTransfer === dt } catch (e) { return false } }""")
+
+    def test_the_shelf_takes_image_files_by_paste_and_drop_and_keeps_its_budget(self):
+        t = self.t
+        page = self.page('shelf.html')
+        if not self.synthetic_events_work(page):
+            self.skipTest('this engine ignores clipboardData / dataTransfer on events a page builds; real paste and drop are Layer 3 (a device)')
+        status = lambda: page.inner_text('[data-shelf-status]')
+        count = lambda: int(page.get_attribute('[data-ui-shelf]', 'data-items'))
+        # images arrive by paste and by drop, are checked against their bytes, and share a 32 MiB budget
+        script = """async ([png, how, size, type]) => { const bytes = new Uint8Array(size), head = Uint8Array.from(atob(png), c => c.charCodeAt(0)); bytes.set(head);
+            const dt = new DataTransfer(); dt.items.add(new File([bytes], 'x.bin', {type})); const box = document.querySelector('[data-ui-shelf]');
+            if (how === 'paste') document.dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true})); else box.dispatchEvent(new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true})) }"""
+        page.evaluate(script, [t.CLIP_IMAGE, 'paste', 4096, 'image/png'])
+        page.wait_for_function("() => document.querySelector('[data-ui-shelf]').dataset.items === '1'")
+        page.evaluate(script, [t.CLIP_IMAGE, 'drop', 4096, 'image/png'])
+        page.wait_for_function("() => document.querySelector('[data-ui-shelf]').dataset.items === '2'")
+        page.evaluate(script, [t.CLIP_IMAGE, 'paste', 4096, 'image/jpeg'])
+        page.wait_for_function("() => document.querySelector('[data-shelf-status]').textContent.includes('does not match')")
+        page.evaluate(script, [base64.b64encode(b'GIF89a').decode(), 'drop', 64, 'image/png'])
+        page.wait_for_function("() => document.querySelector('[data-shelf-status]').textContent.includes('not a PNG, JPEG or WebP')")
+        self.assertEqual(count(), 2)
+        page.click('[data-shelf-clear]')
+        half = 16 * 1024 * 1024
+        for expected in (1, 2):
+            page.evaluate(script, [t.CLIP_IMAGE, 'paste', half, 'image/png'])
+            page.wait_for_function("n => document.querySelector('[data-ui-shelf]').dataset.items === String(n)", arg=expected, timeout=60000)
+        self.assertEqual(page.get_attribute('[data-ui-shelf]', 'data-bytes'), str(2 * half))
+        page.fill('#shelf-input', 'a')
+        page.click('[data-shelf-add]')
+        self.assertEqual((count(), status()), (2, 'The shelf as a whole must stay within 32 MiB.'))
+        page.evaluate(script, [t.CLIP_IMAGE, 'paste', 4096, 'image/png'])
+        page.wait_for_function("() => document.querySelector('[data-shelf-status]').textContent.includes('32 MiB')")
+        self.assertEqual(count(), 2)
+        page.click('[data-shelf-clear]')
+
+    def test_the_photo_page_reads_the_clipboard_and_hands_a_png_back_as_base64(self):
+        import io
+        t = self.t
+        w = web_ui_module()
+        from PIL import Image
+        photo = self.page('photo.html')
+        status = lambda p: p.inner_text('[data-status]')
+        phase = lambda p: p.get_attribute('[data-ui-photo]', 'data-photo-phase')
+        self.stub_clipboard(photo, t.CLIP_URI)
+        self.press(photo, '[data-paste]', '[data-ui-photo]')
+        photo.wait_for_function("() => document.querySelector('[data-ui-photo]').dataset.photoPhase === 'success'")
+        self.assertEqual((photo.get_attribute('[data-ui-photo]', 'data-source'), photo.inner_text('[data-meta]')), ('paste', 'PNG · 3 × 1'))
+        self.stub_clipboard(photo, '', [{'type': 'image/png', 'base64': base64.b64encode(t.clip_png(5, 4, [9, 8, 7, 255])).decode()}])
+        self.press(photo, '[data-paste]', '[data-ui-photo]')
+        photo.wait_for_function("() => document.querySelector('[data-meta]').textContent === 'PNG · 5 × 4'")
+        self.stub_clipboard(photo, None, None)
+        self.press(photo, '[data-paste]', '[data-ui-photo]')
+        self.assertEqual((status(photo), photo.is_visible('[data-retry]')), (w.CLIPBOARD_MESSAGES['clipboard-denied'], True))
+        self.stub_clipboard(photo, 'data:image/png;base64,!!!')
+        self.press(photo, '[data-paste]', '[data-ui-photo]')
+        self.assertEqual(status(photo), w.CLIPBOARD_MESSAGES['clipboard-invalid-image'])
+        truncated = t.photo_file('png_truncated')
+        self.stub_clipboard(photo, '', [{'type': 'image/png', 'base64': base64.b64encode(truncated).decode()}])
+        self.press(photo, '[data-paste]', '[data-ui-photo]')                                                         # the page's own reason is kept: this PNG stops short
+        photo.wait_for_function("() => document.querySelector('[data-status]').textContent === 'That image format could not be decoded.'")
+        self.assertEqual(phase(photo), 'failure')
+        self.stub_clipboard(photo, '', [])
+        self.press(photo, '[data-paste]', '[data-ui-photo]')
+        self.assertEqual(status(photo), w.CLIPBOARD_MESSAGES['clipboard-no-image'])
+        # the whole loop: draw, export as Base64, put it on the shelf, copy it back from there, paste it into the photo page
+        self.stub_clipboard(photo, t.CLIP_URI)
+        self.press(photo, '[data-paste]', '[data-ui-photo]')
+        photo.wait_for_function("() => document.querySelector('[data-meta]').textContent === 'PNG · 3 × 1'")
+        photo.click('label[for="photo-shape-rectangle"]')
+        box = photo.locator('[data-stage]').bounding_box()
+        photo.mouse.move(box['x'] + 0.2 * box['width'], box['y'] + 0.2 * box['height'])
+        photo.mouse.down()
+        photo.mouse.move(box['x'] + 0.8 * box['width'], box['y'] + 0.8 * box['height'], steps=5)
+        photo.mouse.up()
+        photo.evaluate("() => { window.__written = [] }")
+        photo.click('[data-copy-b64-uri]')
+        photo.wait_for_function('() => window.__written.length === 1')
+        as_uri = photo.evaluate('() => window.__written[0]')
+        photo.click('[data-copy-b64]')
+        photo.wait_for_function('() => window.__written.length === 2')
+        plain = photo.evaluate('() => window.__written[1]')
+        self.assertEqual((as_uri.startswith('data:image/png;base64,'), as_uri.split(',', 1)[1] == plain), (True, True))
+        self.assertIn('characters', photo.inner_text('[data-live]'))
+        back = w.decode_image_text(as_uri)
+        self.assertTrue(back['ok'])
+        with Image.open(io.BytesIO(base64.b64decode(back['data']))) as image:
+            image.load()
+            ew, eh = w.photo_export_size(box['width'], box['height'])
+            self.assertEqual(image.size, (ew, eh))
+        shelf = self.page('shelf.html')
+        shelf.fill('#shelf-input', as_uri)
+        shelf.click('[data-shelf-add]')
+        self.assertEqual((shelf.get_attribute('[data-ui-shelf]', 'data-items'), shelf.locator('[data-kind="image"]').count()), ('1', 1))
+        self.stub_clipboard(shelf, '', [])
+        shelf.click('[data-kind="image"] button[data-act="copy"]')
+        shelf.wait_for_function('() => window.__written.length === 1')
+        shelf_text = shelf.evaluate('() => window.__written[0]')
+        self.assertEqual(shelf_text, as_uri)                                                  # the shelf gives back exactly what it was given
+        self.stub_clipboard(photo, shelf_text)
+        self.press(photo, '[data-paste]', '[data-ui-photo]')
+        photo.wait_for_function("(size) => document.querySelector('[data-meta]').textContent === 'PNG · ' + size", arg=f'{ew} × {eh}')
+        self.assertEqual(phase(photo), 'success')
+
+
+def web_ui_module():
+    import web_ui
+    return web_ui
+
+
+
+class PlaygroundBrowserTests(PageCase):
+    """The playground in a real browser: the counter, the hold-to-repeat button and the irony card equal Python's rules, and the page behaves like the Dart widgets did."""
+
+    SEED = 7
+
+    def setUp(self):
+        from web_ui import playground_document
+        html = playground_document().replace('data-ui-play ', f'data-ui-play data-play-seed="{self.SEED}" ', 1)
+        self.server, self.origin = WorldBrowserTests.serve({'play.html': html})
+        self.playwright_manager = sync_playwright()
+        self.playwright = self.playwright_manager.__enter__()
+        self.browser = photo_engine(self.playwright).launch()
+        self.context = self.browser.new_context(viewport={'width': 800, 'height': 1700})
+        self.errors, self.external = [], []
+
+    def page(self, clock=False):
+        page = self.context.new_page()
+        self.watch(page)
+        if clock:
+            page.clock.install()
+            # Freeze real time before navigation; run_for alone still lets wall time advance.
+            page.clock.pause_at(page.evaluate("Date.now() + 1000"))
+        page.goto(self.origin + '/play.html')
+        return page
+
+    def test_the_pages_rules_equal_pythons(self):
+        w = web_ui_module()
+        rng = random.Random(20261103)
+        page = self.page()
+        actions = []
+        for _ in range(60):
+            run = []
+            for _ in range(rng.randint(1, 80)):
+                kind = rng.choice(['increment', 'decrement', 'change', 'restore', 'undo', 'reset', 'step', 'step'])
+                run.append([kind, rng.choice([1, 5, 10, 2, 0, -3]) if kind == 'step' else rng.randint(-150, 150) if kind in ('change', 'restore') else None])
+            actions.append(run)
+        got = page.evaluate("""runs => runs.map(run => { let s = webUiPlayground.counterState(); const seen = [s];
+            for (const [kind, value] of run) { s = webUiPlayground.counterApply(s, kind, value === null ? undefined : value); seen.push(s) } return seen })""", actions)
+        for run, seen in zip(actions, got):
+            state, expected = w.counter_state(), [w.counter_state()]
+            for kind, value in run:
+                state = w.counter_apply(state, kind, value)
+                expected.append(state)
+            self.assertEqual(seen, expected)
+        counters = list(range(-105, 106))
+        self.assertEqual(page.evaluate("c => c.map(n => [webUiPlayground.counterEffect(n), webUiPlayground.counterLabel(n), webUiPlayground.counterStatusKey(n)])", counters),
+                         [[w.counter_effect(n), w.counter_label(n), w.counter_status_key(n)] for n in counters])
+        held = [0, 1, 349, 349.5, 350, 419, 419.5, 420, 489, 490, 1000, 1049.5, 5000, 123456]
+        self.assertEqual(page.evaluate("h => h.flatMap(ms => [1, 2, 4, 0].map(b => [webUiPlayground.holdRepeatCount(ms, b), webUiPlayground.holdSwallowsClick(ms, b)]))", held),
+                         [[w.hold_repeat_count(ms, buttons=b), w.hold_swallows_click(ms, buttons=b)] for ms in held for b in (1, 2, 4, 0)])
+        seeds = [0, 1, 7, 11, 13, 17, 4294967295, 123456789] + [rng.randrange(2 ** 32) for _ in range(30)]
+        self.assertEqual(page.evaluate("(seeds) => seeds.map(s => webUiPlayground.ironySequence(s, 300, 20))", seeds), [w.irony_sequence(s, 300) for s in seeds])
+        self.assertEqual(page.evaluate("() => [[2, 0.7, 1], [20, 0.123, 19], [20, 0.9999, 0]].map(([n, u, c]) => [webUiPlayground.ironyNext(n, c, u), webUiPlayground.ironyNext(1, 0, u), webUiPlayground.ironyNext(n, null, u)])"),
+                         [[w.irony_next(n, c, u), w.irony_next(1, 0, u), w.irony_next(n, None, u)] for n, u, c in ((2, 0.7, 1), (20, 0.123, 19), (20, 0.9999, 0))])
+        drops = []
+        for _ in range(3000):
+            width, height = rng.uniform(100, 1200), rng.uniform(100, 1200)
+            left, top = rng.uniform(-700, 1400), rng.uniform(-700, 1400)
+            cw, ch, hw, hh = rng.uniform(30, 600), rng.uniform(30, 400), rng.uniform(10, 80), rng.uniform(10, 60)
+            hx, hy = left + rng.uniform(0, max(cw - hw, 0)), top + rng.uniform(0, max(ch - hh, 0))
+            drops.append([[width, height], [left, top, left + cw, top + ch], [hx, hy, hx + hw, hy + hh] if rng.random() > 0.05 else None])
+        drops += [[[800, 544], [140, 172, 660, 372], [376, 180, 424, 212]], [[800, 544], None, None], [[100, 100], [-20, -20, 100, 100], [-30, -30, 90, 90]], [[100, 100], [100, 0, 200, 50], [100, 0, 148, 32]]]
+        got = page.evaluate("d => d.map(([a, c, h]) => webUiPlayground.ironyDrop(a, c, h))", drops)
+        self.assertEqual(got, [w.irony_drop(a, c, h) for a, c, h in drops])
+        self.assertGreater(sum(g['action'] == 'snap' for g in got), 200)
+        self.assertGreater(sum(g['action'] == 'spawn' for g in got), 200)
+
+    def test_the_counter_page_follows_the_controller(self):
+        w = web_ui_module()
+        page = self.page()
+        value, label, status = page.locator('[data-counter-value]'), page.locator('[data-counter-label]'), page.locator('[data-counter-status]')
+        increase, decrease, reset, undo = (page.locator(f'[data-counter-{n}]') for n in ('increment', 'decrement', 'reset', 'undo'))
+        self.assertEqual((value.inner_text(), label.inner_text(), status.inner_text()), ('0', 'Orbs ready…', 'Keep experimenting 👾'))
+        self.assertTrue(undo.is_disabled() and reset.is_disabled())
+        increase.click()
+        self.assertEqual((value.inner_text(), label.inner_text(), page.locator('[data-counter-orbs]').inner_text()), ('1', '💥 Damage 1', '🔥'))
+        decrease.click(); decrease.click()
+        self.assertEqual((value.inner_text(), label.inner_text(), page.locator('[data-counter-orbs]').inner_text()), ('-1', '💚 Heal 1', '❤️'))
+        self.assertEqual(page.locator('[data-counter-orbs]').get_attribute('data-kind'), 'heal')
+        page.locator('input[name="counter-step"][value="10"]').check()
+        for _ in range(10):
+            decrease.click()
+        self.assertEqual((value.inner_text(), status.inner_text(), decrease.is_disabled(), increase.is_disabled()), ('-100', 'Minimum reached 🧊', True, False))
+        chips = page.locator('[data-counter-history] button')
+        self.assertEqual(chips.count(), 8)
+        self.assertEqual(chips.nth(0).get_attribute('aria-label'), 'Current value -100')
+        self.assertTrue(chips.nth(0).is_disabled())
+        self.assertEqual(chips.nth(1).get_attribute('aria-label'), 'Restore -91')
+        chips.nth(1).click()
+        self.assertEqual(value.inner_text(), '-91')
+        self.assertEqual(status.inner_text(), w.COUNTER_STATUS['low'])
+        undo.click()
+        self.assertEqual(value.inner_text(), '-100')
+        reset.click()
+        self.assertEqual((value.inner_text(), reset.is_disabled(), page.locator('section[data-ui-play]').get_attribute('data-value')), ('0', True, '0'))
+        for _ in range(10):
+            increase.click()
+        self.assertEqual((value.inner_text(), status.inner_text(), increase.is_disabled()), ('100', 'Maximum reached 🚀', True))
+        # the same actions replayed in Python give the same value, burst token and history chips
+        state = w.counter_state()
+        for action in [('increment',), ('decrement',), ('decrement',), ('step', 10)] + [('decrement',)] * 10 + [('restore', -91), ('undo',), ('reset',)] + [('increment',)] * 10:
+            state = w.counter_apply(state, *action)
+        box = page.locator('section[data-ui-play]')
+        self.assertEqual((box.get_attribute('data-value'), box.get_attribute('data-burst')), (str(state['counter']), str(state['burst'])))
+        self.assertEqual([int(v) for v in page.locator('[data-counter-history] button').all_inner_texts()], state['history'])
+
+    def test_holding_repeats_and_the_release_does_not_double_fire(self):
+        page = self.page(clock=True)
+        increase, value = page.locator('[data-counter-increment]'), page.locator('[data-counter-value]')
+        read = lambda: int(value.inner_text())
+        increase.click()
+        page.clock.run_for(2000)
+        self.assertEqual(read(), 1, 'a tap fires once and starts no repeat')
+        increase.hover()
+        page.mouse.down()
+        page.clock.run_for(349)
+        self.assertEqual(read(), 1)
+        page.clock.run_for(1)
+        self.assertEqual(read(), 2, 'the first repeat comes at 350 ms')
+        page.clock.run_for(140)
+        self.assertEqual(read(), 4, 'then one every 70 ms')
+        page.mouse.up()
+        page.clock.run_for(1)
+        self.assertEqual(read(), 4, 'the click after a hold is swallowed')
+        page.clock.run_for(500)
+        self.assertEqual(read(), 4, 'the repeat stopped on release')
+        increase.focus()
+        page.keyboard.press('Enter')
+        self.assertEqual(read(), 5, 'the next keyboard activation is not suppressed')
+        page.mouse.move(0, 0)
+        increase.hover()
+        page.mouse.down()
+        page.clock.run_for(350 + 70)
+        self.assertEqual(read(), 7)
+        page.mouse.move(5, 5)
+        page.mouse.up()
+        page.clock.run_for(5)
+        self.assertEqual(read(), 7, 'dragging off and releasing stops the repeat')
+        increase.focus()
+        page.keyboard.press('Space')
+        self.assertEqual(read(), 8, 'drag-off after a hold does not suppress the next activation')
+        increase.hover()
+        page.mouse.down(button='right')
+        page.clock.run_for(2000)
+        page.mouse.up(button='right')
+        page.clock.run_for(5)
+        self.assertEqual(read(), 8, 'a secondary button does not start a repeat')
+
+    def test_holding_stops_at_the_end_and_keeps_the_disabled_state(self):
+        page = self.page(clock=True)
+        increase, value = page.locator('[data-counter-increment]'), page.locator('[data-counter-value]')
+        page.locator('input[name="counter-step"][value="10"]').check()
+        increase.hover()
+        page.mouse.down()
+        page.clock.run_for(350 + 70 * 20)
+        self.assertEqual(value.inner_text(), '100')
+        self.assertTrue(increase.is_disabled())
+        page.mouse.up()
+        page.clock.run_for(10)
+        self.assertEqual(value.inner_text(), '100')
+
+    def card_state(self, page):
+        return page.evaluate("""() => { const q = s => document.querySelector(s), r = e => { const b = e.getBoundingClientRect(); return [b.left, b.top, b.right, b.bottom] };
+            const a = r(q('[data-irony-arena]')), c = r(q('[data-irony-card]')), h = r(q('[data-irony-handle]'));
+            return {text: q('[data-irony-text]').textContent, index: Number(q('[data-irony-arena]').dataset.ironyIndex), arena: a, card: c, handle: h,
+                    cardCenter: [(c[0] + c[2]) / 2, (c[1] + c[3]) / 2], arenaCenter: [(a[0] + a[2]) / 2, (a[1] + a[3]) / 2]} }""")
+
+    def drag_handle(self, page, dx, dy):
+        state = self.card_state(page)
+        x, y = (state['handle'][0] + state['handle'][2]) / 2, (state['handle'][1] + state['handle'][3]) / 2
+        page.mouse.move(x, y)
+        page.mouse.down()
+        page.mouse.move(x + dx / 2, y + dy / 2, steps=3)
+        page.mouse.move(x + dx, y + dy, steps=3)
+        page.mouse.up()
+
+    def settled(self, page, check):
+        """Wait out the 140 ms ease: run ``check(state)`` until it holds."""
+        for _ in range(60):
+            state = self.card_state(page)
+            if check(state):
+                return state
+            page.wait_for_timeout(50)
+        self.fail(f'never settled: {self.card_state(page)}')
+
+    def test_the_irony_card_keeps_its_message_and_its_dragged_position(self):
+        w = web_ui_module()
+        sequence = w.irony_sequence(self.SEED, 3)
+        page = self.page()
+        first = self.card_state(page)
+        self.assertEqual((first['text'], first['index']), (w.IRONIES[sequence[0]][0], sequence[0]))
+        self.assertEqual(page.locator('[data-irony-tone]').inner_text(), w.IRONIES[sequence[0]][1])
+        self.assertIn(page.evaluate("() => getComputedStyle(document.querySelector('[data-irony-text]')).userSelect || getComputedStyle(document.querySelector('[data-irony-text]')).webkitUserSelect"), ('text', 'auto'))
+        self.drag_handle(page, 48, 32)
+        moved = self.settled(page, lambda s: abs(s['cardCenter'][0] - first['cardCenter'][0] - 48) < 1 and abs(s['cardCenter'][1] - first['cardCenter'][1] - 32) < 1)
+        self.assertEqual((moved['text'], moved['index']), (first['text'], first['index']))
+
+    def test_moving_the_card_fully_outside_spawns_a_different_message(self):
+        w = web_ui_module()
+        sequence = w.irony_sequence(self.SEED, 3)
+        page = self.page()
+        first = self.card_state(page)
+        events = page.evaluate("() => { window.__drops = []; document.addEventListener('ui-irony-drop', e => window.__drops.push(e.detail)); return true }")
+        self.drag_handle(page, 0, first['arena'][3] - first['handle'][1] + 40)
+        after = self.settled(page, lambda s: abs(s['cardCenter'][0] - s['arenaCenter'][0]) < 2 and abs(s['cardCenter'][1] - s['arenaCenter'][1]) < 2)
+        self.assertEqual((after['index'], after['text']), (sequence[1], w.IRONIES[sequence[1]][0]))
+        self.assertNotEqual(after['text'], first['text'])
+        self.assertEqual([d['action'] for d in page.evaluate('() => window.__drops')], ['spawn'])
+
+    def test_a_partial_exit_snaps_the_handle_back_inside_the_padded_arena(self):
+        for extra in (-12, 4):
+            page = self.page()
+            first = self.card_state(page)
+            dy = first['arena'][1] - first['handle'][3] - extra
+            self.assertGreater(first['card'][3] + dy, first['arena'][1], 'precondition: the card body stays partly visible')
+            self.drag_handle(page, 0, dy)
+            inside = lambda s: s['handle'][1] >= s['arena'][1] + 8 - 0.5 and s['handle'][3] <= s['arena'][3] - 8 + 0.5 and s['handle'][0] >= s['arena'][0] + 8 - 0.5 and s['handle'][2] <= s['arena'][2] - 8 + 0.5
+            after = self.settled(page, inside)
+            self.assertEqual((after['text'], after['index']), (first['text'], first['index']), 'the message does not change on a snap')
+            page.close()
+
+    def test_the_new_irony_button_walks_the_same_sequence(self):
+        w = web_ui_module()
+        sequence = w.irony_sequence(self.SEED, 6)
+        page = self.page()
+        seen = [self.card_state(page)['index']]
+        for _ in range(6):
+            page.locator('[data-irony-next]').click()
+            seen.append(self.card_state(page)['index'])
+        self.assertEqual(seen, sequence)
+        self.assertTrue(all(a != b for a, b in zip(seen, seen[1:])))
+
+
+class ReportBrowserTests(PageCase):
+    """The test report in a real browser: SHA-256, the Flutter tally and conversion, JUnit reading and the failure history equal Python's on seeded fuzz, and the page works."""
+
+    def setUp(self):
+        from web_ui import report_document
+        self.server, self.origin = WorldBrowserTests.serve({'report.html': report_document()})
+        self.playwright_manager = sync_playwright()
+        self.playwright = self.playwright_manager.__enter__()
+        self.browser = photo_engine(self.playwright).launch()
+        self.context = self.browser.new_context(viewport={'width': 900, 'height': 1200})
+        self.errors, self.external = [], []
+
+    def page(self):
+        page = self.context.new_page()
+        self.watch(page)
+        page.goto(self.origin + '/report.html')
+        return page
+
+    def test_sha256_equals_hashlib(self):
+        import hashlib
+        rng = random.Random(256)
+        page = self.page()
+        strings = ['', 'abc', 'a' * 55, 'a' * 56, 'a' * 57, 'a' * 63, 'a' * 64, 'a' * 65, 'a' * 119, 'a' * 120, 'é' * 100, '😀' * 70, 'The quick brown fox jumps over the lazy dog', 'x' * 70000]
+        strings += [''.join(rng.choice('abcXYZ 0123é😀\n<>&"') for _ in range(rng.randint(0, 400))) for _ in range(300)]
+        got = page.evaluate("s => s.map(x => webUiReport.sha256Hex(x))", strings)
+        self.assertEqual(got, [hashlib.sha256(s.encode()).hexdigest() for s in strings])
+        raw = [bytes(rng.randrange(256) for _ in range(n)) for n in (0, 1, 55, 56, 64, 200, 1000)]
+        self.assertEqual(page.evaluate("b => b.map(x => webUiReport.sha256Hex(Uint8Array.from(x)))", [list(b) for b in raw]), [hashlib.sha256(b).hexdigest() for b in raw])
+
+    def flutter_streams(self, rng):
+        names = ['ok', 'works', 'loading test/a_test.dart', 'x < y & "z"', 'ünï 😀', 'known gap', 'multi\nline', 'cr\rname', 'tab\tname', '']
+        reasons = [None, 'known: gap', 'XFAIL: later', 'not in this env', '', 5, 'Known:x']
+        streams = []
+        for index in range(900):
+            noisy = index % 3 == 0
+            events, next_id = [], 1
+            for _ in range(rng.randint(0, 9)):
+                kind = rng.random()
+                tid = next_id
+                next_id += 1
+                if kind < 0.1:
+                    events.append({'type': 'suite', 'suite': {'id': rng.randint(0, 2), 'path': rng.choice(['test/a_test.dart', 'test/b_test.dart', '', None, 3])}})
+                    continue
+                start = {'type': 'testStart', 'test': {'id': tid if not noisy or rng.random() > 0.05 else rng.choice([True, 'x', 1.5, None]), 'name': rng.choice(names if noisy else names[:-1]), 'suiteID': rng.randint(0, 2)}}
+                if rng.random() < 0.5:
+                    start['test']['metadata'] = {'skipReason': rng.choice(reasons)}
+                events.append(start)
+                if rng.random() < 0.25:
+                    events.append({'type': 'error', 'testID': tid, 'error': rng.choice(['expected true', 'bad \x1b[31m red', 'a < b & c', 5, None, '']), 'stackTrace': rng.choice(['at x\nat y', '', None, 7])})
+                if not noisy or rng.random() < 0.93:
+                    done = {'type': 'testDone', 'testID': tid, 'result': rng.choice(['success', 'success', 'success', 'failure', 'error'] + (['skipped', 'weird', None] if noisy else []))}
+                    for flag in ('skipped', 'hidden'):
+                        if rng.random() < 0.3:
+                            done[flag] = rng.choice([True, False] + ([1, 'yes', None] if noisy else []))
+                    events.append(done)
+            if not noisy or rng.random() < 0.85:
+                events.append({'type': 'done', 'success': rng.random() < 0.5})
+            if noisy and rng.random() < 0.3:
+                events.insert(rng.randrange(len(events) + 1), rng.choice([{'type': 'testDone', 'testID': 99, 'result': 'success'}, {'type': 'error', 'testID': 99, 'error': 'e'}, 42, 'text', [1], None]))
+            if rng.random() < 0.3:     # ids need not arrive in order: shuffle them consistently
+                ids = list(range(1, next_id))
+                shuffled = ids[:]
+                rng.shuffle(shuffled)
+                mapping = dict(zip(ids, shuffled))
+                for e in events:
+                    if isinstance(e, dict):
+                        if type(e.get('testID')) is int:
+                            e['testID'] = mapping.get(e['testID'], e['testID'])
+                        if isinstance(e.get('test'), dict) and type(e['test'].get('id')) is int:
+                            e['test']['id'] = mapping.get(e['test']['id'], e['test']['id'])
+            lines = [json.dumps(e) for e in events]
+            if noisy and rng.random() < 0.4:
+                lines.insert(rng.randrange(len(lines) + 1), rng.choice(['{broken', '', '   ', 'NaN', '{"type": NaN}', '[]', 'null', '"s"', '{"type":"testDone","testID":1,"result":"success"} trailing']))
+            sep = rng.choice(['\n', '\n', '\r\n', '\r'])
+            streams.append(sep.join(lines))
+        streams += ['', '\n\n', '{"type":"done"}', '﻿{"type":"done"}', json.dumps({'type': 'testStart', 'test': {'id': 1, 'name': 'a b'}}) + '\n' + json.dumps({'type': 'testDone', 'testID': 1, 'result': 'success'}) + '\n{"type":"done"}']
+        return streams
+
+    def test_the_flutter_tally_and_the_conversion_equal_python(self):
+        w = web_ui_module()
+        rng = random.Random(20261103)
+        streams = self.flutter_streams(rng)
+        page = self.page()
+        got = page.evaluate(self.JS_TRY + "streams => streams.map(s => [webUiReport.flutterOutcomes(s), tryit(() => webUiReport.flutterMachineJunit(s)), tryit(() => webUiReport.reportRead(s))])", streams)
+        converted = 0
+        for text, (counts, junit, read) in zip(streams, got):
+            self.assertEqual(counts, w.flutter_outcomes(text), text)
+            self.assertEqual(junit, self.attempt(w.flutter_machine_junit, text), text)
+            self.assertEqual(read, self.attempt(w.report_read, text), text)
+            converted += 'ok' in junit
+        self.assertGreater(converted, 300, 'the fuzz must reach the conversion often enough')
+        self.assertGreater(len(streams) - converted, 150, 'and the error branches too')
+
+    def junit_documents(self, rng):
+        from html import escape
+        texts = ['', 'boom', 'a < b & c', 'tab\there', 'line\nbreak\r\nCRLF', 'ünï', '😀 emoji', '  spaced  ', 'known: x', 'XFAIL: y', 'Known: z', 'pytest', '[1-2]', 'x' * 230, 'q"uote\'s', ' nbsp　']
+        def attr(name, value):
+            return f' {name}="{escape(value, quote=True)}"'
+        def body(value):
+            if rng.random() < 0.2 and ']]>' not in value:
+                return f'<![CDATA[{value}]]>'
+            return escape(value, quote=False)
+        def case():
+            parts = ['<testcase']
+            if rng.random() > 0.04:
+                parts.append(attr('name', rng.choice(['test_a', 'test_b[1-2]', 'b', '😀' * 3, 'x < y', 'name\twith tab', 'n' * 250])))
+            if rng.random() > 0.2:
+                parts.append(attr('classname', rng.choice(['tests.A', 'tests.A[py3]', 'c', '', 'é' * 3, 'z' * 210])))
+            if rng.random() < 0.1:
+                parts.append(' time="0.1"')
+            kids = []
+            for _ in range(rng.choice([0, 0, 1, 1, 1, 2, 3])):
+                tag = rng.choice(['failure', 'error', 'skipped', 'system-out', 'properties', 'failure', 'skipped'])
+                a = ''
+                if rng.random() < 0.6:
+                    a += attr('message', rng.choice(texts))
+                if tag == 'skipped' and rng.random() < 0.3:
+                    a += attr('type', rng.choice(['pytest.xfail', 'pytest.skip', '']))
+                if tag == 'failure' and rng.random() < 0.3:
+                    a += attr('type', 'AssertionError')
+                inner = ''
+                if rng.random() < 0.5:
+                    inner = body(rng.choice(texts))
+                    if rng.random() < 0.2:
+                        inner = '<!-- note -->' + inner + '<b>child</b>tail'
+                kids.append(f'<{tag}{a}>{inner}</{tag}>' if inner or rng.random() < 0.5 else f'<{tag}{a}/>')
+            return ''.join(parts) + ('>' + ''.join(kids) + '</testcase>' if kids else '/>')
+        def suite(depth):
+            inner = ''.join(case() if rng.random() < 0.7 or depth > 2 else suite(depth + 1) for _ in range(rng.randint(0, 5)))
+            return f'<testsuite name="s{depth}" tests="3">{inner}</testsuite>'
+        docs = []
+        for _ in range(500):
+            root = rng.choice(['suite', 'suites', 'suites', 'suite'])
+            doc = suite(0) if root == 'suite' else '<testsuites>' + ''.join(suite(1) for _ in range(rng.randint(0, 3))) + '</testsuites>'
+            if rng.random() < 0.2:
+                doc = '<?xml version="1.0" encoding="UTF-8"?>\n' + doc
+            if rng.random() < 0.05:
+                doc = '﻿' + doc
+            docs.append(doc)
+        broken = []
+        for doc in docs[:250]:
+            kind = rng.random()
+            if kind < 0.4:
+                broken.append(doc[:rng.randrange(1, len(doc))])
+            elif kind < 0.7:
+                i = rng.randrange(len(doc))
+                broken.append(doc[:i] + rng.choice(['<', '&', '>', '"', '\x01', '&#1;', '&bogus;', ']]>']) + doc[i + 1:])
+            else:
+                broken.append(doc.replace('testsuite', rng.choice(['TestSuite', 'x:testsuite', 'testsuite xmlns="urn:a"']), 1))
+        fixed = [
+            '<testsuite><testcase name="a"/></testsuite>', '<testsuite><testcase name="a"><failure/></testcase></testsuite>', '<testsuites/>', '<testsuite/>', '', ' ', '<a/>',
+            '<testsuite xmlns="urn:x"><testcase name="a"/></testsuite>', '<testsuite xmlns:x="urn:x"><x:testcase name="a"/><testcase name="b"/></testsuite>',
+            '<x:testsuite xmlns:x="urn:x"><testcase name="a"/></x:testsuite>', '<x:testsuite><testcase name="a"/></x:testsuite>',
+            '<!DOCTYPE testsuite [<!ENTITY a "b">]><testsuite><testcase name="&a;"/></testsuite>', '<!doctype x><testsuite><testcase name="a"/></testsuite>', '<!DOCTYPEx><testsuite><testcase name="a"/></testsuite>',
+            '<testsuite><testcase name="a" name="b"/></testsuite>', '<testsuite><testcase name="&#65;&#x42;&lt;&amp;"/></testsuite>', '<testsuite><testcase name="a&nbsp;"/></testsuite>',
+            '<testsuite><testcase name="a"><failure message="m1">t1</failure><error message="m2">t2</error></testcase></testsuite>',
+            '<testsuite><testcase name="a"><error message="m2">t2</error><failure message="m1">t1</failure></testcase></testsuite>',
+            '<testsuite><testcase name="a"><failure>one<!-- c -->two<![CDATA[ <three> ]]><b/>ignored</failure></testcase></testsuite>',
+            '<testsuite><testcase name="a"><failure><b/>after child</failure></testcase></testsuite>',
+            '<testsuite>\n  <testcase name="a">\n    <failure>   </failure>\n  </testcase>\n</testsuite>',
+            '<testsuite><testcase name="a"/></testsuite><!-- trailing -->', '<testsuite><testcase name="a"/></testsuite>junk', '<testsuite><testcase name="a"/></testsuite><testsuite/>',
+            '\n<?xml version="1.0"?><testsuite><testcase name="a"/></testsuite>', '<?xml version="1.0" encoding="ISO-8859-1"?><testsuite><testcase name="é"/></testsuite>',
+            '<testsuite><testcase name="a"><skipped message=" known: padded"/></testcase></testsuite>', '<testsuite><testcase name="a"><skipped message="KNOWN: up"/></testcase></testsuite>',
+            '<testsuite><testcase name="KKnown"><skipped message="Known: kelvin"/></testcase></testsuite>',
+            '<testsuite><testcase classname="a" name="x"><failure message="' + 'é' * 2500 + '"/></testcase></testsuite>',
+            '<testsuite><testcase name="a"><failure message="&#xD;&#xA;&#x9;"/></testcase></testsuite>',
+            '<testsuite><testcase classname="' + '😀' * 250 + '" name="' + '😀' * 250 + '"><failure message="' + '😀' * 2100 + '"/></testcase></testsuite>',
+            '<testsuite><testcase name="a" pad="' + 'é' * 600_000 + '"/></testsuite>',                                  # 600,000 characters but over 1,000,000 bytes
+            '<testsuite><testcase name="a" pad="' + 'x' * (1_000_000 - len('<testsuite><testcase name="a" pad=""/></testsuite>')) + '"/></testsuite>',        # exactly 1,000,000 bytes
+            '<testsuite><testcase name="a" pad="' + 'x' * (1_000_001 - len('<testsuite><testcase name="a" pad=""/></testsuite>')) + '"/></testsuite>',        # one byte more
+        ]
+        return docs + broken + fixed
+
+    def test_junit_reading_equals_python(self):
+        w = web_ui_module()
+        rng = random.Random(20261103)
+        docs = self.junit_documents(rng)
+        page = self.page()
+        got = page.evaluate(self.JS_TRY + """docs => docs.map(d => [tryit(() => webUiReport.junitCases(d)), tryit(() => webUiReport.junitReport(d, true)), tryit(() => webUiReport.junitReport(d, false)),
+            tryit(() => webUiReport.junitInspect(d)), tryit(() => webUiReport.junitFailureRecords(d, 'o/n', 4)), tryit(() => webUiReport.reportRead(d, null, true))])""", docs)
+        parsed = 0
+        for doc, (cases, report_m, report, inspect, records, read) in zip(docs, got):
+            self.assertEqual(cases, self.attempt(w.junit_cases, doc), doc[:300])
+            self.assertEqual(report_m, self.attempt(w.junit_report, doc, messages=True), doc[:300])
+            self.assertEqual(report, self.attempt(w.junit_report, doc), doc[:300])
+            self.assertEqual(inspect, self.attempt(w.junit_inspect, doc), doc[:300])
+            self.assertEqual(records, self.attempt(w.junit_failure_records, doc, 'o/n', max_cases=4), doc[:300])
+            self.assertEqual(read, self.attempt(w.report_read, doc, messages=True), doc[:300])
+            parsed += 'ok' in cases
+        self.assertGreater(parsed, 250)
+        self.assertGreater(len(docs) - parsed, 100, 'the malformed and rejected documents are covered too')
+
+    def test_history_ledger_and_attempts_equal_python(self):
+        w = web_ui_module()
+        rng = random.Random(7)
+        page = self.page()
+        def rec(i):
+            return {'category': rng.choice(['test_failure'] * 5 + ['other']), 'context': {'repository': rng.choice(['o/n', 'a/b', 'o/n']), 'report_id': str(i)},
+                    'value': {'class': rng.choice(['c1', 'c2', 'é']), 'test': rng.choice(['t1', 't2', 'q"\\\n\t\x1f 😀']), 'kind': rng.choice(['failure', 'error'])}}
+        sets = [[rec(i) for i in range(rng.randint(0, 8))] for _ in range(200)]
+        bad = [[{'category': 'test_failure', 'context': {}, 'value': {}}], [{'category': 'test_failure', 'context': [], 'value': {}}], [5, None, {'category': 'other'}],
+               [{'category': 'test_failure', 'context': {'repository': 'a/b'}, 'value': {'class': '', 'test': 't', 'kind': 'failure'}}], [{'category': 'test_failure', 'context': {'repository': 'a/b'}, 'value': {'class': 'c', 'test': 't', 'kind': 3}}]]
+        jsonl = ['\n'.join(json.dumps(r) for r in s) for s in sets[:40]] + ['{broken', json.dumps(sets[1][0] if sets[1] else {}) + '\n\n   \n{x', '']
+        options = [dict(commit_sha='a' * 40, run_id='42'), dict(commit_sha='A' * 40, run_id='7', previous_commit_sha='b' * 40, previous_run_id='6'), dict(commit_sha='zz', run_id='1'), dict(commit_sha='a' * 40, run_id='x'),
+                   dict(commit_sha='a' * 40, run_id='1', previous_commit_sha='short'), dict(commit_sha='a' * 40, run_id='1', previous_run_id='-')]
+        got = page.evaluate(self.JS_TRY + """([sets, bad, jsonl, options]) => ({load: [...sets, ...bad].map(s => tryit(() => webUiReport.junitHistoryLoad(s))), jsonl: jsonl.map(s => tryit(() => webUiReport.junitHistoryLoad(s))),
+            compare: sets.slice(0, 120).map((s, i) => tryit(() => webUiReport.junitHistory(webUiReport.junitHistoryLoad(s), webUiReport.junitHistoryLoad(sets[(i * 7 + 1) % sets.length]), options[i % options.length])))})""",
+                           [sets, bad, jsonl, options])
+        for s, g in zip(sets + bad, got['load']):
+            self.assertEqual(g, self.attempt(w.junit_history_load, s))
+        for s, g in zip(jsonl, got['jsonl']):
+            self.assertEqual(g, self.attempt(w.junit_history_load, s))
+        for i, g in enumerate(got['compare']):
+            def compare():
+                return w.junit_history(w.junit_history_load(sets[i]), w.junit_history_load(sets[(i * 7 + 1) % len(sets)]), **options[i % len(options)])
+            self.assertEqual(g, self.attempt(compare))
+        self.assertGreaterEqual(sum('ok' in g for g in got['compare']), 40)
+        self.assertGreater(sum('error' in g for g in got['compare']), 20)
+        attempts = [[{'exit_code': a, 'failures': [{'kind': rng.choice(['failure', 'error']), 'message_sha256': rng.choice(['a' * 64, 'b' * 64, 'c' * 64])} for _ in range(rng.randint(0, 3))]} for a in rng.choice([[1], [0], [1, 0], [1, 1], [0, 0]])]
+                    for _ in range(80)]
+        ledgers = [None, {'schema': 'failure-patterns/1', 'patterns': {}}, {'schema': 'x', 'patterns': {}}, {'schema': 'failure-patterns/1', 'patterns': []}, [], {'schema': 'failure-patterns/1', 'patterns': {'node:failure:' + 'a' * 64: {'runner': 'node', 'kind': 'failure', 'message_sha256': 'a' * 64, 'occurrences': 3}}}]
+        got = page.evaluate(self.JS_TRY + """([attempts, ledgers]) => ({ledger: attempts.map((a, i) => tryit(() => webUiReport.failureLedgerUpdate(ledgers[i % ledgers.length], 'node', a))),
+            history: attempts.map(a => webUiReport.attemptHistory('deno', ['a.ts'], a))})""", [attempts, ledgers])
+        for i, (a, g) in enumerate(zip(attempts, got['ledger'])):
+            self.assertEqual(g, self.attempt(w.failure_ledger_update, ledgers[i % len(ledgers)], 'node', a))
+        for a, g in zip(attempts, got['history']):
+            self.assertEqual(g, w.attempt_history('deno', ['a.ts'], a))
+        many = [{'failures': [{'kind': 'failure', 'message_sha256': f'{i:064x}'} for i in range(501)]}]
+        self.assertEqual(page.evaluate(self.JS_TRY + "m => tryit(() => webUiReport.failureLedgerUpdate(null, 'node', m))", many), self.attempt(w.failure_ledger_update, None, 'node', many))
+
+    JUNIT = '<testsuite><testcase classname="tests.A" name="test_ok"/><testcase classname="tests.A" name="test_bad[1]"><failure message="SECRET_TOKEN">trace</failure></testcase><testcase name="gap"><skipped message="known: x"/></testcase></testsuite>'
+
+    def test_the_page_reads_a_junit_report_and_keeps_messages_hidden_until_asked(self):
+        import hashlib
+        page = self.page()
+        self.assertEqual(page.locator('[data-report-status]').inner_text(), 'Nothing read yet.')
+        page.locator('[data-report-run]').click()
+        self.assertEqual(page.locator('[data-report-status]').inner_text(), 'Nothing to read: paste a report first.')
+        page.locator('[data-report-input]').fill(self.JUNIT)
+        page.locator('[data-report-run]').click()
+        self.assertEqual(page.locator('[data-report-line]').inner_text(), 'passed=1 failed=1 skipped=0 xfailed=1 xpassed=0 error=0 total=3 ok=false')
+        self.assertEqual(page.locator('[data-report-out] tbody tr').count(), 1)
+        row = page.locator('[data-report-out] tbody tr').first.inner_text().split('\t')
+        self.assertEqual(row[:3], ['tests.A', 'test_bad[1]', 'failure'])
+        self.assertEqual(row[3], hashlib.sha256(b'SECRET_TOKEN').hexdigest()[:16])
+        self.assertNotIn('SECRET_TOKEN', page.locator('[data-ui-report]').inner_text())
+        self.assertEqual(page.locator('[data-ui-report]').get_attribute('data-report-state'), 'failing')
+        page.locator('[data-report-messages]').check()
+        self.assertIn('SECRET_TOKEN', page.locator('[data-report-out]').inner_text())
+        self.assertEqual(page.locator('[data-report-convert]').is_hidden(), True)
+
+    def test_the_page_compares_with_a_previous_run_and_reads_flutter_events(self):
+        page = self.page()
+        page.locator('.ui-report-more summary').click()
+        page.locator('[data-report-input]').fill(self.JUNIT)
+        page.locator('[data-report-previous]').fill('<testsuite><testcase classname="tests.A" name="test_bad"><failure/></testcase><testcase classname="tests.B" name="gone"><error/></testcase></testsuite>')
+        page.locator('[data-report-run]').click()
+        out = page.locator('[data-report-out]').inner_text()
+        self.assertIn('new=0 recurring=1 resolved=1', out)
+        self.assertIn('recurring: tests.A · test_bad (failure) ×1 now, ×1 before', out)
+        self.assertIn('resolved: tests.B · gone (error) ×0 now, ×1 before', out)
+        events = '\n'.join(json.dumps(e) for e in [{'type': 'suite', 'suite': {'id': 0, 'path': 't.dart'}}, *flutter_case(1, 0, 'ok'), *flutter_case(2, 0, 'bad', result='failure'), {'type': 'done', 'success': False}])
+        page.locator('[data-report-previous]').fill('')
+        page.locator('[data-report-input]').fill(events)
+        page.locator('[data-report-run]').click()
+        self.assertEqual(page.locator('[data-report-line]').inner_text(), 'passed=1 failed=1 skipped=0 xfailed=0 xpassed=0 error=0 total=2 ok=false')
+        self.assertTrue(page.locator('[data-report-convert]').is_visible())
+        self.assertIn('bad', page.locator('[data-report-out]').inner_text())
+        page.locator('[data-report-input]').fill('\n'.join(events.splitlines()[:3]))
+        page.locator('[data-report-run]').click()
+        self.assertIn('Not converted to JUnit: incomplete Flutter machine report', page.locator('[data-report-out]').inner_text())
+        self.assertTrue(page.locator('[data-report-convert]').is_hidden())
+
+    def test_the_page_refuses_what_it_cannot_read_and_says_why(self):
+        page = self.page()
+        for text, message in (('plain words', 'Paste JUnit XML'), ('<testsuite/>', 'JUnit report contains no testcases'), ('<!DOCTYPE a [<!ENTITY b "c">]><testsuite/>', 'DTD and entity declarations are unsupported'),
+                              ('<testsuite><testcase/></testsuite>', 'testcase without name'), ('<broken', 'malformed JUnit XML')):
+            page.locator('[data-report-input]').fill(text)
+            page.locator('[data-report-run]').click()
+            self.assertIn(message, page.locator('[data-report-status]').inner_text())
+            self.assertEqual(page.locator('[data-ui-report]').get_attribute('data-report-state'), 'error')
+            self.assertEqual(page.locator('[data-report-line]').inner_text(), '')
+        page.locator('.ui-report-more summary').click()
+        page.locator('[data-report-input]').fill('{"type":"done"}')
+        page.locator('[data-report-previous]').fill('<testsuite><testcase name="a"/></testsuite>')
+        page.locator('[data-report-run]').click()
+        self.assertIn('needs JUnit XML for both', page.locator('[data-report-status]').inner_text())
+
+    def test_a_file_can_be_chosen_and_an_oversized_one_is_refused(self):
+        page = self.page()
+        page.locator('[data-report-file]').set_input_files(files=[{'name': 'junit.xml', 'mimeType': 'application/xml', 'buffer': self.JUNIT.encode()}])
+        page.wait_for_function("() => document.querySelector('[data-report-line]').textContent.includes('total=3')")
+        self.assertEqual(page.locator('[data-report-input]').input_value(), self.JUNIT)
+        page.locator('[data-report-file]').set_input_files(files=[{'name': 'big.xml', 'mimeType': 'application/xml', 'buffer': b'<testsuite>' + b' ' * 1_100_000 + b'</testsuite>'}])
+        page.wait_for_function("() => document.querySelector('[data-report-status]').textContent === 'That file is over 1 MB.'")
+        self.assertEqual(page.locator('[data-report-input]').input_value(), self.JUNIT, 'a refused file leaves the text alone')
+
+
+class McpBrowserTests(PageCase):
+    """The MCP lab in a real browser: every request of seeded scripts gets the same answer from the page's server as from Python's, the client demos and the helpers agree, and the
+    page works."""
+
+    LEGACY, CURRENT = '2025-03-26', '2026-07-28'
+    META = 'io.modelcontextprotocol/protocolVersion'
+    NOW = 1789387200
+
+    def setUp(self):
+        from web_ui import mcp_document
+        self.server, self.origin = WorldBrowserTests.serve({'mcp.html': mcp_document()})
+        self.playwright_manager = sync_playwright()
+        self.playwright = self.playwright_manager.__enter__()
+        self.browser = photo_engine(self.playwright).launch()
+        self.context = self.browser.new_context(viewport={'width': 900, 'height': 1200})
+        self.errors, self.external = [], []
+
+    def page(self):
+        page = self.context.new_page()
+        self.watch(page)
+        page.goto(self.origin + '/mcp.html')
+        return page
+
+    # --- seeded request scripts
+    def meta(self, rng, version=None):
+        return {self.META: version or self.CURRENT, 'io.modelcontextprotocol/clientInfo': {'name': 'test', 'version': '0'}, 'io.modelcontextprotocol/clientCapabilities': {}}
+
+    def modern(self, rng, rid):
+        w = web_ui_module()
+        method = rng.choice(['server/discover', 'tools/list', 'tools/call', 'tools/call', 'resources/list', 'resources/read', 'prompts/list', 'prompts/get', 'ping', 'totally/unknown', 'notifications/initialized'])
+        name = {'tools/call': rng.choice(['echo', 'echo', 'other', 'エコー', ' echo ', '=?base64?YQ==?=']), 'prompts/get': rng.choice(['greet', 'nope']), 'resources/read': rng.choice(['demo://readme', 'demo://x'])}.get(method)
+        params = {'_meta': self.meta(rng)}
+        if method == 'tools/call':
+            params.update(name=name, arguments=rng.choice([{'text': 'hi'}, {'text': 5}, {}, 'x']))
+        elif method == 'prompts/get':
+            params['name'] = name
+        elif method == 'resources/read':
+            params['uri'] = name
+        headers = {'mcp-protocol-version': self.CURRENT, 'mcp-method': method}
+        if name is not None:
+            headers['mcp-name'] = rng.choice([w.mcp_header_encode(name), name, w.mcp_header_encode(name), 'other', '=?base64?!!!?='])
+        body = {'jsonrpc': '2.0', 'method': method, 'params': params}
+        if method != 'notifications/initialized' or rng.random() < 0.2:
+            body['id'] = rid
+        for _ in range(rng.choice([0, 0, 1, 1, 2])):
+            action = rng.randrange(15)
+            params = body.get('params')
+            meta = params['_meta'] if isinstance(params, dict) and isinstance(params.get('_meta'), dict) else None
+            if action == 0:
+                headers.pop(rng.choice(['mcp-protocol-version', 'mcp-method', 'mcp-name']), None)
+            elif action == 1:
+                headers['mcp-protocol-version'] = rng.choice(['2099-01-01', self.LEGACY, '', self.CURRENT])
+            elif action == 2 and meta is not None:
+                meta.pop(rng.choice([self.META, 'io.modelcontextprotocol/clientInfo', 'io.modelcontextprotocol/clientCapabilities']), None)
+            elif action == 3 and meta is not None:
+                meta[self.META] = rng.choice([self.LEGACY, '2099-01-01', '', 5, None, self.CURRENT])
+            elif action == 4 and meta is not None:
+                meta['io.modelcontextprotocol/clientInfo'] = rng.choice(['nope', {}, {'name': ''}, {'name': 'x'}, {'name': 'x', 'version': ''}, {'name': 1, 'version': '0'}, {'version': '0'}, None])
+            elif action == 5 and meta is not None:
+                meta['io.modelcontextprotocol/clientCapabilities'] = rng.choice(['nope', [], None, 5])
+            elif action == 6:
+                body['params'] = rng.choice([[], None, 'x', {}])
+            elif action == 7:
+                headers['mcp-method'] = rng.choice(['tools/list', '', 'server/discover'])
+            elif action == 8:
+                body['method'] = 'totally/unknown'
+            elif action == 9:
+                body.pop('id', None)
+            elif action == 10:
+                body['id'] = rng.choice([None, 'str-id', 0, 7])
+            elif action == 11:
+                headers['mcp-name'] = rng.choice(['エコー', w.mcp_header_encode('エコー'), '=?', '=?base64?'])
+            elif action == 12:
+                headers.pop('mcp-protocol-version', None)
+                headers['Mcp-Method'] = headers.pop('mcp-method', 'x')
+            elif action == 13 and meta is not None:
+                meta[self.META] = headers['mcp-protocol-version'] = rng.choice(['2099-01-01', self.LEGACY])      # header and body agree on a version that is not the current one
+            else:
+                body['jsonrpc'] = rng.choice(['1.0', 2, None])
+        return headers, body
+
+    def legacy(self, rng, rid, sessions):
+        method = rng.choice(['initialize', 'initialize', 'notifications/initialized', 'notifications/initialized', 'notifications/initialized', 'ping', 'tools/list', 'tools/call', 'resources/list', 'resources/read',
+                             'prompts/list', 'prompts/get', 'totally/unknown'])
+        info = rng.choice([{'name': 't', 'version': '0'}] * 4 + ['nope', {}, {'name': ''}, {'name': 'x'}, {'name': 1, 'version': '0'}])
+        params = None
+        if method == 'initialize':
+            params = rng.choice([{'protocolVersion': rng.choice([self.LEGACY, '1999-01-01', '', 5]), 'capabilities': rng.choice([{}, {}, 'nope', None]), 'clientInfo': info}] * 3 + [None, 'x', {}])
+        elif method == 'tools/call':
+            params = {'name': rng.choice(['echo', 'echo', 'other']), 'arguments': rng.choice([{'text': 'hi'}, {'text': 5}, {}, None])}
+        elif method == 'resources/read':
+            params = {'uri': rng.choice(['demo://readme', 'x'])}
+        elif method == 'prompts/get':
+            params = {'name': rng.choice(['greet', 'x'])}
+        body = {'jsonrpc': '2.0', 'method': method}
+        if params is not None:
+            body['params'] = params
+        if method != 'notifications/initialized' or rng.random() < 0.2:
+            body['id'] = rid
+        headers = {}
+        if method != 'initialize' or rng.random() < 0.1:
+            session = (rng.choice(sessions) if rng.random() < 0.75 else rng.choice(['nope', '', 'sess-0'])) if sessions else rng.choice(['nope', ''])
+            if session or rng.random() < 0.5:
+                headers[rng.choice(['mcp-session-id', 'Mcp-Session-Id', 'MCP-SESSION-ID'])] = session
+        if rng.random() < 0.2:
+            headers['mcp-protocol-version'] = rng.choice([self.LEGACY, '1999-01-01', self.CURRENT, ''])
+        return headers, body
+
+    def script(self, rng, size, sessions):
+        w = web_ui_module()
+        requests = []
+        for rid in range(1, size + 1):
+            kind = rng.random()
+            headers, body = self.modern(rng, rid) if kind < 0.4 else self.legacy(rng, rid, sessions)
+            if rid in (1, 2) or (rid % 17 == 0):      # sessions need an initialize that is well formed
+                headers, body = {}, {'jsonrpc': '2.0', 'id': rid, 'method': 'initialize', 'params': {'protocolVersion': self.LEGACY, 'capabilities': {}, 'clientInfo': {'name': 't', 'version': '0'}}}
+                requests.append({'method': 'POST', 'path': '/mcp', 'headers': headers, 'body': json.dumps(body)})
+                continue
+            if rng.random() < 0.1:
+                headers[rng.choice(['origin', 'Origin', 'ORIGIN'])] = rng.choice(['http://127.0.0.1:8787', 'http://localhost:8787', 'https://evil.example', '', 'http://127.0.0.1:9999'])
+            if rng.random() < 0.12:
+                aud = rng.choice(['http://127.0.0.1:8787/mcp', 'http://127.0.0.1:8787/mcp', 'http://evil.example/mcp', ['x', 'http://127.0.0.1:8787/mcp'], [], 5, None])
+                exp = rng.choice([1, self.NOW - 1, self.NOW, self.NOW + 1, 4070908800, 1.5, True, None])
+                token = w.demo_bearer_token(aud, exp) if exp is not None else w.demo_bearer_token(aud, 0).replace('"exp":0', '"zz":0')
+                headers[rng.choice(['authorization', 'Authorization'])] = rng.choice(['Bearer ' + token] * 3 + ['Bearer', 'Bearer not-a-jwt', 'Basic abc', '', 'bearer ' + token, 'Bearer  ' + token, token])
+            raw = rng.choice([json.dumps(body, ensure_ascii=False)] * 12 + ['{broken', '[]', 'null', '', '{"jsonrpc":"2.0","method":""}'])
+            method = rng.choice(['POST'] * 15 + ['GET', 'post', 'PUT'])
+            path = rng.choice(['/mcp'] * 20 + ['/mcp/', '/mcp/support-matrix', '/.well-known/oauth-authorization-server', '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp', '/nope', '/'])
+            requests.append({'method': method, 'path': path, 'headers': headers, 'body': raw if rng.random() > 0.05 else None})
+        return requests
+
+    def test_every_request_gets_the_same_answer_as_pythons_server(self):
+        w = web_ui_module()
+        rng = random.Random(20261103)
+        page = self.page()
+        scripts = [self.script(rng, 70, [f'sess-{i}' for i in range(1, 6)]) for _ in range(120)]
+        got = page.evaluate("""scripts => scripts.map(script => { let n = 0; const routes = new webUiMcp.McpRoutes(new webUiMcp.McpFoundation(() => 'sess-' + (++n)), {clock: () => 1789387200});
+            return script.map(r => routes.handle(r.method, r.path, r.headers, r.body)) })""", scripts)
+        statuses, nonempty = {}, 0
+        for script, answers in zip(scripts, got):
+            counter = iter(range(1, 10 ** 6))
+            routes = w.McpRoutes(w.McpFoundation(lambda: f'sess-{next(counter)}'), clock=lambda: self.NOW)
+            for request, seen in zip(script, answers):
+                expected = routes.handle(request['method'], request['path'], request['headers'], request['body'])
+                self.assertEqual(seen, expected, request)
+                key = None if expected is None else expected['status']
+                statuses[key] = statuses.get(key, 0) + 1
+                nonempty += bool(routes.handler.sessions)
+        for status in (200, 202, 400, 401, 403, 404, 405):
+            self.assertGreater(statuses.get(status, 0), 20, (status, statuses))
+        self.assertGreater(nonempty, 2000, 'sessions get opened often enough for the legacy paths to be reached')
+
+    def test_the_in_process_transport_and_the_client_demos_agree(self):
+        w = web_ui_module()
+        page = self.page()
+        got = page.evaluate("""() => { const out = {}; for (const which of ['legacy', 'modern']) for (const kind of ['routes', 'foundation']) { let n = 0;
+            const handler = new webUiMcp.McpFoundation(() => 'sess-' + (++n)), transport = kind === 'routes' ? webUiMcp.mcpInProcess(new webUiMcp.McpRoutes(handler)) : webUiMcp.mcpFoundationTransport(handler),
+            client = new webUiMcp.McpClient(transport, 'cn', 'cv'); out[which + ':' + kind] = which === 'legacy' ? client.runEchoDemo('ünï 😀') : client.runModernEchoDemo('ünï 😀') } return out }""")
+        for which in ('legacy', 'modern'):
+            for kind in ('routes', 'foundation'):
+                counter = iter(range(1, 100))
+                handler = w.McpFoundation(lambda: f'sess-{next(counter)}')
+                transport = w.mcp_in_process(w.McpRoutes(handler)) if kind == 'routes' else w.mcp_foundation_transport(handler)
+                client = w.McpClient(transport, 'cn', 'cv')
+                expected = client.run_echo_demo('ünï 😀') if which == 'legacy' else client.run_modern_echo_demo('ünï 😀')
+                self.assertEqual(got[f'{which}:{kind}'], expected)
+                self.assertTrue(expected['ok'])
+
+    CANNED = [
+        (200, {'mcp-session-id': 'sess-x'}, {'jsonrpc': '2.0', 'id': 1, 'result': {'protocolVersion': '2025-03-26'}}), (500, {'mcp-session-id': 'sess-x'}, {'jsonrpc': '2.0', 'id': 1, 'result': {}}),
+        (401, {'Mcp-Session-Id': 'keep?'}, {'jsonrpc': '2.0', 'id': 1, 'result': {}}), (403, {}, {'error': 'forbidden'}), (401, {}, {'error': {'nested': [1, {'a': None}]}}), (502, {}, {'error': None}),
+        (404, {}, {'error': 'session_invalid'}), (200, {}, 'text'), (200, {}, None), (200, {}, [1]), (200, {}, {}), (200, {'mcp-session-id': 'sess-y'}, {'jsonrpc': '2.0', 'id': 99, 'result': {}}),
+        (200, {}, {'jsonrpc': '2.0', 'id': 1, 'error': {'code': '-32603', 'message': 'x'}}), (200, {}, {'jsonrpc': '2.0', 'id': 1, 'error': {'code': -32603, 'message': 42}}),
+        (200, {}, {'jsonrpc': '2.0', 'id': 1, 'error': {'message': 'x'}}), (200, {}, {'jsonrpc': '2.0', 'id': 1, 'error': {'code': -32603}}), (200, {}, {'jsonrpc': '1.0', 'id': 1, 'result': {}}),
+        (200, {}, {'jsonrpc': '2.0', 'id': 1}), (200, {}, {'jsonrpc': '2.0', 'id': 1, 'result': {}, 'error': {'code': 1, 'message': 'x'}}), (200, {}, {'jsonrpc': '2.0', 'id': 1, 'error': 'text'}),
+        (200, {}, {'jsonrpc': '2.0', 'id': 1, 'error': {'code': -1, 'message': 'm', 'data': {'k': 1}}}), (200, {'mcp-session-id': ''}, {'jsonrpc': '2.0', 'id': 1, 'result': {'protocolVersion': 5}}),
+        (202, {'mcp-session-id': 'sess-n'}, None), (204, {}, None), (400, {}, {'error': 'notification_rejected'}), (200, {}, {'jsonrpc': '2.0', 'id': 1, 'result': None}),
+    ]
+
+    def test_the_client_checks_what_a_server_sends_the_same_way(self):
+        w = web_ui_module()
+        page = self.page()
+        got = page.evaluate("""canned => canned.map(([status, headers, body]) => { const client = new webUiMcp.McpClient(() => ({status_code: status, headers, body}));
+            const init = client.initialize(), s1 = client.sessionId, pv = client.protocolVersion, second = client.listTools(), note = client.notifyInitialized(); return [init, s1, pv, second, note, client.sessionId] })""", self.CANNED)
+        for (status, headers, body), seen in zip(self.CANNED, got):
+            client = w.McpClient(lambda h, b, status=status, headers=headers, body=body: {'status_code': status, 'headers': headers, 'body': body})
+            init = client.initialize()
+            expected = [init, client.session_id, client.protocol_version, client.list_tools(), client.notify_initialized(), client.session_id]
+            self.assertEqual(seen, expected, (status, headers, body))
+
+    def test_header_names_pkce_session_ids_and_oauth_documents_equal_python(self):
+        w = web_ui_module()
+        rng = random.Random(77)
+        page = self.page()
+        pieces = ['a', 'echo', 'demo://readme', ' ', '  x ', '=?', '?=', '=?base64?', 'YQ==', '!!!', '/w==', 'エコー', '😀', '\t', '\x7f', 'é', '=?base64?YQ==?=', '=?notbase64?YQ==?=', '=?base64?YQ?=', '=?base64?Y=Q=?=', '4pyT', '﻿']
+        names = [''.join(rng.choice(pieces) for _ in range(rng.randint(0, 5))) for _ in range(800)] + pieces
+        got = page.evaluate(self.JS_TRY + "names => names.map(n => { const e = webUiMcp.mcpHeaderEncode(n); return [webUiMcp.mcpHeaderNeedsEncoding(n), e, webUiMcp.mcpHeaderDecode(e), webUiMcp.mcpHeaderDecode(n), tryit(() => webUiMcp.mcpStreamableHeaders({name: n, method: 'm'}))] })", names)
+        for name, seen in zip(names, got):
+            encoded = w.mcp_header_encode(name)
+            self.assertEqual(seen, [w.mcp_header_needs_encoding(name), encoded, w.mcp_header_decode(encoded), w.mcp_header_decode(name),
+                                    {'ok': w.mcp_streamable_headers(name=name, method='m')}], name)
+        verifiers = ['dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk', '', 'a', 'ü' * 40] + [''.join(rng.choice('abcXYZ019-._~') for _ in range(rng.randint(43, 128))) for _ in range(60)]
+        self.assertEqual(page.evaluate("v => v.map(x => webUiMcp.pkceChallengeS256(x))", verifiers), [w.pkce_challenge_s256(x) for x in verifiers])
+        seeds = [0, 1, 42, 4294967295] + [rng.randrange(2 ** 32) for _ in range(20)]
+        self.assertEqual(page.evaluate(self.JS_TRY + "s => s.map(seed => [webUiMcp.mcpSessionId(webUiMcp.mulberry32(seed)), webUiMcp.mcpSessionId(webUiMcp.mulberry32(seed), 5), tryit(() => webUiMcp.pkcePair(webUiMcp.mulberry32(seed), 43 + seed % 86)), tryit(() => webUiMcp.pkcePair(webUiMcp.mulberry32(seed), 42))])", seeds),
+                         [[w.mcp_session_id(w.mulberry32(s).__next__), w.mcp_session_id(w.mulberry32(s).__next__, 5), {'ok': w.pkce_pair(w.mulberry32(s).__next__, 43 + s % 86)}, {'error': 'verifier_length must be 43..128'}] for s in seeds])
+
+        def tokens():
+            out = []
+            for _ in range(500):
+                aud = rng.choice(['x', 'http://a', ['x', 'y'], ['y'], [], [''], 5, None, ['x', 3], 'ü'])
+                exp = rng.choice([1, self.NOW, self.NOW + 1, 4070908800, 1.5, 2.9, -3, True, False, None, 'soon'])
+                payload = {'alg': 'none'}
+                body = {k: v for k, v in (('aud', aud), ('exp', exp)) if v is not None or k == 'aud'}
+                b64 = lambda obj: w._b64url_nopad(json.dumps(obj, ensure_ascii=False).encode())
+                token = b64(payload) + '.' + b64(body) + '.sig'
+                header = rng.choice(['Bearer ' + token] * 6 + ['bearer ' + token, 'BEARER ' + token, 'Bearer  ' + token, ' Bearer ' + token, 'Bearer ' + token + ' ', 'Basic ' + token, token, 'Bearer', 'Bearer a.b', 'Bearer a.%%.c',
+                                                              'Bearer x.' + b64([1]) + '.z', 'Bearer x.' + w._b64url_nopad(b'\xff\xfe') + '.z', 'Bearer x.' + w._b64url_nopad(b'{"aud":NaN}') + '.z', 'Bearer x.' + w._b64url_nopad(b'{"aud":"x","exp":1e999}') + '.z',
+                                                              'Bearer x.' + b64(body)[:-1] + '.z', 'Bearer x.' + b64(body) + '=.z', '', None])
+                out.append([header, rng.choice(['x', 'y', 'http://a', 'ü'])])
+            return out
+        cases = tokens()
+        self.assertEqual(page.evaluate("c => c.map(([h, a]) => webUiMcp.bearerInspect(h, a, 1789387200))", cases), [w.bearer_inspect(h, a, self.NOW) for h, a in cases])
+        statuses = {w.bearer_inspect(h, a, self.NOW)['status'] for h, a in cases}
+        self.assertEqual(statuses, {'missing', 'malformed', 'expired', 'wrong_audience', 'ok'})
+
+        def documents(kind):
+            out = []
+            base = {'issuer': 'https://a/', 'authorization_endpoint': 'https://a/auth', 'token_endpoint': 'https://a/token', 'response_types_supported': ['code']} if kind == 'server' else \
+                {'resource': 'https://r/', 'authorization_servers': ['https://a/']}
+            extras = ['registration_endpoint', 'scopes_supported', 'code_challenge_methods_supported', 'token_endpoint_auth_methods_supported', 'grant_types_supported', 'bearer_methods_supported', 'resource_name', 'unknown']
+            for _ in range(500):
+                doc = dict(base)
+                for _ in range(rng.randint(0, 3)):
+                    doc[rng.choice(extras)] = rng.choice([[], ['S256'], ['s256', 'plain'], [1], 'str', '', 5, None, ['a', ''], {}, ['none']])
+                for _ in range(rng.choice([0, 0, 1])):
+                    key = rng.choice(list(base))
+                    doc[key] = rng.choice([None, '', 5, [], [''], ['a', 1], ['a'], 'ok', {}])
+                if rng.random() < 0.05:
+                    doc = rng.choice([[], 'x', None, 5])
+                out.append(doc)
+            return out
+        servers, resources = documents('server'), documents('resource')
+        got = page.evaluate(self.JS_TRY + "([s, r]) => [s.map(d => tryit(() => webUiMcp.oauthServerMetadata(d))), r.map(d => tryit(() => webUiMcp.oauthResourceMetadata(d)))]", [servers, resources])
+        self.assertEqual(got[0], [self.attempt(w.oauth_server_metadata, d) for d in servers])
+        self.assertEqual(got[1], [self.attempt(w.oauth_resource_metadata, d) for d in resources])
+        self.assertGreater(sum('ok' in g for g in got[0]), 80)
+        self.assertGreater(sum('error' in g for g in got[0]), 80)
+        self.assertGreater(sum('ok' in g for g in got[1]), 80)
+        self.assertGreater(sum('error' in g for g in got[1]), 80)
+
+    def test_json_rpc_parsing_equals_python(self):
+        w = web_ui_module()
+        rng = random.Random(5)
+        page = self.page()
+        values = [None, 1, 'a', True, [], {}, {'code': -1, 'message': 'm'}, {'code': '1', 'message': 'm'}, {'code': 1}, {'message': 'm'}, {'code': 1, 'message': 'm', 'data': {'k': [1]}}, {'x': 1}]
+        responses = []
+        for index in range(600):
+            r = {}
+            if index % 4 == 0:      # a quarter are well formed, so the accepting branches are covered too
+                r = {'jsonrpc': '2.0', 'id': rng.choice([1, 2, 'a']), rng.choice(['result', 'error']): None}
+                key = next(k for k in ('result', 'error') if k in r)
+                r[key] = rng.choice([v for v in values if key == 'result' or (isinstance(v, dict) and isinstance(v.get('code'), int) and isinstance(v.get('message'), str))])
+                responses.append([r, r['id'] if rng.random() < 0.8 else rng.choice([None, 1, 2, 'a'])])
+                continue
+            for key, options in (('jsonrpc', ['2.0', '2.0', '2.0', '1.0', 2, None]), ('id', [1, 2, 'a', None]), ('result', values), ('error', values)):
+                if rng.random() < 0.55 or key == 'jsonrpc':
+                    r[key] = rng.choice(options)
+            responses.append([r if rng.random() > 0.05 else rng.choice([[], 'x', None, 5]), rng.choice([None, 1, 2, 'a'])])
+        got = page.evaluate(self.JS_TRY + "c => c.map(([r, id]) => tryit(() => webUiMcp.rpcResponseParse(r, id)))", responses)
+        self.assertEqual(got, [self.attempt(w.rpc_response_parse, r, i) for r, i in responses])
+        self.assertGreater(sum('ok' in g for g in got), 60)
+        requests = []
+        for _ in range(300):
+            r = {}
+            for key, options in (('jsonrpc', ['2.0', '2.0', '2.0', '1.0', 2]), ('id', [1, 'a', None, 0]), ('method', ['ping', 'tools/list', '', 5, None, 'x']), ('params', [{}, [], None, 'p', {'a': 1}])):
+                if rng.random() < 0.8 or key == 'jsonrpc':
+                    r[key] = rng.choice(options)
+            requests.append(json.dumps(r))
+        raws = requests + ['{"jsonrpc":"2.0","method":"a"}', '{"jsonrpc":"2.0","id":3,"method":"a","params":[1]}', '{broken', '', '[]', 'null', '"s"', '{"jsonrpc":"2.0","method":"a","x":NaN}',
+                                                           '{"jsonrpc":"2.0","method":"","id":1}', '{"jsonrpc":"2.0","id":null,"method":"a"}'] + [r for r, _ in responses[200:300] if isinstance(r, dict)]
+        got = page.evaluate("c => c.map(r => webUiMcp.rpcRequestParse(r))", raws)
+        self.assertEqual(got, [w.rpc_request_parse(r) for r in raws])
+        self.assertGreater(sum(g is not None for g in got), 40)
+
+    def test_the_page_sends_requests_to_its_own_server(self):
+        page = self.page()
+        self.assertEqual(page.locator('[data-mcp-sessions]').inner_text(), '0 session(s) open on the in-page server.')
+        send = lambda: page.locator('[data-mcp-send]').click()
+        page.locator('[data-mcp-template="initialize"]').click()
+        send()
+        self.assertEqual(page.locator('[data-mcp-http-status]').inner_text(), 'HTTP 200')
+        self.assertIn('mcp-session-id: ', page.locator('[data-mcp-out-headers]').inner_text())
+        self.assertIn('"protocolVersion": "2025-03-26"', page.locator('[data-mcp-out-body]').inner_text())
+        self.assertEqual(page.locator('[data-ui-mcp]').get_attribute('data-sessions'), '1')
+        session = page.locator('[data-mcp-out-headers]').inner_text().split('mcp-session-id: ')[1].splitlines()[0]
+        self.assertIn('Last: ' + session, page.locator('[data-mcp-sessions]').inner_text())
+        page.locator('[data-mcp-template="initialized"]').click()
+        self.assertIn('mcp-session-id: ' + session, page.locator('[data-mcp-headers]').input_value())
+        send()
+        self.assertEqual(page.locator('[data-mcp-http-status]').inner_text(), 'HTTP 202')
+        self.assertEqual(page.locator('[data-mcp-out-body]').inner_text(), '(empty)')
+        page.locator('[data-mcp-template="toolsCall"]').click()
+        send()
+        self.assertIn('"text": "hello"', page.locator('[data-mcp-out-body]').inner_text())
+        page.locator('[data-mcp-headers]').fill('')
+        page.locator('[data-mcp-template="toolsList"]').click()
+        page.locator('[data-mcp-headers]').fill('')
+        send()
+        self.assertEqual(page.locator('[data-mcp-http-status]').inner_text(), 'HTTP 400')
+        self.assertIn('session_required', page.locator('[data-mcp-out-body]').inner_text())
+        page.locator('[data-mcp-template="discover"]').click()
+        send()
+        self.assertEqual(page.locator('[data-mcp-http-status]').inner_text(), 'HTTP 200')
+        self.assertIn('"resultType": "complete"', page.locator('[data-mcp-out-body]').inner_text())
+        page.locator('[data-mcp-template="modernCall"]').click()
+        send()
+        self.assertIn('"resultType": "complete"', page.locator('[data-mcp-out-body]').inner_text())
+        page.locator('[data-mcp-headers]').fill('mcp-protocol-version: 2026-07-28\nmcp-method: tools/call\nmcp-name: other')
+        send()
+        self.assertEqual(page.locator('[data-mcp-http-status]').inner_text(), 'HTTP 400')
+        self.assertIn('Mcp-Name does not match body params', page.locator('[data-mcp-out-body]').inner_text())
+        page.locator('[data-mcp-headers]').fill('not a header line')
+        send()
+        self.assertIn('Each header line is name: value', page.locator('[data-mcp-http-status]').inner_text())
+        self.assertEqual(page.locator('[data-ui-mcp]').get_attribute('data-http-status'), 'error')
+        page.locator('[data-mcp-method]').select_option('GET')
+        page.locator('[data-mcp-headers]').fill('')
+        send()
+        self.assertEqual(page.locator('[data-mcp-http-status]').inner_text(), 'HTTP 405')
+        page.locator('[data-mcp-reset]').click()
+        self.assertEqual(page.locator('[data-mcp-sessions]').inner_text(), '0 session(s) open on the in-page server.')
+
+    def test_the_page_runs_both_demos(self):
+        page = self.page()
+        page.locator('[data-mcp-demo-text]').fill('ünï')
+        page.locator('[data-mcp-demo-legacy]').click()
+        self.assertEqual(page.locator('[data-mcp-demo-log] li').count(), 4)
+        self.assertIn('Demo finished: ok. Session ', page.locator('[data-mcp-demo-status]').inner_text())
+        self.assertIn('ünï', page.locator('[data-mcp-demo-log] li').nth(3).inner_text())
+        self.assertEqual(page.locator('[data-ui-mcp]').get_attribute('data-demo'), 'legacy:ok')
+        page.locator('[data-mcp-demo-modern]').click()
+        self.assertEqual(page.locator('[data-mcp-demo-log] li').count(), 3)
+        self.assertTrue(page.locator('[data-mcp-demo-status]').inner_text().endswith('No session.'))
+        self.assertEqual(page.locator('[data-ui-mcp]').get_attribute('data-demo'), 'modern:ok')
+
+    def test_the_helpers_on_the_page(self):
+        w = web_ui_module()
+        page = self.page()
+        out = page.locator('[data-mcp-codec-out]')
+        self.assertIn('Encoded: ' + w.mcp_header_encode('エコー'), out.inner_text())
+        self.assertIn('Decoded back: "エコー"', out.inner_text())
+        page.locator('[data-mcp-codec-in]').fill('echo')
+        self.assertIn('Needs encoding: no', out.inner_text())
+        page.locator('[data-mcp-codec-in]').fill('=?base64?!!!?=')
+        self.assertIn('As typed, decoded: (malformed)', out.inner_text())
+        self.assertEqual(page.locator('[data-mcp-challenge]').inner_text(), 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM')
+        page.locator('[data-mcp-pkce-new]').click()
+        verifier = page.locator('[data-mcp-verifier]').input_value()
+        self.assertRegex(verifier, r'^[A-Za-z0-9._~-]{64}$')
+        self.assertEqual(page.locator('[data-mcp-challenge]').inner_text(), w.pkce_challenge_s256(verifier))
+        page.locator('[data-mcp-verifier]').fill('')
+        self.assertEqual(page.locator('[data-mcp-challenge]').inner_text(), '')
+        self.assertEqual(page.locator('[data-mcp-auth-out]').inner_text(), 'missing')
+        page.locator('[data-mcp-auth-demo]').click()
+        self.assertTrue(page.locator('[data-mcp-auth-out]').inner_text().startswith('ok · audience http://127.0.0.1:8787/mcp · expires '))
+        page.locator('[data-mcp-aud]').fill('http://other/mcp')
+        self.assertTrue(page.locator('[data-mcp-auth-out]').inner_text().startswith('wrong_audience'))
+        page.locator('[data-mcp-auth]').fill('Bearer nope')
+        self.assertEqual(page.locator('[data-mcp-auth-out]').inner_text(), 'malformed')
+        self.assertIn('"supportsPkceS256": true', page.locator('[data-mcp-meta-out]').inner_text())
+        page.locator('[data-mcp-meta]').fill('{broken')
+        self.assertEqual(page.locator('[data-mcp-meta-out]').inner_text(), 'Not JSON.')
+        page.locator('[data-mcp-meta]').fill('{"issuer": "x"}')
+        self.assertEqual(page.locator('[data-mcp-meta-out]').inner_text(), 'missing OAuth metadata field: response_types_supported')
+        page.locator('input[name="mcp-meta-kind"][value="resource"]').check()
+        self.assertEqual(page.locator('[data-mcp-meta-out]').inner_text(), 'missing protected resource')
+        page.locator('[data-mcp-meta]').fill('{"resource": "https://r/", "authorization_servers": ["https://a/"]}')
+        self.assertIn('"bearer_methods_supported": [\n    "header"\n  ]', page.locator('[data-mcp-meta-out]').inner_text())
+
+
+PATTERN_GOLDEN = json.loads((Path(__file__).resolve().parents[1] / 'fixtures' / 'pattern_golden.json').read_text(encoding='utf-8'))
+SCREENS_FIXTURE = json.loads((Path(__file__).resolve().parents[1] / 'fixtures' / 'screens_asset.json').read_text(encoding='utf-8'))['screens']
+PATTERN_ASSETS = json.loads((Path(__file__).resolve().parents[1] / 'fixtures' / 'pattern_assets.json').read_text(encoding='utf-8'))
+
+
+def pat_norm(value):
+    """Python's value with integral floats as ints: JSON in a page cannot tell 1.0 from 1."""
+    if isinstance(value, float):
+        return int(value) if value.is_integer() and abs(value) < 2 ** 53 else value
+    if isinstance(value, list):
+        return [pat_norm(v) for v in value]
+    if isinstance(value, dict):
+        return {k: pat_norm(v) for k, v in value.items()}
+    return value
+
+
+def pat_integral_float(value):
+    if isinstance(value, float):
+        return value.is_integer()
+    if isinstance(value, list):
+        return any(pat_integral_float(v) for v in value)
+    if isinstance(value, dict):
+        return any(pat_integral_float(v) for v in value.values())
+    return False
+
+
+def pat_canon(value):
+    return json.dumps(pat_norm(value), sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
+
+
+PAT_SCALARS = [None, True, False, 0, 1, -1, 2, 7, 0.5, -1.5, 2.5, '', 'a', 'b', 'A', 'é', ' x ', 'abc', 'item', '1', 'true', '0', 'false']
+
+
+def pat_scalar(r):
+    return r.choice(PAT_SCALARS)
+
+
+def pat_value(r, depth=0):
+    k = r.random()
+    if depth < 2 and k < 0.15:
+        return [pat_value(r, depth + 1) for _ in range(r.randint(0, 3))]
+    if depth < 2 and k < 0.3:
+        return {r.choice('abkn'): pat_value(r, depth + 1) for _ in range(r.randint(0, 3))}
+    return pat_scalar(r)
+
+
+def pat_mutate(r, request, p=0.3):
+    if not isinstance(request, dict) or r.random() > p:
+        return request
+    request = dict(request)
+    keys = list(request)
+    c = r.random()
+    if c < 0.3 and keys:
+        del request[r.choice(keys)]
+    elif c < 0.7 and keys:
+        request[r.choice(keys)] = pat_value(r)
+    else:
+        request[r.choice(['x', 'extra', 'mode'])] = pat_value(r)
+    return request
+
+
+def pat_commands(r):
+    kind = r.choice(['append', 'append', 'remove_last', 'replace', 'x'])
+    if kind == 'append':
+        return {'type': kind, 'value': r.choice([1, 'a', None])}
+    if kind == 'replace':
+        return {'type': kind, 'index': r.choice([0, 1, 2, 9, -1, True]), 'value': r.choice([1, 'a'])}
+    return {'type': kind}
+
+
+def pat_schema(r, depth=0):
+    kind = r.choice(['null', 'boolean', 'integer', 'number', 'string', 'array', 'object'] if r.random() < 0.95 else ['x', 5])
+    spec = {'type': kind}
+    if kind == 'object' and depth < 2:
+        if r.random() < 0.7:
+            spec['properties'] = {k: pat_schema(r, depth + 1) for k in r.sample('abc', r.randint(0, 3))}
+        if r.random() < 0.5:
+            spec['required'] = r.sample('abc', r.randint(0, 2)) if r.random() < 0.9 else ['a', 'a']
         if r.random() < 0.4:
             spec['additional_properties'] = r.choice([True, False, 1])
     if kind == 'array' and depth < 2 and r.random() < 0.7:
