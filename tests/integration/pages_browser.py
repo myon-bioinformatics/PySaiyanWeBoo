@@ -2463,13 +2463,13 @@ class PhotoPageBrowserTests(PageCase):
             self.assertEqual((measured['avif'], measured['heic']), ('supported', 'unsupported_by_runtime'))
         for feature in ('pointerEvents', 'touchActionNone', 'createImageBitmap', 'canvasToBlob', 'anchorDownload', 'canvas4096'):
             self.assertTrue(report['features'][feature], (self.engine, feature))
-        if os.environ.get('WEBUI_EVIDENCE_DIR'):                                            # CI keeps what each engine said, as a file
-            os.makedirs(os.environ['WEBUI_EVIDENCE_DIR'], exist_ok=True)
-            name = self.engine + ('-' + os.environ['WEBUI_DEVICE'].replace(' ', '') if os.environ.get('WEBUI_DEVICE') else '-desktop')
-            print('photo-evidence', name, json.dumps({'decoded': measured, 'exifAppliedByEngine': report['exifOrientationAppliedByEngine'],
-                                                       'features': {k: v for k, v in report['features'].items() if k != 'devicePixelRatio'}}, ensure_ascii=False, sort_keys=True))   # also in the log
-            with open(os.path.join(os.environ['WEBUI_EVIDENCE_DIR'], name + '.json'), 'w', encoding='utf-8') as out:
-                json.dump({**report, 'environmentId': name, 'emulation': bool(os.environ.get('WEBUI_DEVICE'))}, out, indent=2, ensure_ascii=False)
+        evidence = ROOT / 'build' / 'platform' / 'photo-evidence'                           # what each engine said, as a file (platform-matrix.yml uploads it)
+        evidence.mkdir(parents=True, exist_ok=True)
+        name = self.engine + ('-' + os.environ['WEBUI_DEVICE'].replace(' ', '') if os.environ.get('WEBUI_DEVICE') else '-desktop')
+        print('photo-evidence', name, json.dumps({'decoded': measured, 'exifAppliedByEngine': report['exifOrientationAppliedByEngine'],
+                                                   'features': {k: v for k, v in report['features'].items() if k != 'devicePixelRatio'}}, ensure_ascii=False, sort_keys=True))   # also in the log
+        with open(evidence / (name + '.json'), 'w', encoding='utf-8') as out:
+            json.dump({**report, 'environmentId': name, 'emulation': bool(os.environ.get('WEBUI_DEVICE'))}, out, indent=2, ensure_ascii=False)
         shown = json.loads(self.page.inner_text('[data-check-out]'))
         self.assertEqual((shown['schemaVersion'], shown['environmentId'], shown['entryPoint']), (2, 'web_ui_photo_studio', 'loader_browser_canvas_adapter'))
         self.assertEqual(shown, report)
@@ -6871,9 +6871,9 @@ class GifBrowserTests(unittest.TestCase):
                        {'zoom': box, 'caption': '🔍 #a', 'steps': 4, 'ms': 400, 'hold': 800, 'ok': False}])
                 result = page.evaluate("() => rec.encodeBase64({comment: 'web_ui gif.js browser test'})")
                 gif = base64.b64decode(result['gif'])
-                if os.environ.get('WEBUI_EVIDENCE_DIR'):
-                    Path(os.environ['WEBUI_EVIDENCE_DIR']).mkdir(parents=True, exist_ok=True)
-                    (Path(os.environ['WEBUI_EVIDENCE_DIR']) / 'gif-recorder.gif').write_bytes(gif)
+                evidence = ROOT / 'build' / 'platform' / 'photo-evidence'                   # platform-matrix.yml uploads it
+                evidence.mkdir(parents=True, exist_ok=True)
+                (evidence / 'gif-recorder.gif').write_bytes(gif)
                 opened = page.evaluate("""async src => {
                     const img = new Image(); img.src = src; await img.decode();
                     const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
@@ -7077,8 +7077,7 @@ def source_page_files(directory):
 
 
 def launch(playwright):
-    chrome = os.environ.get('WEBUI_CHROME')  # a local Chrome when Playwright's own build is not installed
-    return playwright.chromium.launch(**({'executable_path': chrome} if chrome else {}))
+    return playwright.chromium.launch()
 
 
 class SourcePanelBrowserTests(unittest.TestCase):
@@ -7180,12 +7179,9 @@ class SourcePanelBrowserTests(unittest.TestCase):
 class PlotlyBrowserTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        source = os.environ.get('WEB_UI_PLOTLY_JS_TEST_FILE')
-        cls.raw = ui.verify_plotly_js(Path(source).read_bytes()) if source else ui.fetch_plotly_js()
+        cls.raw = ui.fetch_plotly_js()
         cls.playwright = sync_playwright().start()
-        executable = os.environ.get('CHROME')
-        cls.browser = cls.playwright.chromium.launch(
-            **({'executable_path': executable} if executable else {}))
+        cls.browser = cls.playwright.chromium.launch()
 
     @classmethod
     def tearDownClass(cls):

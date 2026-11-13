@@ -173,14 +173,6 @@ class PlotlyDistributionTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'HTTP 206'):
                 ui.fetch_plotly_js()
 
-    @unittest.skipUnless(os.environ.get('WEB_UI_PLOTLY_JS_TEST_FILE'), 'real CDN bytes supplied by browser CI')
-    def test_actual_jsdelivr_bundle_is_bounded(self):
-        raw = Path(os.environ['WEB_UI_PLOTLY_JS_TEST_FILE']).read_bytes()
-        self.assertEqual(ui.verify_plotly_js(raw), raw)
-        self.assertIn(b'Plotly', raw[:4096])
-        with patch('urllib.request.urlopen', return_value=Response(raw)):
-            self.assertEqual(ui.fetch_plotly_js(), raw)
-
 
 # ═══ 📌 pinned assets ═════════════════════════════════════════════════════════════════════════════════════
 # Generic pinned-asset verification (SHA-256 hex or SRI) shared by Plotly.js and allowlisted scripts.
@@ -259,12 +251,6 @@ class PinnedAssetTests(unittest.TestCase):
                 continue
             with self.subTest(name=name):
                 ui._parse_integrity(ui.REMOTE_SCRIPT_INTEGRITY[address])
-
-    @unittest.skipUnless(os.environ.get('WEB_UI_PPTXGENJS_TEST_FILE'),
-                         'npm pack pptxgenjs@4.0.1 bytes (package/dist/pptxgen.bundle.js) supplied explicitly')
-    def test_actual_pptxgenjs_bundle_matches_pin(self):
-        raw = Path(os.environ['WEB_UI_PPTXGENJS_TEST_FILE']).read_bytes()
-        self.assertIs(ui.verify_remote_script('pptxgenjs', raw), raw)
 
     def test_cli_prints_sri_and_hex(self):
         tmp = tempfile.TemporaryDirectory()

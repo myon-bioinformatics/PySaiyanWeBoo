@@ -38,13 +38,7 @@ jobs:
       - run: uv run --locked --group gradio python -m playwright install --with-deps --only-shell chromium
       - name: Pages in Chromium (controls, layout presets, route table and source panel offline and over HTTP, jsDelivr Plotly)
         run: uv run --locked --group gradio python tests/integration/pages_browser.py -v
-      - name: Compare Gradio DOM with shared extraction
-        # 🌱 the tests read these names: rename them together with the list in tests/support.py
-        env:
-          WEB_UI_GRADIO_TEST: '1'
-          BTK_ROOT: .browser-test-kit-dom
-          GRADIO_ANALYTICS_ENABLED: 'False'
-          DOM_EVIDENCE_DIR: build/gradio-dom
+      - name: Compare Gradio DOM with shared extraction (the test finds .browser-test-kit-dom and writes build/gradio-dom)
         run: uv run --group gradio pytest -v tests/integration/test_gradio_dom.py --junitxml=build/gradio-dom/junit.xml
       - uses: actions/upload-artifact@v7
         if: always()

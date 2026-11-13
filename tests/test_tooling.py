@@ -519,10 +519,10 @@ def test_module_main_entrypoint(tmp_path):
 # Local rollout contract; adopted vendor locks are deliberately independent.
 
 PARENT = "myon-bioinformatics/myon-bioinformatics"
-PARENT_WORKFLOW_PIN = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
 
 
 def test_parent_workflow_references_use_reviewed_rollout_commit():
+    parent_workflow_pin = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
     pins = []
     for path in sorted((ROOT / ".github/workflows").glob("*")):
         if path.suffix not in (".yml", ".yaml"):
@@ -537,7 +537,7 @@ def test_parent_workflow_references_use_reviewed_rollout_commit():
                 if not any(re.fullmatch(r"\s+path:\s*['\"]?\.vendor-sync-tools['\"]?\s*", item) for item in lines[i + 1:i + 12]):
                     pins.append(next((m.group(1) for m in refs if m), None))
     assert pins, "shared parent references must remain observable"
-    assert set(pins) == {PARENT_WORKFLOW_PIN}, pins
+    assert set(pins) == {parent_workflow_pin}, pins
 
 
 # ═══ 🧪 junit evidence ════════════════════════════════════════════════════════════════════════════════════
@@ -545,10 +545,10 @@ def test_parent_workflow_references_use_reviewed_rollout_commit():
 
 def test_tooling_probe_child_keeps_exit_status_with_junit(tmp_path):
     importer = ROOT / ".junit-tools" / "xprobe.py"
-    if not importer.is_file() and os.environ.get("GITHUB_ACTIONS") != "true" and not os.environ.get("FAILURE_EVIDENCE_DIR"):
+    if not importer.is_file() and os.environ.get("GITHUB_ACTIONS") != "true":
         pytest.skip("optional local JUnit regression: fetch the pinned importer (docs/junit-evidence.md)")
     assert importer.is_file(), "CI must provision the pinned test-only JUnit importer"
-    evidence = Path(os.environ.get("FAILURE_EVIDENCE_DIR", tmp_path / "evidence")).resolve()
+    evidence = ROOT / "build" / "controlled-failure"  # ci.yml uploads this folder as junit-controlled-python-3.15
     evidence.mkdir(parents=True, exist_ok=True)
     fixture = tmp_path / "test_probe.py"
     fixture.write_text('''
@@ -609,10 +609,6 @@ def test_skip():
 # Guard the real workflow's failure/evidence contract, using test-only PyYAML.
 
 CI_WORKFLOW = ROOT / ".github/workflows/ci.yml"
-COLLECTOR = (
-    "myon-bioinformatics/myon-bioinformatics/.github/workflows/"
-    "reusable-junit-identity.yml@9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
-)
 COMMAND = "uv run --group stagehand pytest -v --junitxml=build/test-results/pytest-3.15.xml"
 
 
@@ -638,7 +634,7 @@ def _assert_contract(workflow):
     assert run.get("if") is None
     # The exact normalized command rejects || true, set +e and trailing exit 0.
     assert " ".join(run["run"].split()) == COMMAND
-    assert run["env"]["FAILURE_EVIDENCE_DIR"] == "build/controlled-failure"
+    assert "env" not in run  # the test writes build/controlled-failure itself
     for name, path in (
         ("junit-python-3.15", "build/test-results/pytest-3.15.xml"),
         ("junit-controlled-python-3.15", "build/controlled-failure/"),
@@ -654,7 +650,8 @@ def _assert_contract(workflow):
     assert collector["needs"] == ["changes", "tooling"]
     assert collector["if"] == "(always()) && needs.changes.outputs.product_changed == 'true'"
     assert collector.get("continue-on-error", False) is False
-    assert collector["uses"] == COLLECTOR
+    assert collector["uses"] == ("myon-bioinformatics/myon-bioinformatics/.github/workflows/"
+                                 "reusable-junit-identity.yml@9e3da7ae1846e9604ebc24bb5178f7de094a4e77")
     reports = json.loads(collector["with"]["expected-reports"])
     assert isinstance(reports, list) and len(reports) == 2
     assert set(reports) == {

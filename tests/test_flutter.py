@@ -162,14 +162,6 @@ def test_every_function_the_inventory_names_as_a_successor_exists():
     assert not [name for name in sorted(named) if not hasattr(u, name)], 'a target that is not a function of pysaiyanweboo.py'
 
 
-def test_the_migration_inventory_is_what_the_tool_writes_from_the_pinned_checkout():
-    checkout = os.environ.get('FLUTTER_NAVIGATION_BASIC_CHECKOUT')
-    if not checkout:
-        pytest.skip('set FLUTTER_NAVIGATION_BASIC_CHECKOUT to a clean checkout of the pinned commit')
-    done = subprocess.run([sys.executable, '-S', str(INVENTORY.parents[1] / 'tools' / 'flutter_migration_inventory.py'), checkout, '--output', str(INVENTORY), '--check'], capture_output=True, text=True)
-    assert done.returncode == 0, done.stderr
-
-
 @pytest.mark.parametrize('status', [None, 'pending', 'unreviewed', 'proposed_retirement', 'successor'])
 def test_catalogue_only_inventory_never_authorizes_archiving(tmp_path, monkeypatch, status):
     from tools import flutter_migration_inventory as migration

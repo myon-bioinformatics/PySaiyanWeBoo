@@ -1,16 +1,13 @@
 """Helpers the test modules share (a test module imports them as ``from support import ...``; pytest puts this directory on the path)."""
 from __future__ import annotations
 
-# 🌱 Environment variables the tests read. Kept as they are for now; ⚙️ = a workflow sets it, so rename both together.
-#    The prefixes are mixed (WEB_UI_* / WEBUI_* / bare): a candidate to unify, with the workflows, in its own change.
-#    ⚙️ WEBUI_BROWSER       platform-matrix.yml, successor-studios.yml   → integration/pages_browser.py, integration/flutter_browser.py
-#    ⚙️ WEBUI_DEVICE        platform-matrix.yml                          → integration/pages_browser.py
-#    ⚙️ WEBUI_EVIDENCE_DIR  platform-matrix.yml                          → integration/pages_browser.py
-#    ⚙️ FAILURE_EVIDENCE_DIR ci.yml                                      → test_tooling.py
-#    ⚙️ WEB_UI_GRADIO_TEST, BTK_ROOT, DOM_EVIDENCE_DIR  gradio-dom.yml   → integration/test_gradio_dom.py
-#    ⚙️ GITHUB_ACTIONS      (GitHub itself)                              → test_tooling.py
-#    🖐️ by hand only: WEB_UI_GIFS, WEB_UI_SHOTS, WEBUI_CHROME, CHROME, WEBUI_CHROMIUM, WEBUI_AUDIO_ASSETS, WEB_UI_PLOTLY_JS_TEST_FILE,
-#       WEB_UI_PPTXGENJS_TEST_FILE, FLUTTER_NAVIGATION_BASIC_CHECKOUT
+# 🌱 The only environment variables the tests read (everything else is a fixed path: build/… for evidence, .browser-test-kit-dom for BTK).
+#    ⚙️ = a workflow sets it, so rename both together.
+#    ⚙️ WEBUI_BROWSER   platform-matrix.yml, successor-studios.yml (the engine of the matrix row) → integration/pages_browser.py, integration/flutter_browser.py
+#    ⚙️ WEBUI_DEVICE    platform-matrix.yml (the emulated device of the row)                      → integration/pages_browser.py
+#    ⚙️ GITHUB_ACTIONS  GitHub itself (CI must have the JUnit importer; locally the test skips)   → test_tooling.py
+#    🎞️ WEB_UI_GIFS     by hand: "DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]" keeps the demo GIFs → integration/pages_browser.py
+#    📸 WEB_UI_SHOTS    by hand: DIR keeps a screenshot of every cities check                     → integration/worlds_browser.py
 
 import json, re, shutil, subprocess, tempfile
 from pathlib import Path

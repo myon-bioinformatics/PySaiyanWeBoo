@@ -70,7 +70,6 @@ jobs:
         env:
           WEBUI_BROWSER: ${{ matrix.browser }}
           WEBUI_DEVICE: ${{ matrix.device }}
-          WEBUI_EVIDENCE_DIR: build/platform/photo-evidence
           TESTS: ${{ matrix.tests }}
         run: |
           read -ra names <<< "$TESTS"

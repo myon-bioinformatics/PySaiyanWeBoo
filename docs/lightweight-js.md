@@ -83,8 +83,7 @@ an SRI value (`sha256-`/`sha384-`/`sha512-`), so one pin serves both the
 raw)` checks local bytes of an allowlisted script against `REMOTE_SCRIPT_INTEGRITY`.
 `python pysaiyanweboo.py --sri FILE` prints the sha384 SRI and SHA-256 hex for a new pin.
 On 2026-10-17 the `pptxgenjs` pin also matched `package/dist/pptxgen.bundle.js`
-from `npm pack pptxgenjs@4.0.1` (460,889 bytes); set
-`WEB_UI_PPTXGENJS_TEST_FILE` to that file to re-run the check.
+from `npm pack pptxgenjs@4.0.1` (460,889 bytes); `python pysaiyanweboo.py --sri FILE` on that file re-runs the check.
 
 Stylesheet links retain their existing local/HTTPS behavior.
 

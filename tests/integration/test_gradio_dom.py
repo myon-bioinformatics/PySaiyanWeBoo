@@ -1,5 +1,5 @@
 """Opt-in real Gradio/Chromium test, using the shared BTK text extractor."""
-import importlib.util, json, os
+import importlib.util, json
 from pathlib import Path
 
 import pytest
@@ -14,11 +14,14 @@ def load(name, path):
     return module
 
 
-@pytest.mark.skipif(os.environ.get('WEB_UI_GRADIO_TEST') != '1', reason='optional Gradio integration lane')
-def test_gradio_dom(tmp_path, monkeypatch):
+BTK = ROOT / '.browser-test-kit-dom'  # the pinned BrowserTestKit checkout gradio-dom.yml makes
+
+
+@pytest.mark.skipif(not BTK.is_dir() or importlib.util.find_spec('gradio') is None, reason='optional Gradio lane (gradio-dom.yml)')
+def test_gradio_dom(monkeypatch):
     monkeypatch.setenv('GRADIO_ANALYTICS_ENABLED', 'False')
     from playwright.sync_api import sync_playwright, expect
-    btk = Path(os.environ['BTK_ROOT']).resolve()
+    btk = BTK
     extractor = load('shared_page_text', btk / 'tools/page_text.py')
     lab = load('gradio_lab', ROOT / 'tools/web_ui_serve_dom_lab.py')
     alpine = json.loads((ROOT / 'docs/evidence/alpine-code-dom.json').read_text())
@@ -66,7 +69,7 @@ def test_gradio_dom(tmp_path, monkeypatch):
             finally:
                 browser.close()
     finally:
-        output = Path(os.environ.get('DOM_EVIDENCE_DIR', str(tmp_path)))
+        output = ROOT / 'build' / 'gradio-dom'
         output.mkdir(parents=True, exist_ok=True)
         (output / 'gradio-dom.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
         demo.close()

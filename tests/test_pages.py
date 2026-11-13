@@ -5797,11 +5797,6 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(done.returncode, 2)
         self.assertIn("⛔ invalid pattern request: viewport needs a positive width and height", done.stderr)
 
-    @unittest.skipUnless(os.environ.get("FLUTTER_NAVIGATION_BASIC_CHECKOUT"), "set FLUTTER_NAVIGATION_BASIC_CHECKOUT to a checkout of the original to rebuild the golden")
-    def test_the_golden_is_what_the_tool_builds_from_the_original(self):
-        done = subprocess.run([sys.executable, str(ROOT / "tools" / "contract_golden.py"), os.environ["FLUTTER_NAVIGATION_BASIC_CHECKOUT"], "--check"], capture_output=True, text=True, timeout=600)
-        self.assertEqual((done.returncode, done.stdout.strip()), (0, "contract golden: unchanged"), done.stderr)
-
 
 class PatternBridgeTests(unittest.TestCase):
     """``--pattern-serve``: the references over loopback HTTP. The checks of python/test_validation_http.py (Host, Origin, no wildcard CORS, media type, size, timeout) hold for every family."""

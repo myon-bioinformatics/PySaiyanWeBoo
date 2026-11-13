@@ -23,7 +23,7 @@ Single/double/triple and raw strings are recognized; interpolation expressions a
 These are heuristic groups, not proof of equivalent behavior or completed migration. All 594 navigation, API and UI `view.dart` files share one shape). A status says what web-ui did, not that the original was
 reviewed line by line: `successor`, `partial`, `not_absorbed` (with the reason), `pending` (asked for, not done), `proposed_retirement` (Flutter runtime with no counterpart on the web; needs the
 owner's approval) and `unreviewed`. Outside the catalogues: 9 not_absorbed, 96 partial, 3 pending, 64 proposed_retirement, 74 successor, 14 unreviewed. `archive_ready` stays false while anything is pending, unreviewed or an unapproved retirement.
-`tests/test_flutter.py` checks the file's invariants, that every function it names exists, and (with `FLUTTER_NAVIGATION_BASIC_CHECKOUT` set) that the tool writes exactly this file.
+`tests/test_flutter.py` checks the file's invariants and that every function it names exists; `python -S tools/flutter_migration_inventory.py CHECKOUT --output docs/flutter-migration-inventory.json --check` confirms the tool writes exactly this file.
 The generator rejects modified tracked files of the directories it reads and performs no download or repository mutation.
 
 | Source | Successor | Remaining / deliberate difference |
