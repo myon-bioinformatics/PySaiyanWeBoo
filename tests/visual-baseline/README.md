@@ -24,7 +24,7 @@ screenshot produced by the current CI lane is visible in the candidate report.
 Enforcement may be rolled out more narrowly with `--pattern`, for example:
 
 ```sh
-python scripts/check_visual_regression.py \
+python tools/check_visual_regression.py \
   --candidate-dir . \
   --pattern "web-ui-contract-*.png" \
   --require-baseline

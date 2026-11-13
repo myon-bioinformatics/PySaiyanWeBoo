@@ -1,7 +1,7 @@
 import tempfile, unittest
 from pathlib import Path
 
-from scripts.check_visual_regression import compare
+from tools.check_visual_regression import compare
 
 
 def _png(width=1, height=1):
