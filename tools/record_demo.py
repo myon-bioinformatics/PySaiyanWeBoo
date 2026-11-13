@@ -16,7 +16,7 @@ are those rules as functions, so the browser tests name their GIFs the same way 
 written as deltas (``optimize=True``): about a third of the size, decoding to exactly the same pictures. The zoom step
 (``cam.zoom``) is Ironmate's smooth zoom-in, kept to what the demos need and run through this same encoder, not a second copy of
 that tool; this repository is the canonical home of both. Needs Playwright and Pillow, like the browser tests. Scenes are ordinary functions, so a new
-operation is one ``@scene`` below; ``tests/integration/school_browser.py`` records every scene to keep them from rotting.
+operation is one ``@scene`` below; ``tests/integration/worlds_browser.py`` records every scene to keep them from rotting.
 """
 from __future__ import annotations
 

@@ -11,7 +11,7 @@ on:
   pull_request:
     paths:
       - 'pysaiyanweboo.py'
-      - 'tests/integration/controls_browser.py'
+      - 'tests/integration/pages_browser.py'
       - 'tests/fixtures/photo_import_cases.json'
       - 'tests/fixtures/pattern_assets.json'
       - 'tests/fixtures/pattern_golden.json'
@@ -66,6 +66,7 @@ jobs:
         timeout-minutes: 20
         run: uv run --locked --group gradio python -m playwright install --with-deps --only-shell "${{ matrix.browser }}"
       - name: Photo studio in this engine (rules equal Python, upright pixels equal Pillow, drawing, history, export)
+        # 🌱 the tests read these names: rename them together with the list in tests/support.py
         env:
           WEBUI_BROWSER: ${{ matrix.browser }}
           WEBUI_DEVICE: ${{ matrix.device }}
@@ -74,7 +75,7 @@ jobs:
         run: |
           read -ra names <<< "$TESTS"
           args=()
-          for name in "${names[@]}"; do args+=("tests.integration.controls_browser.$name"); done
+          for name in "${names[@]}"; do args+=("tests.integration.pages_browser.$name"); done
           uv run --locked --group gradio python -m unittest -v "${args[@]}"
       - name: Build and serve the example pages
         run: |

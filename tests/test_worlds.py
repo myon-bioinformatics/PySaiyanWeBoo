@@ -1,20 +1,29 @@
-"""School world: the walking grid oracle, validation, the classroom generator, the emitted HTML, and Node parity.
+"""🌍 Worlds: the classroom, motion, real places and the shared board (browser behaviour: ``tests/integration/worlds_browser.py``)."""
 
-Browser behaviour (picker, keys, pad, taps, collisions) is in tests/integration/school_browser.py.
-"""
 import argparse
-from datetime import datetime, timedelta, timezone
+import copy
+import importlib.util
 import io
 import json
 import math
 import random
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+
 import pysaiyanweboo as ui
 from support import node26, node_js, node_value, world_js
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+# ═══ 🏫 classroom ═════════════════════════════════════════════════════════════════════════════════════════
+# School world: the walking grid oracle, validation, the classroom generator, the emitted HTML, and Node parity.
+#
+# Browser behaviour (picker, keys, pad, taps, collisions) is in tests/integration/worlds_browser.py.
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import record_demo  # noqa: E402  (the GIF recorder for the README demos)
@@ -371,12 +380,8 @@ def test_classroom_directive_refuses_bad_data(floor):
 ONE_LINER = {"schema": ui.WORLD_SCHEMA, "avatars": ["🙂", "🐱"], "floors": [{"id": "room", "label": "教室", "classroom": {"rows": 5, "groups": 3}}]}
 
 
-def _cli(*args, stdin, command=None):
-    import os
-    import sys
-    cmd = command or [sys.executable, "-S", "pysaiyanweboo.py"]
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return subprocess.run([*cmd, *args], input=stdin.encode("utf-8"), capture_output=True, cwd=root, timeout=60)
+def _cli(*args, stdin):
+    return subprocess.run([sys.executable, "-S", "pysaiyanweboo.py", *args], input=stdin.encode("utf-8"), capture_output=True, cwd=ROOT, timeout=60)
 
 
 def test_world_page_from_stdin_equals_the_page_from_a_file(tmp_path):
@@ -403,8 +408,8 @@ def test_world_from_stdin_is_bounded():
 def test_node26_reaches_the_same_page_through_py_launch():
     node = _node26()
     expected = ui.world_document(ONE_LINER)
-    result = _cli("--", "pysaiyanweboo.py", "--world", "-", stdin=json.dumps(ONE_LINER, ensure_ascii=False), command=[node, "vendor/py_launch.cjs"])
-    assert result.returncode == 0 and result.stdout.decode("utf-8") == expected
+    result = ui.run_node(ROOT / "vendor/py_launch.cjs", "--", ROOT / "pysaiyanweboo.py", "--world", "-", node=node, input=json.dumps(ONE_LINER, ensure_ascii=False), timeout=60)
+    assert result.returncode == 0 and result.stdout == expected, result.stderr
 
 
 def _png(color, mark=None, size=(64, 48)):
@@ -780,3 +785,572 @@ def test_a_mark_is_an_emoji_in_place_of_the_dot_scaled_by_the_world():
     own = ui.place_floor([{"id": "a", "label": "A", "lat": 35.0, "lon": 139.0, "category": "cafe", "mark": "☕"}, {"id": "b", "label": "B", "lat": 35.001, "lon": 139.0, "category": "cafe"}],
                          marks={"cafe": "🍰"})
     assert [s.get("mark") for s in own["spots"]] == ["☕", "🍰"]                                   # a point's own mark wins over its category's
+
+
+# ═══ 🏃 motion ════════════════════════════════════════════════════════════════════════════════════════════
+# Python oracle and emitted browser projection: no browser/Python runtime dependency.
+
+def test_walk_constant_velocity_clamp_and_hold():
+    s = ui.world_walk([10, 20], [70, 100], speed=10, at=5)
+    assert s['duration'] == 10
+    assert ui.world_motion_sample(s, 0) == [10, 20]
+    assert ui.world_motion_sample(s, 10) == [40, 60]
+    assert ui.world_motion_sample(s, 1e9) == [70, 100]
+    assert ui.world_walk([0, 0], [-20, 2000], width=64, height=128)['to'] == [0, 128]
+    still = ui.world_walk([3, 4], [3, 4])
+    assert ui.world_motion_sample(still, 0) == [3, 4]
+
+
+def test_retarget_pause_resume_and_frame_rate_independence():
+    original = ui.world_walk([0, 0], [100, 0], speed=10)
+    point = ui.world_motion_sample(original, 3)
+    retarget = ui.world_walk(point, [30, 100], at=3, speed=10)
+    assert ui.world_motion_sample(retarget, 3) == point
+    # A pause is a frozen simulation clock. Resume uses elapsed, not wall time.
+    for _ in range(60):
+        assert ui.world_motion_sample(retarget, 3) == point
+    assert ui.world_motion_sample(retarget, 5) == [30, 20]
+    for fps in (24, 60, 144):
+        for i in range(fps * 5):
+            ui.world_motion_sample(retarget, i / fps)
+        assert ui.world_motion_sample(retarget, 8) == [30, 50]
+
+
+def test_seeded_villagers_continuous_bounded_and_exact_speed():
+    for seed in range(20):
+        path = ui.villager_path(seed, 128, 64, speed=17, stops=64)
+        assert path == ui.villager_path(seed, 128, 64, speed=17, stops=64)
+        assert path['keys'][0][1:] == path['keys'][-1][1:]
+        assert len(path['keys']) == 130
+        for a, b in zip(path['keys'], path['keys'][1:]):
+            assert 0 <= b[1] <= 128 and 0 <= b[2] <= 64
+            distance = math.dist(a[1:], b[1:])
+            if distance:
+                duration = (b[0] - a[0]) / 100 * path['duration']
+                assert distance / duration == pytest.approx(17, abs=1e-9)
+
+
+@pytest.mark.parametrize('bad', [float('nan'), float('inf'), -float('inf'), 10**1000, True, '3', None])
+def test_nonfinite_or_non_numeric_inputs(bad):
+    for call in (lambda: ui.world_walk([bad, 0], [1, 2]),
+                 lambda: ui.world_walk([0, 0], [1, 2], speed=bad),
+                 lambda: ui.world_motion_sample(ui.world_walk([0, 0], [1, 2]), bad),
+                 lambda: ui.board_clock(bad, 0),
+                 lambda: ui.travel_seconds(0, 0, 10, 10, bad)):
+        with pytest.raises(ValueError):
+            call()
+
+
+@pytest.mark.parametrize('kwargs', [{'stops': 65}, {'seed': -1}, {'speed': 0}, {'width': 4097}, {'margin': 100}])
+def test_plan_resource_bounds(kwargs):
+    with pytest.raises(ValueError):
+        ui.villager_path(**{'seed': 1, 'width': 128, 'height': 64, **kwargs})
+
+
+@pytest.mark.parametrize('now,at,expected', [(600,630,30),(600.1,630,30), (629.999,630,1), (630,630,0), (630.001,630,1440), (1439.5,0,1)])
+def test_daily_countdown_seconds_ceil_exact_target_and_tomorrow(now, at, expected):
+    assert ui.minutes_until(now, at) == expected
+
+
+@pytest.mark.parametrize('now,offset,clock,minutes', [(0,0,'00:00',0), (0,-60,'23:00',1380), (86399,540,'08:59',539+59/60)])
+def test_clock_explicit_seconds_offset_and_day_rollover(now, offset, clock, minutes):
+    result = ui.board_clock(now, offset)
+    assert result['clock'] == clock
+    assert result['minutes'] == pytest.approx(minutes)
+
+
+def test_html_safe_accessible_and_offset_opt_in():
+    value = ui.example_data('world')
+    value['board']['offset_minutes'] = 540
+    html = ui.world_html(value)
+    assert 'data-offset="540"' in html and 'aria-live="off"' in html
+    assert 'aria-label="自分"' in html
+    assert 'type="number"' in html and 'ここへ歩く' in html and 'aria-pressed="false"' in html
+    assert ui.world_validate(ui.world_validate(value)) == ui.world_validate(value)
+    assert 'animation-play-state:paused' in ui.world_css(value)
+
+
+def test_node26_projection_matches_python_oracle():
+    node26() or pytest.skip('existing Node 26+ required; no installation')
+    segments = [ui.world_walk([i, i*2], [100-i, 70-i], at=i/3, speed=10+i) for i in range(20)]
+    segments += [ui.world_walk([0, 0], [0, 0], at=2)]
+    cases = [[s, t] for s in segments for t in (0, s['at'], s['at'] + s['duration']/2, s['at']+s['duration'], 1e9)]
+    boards = [[0,-60], [86399.9,540], [1800000001,0]]
+    countdowns = [[600,630], [629.999,630], [630,630], [630.001,630], [1439.5,0]]
+    result = node_value(world_js(), '{samples:data.cases.map(([s,t])=>motionSample(s,t)),boards:data.boards.map(([n,o])=>boardClock(n,o)),'
+                        'countdowns:data.countdowns.map(([n,a])=>minutesUntil(n,a)),walk:motionWalk([10,20],[70,100],5,10,1024,768)}',
+                        {'cases': cases, 'boards': boards, 'countdowns': countdowns})
+    for actual, (s, t) in zip(result['samples'], cases):
+        assert actual == pytest.approx(ui.world_motion_sample(s, t), abs=1e-10)
+    for actual, (n,o) in zip(result['boards'], boards):
+        expected = ui.board_clock(n,o)
+        assert actual['clock'] == expected['clock']
+        assert actual['minutes'] == pytest.approx(expected['minutes'])
+    assert result['countdowns'] == [ui.minutes_until(n,a) for n,a in countdowns]
+    assert result['walk'] == ui.world_walk([10,20], [70,100], at=5, speed=10)
+
+
+def test_node26_interaction_harness():
+    # Appended to world.js (whose inner bindMap it drives): a fake DOM, clock and pointer, not a real-browser rendering test.
+    motion_harness = r"""// Deterministic DOM/clock harness, NOT a real-browser rendering test.
+import assert from 'node:assert/strict';
+let now=0, frame, globalEvents={};
+globalThis.performance={now:()=>now*1000};
+let wall=1800000000000;
+const RealDate=Date;globalThis.Date=class extends RealDate{constructor(...args){super(...(args.length?args:[wall+now*1000]))}getTimezoneOffset(){return 0}};
+globalThis.setInterval=()=>0;globalThis.clearInterval=()=>{};
+globalThis.requestAnimationFrame=f=>{frame=f};
+globalThis.addEventListener=(name,f)=>{globalEvents[name]=f};
+globalThis.location={hash:'',pathname:'/',search:''};
+globalThis.history={replaceState(){}};
+const reduced={matches:false,addEventListener(name,f){this.change=f}};
+globalThis.matchMedia=()=>reduced;
+function node(){return {dataset:{},style:{setProperty(k,v){this[k]=String(v)}},events:{},addEventListener(n,f){this.events[n]=f},setAttribute(n,v){this[n]=v},hasAttribute(n){return Object.hasOwn(this,n)},removeAttribute(n){delete this[n]},toggleAttribute(n,v){this[n]=v}}}
+const actor=node(), avatar=node(), button=node(), board=node(), form=node();
+form.elements={x:{value:'100'},y:{value:'32'}};form.reportValidity=()=>true;
+const controls=node();controls.querySelector=s=>s==='form'?form:s==='output'?board:button;
+avatar.dataset={x:'64',y:'32',speed:'10'};
+const clock=node(), countdown=node();countdown.dataset.at='10:30';board.dataset.offset='0';
+board.querySelector=s=>s==='[data-clock]'?clock:null;board.querySelectorAll=s=>s==='[data-at]'?[countdown]:[];   // the board also has gauges now: answer by selector
+const f=node();f.dataset={w:'128',h:'64',floor:'one'};f.querySelector=()=>avatar;f.getBoundingClientRect=()=>({left:0,top:0,width:128,height:64});
+const other=node();other.dataset={w:'128',h:'64',floor:'two'};other.querySelector=()=>null;other.getBoundingClientRect=f.getBoundingClientRect;
+// Model the label nodes queried by near(), including attribute removal.
+const startSpot=node(), nextSpot=node();startSpot.dataset={x:'64',y:'32'};nextSpot.dataset={x:'104',y:'32'};
+f.querySelectorAll=s=>s==='.ui-spot[data-x]'?[startSpot,nextSpot]:s==='.ui-spot[data-near]'?[startSpot,nextSpot].filter(a=>a.hasAttribute('data-near')):[];
+other.querySelectorAll=()=>[];
+const radio={value:'one'}, view=node(),cam=node();view.clientWidth=128;view.clientHeight=64;view.contains=t=>t===view;view.closest=()=>null;view.hasPointerCapture=()=>false;view.setPointerCapture=()=>{};
+const el=node();el.isConnected=true;el.dataset.zoomMax=4;
+el.querySelector=s=>s==='.ui-world-pause'?button:s==='.ui-world-view'?view:s==='.ui-world-cam'?cam:s==='.ui-world-motion-controls'?controls:s==='.ui-board'?board:s.includes('input[name$="-floor"]')?radio:s.includes('data-floor="two"')?other:s==='.ui-floor'||s.includes('data-floor="one"')?f:null;
+el.querySelectorAll=s=>s==='.ui-floor'?[f,other]:[];
+bindMap(el);
+const tick=t=>{now=t;const cb=frame;frame=null;cb()};
+const pos=()=>[parseFloat(avatar.style['--px']),parseFloat(avatar.style['--py'])];
+const event=(id,x,y,type='pointerup')=>({button:0,pointerId:id,clientX:x,clientY:y,target:view,type});
+const tap=(x,y)=>{view.events.pointerdown(event(1,x,y,'pointerdown'));globalEvents.pointerup(event(1,x,y))};
+tick(0);assert.deepEqual(pos(),[64,32]);assert.equal(startSpot.hasAttribute('data-near'),true);assert.equal(nextSpot.hasAttribute('data-near'),false);assert.equal(countdown.textContent.includes('あと'),true);
+tap(104,32);tick(2);assert.deepEqual(pos(),[84,32]);
+tap(84,52);tick(3);assert.deepEqual(pos(),[84,42]);
+button.events.click();tick(8);assert.deepEqual(pos(),[84,42]);assert.equal(button['aria-pressed'],'true');
+button.events.click();tick(9);assert.deepEqual(pos(),[84,52]);
+// Drags, a motionless pinch, and cancellation must never create a destination.
+view.events.pointerdown(event(1,10,10));view.events.pointermove(event(1,50,10));globalEvents.pointerup(event(1,50,10));tick(10);assert.deepEqual(pos(),[84,52]);
+view.events.pointerdown(event(1,10,10));view.events.pointerdown(event(2,20,20));globalEvents.pointerup(event(2,20,20));globalEvents.pointerup(event(1,10,10));tick(11);assert.deepEqual(pos(),[84,52]);
+view.events.pointerdown(event(1,10,10));globalEvents.pointercancel(event(1,10,10,'pointercancel'));tick(12);assert.deepEqual(pos(),[84,52]);
+// Keyboard form uses exactly the same destination path.
+form.elements.x.value='104';form.elements.y.value='52';form.events.submit({preventDefault(){}});tick(13);assert.deepEqual(pos(),[94,52]);assert.equal(startSpot.hasAttribute('data-near'),false);assert.equal(nextSpot.hasAttribute('data-near'),true);
+reduced.matches=true;reduced.change();tick(20);assert.deepEqual(pos(),[94,52]);
+form.elements.x.value='12';form.elements.y.value='10';form.events.submit({preventDefault(){}});assert.deepEqual(pos(),[12,10]);
+reduced.matches=false;reduced.change();tick(21);assert.deepEqual(pos(),[12,10]);
+// No board/form leakage into a floor without motion; return keeps avatar state.
+radio.value='two';el.events.change({target:{name:'demo-floor'}});tick(22);assert.equal(form.hidden,true);tap(1,1);
+radio.value='one';el.events.change({target:{name:'demo-floor'}});tick(23);assert.equal(form.hidden,false);assert.deepEqual(pos(),[12,10]);
+// Wall clock can jump without changing monotonic motion.
+wall=0;tick(23);assert.deepEqual(pos(),[12,10]);
+el.isConnected=false;tick(24);assert.equal(frame,null);
+console.log('motion interaction harness passed');"""
+    node26() or pytest.skip('existing Node 26+ required; no installation')
+    assert 'motion interaction harness passed' in node_js(world_js() + motion_harness).stdout
+
+
+# ═══ 🗺️ places ═══════════════════════════════════════════════════════════════════════════════════════════
+# Real places in miniature: the ``place`` floor turns latitude/longitude points into a tile grid (``pysaiyanweboo.place_floor``), and the ``cities`` example
+# (Parallel Tokyo, Reverse London and Fake Paris) is built from it. The coordinates are approximate, so the checks are about relative positions and walking, not metres.
+
+def pt(id, lat, lon, **over):
+    return {"id": id, "label": id.upper(), "lat": lat, "lon": lon, **over}
+
+
+# Two points 1 km apart on a meridian (about 0.00899 degrees of latitude), at 100 m per tile.
+NORTH, SOUTH = pt("a", 35.0090, 139.0), pt("b", 35.0000, 139.0)
+
+
+def cell(floor, spot_id):
+    spot = next(s for s in floor["spots"] if s["id"] == f"{floor['id']}-{spot_id}")
+    return spot["x"] // floor["tile"], spot["y"] // floor["tile"]
+
+
+def walkable(floor):
+    blocked = ui.world_blocked(floor["width"], floor["height"], floor["tile"], floor["props"])
+    start = (floor["player"]["x"] // floor["tile"], floor["player"]["y"] // floor["tile"])
+    return ui.world_reach(blocked, start)
+
+
+def test_points_land_on_tiles_from_their_distance():
+    floor = ui.place_floor([NORTH, SOUTH], meters=100)
+    (ax, ay), (bx, by) = cell(floor, "a"), cell(floor, "b")
+    assert ax == bx
+    assert by - ay == 10                                         # 1 km at 100 m per tile; north is up
+    assert floor["width"] % floor["tile"] == 0 and floor["height"] % floor["tile"] == 0
+    assert floor["spots"][0]["x"] == int((ax + .5) * floor["tile"])   # a spot stands in the middle of its tile
+
+
+def test_east_is_right_and_longitude_shrinks_with_latitude():
+    equator = ui.place_floor([pt("w", 0.0, 10.0), pt("e", 0.0, 10.0090)], meters=100)
+    north = ui.place_floor([pt("w", 60.0, 10.0), pt("e", 60.0, 10.0090)], meters=100)
+    assert cell(equator, "e")[0] - cell(equator, "w")[0] == 10   # 0.009 degrees of longitude is about 1 km at the equator ...
+    assert cell(north, "e")[0] - cell(north, "w")[0] == 5        # ... and half of that at 60 degrees north
+
+
+def test_same_arguments_give_the_same_floor_and_it_validates():
+    one = ui.place_floor([NORTH, SOUTH], meters=100, links=[["a", "b"]], id="p", label="P")
+    assert one == ui.place_floor([NORTH, SOUTH], meters=100, links=[["a", "b"]], id="p", label="P")
+    ui.world_validate({"schema": ui.WORLD_SCHEMA, "id": "w", "floors": [one]})
+
+
+def test_two_points_on_one_tile_take_two_tiles_and_the_earlier_one_keeps_its_own():
+    a, b = pt("a", 35.0, 139.0), pt("b", 35.00001, 139.00001)                                  # a few metres apart: the same tile at 500 m
+    far = pt("far", 35.1, 139.0)
+    one, other = ui.place_floor([a, b, far], meters=500), ui.place_floor([b, a, far], meters=500)
+    assert cell(one, "a") == cell(other, "b")                                                 # whoever comes first keeps the tile
+    assert cell(one, "b") != cell(one, "a") and cell(other, "a") != cell(other, "b")
+    assert max(abs(cell(one, "a")[i] - cell(one, "b")[i]) for i in (0, 1)) == 1                # and the other is one tile away
+    assert len({cell(one, k) for k in ("a", "b", "far")}) == 3
+
+
+def test_a_maps_url_is_a_point_like_any_other():
+    a = ui.place_floor([pt("a", 35.0090, 139.0), pt("b", 35.0, 139.0)], meters=100)
+    b = ui.place_floor([{"id": "a", "label": "A", "maps": "https://www.google.com/maps/@35.0090,139.0,17z"}, pt("b", 35.0, 139.0)], meters=100)
+    assert a["spots"] == b["spots"]
+    with pytest.raises(ValueError, match="no coordinates"):
+        ui.place_floor([{"id": "a", "label": "A", "maps": "https://example.test/"}], meters=100)
+
+
+def test_an_area_is_the_box_tolerance_area_gives():
+    centre = (35.0, 139.0)
+    floor = ui.place_floor([pt("c", *centre)], meters=100, area={"center": list(centre), "radius": 1000})
+    box = ui.tolerance_area(*centre, 1000)
+    height_m = (box["north"] - box["south"]) * math.pi / 180 * ui.EARTH_RADIUS_M
+    assert floor["height"] // floor["tile"] == int(height_m // 100) + 1          # the map is the box, with no margin
+    assert abs(cell(floor, "c")[1] - floor["height"] // floor["tile"] // 2) <= 1  # the centre is in the middle
+    with pytest.raises(ValueError, match="outside the area"):
+        ui.place_floor([pt("far", 36.0, 139.0)], meters=100, area={"center": list(centre), "radius": 1000})
+    with pytest.raises(ValueError, match="date line"):
+        ui.place_floor([pt("x", 0.0, 179.9999)], meters=100, area={"center": [0.0, 179.9999], "radius": 50000})
+
+
+RIVER = {"line": [[35.0045, 138.99], [35.0045, 139.01]], "width": 2}         # between a (north) and b (south), all the way across
+
+
+def test_a_river_cuts_the_place_until_a_link_makes_a_bridge():
+    with pytest.raises(ValueError, match="cut off by water from a: b"):
+        ui.place_floor([NORTH, SOUTH], meters=100, rivers=[RIVER])
+    floor = ui.place_floor([NORTH, SOUTH], meters=100, rivers=[RIVER], links=[["a", "b"]])
+    kinds = {p["kind"] for p in floor["props"]}
+    assert {"water", "bridge", "road"} <= kinds
+    assert cell(floor, "b") in walkable(floor)
+    bridge = next(p for p in floor["props"] if p["kind"] == "bridge")
+    tile = floor["tile"]
+    assert all(floor["props"].index(bridge) > floor["props"].index(w) for w in floor["props"] if w["kind"] == "water")   # laid after the water
+    assert bridge["w"] % tile == 0 and bridge["h"] % tile == 0
+
+
+def test_no_spot_stands_in_the_water():
+    floor = ui.place_floor([pt("a", 35.0045, 139.0), pt("b", 35.0090, 139.0)], meters=100, rivers=[RIVER], links=[["a", "b"]])   # a is on the river
+    blocked = ui.world_blocked(floor["width"], floor["height"], floor["tile"], floor["props"])
+    for spot in floor["spots"]:
+        x, y = spot["x"] // floor["tile"], spot["y"] // floor["tile"]
+        assert blocked[y][x] == "0"
+
+
+def test_roads_are_few_props_not_one_per_tile():
+    pts = [pt("a", 35.0090, 139.0), pt("b", 35.0, 139.0), pt("c", 35.0, 139.0090)]
+    floor = ui.place_floor(pts, meters=50, links=[["a", "b"], ["b", "c"]])
+    assert len(floor["props"]) <= 4                              # grass, and the two roads (the corner is shared)
+
+
+def test_mistakes_say_what_is_wrong():
+    ok = [NORTH, SOUTH]
+    for bad, message in [
+        (dict(points=[]), "1..64 points"),
+        (dict(points=[NORTH, NORTH]), "unique"),
+        (dict(points=[pt("A", 1, 1)]), "unique lowercase token"),
+        (dict(points=[pt("a", 91, 0)]), "between -90 and 90"),
+        (dict(points=[{"id": "a", "label": "A", "lat": 1}]), "either lat and lon or maps"),
+        (dict(points=[pt("a", 1, 1, color="red")]), "a point has"),
+        (dict(points=[pt("a", 1, 1, flip="")]), "flip must"),
+        (dict(points=[pt("a", 1, 1, sign="neon")]), "sign is one of led, wood"),
+        (dict(points=[pt("a", 1, 1, sign="led")]), "needs a point that is not a sign"),
+        (dict(points=[NORTH, pt("s", 35.0045, 139.0, sign="led")], start="s"), "start is the id"),
+        (dict(points=[NORTH, pt("s", 35.0045, 139.0, sign="led")], links=[["a", "s"]]), "two different point ids"),
+        (dict(points=ok, scatter={"kind": "tree", "every": 4, "seed": 1}), "scatter is"),
+        (dict(points=ok, scatter={"kind": "road", "every": 4, "seed": 1}), "scatter is"),
+        (dict(points=ok, scatter={"kind": "fire", "every": 1, "seed": 1}), "every must be an integer from 2 to 64"),
+        (dict(points=ok, scatter={"kind": "fire", "every": 4}), "scatter is"),
+        (dict(points=[pt("a", 1, 1, category="Big")]), "lowercase token"),
+        (dict(points=ok, links=[["a", "zzz"]]), "two different point ids"),
+        (dict(points=ok, links=[["a", "a"]]), "two different point ids"),
+        (dict(points=ok, start="zzz"), "start is the id"),
+        (dict(points=ok, rivers=[{"line": [[1, 1]], "width": 1}]), "a river is"),
+        (dict(points=ok, rivers=[{"line": [[35, 139], [35.1, 139]], "width": 9}]), "width must be an integer from 1 to 8"),
+        (dict(points=ok, meters=7), "meters must be an integer from 8 to 2000"),
+        (dict(points=ok, meters=8), "4096 units"),
+        (dict(points=ok, tile=20), "multiple of 8"),
+    ]:
+        with pytest.raises(ValueError, match=message):
+            ui.place_floor(**bad)
+
+
+def test_scatter_puts_one_decoration_in_each_block_on_a_free_tile_and_is_repeatable():
+    pts = [pt("a", 35.0090, 139.0), pt("b", 35.0, 139.0)]
+    scatter = {"kind": "fire", "every": 4, "seed": 7}
+    floor = ui.place_floor(pts, meters=100, rivers=[RIVER], links=[["a", "b"]], scatter=scatter)
+    assert floor == ui.place_floor(pts, meters=100, rivers=[RIVER], links=[["a", "b"]], scatter=scatter)
+    assert floor != ui.place_floor(pts, meters=100, rivers=[RIVER], links=[["a", "b"]], scatter={**scatter, "seed": 8})
+    tile = floor["tile"]
+    fires = [(p["x"] // tile, p["y"] // tile) for p in floor["props"] if p["kind"] == "fire"]
+    assert all(p["w"] == p["h"] == tile for p in floor["props"] if p["kind"] == "fire")
+    cols, rows = floor["width"] // tile, floor["height"] // tile
+    blocks = {(x // 4, y // 4) for x, y in fires}
+    assert len(blocks) == len(fires)                                              # at most one in a block ...
+    assert len(fires) >= (cols // 4) * (rows // 4) - 2                           # ... and nearly every block has one (a block may be all water)
+    others = {(p["x"] // tile + i, p["y"] // tile + j) for p in floor["props"] if p["kind"] in ("water", "road", "bridge")
+              for i in range(p["w"] // tile) for j in range(p["h"] // tile)}
+    spots = {(s["x"] // tile, s["y"] // tile) for s in floor["spots"]}
+    assert not set(fires) & (others | spots)                                      # never on a road, the river or a spot
+    assert cell(floor, "b") in walkable(floor)                                    # and a fire is only a decoration
+
+
+def test_a_flip_is_kept_through_validation_and_written_as_a_second_face():
+    floor = ui.place_floor([pt("a", 35.0, 139.0, flip="🐉"), pt("b", 35.1, 139.0)], meters=500, id="p")
+    assert [s.get("flip") for s in floor["spots"]] == ["🐉", None]
+    world = ui.world_validate({"schema": ui.WORLD_SCHEMA, "id": "w", "floors": [floor]})
+    assert world["floors"][0]["spots"][0]["flip"] == "🐉" and "flip" not in world["floors"][0]["spots"][1]
+    html = ui.world_html({"schema": ui.WORLD_SCHEMA, "id": "w", "floors": [floor]})
+    assert 'data-flip="🐉"' in html and html.count("data-flip=") == 1
+
+
+def test_a_sign_is_a_small_board_on_the_nearest_tile_corner_and_takes_no_tile():
+    floor = ui.place_floor([NORTH, SOUTH, pt("board", 35.0045, 139.0, category="sign", sign="led", label="◀ A | B ▶")], meters=100, id="p")
+    tile = floor["tile"]
+    board = next(s for s in floor["spots"] if s["id"] == "p-board")
+    assert board["sign"] == "led" and board["x"] % tile == 0 and board["y"] % tile == 0
+    (ax, ay), (bx, by) = cell(floor, "a"), cell(floor, "b")
+    assert ay < board["y"] // tile <= by and abs(board["y"] // tile - (ay + by + 1) / 2) <= 1          # half way between the two stations
+    assert [s["id"] for s in floor["spots"]] == ["p-a", "p-b", "p-board"]                                  # tile points first, then the corners
+    taken = {(s["x"] // tile, s["y"] // tile) for s in floor["spots"] if "sign" not in s}
+    assert len(taken) == 2                                                                                  # a sign does not use up a tile
+    one = ui.place_floor([NORTH, pt("s1", 35.0045, 139.0, sign="led"), pt("s2", 35.0045, 139.0, sign="wood")], meters=100)
+    corners = {(s["x"], s["y"]) for s in one["spots"] if "sign" in s}
+    assert len(corners) == 2                                                                                # two signs never share a corner
+
+
+def test_a_sign_in_the_middle_of_a_river_moves_to_the_bank_and_is_walkable():
+    wide = {"line": [[35.0045, 138.99], [35.0045, 139.01]], "width": 4}
+    floor = ui.place_floor([NORTH, SOUTH, pt("s", 35.0045, 139.0, sign="wood")], meters=100, rivers=[wide], links=[["a", "b"]])
+    tile = floor["tile"]
+    sign = next(s for s in floor["spots"] if "sign" in s)
+    blocked = ui.world_blocked(floor["width"], floor["height"], tile, floor["props"])
+    around = [(sign["x"] // tile + dx, sign["y"] // tile + dy) for dx in (-1, 0) for dy in (-1, 0)]
+    assert any(blocked[y][x] == "0" for x, y in around)                                                     # it touches dry land
+
+
+def test_any_spot_may_be_a_sign_and_the_page_draws_it_as_a_board_on_a_dot():
+    def world(sign):
+        return {"schema": ui.WORLD_SCHEMA, "id": "w", "floors": [{"id": "f", "label": "F", "width": 128, "height": 128,
+                "spots": [{"id": "s", "x": 64, "y": 64, "label": "◀ 出口", "sign": sign}]}]}
+    html = ui.world_html(world("led"))
+    assert 'data-sign="led"' in html and "ui-spot[data-sign=led]" in ui.world_css(world("led")) + ui.bundled_css()
+    assert 'data-sign="wood"' in ui.world_html(world("wood"))
+    with pytest.raises(ValueError, match="sign is one of led, wood"):
+        ui.world_validate(world("neon"))
+
+
+def test_json_alone_asks_for_a_place_and_unknown_keys_are_refused():
+    spec = {"schema": ui.WORLD_SCHEMA, "id": "w", "floors": [{"id": "here", "label": "Here", "place": {"points": [NORTH, SOUTH], "meters": 100}}]}
+    world = ui.world_validate(spec)
+    assert world["floors"][0]["spots"][0]["id"] == "here-a"
+    bad = copy.deepcopy(spec)
+    bad["floors"][0]["place"]["zoom"] = 3
+    with pytest.raises(ValueError, match="a place floor has"):
+        ui.world_validate(bad)
+
+
+# --- the two cities ---------------------------------------------------------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def cities():
+    world = ui.world_validate(ui.example_data("cities"))
+    return {f["id"]: f for f in world["floors"]}
+
+
+def by_id(floor):
+    return {s["id"].split("-", 1)[1]: s for s in floor["spots"]}
+
+
+def test_the_cities_are_three_floors_with_every_spot_walkable(cities):
+    assert list(cities) == ["tokyo", "london", "paris"]
+    for floor in cities.values():
+        reach = walkable(floor)
+        assert len(floor["props"]) <= 512 and len(floor["spots"]) <= 64
+        tile = floor["tile"]
+        for spot in floor["spots"]:
+            if "sign" in spot:                                                                   # a sign sits on a corner: it touches four tiles
+                assert spot["x"] % tile == 0 and spot["y"] % tile == 0, spot["id"]
+                around = [(spot["x"] // tile + dx, spot["y"] // tile + dy) for dx in (-1, 0) for dy in (-1, 0)]
+                assert any(c in reach for c in around), spot["id"]
+            else:
+                assert (spot["x"] // tile, spot["y"] // tile) in reach, spot["id"]
+        assert len({(s["x"], s["y"]) for s in floor["spots"]}) == len(floor["spots"])          # no two spots on one tile or corner
+
+
+def test_tokyo_station_has_six_exits_laid_out_like_the_building(cities):
+    spots = by_id(cities["tokyo"])
+    exits = {k: v for k, v in spots.items() if v["category"] == "exit"}
+    assert sorted(exits) == ["marunouchi-c", "marunouchi-n", "marunouchi-s", "yaesu-c", "yaesu-n", "yaesu-s"]
+    for side in ("marunouchi", "yaesu"):
+        assert exits[f"{side}-n"]["y"] < exits[f"{side}-c"]["y"] < exits[f"{side}-s"]["y"]     # north above south
+    for part in "ncs":
+        assert exits[f"marunouchi-{part}"]["x"] < exits[f"yaesu-{part}"]["x"]                   # Marunouchi is the west side
+    assert cities["tokyo"]["player"]["x"] // 32 == exits["marunouchi-c"]["x"] // 32
+
+
+def test_tokyo_has_no_facility_names_and_the_stations_are_where_they_are(cities):
+    spots = by_id(cities["tokyo"])
+    assert {v["category"] for v in spots.values()} == {"exit", "station", "sign"}
+    stations = {k: v for k, v in spots.items() if v["category"] == "station"}
+    assert len(stations) == 13
+    centre = spots["marunouchi-c"]
+    tile = cities["tokyo"]["tile"]
+    for key, spot in stations.items():                           # every one is within two kilometres of the station (the floor is 32 m a tile)
+        metres = math.hypot(spot["x"] - centre["x"], spot["y"] - centre["y"]) / tile * 32
+        assert metres < 2000, key
+    assert stations["shimbashi"]["y"] > stations["yurakucho"]["y"] > stations["otemachi"]["y"]   # Shimbashi is south of Yurakucho, south of Otemachi
+    assert stations["kanda"]["y"] < stations["otemachi"]["y"]                                      # Kanda is north of Otemachi
+    assert stations["nihombashi"]["x"] > centre["x"] > stations["nijubashimae"]["x"]               # east of the station, and west of it
+
+
+def test_london_is_its_main_termini_and_the_stations_beside_them(cities):
+    floor = cities["london"]
+    spots = by_id(floor)
+    kinds = {}
+    for key, spot in spots.items():
+        kinds.setdefault(spot["category"], []).append(key)
+    assert sorted(kinds) == ["sign", "station", "terminus"]                                          # transport only: no sights, no institutions
+    assert len(kinds["terminus"]) == 13
+    for key in ("kings-cross", "paddington", "waterloo", "victoria", "liverpool-street", "london-bridge", "euston", "charing-cross"):
+        assert key in kinds["terminus"]
+    assert spots["paddington"]["x"] < spots["kings-cross"]["x"] < spots["liverpool-street"]["x"]   # west to east
+    assert spots["waterloo"]["y"] > spots["charing-cross"]["y"]                                    # south of the river
+    assert spots["london-bridge"]["y"] > spots["cannon-street"]["y"]
+
+
+def test_the_thames_is_between_waterloo_and_charing_cross_with_a_bridge(cities):
+    floor = cities["london"]
+    kinds = {p["kind"] for p in floor["props"]}
+    assert {"water", "bridge"} <= kinds
+    blocked = ui.world_blocked(floor["width"], floor["height"], floor["tile"], floor["props"])
+    spots = by_id(floor)
+    tile = floor["tile"]
+    (x0, x1), (y0, y1) = (sorted(spots[k]["x"] // tile for k in ("waterloo", "charing-cross")), sorted(spots[k]["y"] // tile for k in ("waterloo", "charing-cross")))
+    assert any(blocked[y][x] == "1" for y in range(y0, y1 + 1) for x in range(x0, x1 + 1)), "water lies between them"
+    assert cell(floor, "charing-cross") in walkable(floor) and cell(floor, "waterloo") in walkable(floor)    # and a bridge joins them
+
+
+def test_fake_paris_has_its_stations_a_seine_with_bridges_and_a_fire_in_each_block(cities):
+    floor = cities["paris"]
+    spots = by_id(floor)
+    kinds = {}
+    for key, spot in spots.items():
+        kinds.setdefault(spot["category"], []).append(key)
+    assert sorted(kinds) == ["sign", "station", "terminus"] and len(kinds["terminus"]) == 6                    # transport only
+    assert spots["gare-du-nord"]["y"] < spots["gare-de-lyon"]["y"] < spots["montparnasse"]["y"] + 1              # north to south
+    assert spots["saint-lazare"]["x"] < spots["gare-du-nord"]["x"] < spots["gare-de-lyon"]["x"]                  # west to east
+    assert spots["montparnasse"]["x"] < spots["jussieu"]["x"] < spots["bastille"]["x"]                          # west to east, south of the river
+    assert {"water", "bridge", "fire"} <= {p["kind"] for p in floor["props"]}
+    fires = [p for p in floor["props"] if p["kind"] == "fire"]
+    assert 20 <= len(fires) <= 40
+    tile = floor["tile"]
+    assert len({(p["x"] // tile // 8, p["y"] // tile // 8) for p in fires}) == len(fires)                         # one per block of eight tiles
+
+
+def test_no_city_lists_a_religious_building(cities):
+    words = ("大聖堂", "寺院", "教会", "聖堂", "神社", "寺", "モスク", "霊廟")
+    assert not [s["id"] for floor in cities.values() for s in floor["spots"] if any(w in s["label"] + s["body"] for w in words)]
+
+
+def test_the_nogard_sign_stands_by_a_station_and_turns_into_a_dragon(cities):
+    floor = cities["london"]
+    sign = by_id(floor)["nogard"]
+    assert (sign["label"], sign["flip"], sign["category"], sign["sign"]) == ("nogard", "🐉", "sign", "wood")
+    assert sign["label"][::-1] == "dragon"                                                                        # dragon, backwards
+    stations = [s for s in floor["spots"] if s["category"] in ("terminus", "station")]            # the stations, not the other signs
+    tile = floor["tile"]
+    nearest = min(math.hypot(s["x"] - sign["x"], s["y"] - sign["y"]) for s in stations) / tile
+    assert nearest <= 3                                                                                           # within three tiles (450 m)
+    assert len([s for s in floor["spots"] if "flip" in s]) == 1
+    assert sign["x"] % tile == 0 and sign["y"] % tile == 0                                                        # on a corner of the grid
+
+
+def test_the_front_page_and_the_cli_carry_the_cities():
+    page = ui.example_pages()["index.html"]
+    for text in ('id="cities"', "丸の内中央口", "リバースロンドン", "Fake Paris", "Parallel Tokyo", 'data-category="exit"', 'data-category="terminus"',
+                 'data-flip="🐉"'):
+        assert text in page
+    spec = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--example", "cities"], capture_output=True, text=True, check=True, encoding="utf-8").stdout
+    assert json.loads(spec)["floors"][0]["place"]["points"][0]["id"] == "marunouchi-c"
+    html = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--world", "-"], input=spec, capture_output=True, text=True, check=True, encoding="utf-8").stdout
+    assert "八重洲北口" in html and "ウォータールー" in html and "サン・ラザール駅" in html          # a spot of each city from the CLI
+    assert "タワー・ブリッジ" not in html and "エッフェル塔" not in html                               # transport only
+
+
+# ═══ 🤝 shared board ══════════════════════════════════════════════════════════════════════════════════════
+# Opt-in shared board contract; no network calls or public writes.
+
+def spec():
+    value = ui.example_data('world')
+    value['board']['shared_issue'] = 'myon-bioinformatics/PySaiyanWeBoo/123'
+    return value
+
+
+def test_opt_in_and_local_form():
+    value = spec()
+    html = ui.world_html(value)
+    assert 'ui-board-post' in html and 'ui-board-shared' in html
+    assert 'issues/123#new_comment_field' in html
+    assert 'credentials' not in html  # secrets are never embedded in HTML
+    assert 'target="_blank" rel="noopener noreferrer"' in html
+    assert ui.world_validate(ui.world_validate(value)) == ui.world_validate(value)
+    del value['board']['shared_issue']
+    assert 'data-shared-refresh' not in ui.world_html(value)
+
+
+@pytest.mark.parametrize('bad', ['', 'https://github.com/a/b/1', 'a/b/0', 'a/b/-1', 'a/b/1?token=x', 'a/b/1/extra', True, {}, 'a/../../1', 'a/../1', 'a/./1'])
+def test_invalid_target(bad):
+    value = spec()
+    value['board']['shared_issue'] = bad
+    with pytest.raises(ValueError):
+        ui.world_validate(value)
+
+
+def test_shared_node():
+    # Appended to world.js: sharedLines, sharedWait and bindSharedBoard with a fake fetch, clock and panel.
+    shared_harness = r"""const assert = (await import('node:assert/strict')).default;
+assert.equal(sharedLines([{body:'<img src=x onerror=alert(1)>',user:{login:'alice'},created_at:'today'}])[0].text,'<img src=x onerror=alert(1)>');
+assert.throws(()=>sharedLines({}));
+assert.deepEqual(sharedLines([{body:'  \n\t',user:{login:'a'}},{body:'\u0000',user:{login:'b'}}]),[]);
+assert.equal(sharedLines([{body:'valid',user:{login:'a'}},{body:' ',user:{login:'b'}}])[0].text,'valid');
+assert.equal(sharedLines(Array.from({length:110},(_,i)=>({body:String(i),user:{login:'a'}})))[0].text,'99');
+assert.equal(sharedLines([{body:'x',user:null}]).length,0);
+assert.equal(sharedWait({headers:new Headers({'retry-after':'300'})},1000),301000);
+assert.equal(sharedWait({headers:new Headers({'x-ratelimit-remaining':'0','x-ratelimit-reset':'999'})},1000),999000);
+let now=1000,calls=0,listener,fail=false;
+Date.now=()=>now;
+const status={},list={replaceChildren(...nodes){this.nodes=nodes}},button={addEventListener(type,cb){listener=cb}},panel={isConnected:true,dataset:{api:'https://api.github.com/repos/a/b/issues/1/comments?per_page=100'},querySelector(s){return s.includes('refresh')?button:s.includes('status')?status:list}};
+globalThis.document={createElement(){return {}}};
+globalThis.fetch=async(url,options)=>{calls++;assert.equal(options.credentials,'omit');assert.equal(options.method,'GET');if(fail)throw Error('offline');return {ok:true,headers:new Headers(),json:async()=>[{body:'hello',user:{login:'alice'},created_at:'today'}]}};
+bindSharedBoard({querySelector(){return panel}});
+assert.equal(calls,0);
+await listener();assert.equal(calls,1);assert.match(list.nodes[0].textContent,/alice.*hello/);
+await listener();assert.equal(calls,1);assert.match(status.textContent,/待機/);
+now+=120001;fail=true;await listener();assert.equal(calls,2);assert.match(status.textContent,/前回/);assert.match(list.nodes[0].textContent,/hello/);
+console.log('shared board harness passed');"""
+    node26() or pytest.skip('Node 26+ required')
+    assert 'shared board harness passed' in node_js(world_js() + shared_harness).stdout
+
+
+def test_approved_example_destination():
+    value = ui.example_data('world')
+    assert value['board']['shared_issue'] == 'myon-bioinformatics/PySaiyanWeBoo/110'
+    html = ui.world_document(value)
+    assert 'https://github.com/myon-bioinformatics/PySaiyanWeBoo/issues/110#new_comment_field' in html
+    assert 'issues/123#new_comment_field' not in html

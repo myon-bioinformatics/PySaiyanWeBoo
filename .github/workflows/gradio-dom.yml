@@ -36,17 +36,10 @@ jobs:
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
       - run: uv run --locked --group gradio python -m playwright install --with-deps --only-shell chromium
-      - name: Verify jsDelivr Plotly load and figure render
-        run: uv run --locked --group gradio python tests/integration/plotly_browser.py -v
-      - name: Verify generated controls in Chromium
-        run: uv run --locked --group gradio python tests/integration/controls_browser.py -v
-      - name: Verify route-table navigation offline (file://) and over HTTP
-        run: uv run --locked --group gradio python tests/integration/route_table_browser.py -v
-      - name: Verify the source panel offline (file://) and over HTTP
-        run: uv run --locked --group gradio python tests/integration/source_browser.py -v
-      - name: Layout presets switch live and sweep to candidates (Chromium)
-        run: uv run --locked --group gradio python tests/integration/layout_presets_browser.py -v
+      - name: Pages in Chromium (controls, layout presets, route table and source panel offline and over HTTP, jsDelivr Plotly)
+        run: uv run --locked --group gradio python tests/integration/pages_browser.py -v
       - name: Compare Gradio DOM with shared extraction
+        # 🌱 the tests read these names: rename them together with the list in tests/support.py
         env:
           WEB_UI_GRADIO_TEST: '1'
           BTK_ROOT: .browser-test-kit-dom

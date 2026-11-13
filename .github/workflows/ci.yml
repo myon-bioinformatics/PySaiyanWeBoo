@@ -133,6 +133,7 @@ jobs:
           sparse-checkout: xprobe.py
           sparse-checkout-cone-mode: false
       - name: Run pytest
+        # 🌱 the tests read these names: rename them together with the list in tests/support.py
         env:
           FAILURE_EVIDENCE_DIR: build/controlled-failure
         run: uv run --group stagehand pytest -v --junitxml=build/test-results/pytest-3.15.xml

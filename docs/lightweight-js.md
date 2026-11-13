@@ -196,7 +196,7 @@ naming two routes, a repeated route, or a relative/`//`/`#` route is rejected (t
 cases in `tests/fixtures/route_table_cases.json` run against Python and JS).
 Hash routing (`#/route`, the default) works from `file://`; there, load
 `navigation.js` with a classic `<script src>`, because browsers block
-`type="module"` scripts from `file://`. `tests/integration/route_table_browser.py`
+`type="module"` scripts from `file://`. `tests/integration/pages_browser.py`
 walks the same table in Chromium from `file://` and over HTTP. Ordered multi-page
 trails and walking a deployed site remain browser-test-kit `route_trail.py --run`.
 

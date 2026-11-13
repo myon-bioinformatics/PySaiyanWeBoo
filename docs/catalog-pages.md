@@ -80,11 +80,11 @@ flow generation remains owned by ascii_artist.
 
 ## Verification
 
-`python -m unittest discover -s tests -p test_catalog.py -v` tests schemas,
+`python -m unittest discover -s tests -p test_pages.py -v` tests schemas,
 Unicode/escaping, link validation, deterministic output, source immutability,
 portable paths and an isolated `python -I -S` single-file CLI.
 
-The existing Chromium `tests/integration/controls_browser.py` lane also tests
+The existing Chromium `tests/integration/pages_browser.py` lane also tests
 both catalogs at mobile/desktop widths over HTTP project subpaths and `file://`,
 with JavaScript disabled. It checks native keyboard/repeated disclosure,
 Back/Forward, evidence navigation and lack of external requests. Its HTTP

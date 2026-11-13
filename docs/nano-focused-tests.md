@@ -1,8 +1,8 @@
 # Focused test environment
 
-Use `uv run --locked --only-group world-test --exact python -m pytest -q tests/test_world_motion.py tests/test_world_shared.py` from the repository root.
+Use `uv run --locked --only-group world-test --exact python -m pytest -q tests/test_worlds.py` from the repository root.
 
-This optional profile preserves pytest and the anyio plugin used by the full environment. Node 26+ is required to exercise all 41 selected tests without skips; set PYTHONPATH=. when invoking from outside the repository.
+This optional profile preserves pytest and the anyio plugin used by the full environment. Node 26+ is required to exercise all 165 tests of the world file without skips (motion and the shared board were the original 41); set PYTHONPATH=. when invoking from outside the repository.
 
 The default dependency groups and full CI remain unchanged. This command covers only the named tests; it does not replace the complete suite, Docker or real-browser checks.
 

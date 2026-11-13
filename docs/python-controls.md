@@ -63,7 +63,7 @@ Markdown as text, matching the portfolio Wiki extraction view.
 ## Browser regression
 
 The required `Local Gradio DOM` CI job runs
-`python tests/integration/controls_browser.py -v` after installing its pinned
+`python tests/integration/pages_browser.py -v` after installing its pinned
 Playwright/Chromium dependencies. This opens Python-generated HTML over loopback
 HTTP and checks auto-mount, duplicate labels, change/full-text restoration, inert
 hostile text, clear/destroy, zero external requests and the no-JS fallback.

@@ -1,4 +1,4 @@
-"""Required Chromium contract for the school world: python tests/integration/school_browser.py -v.
+"""Required Chromium contract for the school world: python tests/integration/worlds_browser.py -v.
 
 The emoji picker comes first, then the player walks by tap, arrow keys / WASD and the on-screen pad.
 Solid props (desks, board, shelves) are never entered, whichever way the player moves.
@@ -28,7 +28,6 @@ import pysaiyanweboo  # noqa: E402
 SPEC = pysaiyanweboo.example_data("school")
 CLASSROOM = '.ui-floor[data-floor="classroom"]'
 POS = f"() => {{ const s = document.querySelector('{CLASSROOM} .ui-player').style; return [parseFloat(s.getPropertyValue('--px')), parseFloat(s.getPropertyValue('--py'))]; }}"
-WALL = "() => document.querySelector('.ui-floor[data-floor=\"classroom\"]').dataset.blocked.split(',')"
 
 
 class SchoolTests(unittest.TestCase):
@@ -67,8 +66,9 @@ class SchoolTests(unittest.TestCase):
         return int(x // tile), int(y // tile)
 
     def assert_free(self, page, point):
+        wall = "() => document.querySelector('.ui-floor[data-floor=\"classroom\"]').dataset.blocked.split(',')"
         tile = int(page.get_attribute(CLASSROOM, "data-tile"))
-        rows = page.evaluate(WALL)
+        rows = page.evaluate(wall)
         self.assertEqual(rows[int(point[1] // tile)][int(point[0] // tile)], "0", f"inside a solid tile at {point}")
 
     def menu(self, page, name):
@@ -532,7 +532,6 @@ class SchoolTests(unittest.TestCase):
             self.assertLessEqual(box[1], width)
 
 
-
 class SharedBoardTests(unittest.TestCase):
     """The opt-in shared board at phone and desktop widths with every GitHub API answer mocked (nothing is posted): no fetch until asked, one anonymous
     GET per cooldown, comments as text, the posting link, local notes, a rate limit that keeps the last lines, and nothing kept across a reload."""
@@ -609,14 +608,10 @@ WIDTHS = {"phone-320": (320, 640, True), "phone": (390, 844, True), "phone-lands
 SHOTS = os.environ.get("WEB_UI_SHOTS")           # a folder: each check also keeps a screenshot, listed in manifest.json and index.html
 CITY_FLOOR = '.ui-floor[data-floor="{}"]'
 CITY_POS = "fl => { const s = document.querySelector(`.ui-floor[data-floor=\"${fl}\"] .ui-player`).style; return [parseFloat(s.getPropertyValue('--px')), parseFloat(s.getPropertyValue('--py'))]; }"
-CITY_TARGET = "fl => { const p = document.querySelector(`.ui-floor[data-floor=\"${fl}\"] .ui-player`); return [+p.dataset.targetX, +p.dataset.targetY]; }"
 CITY_WALK = ("fl => new Promise(done => { const p = document.querySelector(`.ui-floor[data-floor=\"${fl}\"] .ui-player`), seen = [], t0 = performance.now();"
              " const step = () => { const s = p.style, x = parseFloat(s.getPropertyValue('--px')), y = parseFloat(s.getPropertyValue('--py')); seen.push([x, y]);"
              " if ((Math.abs(x - +p.dataset.targetX) < .01 && Math.abs(y - +p.dataset.targetY) < .01) || performance.now() - t0 > 30000) done(seen);"
              " else requestAnimationFrame(step) }; requestAnimationFrame(step) })")      # every frame of the walk, until the player stands at its target
-CITY_STILL = ("() => new Promise(done => { const cam = document.querySelector('.ui-world-cam'); let last = getComputedStyle(cam).transform, same = 0, n = 0;"
-              " const step = () => { const now = getComputedStyle(cam).transform; same = now === last ? same + 1 : 0; last = now;"
-              " if (same >= 3 || ++n > 120) done(same >= 3); else requestAnimationFrame(step) }; requestAnimationFrame(step) })")   # the camera's glide (.24s) has ended
 CITY_TOP = ("sel => { const a = document.querySelector(sel), r = a.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2,"
             " e = document.elementFromPoint(x, y); return {self: !!e && (e === a || a.contains(e)), sheet: !!e?.closest('.ui-sheet'),"
             " what: (e?.closest('.ui-spot,.ui-sheet-item,.ui-world-dpad,.ui-world-side,.ui-player')?.textContent || e?.className || '').trim().slice(0, 24), x, y} }")
@@ -761,13 +756,17 @@ class CitiesTests(unittest.TestCase):
 
     def still(self, page):
         """Wait for the camera: after a walk with the camera following, or a press (focusSpot), it glides for .24 s."""
-        self.assertTrue(page.evaluate(CITY_STILL), "the camera kept moving")
+        city_still = ("() => new Promise(done => { const cam = document.querySelector('.ui-world-cam'); let last = getComputedStyle(cam).transform, same = 0, n = 0;"
+                      " const step = () => { const now = getComputedStyle(cam).transform; same = now === last ? same + 1 : 0; last = now;"
+                      " if (same >= 3 || ++n > 120) done(same >= 3); else requestAnimationFrame(step) }; requestAnimationFrame(step) })")   # the camera's glide (.24s) has ended
+        self.assertTrue(page.evaluate(city_still), "the camera kept moving")
 
     def arrows(self, page, floor):
         return page.eval_on_selector_all(f'.ui-world-spots[data-floor="{floor}"] a', "els => els.map(a => [a.getAttribute('href'), a.querySelector('.ui-world-arrow').textContent])")
 
     def sweep(self, size):
         """Every spot of every city, one after another, from the ☰ list; then a real tap on its marker."""
+        city_target = "fl => { const p = document.querySelector(`.ui-floor[data-floor=\"${fl}\"] .ui-player`); return [+p.dataset.targetX, +p.dataset.targetY]; }"
         page = self.open(size)
         self.start(page)
         for f in CITIES["floors"]:
@@ -792,7 +791,7 @@ class CitiesTests(unittest.TestCase):
                     page.click(f'.ui-world-spots[data-floor="{fl}"] a[href="{href}"]')
                     seen = page.evaluate(CITY_WALK, fl)
                     self.assertEqual([p for p in seen if blocked[city_cell(p, tile)[1]][city_cell(p, tile)[0]] == "1"], [], "walked into water")
-                    target = page.evaluate(CITY_TARGET, fl)
+                    target = page.evaluate(city_target, fl)
                     self.assertAlmostEqual(target[0], goal[0], delta=.01)
                     self.assertAlmostEqual(target[1], goal[1], delta=.01)
                     end = page.evaluate(CITY_POS, fl)

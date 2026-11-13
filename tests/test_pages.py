@@ -1,12 +1,44 @@
-import base64, hashlib, json, math, os, random, re, shutil, struct, subprocess, sys, tempfile, unittest, xml.etree.ElementTree as ET, zlib
-from pathlib import Path; from unittest import mock
-from support import flutter_case, node26
+"""📄 Pages: HTML, CSS and JS built from Python (the wrapper, components, controls, navigation, layouts, catalog, collection filter,
+source panel, theme seed, records board). Node runs the browser modules through ``support.node_js`` (``pysaiyanweboo.run_node``)."""
+
+import base64
+import copy
+import hashlib
+import html
+import importlib.util
+import json
+import math
+import os
+import random
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import tempfile
+import unittest
+import xml.etree.ElementTree as ET
+import zlib
+from html.parser import HTMLParser
+from pathlib import Path
+from posixpath import normpath
+from unittest import mock
+from urllib.parse import urljoin, urlsplit
+
+import pytest
 
 import pysaiyanweboo
-from pysaiyanweboo import _node_launch_module, bundled_css, render_document, run_node, shared_scripts
+import pysaiyanweboo as ui
+from pysaiyanweboo import (
+    EMBEDDED_UI_JS, _node_launch_module, bundled_css, filter_request, module_asset, module_csp_hash, module_script, plotly_figure, render_document,
+    run_node, shared_scripts,
+)
+from support import flutter_case, node26, node_js
 
 ROOT = Path(__file__).resolve().parents[1]
 
+
+# ═══ 🐍 python wrapper ════════════════════════════════════════════════════════════════════════════════════
 
 class PythonWrapperTests(unittest.TestCase):
     def test_user_values_remain_text_and_no_scripts_by_default(self):
@@ -248,10 +280,9 @@ class BundledCssTests(unittest.TestCase):
         # No Node twin and no .cjs copy: Node runs pysaiyanweboo.py via vendor/py_launch.cjs, so the bytes cannot differ.
         args = ["--css-bundle", "--theme", "green"]
         env = {**os.environ, "PYTHON": sys.executable}
-        run = lambda argv: subprocess.run(argv, cwd=ROOT, env=env, input="hello\n", capture_output=True,
-                                          text=True, encoding="utf-8", timeout=60)
-        via_node = run(["node", "vendor/py_launch.cjs", "--", "pysaiyanweboo.py", *args])
-        via_python = run([sys.executable, "-S", "pysaiyanweboo.py", *args])
+        via_node = pysaiyanweboo.run_node(ROOT / "vendor/py_launch.cjs", "--", ROOT / "pysaiyanweboo.py", *args, env=env, input="hello\n", timeout=60)
+        via_python = subprocess.run([sys.executable, "-S", "pysaiyanweboo.py", *args], cwd=ROOT, env=env, input="hello\n", capture_output=True,
+                                    text=True, encoding="utf-8", timeout=60)
         self.assertEqual(via_python.returncode, 0, via_python.stderr)
         self.assertEqual((via_node.returncode, via_node.stdout), (0, via_python.stdout))
         self.assertIn('body[data-ui-theme="green"]', via_node.stdout)
@@ -958,9 +989,6 @@ class CompositionTests(unittest.TestCase):
 
 
 DOOR = pysaiyanweboo.example_data("door")
-# The identities the Flutter doc's examples use (docs/testing/page-identities.md), as a door registry.
-FLUTTER_PAGES = [{"emoji": e, "label": l, "href": h} for e, l, h in (("🏠", "Home", "#/"), ("🗺️", "Hub", "#/hub"), ("🥐", "Irony", "#/examples/irony-generator"),
-                                                                 ("🌍", "Screen1", "#/screen1"), ("🕶️", "Screen2", "#/screen2"))]
 
 
 class DoorTests(unittest.TestCase):
@@ -992,7 +1020,10 @@ class DoorTests(unittest.TestCase):
             pysaiyanweboo.door_validate({"schema": pysaiyanweboo.DOOR_SCHEMA, "pages": [page("🏠", href)], "k": 0})
 
     def test_emoji_transitions_as_the_flutter_doc_writes_them(self):
-        path = lambda text: pysaiyanweboo.emoji_path(text, FLUTTER_PAGES)
+        # The identities the Flutter doc's examples use (docs/testing/page-identities.md), as a door registry.
+        flutter_pages = [{"emoji": e, "label": l, "href": h} for e, l, h in (("🏠", "Home", "#/"), ("🗺️", "Hub", "#/hub"), ("🥐", "Irony", "#/examples/irony-generator"),
+                                                                         ("🌍", "Screen1", "#/screen1"), ("🕶️", "Screen2", "#/screen2"))]
+        path = lambda text: pysaiyanweboo.emoji_path(text, flutter_pages)
         self.assertEqual(path("🏠 ↔︎ 🗺️"), ["#/", "#/hub", "#/"])                              # go and come back (with a variation selector, ignored)
         self.assertEqual(path("🏠 → 🥐"), ["#/", "#/examples/irony-generator"])
         self.assertEqual(path("🏠 → 🗺️ → 🌍 ↔ 🕶️"), ["#/", "#/hub", "#/screen1", "#/screen2", "#/screen1"])   # chains expand left to right
@@ -3571,10 +3602,6 @@ class McpTests(unittest.TestCase):
         self.assertIn("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", html)
 
 
-PATTERN_ASSETS = json.loads((Path(__file__).resolve().parent / "fixtures" / "pattern_assets.json").read_text(encoding="utf-8"))
-PATTERN_GOLDEN = json.loads((Path(__file__).resolve().parent / "fixtures" / "pattern_golden.json").read_text(encoding="utf-8"))
-
-
 def typed(value):
     """JSON text that keeps 1, 1.0 and true apart (== does not) and ignores object key order."""
     return json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False)
@@ -3592,7 +3619,8 @@ class PatternTests(unittest.TestCase):
             self.assertEqual(str(caught.exception), message)
 
     def test_every_asset_the_dart_app_shows_is_reproduced_exactly(self):
-        assets = PATTERN_ASSETS["assets"]
+        pattern_assets = json.loads((Path(__file__).resolve().parent / "fixtures" / "pattern_assets.json").read_text(encoding="utf-8"))
+        assets = pattern_assets["assets"]
         self.assertEqual(len(assets), 34)
         self.assertEqual({a["family"] for a in assets}, {"collection", "order", "select", "structure", "text", "window"})
         for asset in assets:
@@ -3600,7 +3628,8 @@ class PatternTests(unittest.TestCase):
                 self.assertEqual(typed(self.go(asset["family"], asset["request"])), typed(asset["expected"]))
 
     def test_the_recorded_original_outputs_are_reproduced_exactly(self):
-        cases = PATTERN_GOLDEN["cases"]
+        pattern_golden = json.loads((Path(__file__).resolve().parent / "fixtures" / "pattern_golden.json").read_text(encoding="utf-8"))
+        cases = pattern_golden["cases"]
         self.assertGreaterEqual(len(cases), 800)
         seen: dict[str, set[str]] = {}
         for index, case in enumerate(cases):
@@ -5434,7 +5463,6 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(self.run_actions(159, ["increment"] * 1000)["state"]["count"], 1000)
 
 
-
 class ContractTests(unittest.TestCase):
     """``--pattern contract``: the verdicts of flutter_navigation_basic's own checks (metadata_contracts, header_contracts, gesture_paint), recorded by tools/contract_golden.py on seeded
     mutations of the screens asset, the screen texts, a header snapshot and synthetic screenshots, and the rules this port adds."""
@@ -6056,5 +6084,1760 @@ class PatternBridgeTests(unittest.TestCase):
             self.assertIn(message, err, arguments)
 
 
-if __name__ == '__main__':
+# ═══ 📜 static contract ═══════════════════════════════════════════════════════════════════════════════════
+
+sys.path.insert(0, str(ROOT))
+import pysaiyanweboo  # noqa: E402
+
+CONTRACT = ROOT / "contract" / "v1"
+PAGES = pysaiyanweboo.example_pages()  # the example pages are built in memory; there are no examples/*.html files
+
+
+def _relative_luminance(hex_color):
+    channels = [int(hex_color[index:index + 2], 16) / 255 for index in (1, 3, 5)]
+    linear = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4 for value in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _contrast_ratio(foreground, background):
+    light, dark = sorted((_relative_luminance(foreground), _relative_luminance(background)), reverse=True)
+    return (light + 0.05) / (dark + 0.05)
+
+
+class ContractParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.hrefs = []
+        self.icon_links = []
+        self.classes = []
+        self.ids = set()
+        self.labels_for = set()
+        self.stack = []
+        self.class_parents = {}
+
+    def handle_starttag(self, tag, attrs):
+        values = dict(attrs)
+        if tag == "link" and "icon" in values.get("rel", "").split():
+            self.icon_links.append(values)
+        if tag == "a" and values.get("href"):
+            self.hrefs.append(values["href"])
+        if values.get("class"):
+            self.classes.extend(values["class"].split())
+        if values.get("id"):
+            self.ids.add(values["id"])
+        if tag == "label" and values.get("for"):
+            self.labels_for.add(values["for"])
+
+
+class StaticContractTest(unittest.TestCase):
+    def parsed(self, path):
+        return self.parsed_text(path.read_text(encoding="utf-8"))
+
+    def parsed_text(self, text):
+        parser = ContractParser()
+        parser.feed(text)
+        return parser
+
+    def test_html_contract_v1_manifest_matches_fixture_and_css(self):
+        manifest = json.loads((CONTRACT / "contract.json").read_text(encoding="utf-8"))
+        fixture = PAGES["contract/v1/example.html"]
+        css = pysaiyanweboo.bundled_css()
+        selectors = set(re.findall(r"\.(ui-[A-Za-z0-9_-]+|stub-[A-Za-z0-9_-]+)", css))
+
+        self.assertEqual(manifest["version"], "1.0.0")
+        self.assertEqual(manifest["status"], "stable")
+        self.assertIn(
+            f'data-ui-theme="{manifest["theme"]["default"]}"',
+            fixture,
+        )
+
+        stable = (
+            manifest["stable_classes"]["shared"]
+            + manifest["stable_classes"]["stub"]
+        )
+        for class_name in stable:
+            self.assertIn(class_name, fixture, f"fixture missing {class_name}")
+            self.assertIn(class_name, selectors, f"CSS selector missing {class_name}")
+
+    def test_html_contract_v1_declares_compatibility_boundary(self):
+        manifest = json.loads((CONTRACT / "contract.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            manifest["extensions"]["removal_or_repurpose_requires"],
+            "v2",
+        )
+        self.assertIn("exact colors", manifest["non_contract"])
+        self.assertTrue(manifest["extensions"]["consumer_classes"])
+        self.assertTrue(manifest["extensions"]["consumer_data_attributes"])
+        self.assertEqual(manifest["version_policy"]["breaking_changes"], "require contract/v2")
+        self.assertEqual(manifest["validation_scope"]["fixture_role"], "proof-of-presence, not a prescriptive layout template")
+
+    def test_html_contract_v1_declared_themes_exist_and_use_theme_layer(self):
+        manifest = json.loads((CONTRACT / "contract.json").read_text(encoding="utf-8"))
+        for theme in manifest["theme"]["values"]:
+            self.assertIn(f"themes/{theme}.css", pysaiyanweboo._CSS, f"missing declared theme: {theme}")
+            text = pysaiyanweboo.css_source(f"themes/{theme}.css")
+            self.assertIn("@layer theme", text, f"{theme} must stay in @layer theme")
+            self.assertIn(f'data-ui-theme="{theme}"', text, f"{theme} selector must be scoped by data-ui-theme")
+
+    def test_pages_entrypoints_resolve_the_repository_favicon(self):
+        favicon = ROOT / "docs/brand/favicon.png"
+        self.assertTrue(favicon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+        for path in [ROOT / "index.html"]:
+            with self.subTest(page=str(path.relative_to(ROOT))):
+                links = self.parsed(path).icon_links
+                self.assertEqual(len(links), 1)
+                self.assertEqual(links[0].get("type"), "image/png")
+                href = links[0]["href"]
+                self.assertFalse(urlsplit(href).scheme)
+                self.assertFalse(href.startswith("/"))
+                self.assertEqual((path.parent / href).resolve(), favicon.resolve())
+
+    def test_pages_visible_and_touch_icons_resolve_to_canonical_asset(self):
+        icon = ROOT / "docs/brand/icon.png"
+        self.assertTrue(icon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+        for path in [ROOT / "index.html"]:
+            text = path.read_text(encoding="utf-8")
+            patterns = [r'<link rel="apple-touch-icon" href="([^"]+)">']
+            if path == ROOT / "index.html":
+                patterns.append(r'<img[^>]+src="([^"]+)"')
+            for pattern in patterns:
+                href = re.search(pattern, text).group(1)
+                self.assertFalse(urlsplit(href).scheme)
+                self.assertEqual((path.parent / href).resolve(), icon.resolve())
+
+    def test_example_pages_are_single_files_carrying_the_whole_bundle(self):
+        self.assertEqual(sorted(PAGES), ["contract/v1/example.html", "examples/api-stub.html", "examples/clipboard-shelf.html", "examples/composition-studio.html", "examples/coordinates.html", "examples/door.html", "examples/github-like.html",
+                                         "examples/image-studio.html", "examples/index.html", "examples/mcp-lab.html", "examples/mcp-stub.html", "examples/parts.html", "examples/patterns.html", "examples/photo-studio.html", "examples/play-studio.html", "examples/playground.html", "examples/screens.html", "examples/showcase.html", "examples/test-report.html", "examples/timeline.html", "index.html"])
+        self.assertEqual((ROOT / "index.html").read_text(encoding="utf-8"), PAGES["index.html"], "run: python -S pysaiyanweboo.py --site DIR; copy DIR/index.html")
+        for name, text in PAGES.items():
+            self.assertNotIn('rel="stylesheet"', text, name)
+            self.assertIn(pysaiyanweboo.bundled_css(), text, name)
+            self.assertNotIn("<script src", text, name)
+
+    def test_theme_examples_keep_semantic_markup(self):
+        text = PAGES["examples/github-like.html"]
+        self.assertIn('data-ui-theme="github-like"', text)
+        # Extend this list when an alternate-theme example intentionally demonstrates
+        # additional semantic components; not every future ui-* class is mandatory.
+        for class_name in ("ui-page", "ui-panel", "ui-card", "ui-button", "ui-input", "ui-tag", "ui-output"):
+            self.assertIn(class_name, text)
+
+    def test_github_like_muted_text_meets_wcag_aa(self):
+        # Normal text requires at least 4.5:1 under WCAG AA.
+        self.assertGreaterEqual(_contrast_ratio("#59636e", "#ffffff"), 4.5)
+
+    def test_local_links_exist(self):
+        for name, text in PAGES.items():
+            for href in self.parsed_text(text).hrefs:
+                parsed = urlsplit(href)
+                if parsed.scheme or parsed.netloc or href.startswith("#"):
+                    continue
+                target = normpath(str(Path(name).parent / parsed.path).replace("\\", "/"))
+                self.assertIn(target, PAGES, f"{name}: broken href {href}")
+
+    def test_ui_classes_follow_namespaces(self):
+        for name, text in PAGES.items():
+            for cls in self.parsed_text(text).classes:
+                self.assertTrue(cls.startswith(("ui-", "stub-")), f"{name}: unnamespaced class {cls}")
+
+    def test_labels_target_existing_controls(self):
+        for name in ("examples/mcp-stub.html", "examples/api-stub.html"):
+            parsed = self.parsed_text(PAGES[name])
+            self.assertTrue(parsed.labels_for)
+            self.assertTrue(parsed.labels_for <= parsed.ids)
+
+    def test_stub_examples_share_tool_workspace_structure(self):
+        required = ("stub-shell", "stub-header", "stub-toolbar", "stub-workspace", "stub-result", "stub-evidence", "stub-history", "stub-actions")
+        for name in ("examples/mcp-stub.html", "examples/api-stub.html"):
+            for class_name in required:
+                self.assertIn(class_name, PAGES[name], f"{name}: missing {class_name}")
+
+    def test_domain_protocols_not_in_generic_js(self):
+        text = pysaiyanweboo.EMBEDDED_STUB_JS.lower()
+        for term in ("tools/list", "tools/call", "json-rpc", "authorization:"):
+            self.assertNotIn(term, text)
+
+
+def test_pages_root_is_one_self_contained_page_with_the_examples_inside():
+    root = (ROOT / "index.html").read_text(encoding="utf-8")
+    assert 'rel="stylesheet"' not in root and "<script src" not in root and 'src="./js/' not in root
+    for anchor in ("#try", "#mcp", "#api", "#world", "#wall"):
+        assert f'href="{anchor}"' in root and f'id="{anchor[1:]}"' in root, anchor
+
+
+def test_output_surface_uses_neutral_high_contrast_palette():
+    css = pysaiyanweboo.css_source("components.css")
+    assert ".ui-output" in css
+    assert "background:#d8dee4" in css
+    assert "color:#161b22" in css
+    assert "pre.ui-output code{background:transparent}" in css
+
+
+# --- Definition audit: CSS classes and custom properties may not pile up unnoticed. ---
+
+def _css_sources():
+    return sorted(pysaiyanweboo._CSS)
+
+
+def _css_text(name):
+    return re.sub(r"/\*.*?\*/", "", pysaiyanweboo.css_source(name), flags=re.S)
+
+
+def test_every_css_class_is_referenced_by_markup_scripts_or_generators():
+    # Declaration blocks are dropped first so values such as 1.5rem are not read as classes.
+    defined = set()
+    for path in _css_sources():
+        defined |= set(re.findall(r"\.([A-Za-z_][A-Za-z0-9_-]*)", re.sub(r"\{[^{}]*\}", "{}", _css_text(path))))
+    # Classes the Python generators emit (tools/capture_matrix.py, tools/layout_presets.py) count as used.
+    used_in = [*ROOT.glob("*.html"), ROOT / "pysaiyanweboo.py", *(ROOT / "tools").glob("*.py")]
+    corpus = "\n".join(path.read_text(encoding="utf-8") for path in used_in) + "\n".join(PAGES.values()) + "\n".join(pysaiyanweboo.js_modules().values())
+    unused = sorted(name for name in defined
+                    if not re.search(rf"(?<![A-Za-z0-9_-]){re.escape(name)}(?![A-Za-z0-9_-])", corpus))
+    assert not unused, f"CSS classes nothing refers to: {unused}"
+
+
+def test_css_variables_are_defined_generated_or_a_listed_gap():
+    css = {name: _css_text(name) for name in _css_sources()}
+    defined = {name for text in css.values() for name in re.findall(r"(--ui-[a-z0-9-]+)\s*:", text)}
+    used = {name for text in css.values() for name in re.findall(r"var\((--ui-[a-z0-9-]+)", text)}
+    # layout presets (tools/layout_presets.py) set the matrix ones; dial.js sets --ui-dial-angle on each dial; the stylesheets carry the fallbacks.
+    generated = {"--ui-matrix-col", "--ui-matrix-gap", "--ui-matrix-pad", "--ui-dial-angle"}
+    # repository-diagnostics.css falls back to fixed colors; there is no token for them yet.
+    known_gaps = {"--ui-surface", "--ui-text"}
+    assert used - defined - generated <= known_gaps, sorted(used - defined - generated - known_gaps)
+    # Defined but unused here or in any consumer checked on 2026-11-03; drop it after a deprecation window.
+    dead_tokens = {"--ui-space"}
+    tokens = set(re.findall(r"(--ui-[a-z0-9-]+)\s*:", css["tokens.css"]))
+    assert tokens - used - dead_tokens == set(), sorted(tokens - used - dead_tokens)
+
+
+def _theme_blocks():
+    """Token values per theme: ``:root`` defaults, then each token-only block in tokens.css and each themes/ file."""
+    tokens = _css_text("tokens.css")
+    declared = lambda text: dict(re.findall(r"(--ui-[a-z0-9-]+)\s*:\s*([^;}]+)", text))
+    root = declared(re.search(r":root\{([^}]*)\}", tokens).group(1))
+    blocks = {"modern": {}}
+    for theme, body in re.findall(r'body\[data-ui-theme="([a-z-]+)"\]\{([^}]*)\}', tokens):
+        blocks[theme] = declared(body)
+    for name in _css_sources():
+        if name.startswith("themes/"):
+            blocks.setdefault(name[len("themes/"):-len(".css")], {}).update(declared(_css_text(name)))
+    return root, blocks
+
+
+def test_themes_override_only_tokens_that_tokens_css_defines():
+    # A new semantic token goes into :root with a default, so every theme has it.
+    root, blocks = _theme_blocks()
+    assert {"modern", "github-like", *pysaiyanweboo.CANDIDATE_THEMES} <= set(blocks)
+    for theme, values in blocks.items():
+        assert set(values) <= set(root), f"{theme} invents tokens: {sorted(set(values) - set(root))}"
+
+
+def test_text_tokens_meet_wcag_aa_in_every_theme():
+    root, blocks = _theme_blocks()
+    for theme, values in blocks.items():
+        t = {**root, **values}
+        for text, ground in [("fg", "bg"), ("fg", "panel"), ("muted", "bg"), ("muted", "panel"),
+                             ("accent", "bg"), ("accent", "panel")]:
+            ratio = _contrast_ratio(t[f"--ui-{text}"], t[f"--ui-{ground}"])
+            assert ratio >= 4.5, f"{theme}: --ui-{text} on --ui-{ground} is {ratio:.2f}:1"
+        # Non-text marks such as the fail outline need 3:1.
+        for ground in ("bg", "panel"):
+            assert _contrast_ratio(t["--ui-danger"], t[f"--ui-{ground}"]) >= 3, f"{theme}: --ui-danger on --ui-{ground}"
+
+
+# ═══ 🔁 generation regressions ════════════════════════════════════════════════════════════════════════════
+# Contracts of the Python-only build, without reintroducing source-file twins.
+
+@pytest.mark.parametrize('mock', [float('nan'), float('inf'), {'nested': [float('-inf')]}, {1, 2}])
+def test_stub_rejects_non_json_mock(mock):
+    with pytest.raises(ValueError, match='finite JSON'):
+        pysaiyanweboo.stub_validate({**pysaiyanweboo.EXAMPLE_STUBS['api'], 'mock': mock})
+
+
+def test_stub_normalizes_json_keys_consistently():
+    spec = pysaiyanweboo.stub_validate({**pysaiyanweboo.EXAMPLE_STUBS['api'], 'mock': {1: '$input'}})
+    assert pysaiyanweboo.stub_response(spec['mock'], 'hello') == {'1': 'hello'}
+
+
+def test_generated_site_local_assets_and_links_exist(tmp_path):
+    class Links(HTMLParser):
+        def __init__(self):
+            super().__init__(); self.links = []
+        def handle_starttag(self, tag, attrs):
+            self.links.extend(v for k, v in attrs if k in ('src', 'href') and v)
+    written = pysaiyanweboo.write_site(tmp_path)
+    assert len(written) == len(set(written))
+    for name in written:
+        path = tmp_path / name
+        assert path.is_file(), name
+        if path.suffix != '.html':
+            continue
+        parser = Links(); parser.feed(path.read_text())
+        for link in parser.links:
+            url = urlsplit(link)
+            if url.scheme or url.netloc or not url.path:
+                continue
+            assert (path.parent / url.path).is_file(), (name, link)
+    for name in ('icon.png', 'favicon.png'):
+        assert (tmp_path / 'docs/brand' / name).read_bytes() == (Path(pysaiyanweboo.__file__).parent / 'docs/brand' / name).read_bytes()
+
+
+@pytest.mark.parametrize('args,stdin', [(['--help'], ''), (['--bogus'], ''), ([], '<b>&安全</b>'),
+                                      (['--trusted-html'], '<b>trusted</b>'), (['--css', 'missing-regression.css'], '')])
+def test_minimal_node_adapter_preserves_cli_behavior(args, stdin):
+    import os, shutil, subprocess, sys
+    node = node26() or pytest.skip('Node 26+ required')
+    root = Path(pysaiyanweboo.__file__).parent
+    env = {**os.environ, 'PYTHON': sys.executable}
+    direct = subprocess.run([sys.executable, '-S', 'pysaiyanweboo.py', *args], cwd=root, env=env, input=stdin, capture_output=True, text=True, timeout=30)
+    adapter = pysaiyanweboo.run_node(root / 'vendor/py_launch.cjs', '--', root / 'pysaiyanweboo.py', *args, node=node, env=env, input=stdin)
+    assert (adapter.returncode, adapter.stdout, adapter.stderr) == (direct.returncode, direct.stdout, direct.stderr)
+
+
+def test_shot_color_rules_are_scoped_to_each_world():
+    one = {'schema': 'web-ui-world/1', 'id': 'one', 'shots': [{'id': 'a', 'label': 'A', 'title': 'A', 'bg': '#112233'}]}
+    two = {**one, 'id': 'two', 'shots': [{**one['shots'][0], 'bg': '#334455'}]}
+    css_one, css_two = pysaiyanweboo.world_css(one), pysaiyanweboo.world_css(two)
+    assert '#one-shots:has' in css_one
+    assert '#two-shots:has' in css_two
+    assert '.ui-world-shots:has' not in css_one + css_two
+
+
+def test_board_duration_rounding_matches_browser_half_up():
+    assert pysaiyanweboo.board_seconds(66) == 8.3
+
+
+# ═══ 📦 embedded modules ══════════════════════════════════════════════════════════════════════════════════
+# Embedded ES module regression checks (stdlib unittest / pytest compatible).
+
+class EmbeddedModulesTests(unittest.TestCase):
+    def test_the_embedded_module_is_the_one_source_of_ui_js(self):
+        import pysaiyanweboo
+        self.assertEqual(EMBEDDED_UI_JS, pysaiyanweboo.js_source("ui.js"))
+        self.assertFalse((Path(__file__).resolve().parents[1] / "js").exists(), "browser modules are Python data; --site writes them")
+
+    def test_opt_in_and_one_file(self):
+        self.assertNotIn('<script', render_document("hello"))
+        html = render_document("hello", embedded_modules=("ui.js",))
+        self.assertIn('<script type="module">', html)
+        self.assertIn("export function setText", html)
+        self.assertEqual(html.count('<script type="module">'), 1)
+
+    def test_asset_response(self):
+        body, mime = module_asset()
+        self.assertEqual(body, EMBEDDED_UI_JS.encode("utf-8"))
+        self.assertEqual(mime, "text/javascript; charset=utf-8")
+
+    def test_data_mode(self):
+        html = render_document(embedded_modules=("ui.js",), module_mode="data")
+        encoded = re.search(r'data:text/javascript;base64,([^"]+)', html).group(1)
+        self.assertEqual(base64.b64decode(encoded).decode(), EMBEDDED_UI_JS)
+
+    def test_reject_end_tag_and_duplicates(self):
+        for source in ("</script>", "</ScRiPt >", "</script/"):
+            with self.assertRaises(ValueError):
+                module_script(source)
+        with self.assertRaises(ValueError):
+            render_document(embedded_modules=("ui.js", "ui.js"))
+        with self.assertRaises(ValueError):
+            render_document(embedded_modules=("unknown",))
+
+    def test_csp(self):
+        html = render_document(embedded_modules=("ui.js",), module_nonce="abc123")
+        self.assertIn('nonce="abc123"', html)
+        self.assertEqual(module_csp_hash(EMBEDDED_UI_JS), "'sha256-" + base64.b64encode(hashlib.sha256(EMBEDDED_UI_JS.encode()).digest()).decode() + "'")
+        with self.assertRaises(ValueError):
+            module_script("ok", nonce='" onclick="bad')
+        with self.assertRaises(ValueError):
+            render_document(embedded_modules=("ui.js",), module_mode="data", module_nonce="abc")
+
+
+# ═══ 🔤 font ══════════════════════════════════════════════════════════════════════════════════════════════
+# Typography is shared: --ui-font (Meiryo first) for text, --ui-font-mono for code, the same stack for Plotly.
+
+def read(*parts):
+    return pysaiyanweboo.css_source("/".join(parts))
+
+
+def token(name):
+    return re.search(rf"--{name}:([^;}}]+)", read("tokens.css")).group(1)
+
+
+def figure_layout(fragment):
+    return json.loads(re.search(r"var s=(\{.*?\});var el=", fragment, re.S).group(1))["layout"]
+
+
+class FontTests(unittest.TestCase):
+    def test_token_matches_the_python_constant_and_puts_meiryo_first(self):
+        self.assertEqual(token("ui-font").replace(" ", ""), pysaiyanweboo.UI_FONT.replace(" ", ""))
+        self.assertTrue(pysaiyanweboo.UI_FONT.startswith("Meiryo"))
+        self.assertEqual(pysaiyanweboo._PPTX_DEFAULT_FONT, pysaiyanweboo.UI_FONT.split(",")[0])
+
+    def test_base_follows_the_tokens_and_no_stylesheet_hardcodes_a_face(self):
+        base = read("base.css")
+        self.assertIn("font:var(--ui-text)/1.6 var(--ui-font)", base)  # size is a layout token too
+        # !important: it must also win over an adapted page's own `pre, code { font-family: inherit }`
+        self.assertIn("pre,code,kbd,samp{font-family:var(--ui-font-mono)!important}", base)
+        for name, text in pysaiyanweboo._CSS.items():
+            self.assertNotIn("system-ui", text, name)
+            if name.startswith("themes/"):
+                self.assertNotIn("font-family", text, f"{name}: themes follow the tokens")
+
+    def test_plotly_figure_defaults_the_family_and_keeps_the_figures_own_font(self):
+        spec = {"data": [], "layout": {"title": {"text": "t"}}}
+        self.assertEqual(figure_layout(plotly_figure(spec))["font"], {"family": pysaiyanweboo.UI_FONT})
+        self.assertNotIn("font", spec["layout"])  # the caller's spec is not changed
+
+        own = {"data": [], "layout": {"font": {"size": 11, "color": "#123"}}}
+        self.assertEqual(figure_layout(plotly_figure(own))["font"], {"family": pysaiyanweboo.UI_FONT, "size": 11, "color": "#123"})
+
+        own_family = {"data": [], "layout": {"font": {"family": "Arial"}}}
+        self.assertEqual(figure_layout(plotly_figure(own_family))["font"], {"family": "Arial"})
+
+        with self.assertRaisesRegex(ValueError, "font must be a mapping"):
+            plotly_figure({"data": [], "layout": {"font": "Arial"}})
+
+
+# ═══ 🧩 components ════════════════════════════════════════════════════════════════════════════════════════
+# COMPONENTS: one name gives a component's HTML, stylesheet and module from Python, here and in a repository that vendors pysaiyanweboo.py.
+
+
+def args_for(name):
+    source_spec = {"id": "t", "label": "Name", "name": "[a-z]+", "url": "https://example.test/{name}", "title": "T", "tables": [{"headers": ["a"], "rows": [[{"key": "a"}]]}]}
+    room = {"id": "notes", "emoji": "📝", "title": "Notes", "html": '<div id="notes"><p>notes</p></div>'}
+    return {"dial": (("level",), {"maximum": 11, "label": "Level"}), "door": ((ui.example_data("door"),), {}), "world": ((ui.example_data("school"),), {}),
+            "stub": ((ui.EXAMPLE_STUBS["api"],), {}), "source": ((source_spec,), {}), "showcase": ((ui.example_data("showcase"),), {}),
+            "front": (("<p>main</p>", [room]), {"title": "Front"}), "scroll": (("<button>a</button>",), {"label": "Views"}), "repository-diagnostics": (("myon-bioinformatics/web-ui",), {}),
+            "table": (({"columns": ["page", "chromium"], "rows": [["index", {"text": "pass", "status": "pass"}]], "row_headers": True},), {}),
+            "steps": (({"key": "demo/run", "steps": [{"id": "run", "title": "Run", "command": "python3 -S demo.py", "expect": "42"}]},), {})}.get(name, ((), {}))
+
+
+@pytest.mark.parametrize("name", sorted(ui.COMPONENTS))
+def test_every_component_gives_html_css_and_a_module_that_mounts(name):
+    args, kwargs = args_for(name)
+    parts = ui.component_parts(name, *args, **kwargs)
+    assert set(parts) == {"html", "css", "js"} and parts["html"].startswith("<") and (parts["js"] or not ui.COMPONENTS[name]["js"])
+    for sheet in ui.COMPONENTS[name]["css"]:
+        assert (ui.css_source(sheet) if sheet.endswith(".css") else ui._COMPONENT_CSS[sheet](*args)) in parts["css"]
+    page = ui.component_document(name, *args, document_title=f"{name} demo", **kwargs)
+    assert page.startswith("<!doctype html>") and parts["html"] in page and parts["js"] in page and f"<title>{name} demo</title>" in page
+    assert ("<script>" + parts["js"] + "</script>" in page) == bool(ui.COMPONENTS[name].get("classic"))      # a classic script, or a module
+    assert ui.bundled_css().split("\n")[0] in page                                              # the shared tokens, base and components come first
+    mount = ui.COMPONENTS[name].get("mount")
+    if not ui.COMPONENTS[name]["js"]:
+        assert "<script" not in page                                                               # a component without a module ships none
+    elif mount:
+        assert parts["js"].rstrip().endswith(mount)
+    else:                                                                                           # the module binds itself when a page loads it
+        assert any(sign in parts["js"] for sign in ('if(typeof document!=="undefined")', "DOMContentLoaded", "if(rootNode)mount(rootNode)", "addEventListener("))
+
+
+def test_scroll_regions_are_marked_in_python_and_enhanced_by_one_module():
+    row = ui.scroll_html("<button>a</button><button>b</button>", label='Views "top"', id="views")
+    assert row == '<div class="ui-shell-scroll" data-ui-scroll="row" data-scroll-label="Views &quot;top&quot;" id="views"><button>a</button><button>b</button></div>'
+    assert 'data-ui-scroll="table"' in ui.scroll_html("<table></table>", label="Records", kind="table")
+    for bad in ({"kind": "grid"}, {"label": " "}, {"id": "a b"}):
+        with pytest.raises(ValueError):
+            ui.scroll_html("<p></p>", **{"label": "x", **bad})
+    module, sheet = ui.js_source("scroll.js"), ui.css_source("scroll.css")
+    assert "export function bindScroll" in module and module.rstrip().endswith('if(typeof document!=="undefined")bindScroll();')
+    assert "fetch(" not in module and "localStorage" not in module                       # nothing sent, nothing stored
+    for name in ("ui-scroll-row", "ui-scroll-table", "ui-scroll-arrow", "ui-scroll-bar", "ui-scroll-top", "ui-scroll-left", "ui-scroll-over"):
+        assert name in module and "." + name in sheet                                     # every class the module sets has a rule
+    assert "#" not in sheet.replace("#{", "")                                             # colours are tokens only
+    assert sheet in ui.bundled_css()
+
+
+def test_the_dial_is_a_registered_component():
+    assert ui.css_source("dial.css") == "@layer components{" + ui.DIAL_CSS + "}" and ui.css_source("dial.css") in ui.bundled_css()
+    assert ui.js_source("dial.js").rstrip().endswith('if(typeof document!=="undefined")bindDial();')
+    parts = ui.component_parts("dial", "zoom", minimum=0.1, maximum=4, step=0.05, value=1)
+    assert parts["html"] == ui.dial_html("zoom", minimum=0.1, maximum=4, step=0.05, value=1)
+
+
+def test_an_unknown_component_names_the_known_ones():
+    with pytest.raises(ValueError, match="unknown component: nope; one of dial, "):
+        ui.component_parts("nope")
+
+
+def run_cli(*argv, stdin=None):
+    done = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), *argv], input=stdin, capture_output=True, text=True, timeout=120, check=False)
+    assert done.returncode == 0, done.stderr
+    return done.stdout
+
+
+def test_the_cli_prints_a_component_for_node_and_the_shell():
+    """python -S pysaiyanweboo.py --component NAME: the same calls by name, with --spec FILE|- and --set KEY=VALUE (JSON values, else text)."""
+    listing = json.loads(run_cli("--component", "list"))
+    assert listing == ui.components() and listing["dial"] == {"html": "dial_html", "css": ["dial.css"], "js": ["dial.js"], "mount": "", "classic": False}
+    parts = json.loads(run_cli("--component", "dial", "--set", "name=volume", "--set", "maximum=11", "--set", "label=Volume", "--part", "json"))
+    assert parts == ui.component_parts("dial", name="volume", maximum=11, label="Volume")
+    assert run_cli("--component", "dial", "--set", "name=volume", "--part", "html") == ui.dial_html("volume")
+    spec = json.dumps(ui.example_data("school"))
+    assert run_cli("--component", "world", "--spec", "-", "--part", "css", stdin=spec) == ui.component_parts("world", ui.example_data("school"))["css"]
+    assert run_cli("--component", "door", "--spec", "-", stdin=json.dumps(ui.example_data("door"))) == ui.component_document("door", ui.example_data("door"))
+    bad = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--component", "nope"], capture_output=True, text=True, timeout=60, check=False)
+    assert bad.returncode == 2 and "unknown component: nope" in bad.stderr
+
+
+@pytest.mark.skipif(not node26(), reason="Node 26+ not available")
+def test_node_reaches_a_component_through_py_launch(tmp_path):
+    """A Node page builder in another repository: vendor/py_launch.cjs runs pysaiyanweboo.py --component and reads the JSON."""
+    script = tmp_path / "build.cjs"
+    script.write_text(
+        f'const {{run}} = require({json.dumps(str(ROOT / "vendor" / "py_launch.cjs"))});\n'
+        f'const r = run({json.dumps(str(ROOT / "pysaiyanweboo.py"))}, ["--component", "dial", "--set", "name=volume", "--part", "json"], {{noSite: true}});\n'
+        'process.stdout.write(JSON.stringify(Object.keys(JSON.parse(r.stdout.toString("utf8")))));\n', encoding="utf-8")   # run() is synchronous; stdout is a Buffer
+    done = subprocess.run([node26(), str(script)], capture_output=True, text=True, timeout=120, check=True)
+    assert json.loads(done.stdout) == ["html", "css", "js"]
+
+
+def test_the_table_escapes_everything_and_marks_numbers_missing_cells_and_statuses():
+    """table_html(spec): the hand-built report tables of Ironmate, markdown and browser-test-kit, through main's table() (one renderer), no script."""
+    html = ui.table_html({"columns": ["", "<b>env</b>", "bytes"], "caption": "x < y", "row_headers": True, "missing": "not run", "rows": [
+        ["<i>page</i>", {"text": "pass\nMAE 0.1", "status": "pass", "image": {"src": "tiles/a%20b.png", "alt": 'a "b"', "width": 160}}, 1234],
+        ["log", {"text": "<script>", "href": "./log.txt?x=1&y=2"}, None], ["f", 0.5, {"text": "9", "num": True}]]})
+    assert html.startswith('<div class="ui-shell-scroll"><table class="ui-table"><caption>x &lt; y</caption><thead><tr><th scope="col"></th>')
+    assert '<th scope="col">&lt;b&gt;env&lt;/b&gt;</th>' in html and '<th scope="row">&lt;i&gt;page&lt;/i&gt;</th>' in html
+    assert '<td data-status="pass"><img src="tiles/a%20b.png" alt="a &quot;b&quot;" width="160" loading="lazy">pass\nMAE 0.1</td>' in html
+    assert '<td><a href="./log.txt?x=1&amp;y=2">&lt;script&gt;</a></td>' in html and "<td data-missing>not run</td>" in html
+    assert "<td data-num>1234</td>" in html and "<td data-num>0.5</td>" in html and "<td data-num>9</td>" in html
+    assert "<script" not in html
+    for bad in ({"columns": [], "rows": []}, {"columns": ["a"], "rows": [["x", "y"]]}, {"columns": ["a"], "rows": [[True]]},
+                {"columns": ["a"], "rows": [[float("nan")]]}, {"columns": ["a"], "rows": [[{"text": "x", "href": "javascript:alert(1)"}]]},
+                {"columns": ["a"], "rows": [[{"image": {"src": "data:image/png;base64,AAAA", "alt": ""}}]]},
+                {"columns": ["a"], "rows": [[{"status": "Bad Status"}]]}, {"columns": ["a"], "rows": [[{"image": {"src": "a.png", "alt": "", "width": 0}}]]},
+                {"columns": ["a"], "rows": [], "style": "x"}, {"columns": ["a"], "rows": [[{"num": "yes"}]]}):
+        with pytest.raises(ValueError):
+            ui.table_html(bad)
+
+
+def test_the_showcase_section_tables_are_the_same_table():
+    """The showcase's section tables are table_html() too: one table builder (table()), one stylesheet (.ui-table)."""
+    sections = [{"id": "t", "label": "T", "icon": "info", "heading": "H", "table": {"columns": ["a", "b"], "rows": [["1 < 2", "&"]]}},
+                {"id": "u", "label": "U", "icon": "info", "heading": "U"}]
+    html = ui.showcase_html({"schema": ui.SHOWCASE_SCHEMA, "id": "demo", "title": "Demo", "sections": sections})
+    assert ('<div class="ui-shell-scroll"><table class="ui-table"><thead><tr><th scope="col">a</th><th scope="col">b</th></tr></thead>'
+            "<tbody><tr><td>1 &lt; 2</td><td>&amp;</td></tr></tbody></table></div>") in html
+    # main's table() renders every existing call as before; the report options are keyword-only additions
+    assert ui.table(("a", "b"), [("x", None), ("y", 2)]) == ('<table class="ui-table"><thead><tr><th scope="col">a</th><th scope="col">b</th></tr></thead>'
+                                                          "<tbody><tr><td>x</td><td></td></tr><tr><td>y</td><td>2</td></tr></tbody></table>")
+    assert '<th scope="row">x</th><td data-missing>—</td>' in ui.table(("a", "b"), [("x", None)], row_headers=True, missing="—")
+
+
+def test_the_table_from_the_shell_and_node():
+    spec = {"columns": ["page", "ok"], "rows": [["index", None]]}
+    done = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--component", "table", "--spec", "-", "--part", "html"],
+                          input=json.dumps(spec), capture_output=True, text=True, check=True)
+    assert done.stdout.strip() == ui.table_html(spec)
+
+
+# ═══ 🎛️ controls ═════════════════════════════════════════════════════════════════════════════════════════
+
+class Elements(HTMLParser):
+    def __init__(self, source):
+        super().__init__()
+        self.tags = []
+        self.feed(source)
+    def handle_starttag(self, tag, attrs):
+        self.tags.append((tag, dict(attrs)))
+
+
+class ControlsTests(unittest.TestCase):
+    def test_controls_escape_text_and_attributes(self):
+        hostile = '\"><script>alert(1)</script>&'
+        source = ui.button(hostile) + ui.select(((hostile, hostile),), id='choice', label=hostile)
+        source += ui.input_field(id='text', label=hostile, value=hostile)
+        source += ui.textarea(id='body', label=hostile, value='</textarea>' + hostile)
+        source += ui.checkbox(hostile, id='flag') + ui.details(hostile, hostile)
+        elements = Elements(source)
+        self.assertNotIn('script', [tag for tag, _ in elements.tags])
+        self.assertEqual([attrs['value'] for tag, attrs in elements.tags if tag == 'option'], [hostile])
+        self.assertEqual([attrs['value'] for tag, attrs in elements.tags if tag == 'input' and attrs['type'] == 'text'], [hostile])
+        labels = [attrs['for'] for tag, attrs in elements.tags if tag == 'label']
+        self.assertEqual(labels, ['choice', 'text', 'body', 'flag'])
+        self.assertIn('type="button"', source)
+
+    def test_invalid_configurations_fail(self):
+        for operation in (
+            lambda: ui.button('x', type='onclick'), lambda: ui.input_field(id='x', label='x', type='file'),
+            lambda: ui.select((('a', 'a'), ('a', 'b')), id='x', label='x'),
+            lambda: ui.select((('a', 'a'),), id='x', label='x', selected='b'),
+            lambda: ui.textarea(id='x', label='x', rows=0), lambda: ui.checkbox('x', id='x" onclick="x'),
+        ):
+            with self.assertRaises(ValueError): operation()
+
+    def test_section_data_is_inert_and_duplicate_labels_have_distinct_values(self):
+        body = '</script><script>danger()</script>&\u2028'
+        source = ui.section_browser((('同名', body), ('同名', 'second')), full_text=body)
+        elements = Elements(source)
+        self.assertEqual(sum(tag == 'script' for tag, _ in elements.tags), 1)
+        payload = source.split('data-ui-section-data>', 1)[1].split('</script>', 1)[0]
+        self.assertNotIn('<', payload)
+        data = json.loads(payload)
+        self.assertEqual(data['fullText'], body)
+        self.assertEqual([item['value'] for item in data['items']], ['0', '1'])
+        self.assertEqual(data['items'][0]['body'], body)
+        self.assertIn(' disabled', source)
+        self.assertIn('controls.js', ui.shared_scripts('.', names=('controls.js',))[0])
+
+    def test_stdlib_only_one_liner(self):
+        code = 'from pysaiyanweboo import *; print(render_document(trusted_html=section_browser((("概要", "本文"),), full_text="全文"), scripts=shared_scripts(".", names=("controls.js",))))'
+        run = subprocess.run([sys.executable, '-S', '-c', code], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn('aria-live="polite"', run.stdout)
+        self.assertIn('type="module" src="./js/controls.js"', run.stdout)
+
+    def test_explicit_markdown_renderer_output_is_composable(self):
+        self.assertIn('<table>', ui.details('Table', trusted_html='<table><tr><td>value</td></tr></table>'))
+        self.assertNotIn('<table>', ui.details('Table', '<table>'))
+
+    def test_badge_and_card_helpers(self):
+        hostile = '\"><script>alert(1)</script>&'
+        badge_html = ui.badge(hostile)
+        self.assertEqual(badge_html, '<span class="ui-tag">&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;&amp;</span>')
+
+        card_html = ui.card(hostile, title=hostile)
+        self.assertIn('<article class="ui-card"><h2>&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;&amp;</h2>', card_html)
+        self.assertIn('&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;&amp;</article>', card_html)
+
+        trusted_card = ui.card(title='Card Title', trusted_html='<p>Trusted content</p>')
+        self.assertEqual(trusted_card, '<article class="ui-card"><h2>Card Title</h2><p>Trusted content</p></article>')
+        self.assertEqual(ui.card("x", title="T", heading_level=3), '<article class="ui-card"><h3>T</h3>x</article>')
+        for bad in (0, 7, True, "2"):
+            with self.assertRaises(ValueError):
+                ui.card("x", title="T", heading_level=bad)
+        with self.assertRaises(ValueError):
+            ui.card("text", trusted_html="<p>t</p>")
+
+
+# ═══ 🧭 navigation ════════════════════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.skipif(not node26(), reason="run_node requires Node 26+")
+def test_node_navigation_contract():
+    # navigation.js in Node: URL checks, views, the route table (the same cases as pysaiyanweboo.route_table) and bindRouteTable on a fake window.
+    navigation_js = r"""const assert=require('node:assert/strict');
+const ui=require('./js/navigation.js');
+assert.equal(ui.sourceURL('https://example.test/a'),'https://example.test/a');
+for(const value of ['javascript:alert(1)','data:text/html,x','ftp://example.test/','https://u:p@example.test/','https://example.test/ bad','https://example.test\\bad','//example.test/',''])assert.throws(()=>ui.sourceURL(value));
+let opened;const win={open:(...args)=>opened=args};ui.openExternalURL('https://example.test/',win);assert.deepEqual(opened,['https://example.test/','_blank','noopener,noreferrer']);
+const views=['home','wiki','pixiv'];
+assert.equal(ui.viewFromLocation('#pixiv','',views,'home'),'pixiv');
+assert.equal(ui.viewFromLocation('#wiki?title=A','',views,'home'),'wiki');
+assert.equal(ui.viewFromLocation('#bad','',views,'home'),'home');
+assert.equal(ui.viewFromLocation('#pixiv','?view=wiki',views,'home',{wiki:'wiki'}),'wiki');
+assert.equal(ui.viewFromLocation('#pixiv','?view=unlisted',views,'home',{wiki:'wiki'}),'pixiv');
+
+// Route table: shared cases with pysaiyanweboo.route_table (tests/fixtures/route_table_cases.json).
+const cases=require(REPO+'/tests/fixtures/route_table_cases.json');
+for(const c of cases.valid){const t=ui.routeTable(c.registry);for(const [k,v] of Object.entries(c.lookups))assert.equal(t.lookup(k),v,c.name+': '+k);}
+for(const c of cases.invalid)assert.throws(()=>ui.routeTable(c.registry),undefined,c.name);
+assert.equal(ui.routeHref('/map'),'#/map');
+assert.equal(ui.routeHref('/map',{base:'https://example.test/app/',routing:'path'}),'https://example.test/app/map');
+assert.throws(()=>ui.routeHref('/map',{routing:'query'}));
+{ // fake window: links get hrefs, the current page is marked, go() and buttons navigate, destroy unbinds.
+  const listeners={},docListeners={};
+  const el=(tag,key)=>({tagName:tag,attrs:{'data-ui-go':key},getAttribute(n){return this.attrs[n]??null;},setAttribute(n,v){this.attrs[n]=v;},removeAttribute(n){delete this.attrs[n];},closest(){return this;}});
+  const home=el('A','\u{1F3E0}'),map=el('A','\u{1F5FA}'),shades=el('BUTTON','\u{1F576}'),bad=el('A','zz');
+  const win={location:{hash:'',pathname:'/'},addEventListener:(n,f)=>listeners[n]=f,removeEventListener:n=>delete listeners[n],
+    document:{querySelectorAll:()=>[home,map,shades,bad],addEventListener:(n,f)=>docListeners[n]=f,removeEventListener:n=>delete docListeners[n]}};
+  const h=ui.bindRouteTable(win,{'/':'\u{1F3E0}','/map':'\u{1F5FA}\uFE0F','/shades':'\u{1F576}'});
+  assert.equal(ui.bindRouteTable(win,{}),h);
+  assert.equal(home.attrs.href,'#/');assert.equal(map.attrs.href,'#/map');assert.equal(home.attrs['aria-current'],'page');
+  assert.equal(bad.attrs['aria-disabled'],'true');
+  assert.equal(h.go('\u{1F5FA}\uFE0F'),'/map');assert.equal(win.location.hash,'/map');
+  listeners.hashchange();assert.equal(map.attrs['aria-current'],'page');assert.equal(home.attrs['aria-current'],undefined);
+  let prevented=false;docListeners.click({target:shades,preventDefault(){prevented=true;}});
+  assert.ok(prevented);assert.equal(win.location.hash,'/shades');
+  assert.throws(()=>h.go('nope'));
+  h.destroy();assert.equal(listeners.hashchange,undefined);assert.equal(docListeners.click,undefined);
+}
+console.log('navigation.js ok');"""
+    assert 'navigation.js ok' in node_js(navigation_js).stdout
+def test_source_link_is_escaped_and_explicit():
+    html=ui.source_link('source-url',label='<script>bad</script>')
+    assert 'data-ui-source-for="source-url"' in html
+    assert 'target="_blank"' in html and 'noopener noreferrer' in html and 'no-referrer' in html
+    assert ' hidden>' in html and ' href=' not in html
+    assert '&lt;script&gt;bad&lt;/script&gt;' in html
+    with pytest.raises(ValueError):ui.source_link('bad" onclick="bad')
+def test_view_tabs_escape_labels_and_reject_ambiguous_views():
+    html=ui.view_tabs((('home','Home'),('wiki','<Wiki>')))
+    assert 'data-ui-nav="wiki"' in html and '&lt;Wiki&gt;' in html
+    with pytest.raises(ValueError):ui.view_tabs((('home','A'),('home','B')))
+    with pytest.raises(ValueError):ui.view_tabs((('wiki','A'),))
+def test_navigation_module_remains_opt_in():
+    assert 'navigation.js' not in ui.render_document('A')
+    assert ui.shared_scripts('.',names=('navigation.js',))==('./js/navigation.js',)
+def test_adopt_static_export_preserves_data_and_script_bodies():
+    source='<html><head><link rel="stylesheet" href="legacy.css?v=1"><style>pre, code { font-family: monospace; }</style></head><body><main class="old-page"><button id="go">Go</button><pre>{"snapshot":"old"}</pre><script>const s="<button>unchanged</button>pre, code { font-family: original; }";</script></main></body></html>'
+    adapted=ui.adopt_document(source,asset_base='./vendor',class_aliases={'old-page':'ui-page'},remove_stylesheets=('legacy.css',))
+    assert 'legacy.css' not in adapted and 'class="ui-page"' in adapted
+    assert '<button id="go" class="ui-button">Go</button>' in adapted
+    assert '{"snapshot":"old"}' in adapted
+    assert '<script>const s="<button>unchanged</button>pre, code { font-family: original; }";</script>' in adapted
+    assert 'font-family: inherit;' in adapted
+    assert adapted==ui.adopt_document(adapted,asset_base='./vendor')
+
+
+ROUTE_CASES = __import__('json').loads((ROOT / 'tests/fixtures/route_table_cases.json').read_text(encoding='utf-8'))
+
+
+@pytest.mark.parametrize('case', ROUTE_CASES['valid'], ids=lambda c: c['name'])
+def test_route_table_valid_cases_match_navigation_js(case):
+    rows = ui.route_table(case['registry'])
+    lookup = {row['identity']: row['route'] for row in rows}
+    routes = {row['route'] for row in rows}
+    for key, expected in case['lookups'].items():
+        found = lookup.get(key.replace('\ufe0f', ''), key if key in routes else None)
+        assert found == expected, key
+
+
+@pytest.mark.parametrize('case', ROUTE_CASES['invalid'], ids=lambda c: c['name'])
+def test_route_table_invalid_cases_match_navigation_js(case):
+    with pytest.raises(ValueError):
+        ui.route_table(case['registry'])
+
+
+def test_route_links_escape_and_carry_the_table():
+    html = ui.route_links([{'route': '/', 'key': 'home', 'label': '</script><b>x'}, {'route': '/map', 'key': 'map'}])
+    assert '</script><b>' not in html.split('<script', 1)[1].split('</script>', 1)[0]
+    assert '\\u003c/script>' in html and 'href="#/"' in html and 'data-ui-go="map"' in html
+    assert 'data-ui-routing="hash"' in html and '&lt;/script&gt;&lt;b&gt;x' in html
+    assert 'href="/map"' in ui.route_links({'/map': 'map'}, routing='path')
+    with pytest.raises(ValueError):
+        ui.route_links({'/map': 'map'}, routing='query')
+
+
+# ═══ 📐 layout presets ════════════════════════════════════════════════════════════════════════════════════
+# layout_presets: switchable presets as data, CSS and radio controls; sweep results become candidates.
+
+sys.path.insert(0, str(ROOT / "tools"))
+import layout_presets as lp  # noqa: E402
+
+import pysaiyanweboo  # noqa: E402
+
+SPEC = pysaiyanweboo.example_data("layout-presets")
+
+
+def test_presets_are_valid_and_css_switches_on_the_checked_radio():
+    data = lp.validate(SPEC)
+    assert data["default"] == "grid8" and [p["id"] for p in data["presets"]] == ["grid8", "compact", "device", "wide"]
+    css = lp.css(SPEC)
+    assert css.startswith(":root{--ui-matrix-col:160px;--ui-matrix-gap:8px;--ui-matrix-pad:8px}\n")
+    assert 'body:has(input[name="ui-layout"][value="device"]:checked){--ui-matrix-col:195px' in css
+    html = lp.controls_html(SPEC)
+    assert html.count('type="radio" name="ui-layout"') == 4 and html.count(" checked") == 1
+    assert "195px = half an iPhone (390px)" in html
+
+
+@pytest.mark.parametrize("change", [
+    {"schema": "other"}, {"presets": []}, {"default": "nope"},
+    {"presets": [{"id": "A", "label": "x", "vars": {"--ui-a": "1px"}}]},
+    {"presets": [{"id": "a", "label": "", "vars": {"--ui-a": "1px"}}]},
+    {"presets": [{"id": "a", "label": "x", "vars": {"--ui-a": "red"}}]},
+    {"presets": [{"id": "a", "label": "x", "vars": {"color": "1px"}}]},
+    {"presets": [{"id": "a", "label": "x", "vars": {"--ui-a": "1px;}body{x:1px"}}]},
+    {"presets": [{"id": "a", "label": "x", "vars": {"--ui-a": "1px"}}, {"id": "a", "label": "y", "vars": {"--ui-a": "2px"}}]},
+    {"presets": [{"id": "a", "label": "x", "vars": {"--ui-a": "1px"}}, {"id": "b", "label": "y", "vars": {"--ui-b": "2px"}}]},
+    {"presets": [{"id": "a", "label": "x", "vars": {"--ui-a": "1px"}, "extra": 1}]},
+])
+def test_invalid_presets_are_rejected(change):
+    with pytest.raises(ValueError):
+        lp.validate({**SPEC, **change})
+
+
+def test_candidates_allow_several_passing_presets_and_label_without_disabling():
+    data = lp.validate(SPEC)
+    rows = [{"preset": "grid8", "width": 320, "ok": True, "failed": []},
+            {"preset": "compact", "width": 320, "ok": True, "failed": []},
+            {"preset": "wide", "width": 320, "ok": False, "failed": ["horizontal_overflow"]},
+            {"preset": "wide", "width": 1280, "ok": True, "failed": []}]
+    result = lp.candidates(data, rows)
+    assert result["by_width"] == {"320": ["grid8", "compact"], "1280": ["wide"]}
+    assert result["every_width_has_a_candidate"] and result["presets"]["device"] == {"passed": [], "failed": []}
+    html = lp.controls_html(SPEC, result)
+    assert "ok at 1280px; check at 320px" in html and 'value="wide"> Wide' in html and "disabled" not in html
+    assert lp.candidates(data, rows[2:3])["every_width_has_a_candidate"] is False
+    with pytest.raises(ValueError, match="candidates"):
+        lp.controls_html(SPEC, {"schema": "x"})
+
+
+def test_cli_css_and_html(capsys, tmp_path):
+    spec_file = tmp_path / "layout-presets.json"
+    spec_file.write_text(json.dumps(SPEC), encoding="utf-8")
+    assert lp.main(["css", str(spec_file)]) == 0
+    assert capsys.readouterr().out == lp.css(SPEC)
+    assert lp.main(["html", str(spec_file)]) == 0
+    assert capsys.readouterr().out == lp.controls_html(SPEC) + "\n"
+    with pytest.raises(ValueError, match="widths"):
+        lp.sweep("file:///x", SPEC, [100], items="li")
+
+
+def test_front_page_demo_matches_the_presets():
+    page = (ROOT / "index.html").read_text(encoding="utf-8")
+    assert lp.css(SPEC) in page
+    data = lp.validate(SPEC)
+    assert re.findall(r'name="ui-layout" value="([a-z0-9-]+)"', page) == [p["id"] for p in data["presets"]]
+    layout = page.split("<legend>Layout</legend>")[1].split("</fieldset>")[0]
+    assert layout.count('type="radio" name="ui-layout"') == len(data["presets"]) and "disabled" not in layout
+    assert page.count('name="ui-theme"') == 2 + len(pysaiyanweboo.CANDIDATE_THEMES) and 'class="ui-matrix-tiles"' in page
+
+
+def test_page_layouts_drive_the_core_and_live_in_web_ui():
+    import pysaiyanweboo
+    spec = pysaiyanweboo.EXAMPLES["page-layouts"]
+    data = pysaiyanweboo.validate_layout_presets(spec)
+    assert data["default"] == "comfortable" and [p["id"] for p in data["presets"]] == ["comfortable", "compact", "wide", "device"]
+    for preset in data["presets"]:
+        assert set(preset["vars"]) == {"--ui-text", "--ui-space", "--ui-max"}
+        assert all(int(v[:-2]) % 8 == 0 for k, v in preset["vars"].items() if k == "--ui-space")  # 8 px grid
+    core = pysaiyanweboo.core_css()
+    assert "font:var(--ui-text)/1.6" in core and ".ui-page{max-width:var(--ui-max);margin:auto;padding:var(--ui-space)}" in core
+    assert "padding:var(--ui-space);margin:var(--ui-space) 0" in core
+    css = pysaiyanweboo.layout_presets_css(spec)
+    assert css.startswith(":root{--ui-text:16px;--ui-space:16px;--ui-max:960px}") and 'body:has(input[name="ui-layout"][value="device"]:checked){--ui-text:15px' in css
+    assert pysaiyanweboo.layout_switch_html(spec).count('name="ui-layout"') == 4
+    assert lp.css is pysaiyanweboo.layout_presets_css and lp.validate is pysaiyanweboo.validate_layout_presets  # the tool delegates
+    assert pysaiyanweboo.bundle_css(layouts=spec).count(':root{--ui-text:16px') == 1
+
+
+# ═══ 🗂️ catalog ══════════════════════════════════════════════════════════════════════════════════════════
+# Consumer data stays data: catalog generation needs only the standard library.
+
+class Tags(HTMLParser):
+    def __init__(self, page):
+        super().__init__()
+        self.tags = []
+        self.feed(page)
+
+    def handle_starttag(self, tag, attrs):
+        self.tags.append((tag, dict(attrs)))
+
+
+class CatalogTests(unittest.TestCase):
+    def spec(self):
+        return ui.example_data('catalog-report')
+
+    def test_both_examples_are_deterministic_and_do_not_mutate(self):
+        for name in ('catalog-report', 'catalog-projects'):
+            with self.subTest(name=name):
+                spec = ui.example_data(name)
+                before = copy.deepcopy(spec)
+                page = ui.catalog_document(spec)
+                self.assertEqual(page, ui.catalog_document(spec))
+                self.assertEqual(spec, before)
+                tags = Tags(page).tags
+                self.assertEqual(sum(tag == 'h1' for tag, _ in tags), 1)
+                self.assertEqual(sum(tag == 'article' for tag, _ in tags), 2)
+                self.assertFalse(any(tag in ('script', 'link', 'img', 'iframe', 'base') for tag, _ in tags))
+
+    def test_hostile_text_is_escaped_in_all_fields(self):
+        hostile = '\"</style><script>alert(1)</script><img src=x> 日本語 🧪'
+        spec = self.spec()
+        spec.update(title=hostile, description=hostile)
+        for item in spec['items']:
+            item.update(title=hostile, summary=hostile, details=hostile, category=hostile)
+            item['links'] = [{'label': hostile, 'href': './result.html?x=%22&y=1'}]
+        page = ui.catalog_document(spec)
+        self.assertNotIn(hostile, page)
+        self.assertIn('&lt;script&gt;', page)
+        self.assertFalse(any(tag in ('script', 'img') for tag, _ in Tags(page).tags))
+
+    def test_ids_are_unique_prefixed_and_match_navigation(self):
+        spec = self.spec()
+        spec['items'][0]['id'] = 'top'
+        tags = Tags(ui.catalog_document(spec)).tags
+        ids = [attrs['id'] for _, attrs in tags if 'id' in attrs]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertIn('catalog-item-top', ids)
+        for tag, attrs in tags:
+            if tag == 'a' and attrs['href'].startswith('#'):
+                self.assertIn(attrs['href'][1:], ids)
+        spec['items'][1]['id'] = 'top'
+        with self.assertRaises(ValueError):
+            ui.catalog_document(spec)
+
+    def test_bad_ids(self):
+        for identity in ('', 'two words', '日本語', 'x" onclick="bad', '1bad', 'x' * 129, None, 1):
+            with self.subTest(identity=identity):
+                spec = self.spec()
+                spec['items'][0]['id'] = identity
+                with self.assertRaises(ValueError):
+                    ui.catalog_document(spec)
+
+    def test_rejects_unsafe_or_nonportable_links(self):
+        for target in ('javascript:alert(1)', 'JaVaScRiPt:alert(1)', 'java\nscript:alert(1)',
+                       'data:text/html,bad', 'http://example.com', '//example.com', '/absolute',
+                       '\\evil.test', 'https:\\evil.test', 'https:evil.test',
+                       'https://@example.com', 'https://user:pass@example.com', 'https://example.com:bad',
+                       'https://[broken', ' ./index.html', '', None):
+            with self.subTest(target=target):
+                spec = self.spec()
+                spec['items'][0]['links'][0]['href'] = target
+                with self.assertRaises(ValueError):
+                    ui.catalog_document(spec)
+
+    def test_relative_links_remain_relative_at_each_pages_subpath(self):
+        spec = self.spec()
+        expected = ['?q=foo:bar', './evidence/result.json?view=1#ok', '../guide.html', '#catalog-item-timing',
+                    'https://example.com/reference?q=1&lang=ja']
+        spec['items'][0]['links'] = [{'label': str(i), 'href': target} for i, target in enumerate(expected)]
+        hrefs = [attrs['href'] for tag, attrs in Tags(ui.catalog_document(spec)).tags if tag == 'a']
+        for target in expected:
+            self.assertIn(target, hrefs)
+        for base in ('https://owner.github.io/repo-a/', 'https://owner.github.io/repo-b/nested/'):
+            self.assertEqual(urljoin(base, expected[1]), base + 'evidence/result.json?view=1#ok')
+
+    def test_invalid_fields_types_and_limits(self):
+        variants = [None, {}, {'schema': 'other', 'title': 'x', 'items': []}]
+        for key, value in [('title', ''), ('title', 42), ('items', {}), ('description', '\x00'),
+                           ('description', '\ud800'), ('items', [{}] * 513), ('unknown', True)]:
+            spec = self.spec()
+            spec[key] = value
+            variants.append(spec)
+        for change in ({'unknown': 1}, {'title': ''}, {'summary': []}, {'links': {}},
+                       {'links': [{'label': 'x', 'href': './ok', 'target': '_blank'}]},
+                       {'links': [{'label': '', 'href': './ok'}]}, {'details': 'x' * 16001}):
+            spec = self.spec()
+            spec['items'][0].update(change)
+            variants.append(spec)
+        for spec in variants:
+            with self.subTest(spec=str(spec)[:100]):
+                with self.assertRaises(ValueError):
+                    ui.catalog_document(spec)
+
+    def test_empty_catalog_and_all_themes(self):
+        spec = {'schema': 'web-ui-catalog/1', 'title': 'Empty', 'items': []}
+        for theme in ui.THEMES + ui.CANDIDATE_THEMES:
+            self.assertIn(f'data-ui-theme="{theme}"', ui.catalog_document(spec, theme=theme))
+        with self.assertRaises(ValueError):
+            ui.catalog_document(spec, theme='unknown')
+
+    def test_catalog_cli_utf8_under_legacy_encoding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'spec.json'
+            for name in ('catalog-report', 'catalog-projects'):
+                spec = ui.example_data(name)
+                path.write_text(json.dumps(spec), encoding='utf-8')
+                result = subprocess.run([sys.executable, '-S', ui.__file__, '--catalog', str(path)],
+                                        env={**os.environ, 'PYTHONIOENCODING': 'cp1252'},
+                                        capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.decode('utf-8'), ui.catalog_document(spec))
+                example = subprocess.run([sys.executable, '-S', ui.__file__, '--example', name],
+                                         env={**os.environ, 'PYTHONIOENCODING': 'cp1252'},
+                                         capture_output=True, timeout=10)
+                self.assertEqual(example.returncode, 0, example.stderr)
+                self.assertEqual(json.loads(example.stdout.decode('utf-8')), spec)
+
+    def test_isolated_single_file_and_cli(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'pysaiyanweboo.py').write_bytes(Path(ui.__file__).read_bytes())
+            (root / 'input.json').write_text(json.dumps(self.spec(), ensure_ascii=False), encoding='utf-8')
+            done = subprocess.run([sys.executable, '-I', '-S', str(root / 'pysaiyanweboo.py'),
+                                   '--catalog', str(root / 'input.json')], capture_output=True, timeout=10)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            # The copy outside the checkout cannot know its commit; only the generator meta differs.
+            self.assertEqual(ui.GENERATOR_META.sub('', done.stdout.decode('utf-8')), ui.GENERATOR_META.sub('', ui.catalog_document(self.spec())))
+            (root / 'input.json').write_text('{"invalid": true}', encoding='utf-8')
+            bad = subprocess.run([sys.executable, '-I', '-S', str(root / 'pysaiyanweboo.py'),
+                                  '--catalog', str(root / 'input.json')], capture_output=True, timeout=10)
+            self.assertEqual(bad.returncode, 2)
+            self.assertEqual(bad.stdout, b'')
+
+
+# ═══ 🔎 collection filter ═════════════════════════════════════════════════════════════════════════════════
+
+FILTER_CASES = json.loads((ROOT / "tests/fixtures/collection_filter_cases.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("case", FILTER_CASES["cases"], ids=lambda c: c["name"])
+def test_python_filter_and_cli(case):
+    request = copy.deepcopy(case["request"])
+    assert filter_request(request) == case["expected"]
+    assert request == case["request"]
+    result = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--collection"],
+                            input=json.dumps(request, ensure_ascii=False), text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    assert json.loads(result.stdout) == case["expected"]
+    assert result.stdout.endswith("\n")
+
+
+@pytest.mark.parametrize("payload", FILTER_CASES["invalid"])
+def test_invalid_request_fails_closed(payload):
+    result = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--collection"],
+                            input=json.dumps(payload), text=True, capture_output=True)
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr.startswith("error: ")
+
+
+def test_malformed_json_fails_without_partial_output():
+    for data in ("{", '{"items": [], "query": NaN}', '{"items": []} trailing'):
+        result = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--collection"],
+                                input=data, text=True, capture_output=True)
+        assert result.returncode == 2
+        assert result.stdout == ""
+
+
+@pytest.mark.skipif(not node26(), reason="Node 26+ is optional in Python-only environments")
+def test_node_reaches_the_same_tool_through_the_shared_launcher():
+    # No Node twin: Node runs pysaiyanweboo.py --collection via vendor/py_launch.cjs, so both routes share one implementation.
+    env = {**os.environ, "PYTHON": sys.executable}
+    run = lambda request: pysaiyanweboo.run_node(ROOT / "vendor/py_launch.cjs", "--", ROOT / "pysaiyanweboo.py", "--collection", env=env, input=request)
+    for case in FILTER_CASES["cases"]:
+        result = run(json.dumps(case["request"], ensure_ascii=False))
+        assert result.returncode == 0, (case["name"], result.stderr)
+        assert json.loads(result.stdout) == case["expected"]
+    for request in FILTER_CASES["invalid"]:
+        result = run(json.dumps(request))
+        assert result.returncode == 2
+        assert result.stdout == ""
+
+    for malformed in ("{", '{"items": [], "query": NaN}', '{"items": []} trailing'):
+        result = run(malformed)
+        assert result.returncode == 2
+        assert result.stdout == ""
+        assert result.stderr.startswith("error: ")
+
+
+@pytest.mark.skipif(not node26(), reason="Node 26+ is optional in Python-only environments")
+def test_collection_js_contract_in_node():
+    # collection.js (the browser module) in Node: callbacks for text, facets and predicates, which the JSON tool above has no use for.
+    collection_js = r"""const assert = require('node:assert/strict');
+const { filterItems, normalizeText } = require('./js/collection.js');
+const items = [
+  { name: 'Aoi', desc: 'Baseball analysis', topics: ['python', 'sports'], archived: false },
+  { name: 'Ironmate', desc: 'Slides', topics: ['javascript', 'slides'], archived: false },
+  { name: 'Legacy', desc: null, topics: ['python'], archived: true },
+];
+const snapshot = JSON.stringify(items);
+const text = item => [item.name, item.desc, ...(item.topics || [])];
+assert.deepEqual(filterItems(items, { query: '  PYTHON  ', text }).map(x => x.name), ['Aoi', 'Legacy']);
+assert.deepEqual(filterItems(items, { query: 'python', text, facets: { archived: false } }).map(x => x.name), ['Aoi']);
+assert.deepEqual(filterItems(items, { facets: { topic: 'slides', archived: false }, facetValues: { topic: item => item.topics } }).map(x => x.name), ['Ironmate']);
+assert.deepEqual(filterItems(items, { query: 'nothing', text }), []);
+assert.deepEqual(filterItems(items), items);
+assert.deepEqual(filterItems(items, { facets: { archived: undefined } }), items);
+assert.deepEqual(filterItems(items, { predicates: [item => !item.archived, item => item.name.length > 3] }).map(x => x.name), ['Ironmate']);
+assert.equal(normalizeText(null), '');
+assert.deepEqual(filterItems([{name:'日本語'}, {name:'English'}], { query:'日本', text:x=>x.name }), [{name:'日本語'}]);
+assert.deepEqual(filterItems([{name: 'x', tag: 0}, {name: 'y', tag: false}], {facets: {tag: false}}).map(x=>x.name), ['y']);
+assert.deepEqual(filterItems([null, { name:'ok' }], {facets: {name: 'ok'}}), [{name:'ok'}]);
+for (const invalid of [null, {}, 'x']) assert.throws(() => filterItems(invalid), TypeError);
+assert.throws(() => filterItems(items, {text: 'name'}), TypeError);
+assert.throws(() => filterItems(items, {predicates: [true]}), TypeError);
+assert.throws(() => filterItems(items, {facets: {name: 'x'}, facetValues: {name: 'x'}}), TypeError);
+assert.equal(JSON.stringify(items), snapshot, 'input items remain unchanged');
+console.log('collection filtering contract passed');"""
+    assert "collection filtering contract passed" in node_js(collection_js).stdout
+
+
+# ═══ 📥 source panel ══════════════════════════════════════════════════════════════════════════════════════
+# The generic source panel: a name (one GET) or pasted JSON read through a consumer's declarative spec into Markdown tables.
+#
+# Python (``pysaiyanweboo.source_*``) is the reference; ``source.js`` must agree: ``tests/fixtures/source/cases.json`` is run by both.
+
+FIX = ROOT / "tests" / "fixtures" / "source"
+
+SOURCE_CASES = json.loads((FIX / "cases.json").read_text(encoding="utf-8"))
+POKEMON = json.loads((FIX / "pokeapi.spec.json").read_text(encoding="utf-8"))
+DITTO = (FIX / "ditto.json").read_text(encoding="utf-8")
+DITTO_MD = (FIX / "ditto.md").read_text(encoding="utf-8")
+
+
+def _minimal(**over):
+    spec = {"id": "t", "label": "Name", "name": "[a-z]+", "url": "https://example.test/{name}", "title": "T",
+            "tables": [{"headers": ["a"], "rows": [[{"key": "a"}]]}]}
+    spec.update(over)
+    return spec
+
+
+@pytest.mark.parametrize("case", SOURCE_CASES["extract"], ids=lambda c: c["name"])
+def test_extract_cases_match_source_js(case):
+    if "markdown" in case:
+        assert ui.source_markdown(ui.source_extract(case["spec"], case["source"])) == case["markdown"]
+    else:
+        with pytest.raises(ValueError) as caught:
+            ui.source_extract(case["spec"], case["source"])
+        assert str(caught.value) == case["error"]
+
+
+def test_name_and_url_cases_match_source_js():
+    names = SOURCE_CASES["names"]
+    for text, want in names["valid"]:
+        assert ui.source_name(names["spec"], text) == want
+    for text in names["invalid"]:
+        assert ui.source_name(names["spec"], text) == ""
+    for text, want in names["urls"]:
+        assert ui.source_url(names["spec"], text) == want
+
+
+def test_pokemon_spec_reproduces_the_lab_markdown_byte_for_byte():
+    # tests/fixtures/source/ditto.md is what mcp-toolcall-lab's adapters/pokeapi.py writes for the same JSON.
+    extract = ui.source_extract(POKEMON, DITTO)
+    assert ui.source_markdown(extract) == DITTO_MD
+    assert ui.source_markdown(ui.source_extract(POKEMON, json.loads(DITTO))) == DITTO_MD
+    assert extract["title"] == "ditto (#132)" and [t["headers"] for t in extract["tables"]][0] == ["type", "height m", "weight kg"]
+    assert ui.source_url(POKEMON, " Ditto ") == "https://pokeapi.co/api/v2/pokemon/ditto"
+    assert ui.source_url(POKEMON, "../x") == "" and ui.source_url(POKEMON, "") == ""
+
+
+def test_extract_limits_and_messages():
+    with pytest.raises(ValueError, match="exceeds"):
+        ui.source_extract(POKEMON, " " * (ui.SOURCE_LIMIT + 1))
+    small = dict(POKEMON, limit=10)
+    with pytest.raises(ValueError, match="exceeds 10 bytes"):
+        ui.source_extract(small, DITTO)
+    with pytest.raises(ValueError, match="source is not JSON"):
+        ui.source_extract(POKEMON, "{")
+    with pytest.raises(ValueError, match="not a PokéAPI pokemon response"):
+        ui.source_extract(POKEMON, '{"name":"x","id":1}')
+    # With no custom error text the generic one is used; deep nesting never escapes as another exception type.
+    with pytest.raises(ValueError, match="not the expected response"):
+        ui.source_extract(_minimal(), "{}")
+    with pytest.raises(ValueError):  # a pathologically deep document is refused, never a RecursionError
+        ui.source_extract(_minimal(), "[" * 100000 + "]" * 100000)
+
+
+@pytest.mark.parametrize("change, why", [
+    (lambda s: s.update(extra=1), "unknown key"),
+    (lambda s: s.pop("tables"), "tables required"),
+    (lambda s: s.update(id="Bad Id"), "id token"),
+    (lambda s: s.update(url="http://example.test/{name}"), "https only"),
+    (lambda s: s.update(url="https://u:p@example.test/{name}"), "no credentials"),
+    (lambda s: s.update(url="https://example.test/{name}/{name}"), "one {name}"),
+    (lambda s: s.update(url="https://example.test/ {name}"), "no blanks"),
+    (lambda s: s.update(name="(?i)abc"), "no inline flags"),
+    (lambda s: s.update(name="é+"), "ASCII pattern"),
+    (lambda s: s.update(name="("), "valid regex"),
+    (lambda s: s.update(limit=0), "limit range"),
+    (lambda s: s.update(limit=ui.SOURCE_LIMIT + 1), "limit range"),
+    (lambda s: s.update(limit=True), "limit int"),
+    (lambda s: s.update(tables=[]), "at least one table"),
+    (lambda s: s.update(tables=[{"headers": ["a"], "rows": [[{"key": "a"}]], "each": "x", "cells": []}]), "rows xor each"),
+    (lambda s: s.update(tables=[{"headers": ["a", "b"], "rows": [[{"key": "a"}]]}]), "one cell per header"),
+    (lambda s: s.update(tables=[{"headers": ["a"], "rows": [[{"key": "a", "bogus": 1}]]}]), "cell keys"),
+    (lambda s: s.update(tables=[{"headers": ["a"], "rows": [[{"key": "a", "div": 0}]]}]), "div nonzero"),
+    (lambda s: s.update(tables=[{"headers": ["a"], "rows": [[{"key": ""}]]}]), "key required"),
+    (lambda s: s.update(label="x" * 401), "text length"),
+], ids=lambda v: v if isinstance(v, str) else "")
+def test_spec_validation_rejects(change, why):
+    spec = _minimal()
+    change(spec)
+    with pytest.raises(ValueError):
+        ui.source_spec(spec)
+    with pytest.raises(ValueError):
+        ui.source_panel_html(spec)
+
+
+def test_spec_validation_accepts_the_shipped_specs_and_non_objects_fail():
+    assert ui.source_spec(POKEMON) is POKEMON and ui.source_spec(_minimal())
+    for bad in (None, [], "x", 3):
+        with pytest.raises(ValueError):
+            ui.source_spec(bad)
+
+
+def test_panel_html_carries_the_spec_and_escapes_text():
+    spec = _minimal(label='<b>"Name"</b>', heading="<script>x</script>", note="a & b", placeholder='"><img src=x>')
+    page = ui.source_panel_html(spec, heading_level=3)
+    assert page.startswith('<section class="ui-panel ui-source" id="source-t" data-ui-source data-source-spec="')
+    assert "<h3>&lt;script&gt;x&lt;/script&gt;</h3>" in page and "<script>" not in page and "<img" not in page
+    assert "&lt;b&gt;&quot;Name&quot;&lt;/b&gt;" in page or "&lt;b&gt;" in page
+    attribute = re.search(r'data-source-spec="([^"]*)"', page).group(1)
+    assert json.loads(html.unescape(attribute)) == spec
+    for hook in ("data-source-name", "data-source-fetch", "data-source-open", "data-source-text", "data-source-extract",
+                 "data-source-status", "data-source-error", "data-source-output"):
+        assert hook in page
+    assert re.search(r'<p class="ui-source-error" role="alert" data-source-error hidden>', page)
+    assert re.search(r'<pre class="ui-output" data-source-output hidden>', page)
+    assert 'role="status"' in page
+    # heading_level falls back to 2 for anything outside 1..6; the panel never embeds a network address outside its spec attribute.
+    assert "<h2>" in ui.source_panel_html(spec, heading_level=9)
+    assert "<h2>" in ui.source_panel_html(spec, heading_level="3")
+    assert "example.test" not in re.sub(r'data-source-spec="[^"]*"', "", page)
+
+
+def test_panel_html_for_pokemon_has_stable_ids():
+    page = ui.source_panel_html(POKEMON)
+    assert 'id="source-pokemon"' in page and 'for="pokemon-name"' in page and 'id="pokemon-text"' in page
+    assert ">Pokémon<" in page and "Pokémon name or number" in page
+
+
+def test_css_and_js_are_python_data_and_ship_with_the_bundle():
+    css = ui.bundled_css()
+    assert ".ui-source-row" in css and ".ui-source-error" in css and "var(--ui-danger)" in css
+    assert ui._CSS["source.css"].startswith("@layer components{")
+    assert "source.js" in ui.js_modules() and "webUiSource" in ui.js_modules()["source.js"]
+    # No module ships a network address of its own: the spec names it.
+    assert "https://" not in ui.js_modules()["source.js"]
+
+
+def test_source_module_is_opt_in_and_written_by_site_export(tmp_path):
+    assert "source.js" not in ui.render_document("A") and "data-ui-source" not in ui.render_document("A")
+    assert ui.js_source("source.js") is ui.js_modules()["source.js"]
+    assert "js/source.js" in "".join(ui.write_js(tmp_path)).replace("\\", "/")
+    assert (tmp_path / "js" / "source.js").read_text(encoding="utf-8") == ui.js_modules()["source.js"]
+
+
+def test_markdown_never_breaks_the_table_shape():
+    out = ui.source_markdown({"title": "a\nb", "tables": [{"headers": ["x|y"], "rows": [["1|2\n3"], ["\r"]]}]})
+    assert out == "# a b\n\n| x\\|y |\n| --- |\n| 1\\|2 3 |\n|   |\n"
+    for line in out.splitlines()[2:]:
+        assert line.startswith("| ") and line.endswith(" |")
+
+
+def test_spec_is_not_mutated():
+    before = copy.deepcopy(POKEMON)
+    ui.source_extract(POKEMON, DITTO)
+    ui.source_panel_html(POKEMON)
+    ui.source_url(POKEMON, "ditto")
+    assert POKEMON == before
+
+
+@pytest.mark.skipif(not node26(), reason="run_node requires Node 26+")
+def test_node_source_contract():
+    # source.js in Node: the same cases (tests/fixtures/source/cases.json), loadSource with a fake fetch and bindSource on a fake panel.
+    source_js = r"""const assert=require('node:assert/strict');
+const fs=require('fs'),path=require('path');
+const ui=require('./js/source.js');
+const read=n=>fs.readFileSync(path.join(REPO,'tests','fixtures','source',n),'utf8');
+const cases=JSON.parse(read('cases.json'));
+
+// Same cases as tests/test_source_panel.py: identical Markdown, or the identical error text.
+for(const c of cases.extract){
+  if('markdown' in c)assert.equal(ui.sourceMarkdown(ui.sourceExtract(c.spec,c.source)),c.markdown,c.name);
+  else assert.throws(()=>ui.sourceExtract(c.spec,c.source),e=>e.message===c.error,c.name);
+}
+const n=cases.names;
+for(const [text,want] of n.valid)assert.equal(ui.sourceName(n.spec,text),want,JSON.stringify(text));
+for(const text of n.invalid)assert.equal(ui.sourceName(n.spec,text),'',JSON.stringify(text));
+for(const [text,want] of n.urls)assert.equal(ui.sourceUrl(n.spec,text),want,text);
+
+// The Pokémon spec reproduces the Markdown mcp-toolcall-lab writes for the same JSON, byte for byte.
+const pokemon=JSON.parse(read('pokeapi.spec.json')),ditto=read('ditto.json');
+assert.equal(ui.sourceMarkdown(ui.sourceExtract(pokemon,ditto)),read('ditto.md'));
+assert.equal(ui.sourceMarkdown(ui.sourceExtract(pokemon,JSON.parse(ditto))),read('ditto.md'));
+assert.equal(ui.sourceUrl(pokemon,' Ditto '),'https://pokeapi.co/api/v2/pokemon/ditto');
+assert.equal(ui.sourceUrl(pokemon,'../x'),'');
+assert.throws(()=>ui.sourceExtract(pokemon,'x'.repeat(2*1024*1024+1)),e=>/exceeds/.test(e.message));
+assert.throws(()=>ui.sourceExtract(pokemon,'{"name":"x","id":1}'),e=>e.message===pokemon.error);
+
+(async()=>{
+  // loadSource: one request, headers fixed, every failure is a value (never a throw).
+  const calls=[];
+  const reply=(status,body)=>(url,opts)=>{calls.push([url,opts]);return Promise.resolve({status,ok:status>=200&&status<300,text:()=>Promise.resolve(body)});};
+  let r=await ui.loadSource(pokemon,'Ditto',reply(200,ditto));
+  assert.equal(r.ok,true);assert.equal(ui.sourceMarkdown(r.extract),read('ditto.md'));
+  assert.equal(calls.length,1);assert.equal(calls[0][0],'https://pokeapi.co/api/v2/pokemon/ditto');
+  assert.equal(calls[0][1].headers.Accept,'application/json');assert.equal(calls[0][1].redirect,'error');assert.equal(calls[0][1].credentials,'omit');
+  r=await ui.loadSource(pokemon,'zzz',reply(404,'Not Found'));assert.deepEqual(r,{ok:false,error:'not found: zzz'});
+  r=await ui.loadSource(pokemon,'zzz',reply(500,''));assert.deepEqual(r,{ok:false,error:'HTTP 500'});
+  r=await ui.loadSource(pokemon,'zzz',reply(200,'<html>'));assert.deepEqual(r,{ok:false,error:'source is not JSON'});
+  r=await ui.loadSource(pokemon,'zzz',reply(200,'{"a":1}'));assert.deepEqual(r,{ok:false,error:pokemon.error});
+  r=await ui.loadSource(pokemon,'zzz',()=>Promise.reject(new TypeError('Failed to fetch')));
+  assert.equal(r.ok,false);assert.match(r.error,/could not fetch \(Failed to fetch\)\. Open the JSON/);
+  const before=calls.length;r=await ui.loadSource(pokemon,'bad name!',reply(200,ditto));
+  assert.equal(r.ok,false);assert.equal(r.error,pokemon.missing);assert.equal(calls.length,before);
+
+  // bindSource on a fake panel: Extract reads pasted JSON with no request, Fetch asks once, Open shows the address in a new tab.
+  const fake=(nameValue)=>{
+    const listeners={};
+    const el=(k,extra={})=>({k,hidden:false,textContent:'',value:'',disabled:false,addEventListener(n,f){listeners[k+':'+n]=f;},...extra});
+    const parts={name:el('name',{value:nameValue}),fetch:el('fetch'),open:el('open'),text:el('text'),extract:el('extract'),status:el('status'),error:el('error',{hidden:true}),output:el('output',{hidden:true})};
+    const panel={getAttribute:n=>n==='data-source-spec'?JSON.stringify(pokemon):null,querySelector:s=>parts[s.replace('[data-source-','').replace(']','')]};
+    return {listeners,parts,panel};
+  };
+  const {listeners,parts,panel}=fake('Ditto');
+  const opened=[],fetched=[];
+  const win={open:(...a)=>opened.push(a)};
+  const handle=ui.bindSource(panel,{window:win,fetch:(u,o)=>{fetched.push(u);return Promise.resolve({status:200,ok:true,text:()=>Promise.resolve(ditto)});}});
+  assert.equal(ui.bindSource(panel,{window:win}),handle,'binding twice returns the same handle');
+  listeners['extract:click']();assert.equal(parts.error.hidden,false);assert.equal(parts.error.textContent,'Paste the JSON first.');assert.equal(parts.output.hidden,true);
+  parts.text.value=ditto;listeners['extract:click']();
+  assert.equal(parts.error.hidden,true);assert.equal(parts.output.hidden,false);assert.equal(parts.output.textContent,read('ditto.md'));
+  assert.match(parts.status.textContent,/ditto \(#132\) — from pasted JSON/);assert.equal(fetched.length,0);
+  parts.text.value='nope';listeners['extract:click']();assert.equal(parts.error.textContent,'source is not JSON');assert.equal(parts.output.hidden,true);assert.equal(parts.output.textContent,'');
+  listeners['open:click']();assert.deepEqual(opened,[['https://pokeapi.co/api/v2/pokemon/ditto','_blank','noopener,noreferrer']]);
+  parts.name.value='no way!';listeners['open:click']();assert.equal(opened.length,1);assert.equal(parts.error.textContent,pokemon.missing);
+  parts.name.value='ditto';
+  const pending=listeners['fetch:click']();assert.equal(parts.fetch.disabled,true);assert.equal(listeners['fetch:click'](),null,'a second press while one is in flight sends nothing');
+  await pending;assert.equal(fetched.length,1);assert.equal(parts.fetch.disabled,false);assert.equal(parts.output.textContent,read('ditto.md'));assert.match(parts.status.textContent,/— fetched$/);
+
+  // No fetch at all (no fetch option, no window.fetch): Fetch says so, and the paste path still works.
+  const bare=fake('ditto');ui.bindSource(bare.panel,{window:{open(){}}});
+  bare.listeners['fetch:click']();assert.equal(bare.parts.error.hidden,false);assert.match(bare.parts.error.textContent,/fetch is not available/);
+  bare.parts.text.value=ditto;bare.listeners['extract:click']();assert.equal(bare.parts.output.textContent,read('ditto.md'));
+  console.log('source.js ok');
+})().catch(e=>{console.error(e);process.exit(1);});"""
+    assert "source.js ok" in node_js(source_js).stdout
+
+
+# ═══ 🎲 theme seed ════════════════════════════════════════════════════════════════════════════════════════
+# The seed dial: theme.js gives the tokens of pysaiyanweboo.random_theme, seed for seed (Node), and the dial's HTML.
+#
+# Browser behaviour (dial, 🎲, ✖️, tap on a wall cell, named themes taking over) is in tests/integration/pages_browser.py.
+
+
+def node_tokens(seeds):
+    """randomTheme(seed) for every seed, run by Node on the module exactly as the page embeds it."""
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        (root / "theme.mjs").write_text(ui.js_source("theme.js"), encoding="utf-8")
+        (root / "run.mjs").write_text("import{randomTheme}from'./theme.mjs';const seeds=JSON.parse(process.argv[2]);"
+                                      "process.stdout.write(JSON.stringify(seeds.map(s=>randomTheme(s))))", encoding="utf-8")
+        done = subprocess.run([node26(), str(root / "run.mjs"), json.dumps(seeds)], capture_output=True, text=True, timeout=120, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+@pytest.mark.skipif(not node26(), reason="Node 26+ not available")
+def test_the_page_gives_the_tokens_python_gives_for_every_seed():
+    edges = [0, 1, 2, 11, 99, 2**31 - 1, 2**32 - 1, 2**32, 2**32 + 1, 2**40 + 5, 12345678901, 2**53 - 1, -1, -5, -2**32, -(2**40)]
+    rng = random.Random(20261106)
+    seeds = [*range(1500), *edges, *(rng.randrange(2**31) for _ in range(1500)), *(rng.randrange(2**53) for _ in range(300)),
+             *(-rng.randrange(2**40) for _ in range(100))]
+    got = node_tokens(seeds)
+    assert len(got) == len(seeds)
+    for seed, tokens in zip(seeds, got):
+        expected = ui.random_theme(seed)
+        assert tokens == expected, seed
+        assert list(tokens) == list(expected), seed               # the same order too: the page writes them out as Python does
+
+
+@pytest.mark.skipif(not node26(), reason="Node 26+ not available")
+def test_a_seed_that_is_not_a_safe_integer_is_refused():
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        (root / "theme.mjs").write_text(ui.js_source("theme.js"), encoding="utf-8")
+        (root / "run.mjs").write_text("import{randomTheme}from'./theme.mjs';const bad=[];for(const s of [1.5,NaN,Infinity,2**53,'3',null])"
+                                      "{try{randomTheme(s);bad.push(String(s))}catch(e){if(!(e instanceof RangeError))bad.push(String(s))}}"
+                                      "process.stdout.write(JSON.stringify(bad))", encoding="utf-8")
+        done = subprocess.run([node26(), str(root / "run.mjs")], capture_output=True, text=True, timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout) == []
+
+
+def test_theme_js_is_a_module_and_the_page_is_not_given_anything_to_run_by_it():
+    assert "theme.js" in ui.js_modules()
+    source = ui.js_source("theme.js")
+    for name in ("randomTheme", "applySeed", "clearSeed", "bindSeed"):
+        assert f"export function {name}" in source
+    for banned in ("fetch(", "XMLHttpRequest", "WebSocket", "eval(", "innerHTML", "sessionStorage", "document.cookie"):
+        assert banned not in source
+    assert "</script" not in source.lower()
+
+
+def test_the_dial_html_is_one_fieldset_with_the_hooks_bindSeed_looks_for():
+    html = ui.seed_dial_html()
+    for hook in ("data-ui-seed ", "data-ui-seed-out", "data-ui-seed-roll", "data-ui-seed-off", 'type="range"', 'max="99"'):
+        assert hook in html
+    assert html.startswith("<fieldset") and html.endswith("</fieldset>") and html.count("<fieldset") == 1
+    assert 'max="12"' in ui.seed_dial_html(maximum=12)
+    for bad in (0, -1, 2**31, 1.5, "9", True, None):
+        with pytest.raises(ValueError):
+            ui.seed_dial_html(maximum=bad)
+
+
+def test_front_html_is_one_main_view_a_menu_and_one_room_per_entry():
+    rooms = [{"id": "alpha", "emoji": "🅰️", "title": "Alpha <b>", "text": "First & best", "link": "Go", "html": '<p id="alpha">a</p>'},
+             {"id": "beta", "emoji": "🅱️", "title": "Beta", "html": '<section><h2 id="beta">b</h2></section>'}]
+    page = ui.front_html("<p>MAIN</p>", rooms, title="Hub & <Co>", lead="Lead <i>", tags=("v1",), icon="./i.png", tools=ui.seed_roll_html())
+    assert page.count('<main class="ui-front">') == 1 and page.index("<p>MAIN</p>") < page.index('class="ui-room"')
+    assert page.count('class="ui-room"') == 3                                                                         # the menu and two rooms
+    assert '<section class="ui-room" id="rooms">' in page
+    assert 'href="#alpha">Go →</a>' in page and 'href="#beta">Open →</a>' in page                                    # the link defaults to Open
+    assert "Hub &amp; &lt;Co&gt;" in page and "Alpha &lt;b&gt;" in page and "First &amp; best" in page and "Lead &lt;i&gt;" in page
+    assert "<b>" not in page and "<i>" not in page
+    assert page.count('href="#rooms"') == 3 and page.count('href="#"') == 3                                          # 🚪 on the bar and in each room, ✖️ in each room and the menu
+    assert '<img src="./i.png" width="32" height="32" alt="Hub &amp; &lt;Co&gt; icon">' in page and "data-ui-seed-roll" in page
+    assert ":is(:target,:has(:target))" in ui.front_css() and "visibility:hidden" in ui.front_css()                   # rooms open by CSS alone
+    assert ui.front_html("", rooms, title="x") == ui.front_html("", rooms, title="x") and "<img" not in ui.front_html("", rooms, title="x")
+
+
+def test_front_html_refuses_rooms_it_cannot_open():
+    ok = {"id": "a", "emoji": "A", "title": "A", "html": '<p id="a"></p>'}
+    for bad in ([], [ok, ok], [{**ok, "id": "rooms"}], [{**ok, "id": "A B"}], [{**ok, "html": "<p></p>"}], [{**ok, "extra": 1}], [{"id": "a", "emoji": "A", "title": "A"}],
+                [dict(ok, title="")], "nope", None, [ok] * 25):
+        with pytest.raises(ValueError):
+            ui.front_html("", bad, title="t")
+    for kwargs in ({"icon": "javascript:alert(1)"}, {"icon": "//evil.example/x.png"}, {"tags": ["x"] * 7}, {"tags": "v1"}):
+        with pytest.raises(ValueError):
+            ui.front_html("", [ok], title="t", **kwargs)
+
+
+def test_front_document_is_one_file_with_the_bundle_the_rules_and_the_icons():
+    room = {"id": "a", "emoji": "A", "title": "A", "html": '<p id="a"></p>'}
+    page = ui.front_document("<p>M</p>", [room], title="T", css=".x{}", scripts=ui.module_script("1;"), document_title="Tab", favicon="./f.png", icon="./i.png")
+    assert "<title>Tab</title>" in page and '<link rel="icon" type="image/png" href="./f.png">' in page and '<link rel="apple-touch-icon" href="./i.png">' in page
+    assert ui.front_css() in page and ".x{}" in page and 'rel="stylesheet"' not in page and "<script type=\"module\">1;</script>" in page
+
+
+def test_render_document_icons_are_optional_png_links_that_stay_local_or_https():
+    assert "rel=\"icon\"" not in ui.render_document("x") and "apple-touch-icon" not in ui.render_document("x")
+    page = ui.render_document("x", favicon="https://example.test/f.png", touch_icon="./i.png")
+    assert '<link rel="icon" type="image/png" href="https://example.test/f.png">' in page and '<link rel="apple-touch-icon" href="./i.png">' in page
+    for bad in ("javascript:alert(1)", "data:image/png;base64,AAAA", "//evil.example/x.png", "./i.png?x=1", "", "https://u:p@example.test/x.png"):
+        with pytest.raises(ValueError):
+            ui.render_document("x", favicon=bad)
+
+
+def test_the_curl_panel_and_theme_switch_are_builders_with_the_hooks_their_modules_bind():
+    panel = ui.curl_panel_html()
+    assert panel.count("data-ui-curl") == 1 and "data-curl-input" in panel and "data-curl-run" in panel and "data-curl-output" in panel
+    assert "<h3>" in ui.curl_panel_html(heading_level=3) and "&lt;x&gt;" in ui.curl_panel_html("curl http://x/?a=<x>")
+    for bad in ("x" * 2001, None, 5):
+        with pytest.raises(ValueError):
+            ui.curl_panel_html(bad)
+    switch = ui.theme_switch_html()
+    assert switch.count('name="ui-theme"') == 2 + len(ui.CANDIDATE_THEMES) and switch.count(" checked>") == 1 and 'value="modern" checked' in switch
+
+
+def test_dial_html_is_a_range_the_dial_draws_and_validates_its_numbers():
+    """dial_html(): a rotary dial (DIAL_CSS, bindDial from dial.js) over a plain range input that keeps the value, keys, form and aria-label."""
+    html = ui.dial_html("zoom", minimum=0.1, maximum=4, step=0.05, value=1, label="Zoom", attrs='data-t="zoom"')
+    assert html == '<span class="ui-dial" data-ui-dial><input type="range" name="zoom" min="0.1" max="4" step="0.05" value="1" aria-label="Zoom" data-t="zoom"></span>'
+    assert ".ui-dial::after{" in ui.DIAL_CSS and "rotate(var(--ui-dial-angle,-135deg))" in ui.DIAL_CSS
+    assert ui.js_source("dial.js") == ui.DIAL_JS and "export function bindDial" in ui.DIAL_JS
+    for bad in ({"name": "a b"}, {"minimum": 5, "maximum": 5}, {"step": 0}, {"value": 200}):
+        with pytest.raises(ValueError):
+            ui.dial_html(**{"name": "ok", **bad})
+
+
+@pytest.mark.skipif(not node26(), reason="Node 26+ not available")
+def test_dial_angle_and_value_round_trip_in_node(tmp_path):
+    """dialAngle maps a value onto -135..135 degrees; dialValue maps an angle back, snapped to the step and clamped."""
+    (tmp_path / "dial.mjs").write_text(ui.js_source("dial.js"), encoding="utf-8")
+    (tmp_path / "run.mjs").write_text(
+        'import {dialAngle, dialValue} from "./dial.mjs";\n'
+        "console.log(JSON.stringify([dialAngle(0, 0, 100), dialAngle(50, 0, 100), dialAngle(100, 0, 100), dialAngle(7, 7, 7), dialAngle(500, 0, 100),"
+        " dialValue(-135, 0, 100, 1), dialValue(0, 0, 100, 1), dialValue(135, 0, 100, 1), dialValue(200, 0, 100, 1), dialValue(0, 0.1, 4, 0.05), dialValue(1, 0, 1, 0.3)]));\n",
+        encoding="utf-8")
+    done = subprocess.run([node26(), str(tmp_path / "run.mjs")], capture_output=True, text=True, timeout=60, check=True)
+    assert json.loads(done.stdout) == [-135, 0, 135, -135, 135, 0, 50, 100, 100, 2.05, 0.6]
+
+
+# ═══ 📋 records board ═════════════════════════════════════════════════════════════════════════════════════
+
+# records.js contract with a minimal DOM stub: filter, drafts (storage), collect/apply, a file's drafts.
+RECORDS_JS = r"""import assert from "node:assert/strict";
+class Node {
+  constructor(attrs = {}) { this.attrs = attrs; this.listeners = {}; this.hidden = false; this.children = []; this.value = ""; this.textContent = ""; }
+  get dataset() { const d = {}; for (const [k, v] of Object.entries(this.attrs)) if (k.startsWith("data-")) d[k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = v; return d; }
+  addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
+  dispatchEvent(event) { for (const fn of this.listeners[event.type] || []) fn(event); return true; }
+  querySelectorAll(selector) { return this.children.filter(c => c.matches(selector)); }
+  querySelector(selector) { return this.children.find(c => c.matches(selector)) || null; }
+  matches(selector) {
+    if (selector.startsWith("#")) return this.attrs.id === selector.slice(1);
+    const m = selector.match(/^(\w+)?(?:\[type=file\])?\[(data-[a-z-]+)\]$/);
+    return m ? (!m[1] || this.tag === m[1]) && m[2] in this.attrs : false;
+  }
+}
+const table = new Node({ id: "t" }); table.tag = "table";
+const mkRow = text => { const r = new Node(); r.textContent = text; return r; };
+table.tBodies = [{ rows: [mkRow("Aoi #1 CI failed"), mkRow("markdown #2 ok")] }];
+const input = new Node({ "data-ui-filter": "#t", "data-ui-filter-count": "#n" }); input.tag = "input";
+const count = new Node({ id: "n" }); count.tag = "span";
+const notes = new Node({ "data-ui-draft": "r1:notes" }); notes.tag = "textarea"; notes.type = "textarea";
+const doc = new Node(); doc.children = [table, input, count, notes];
+
+const memory = new Map();
+globalThis.localStorage = { getItem: k => (memory.has(k) ? memory.get(k) : null), setItem: (k, v) => memory.set(k, v) };
+globalThis.Event = class { constructor(type, init = {}) { this.type = type; this.bubbles = !!init.bubbles; } };
+globalThis.document = undefined; // module must not auto-mount without a document
+
+const records = await import("./js/records.js");
+
+records.bindFilter(doc);
+assert.equal(count.textContent, "2");
+input.value = "aoi"; input.dispatchEvent(new Event("input"));
+assert.equal(count.textContent, "1");
+assert.equal(table.tBodies[0].rows[1].hidden, true);
+assert.equal(records.filterItems(table, ""), 2);
+
+memory.set("web-ui-drafts:r1:notes", "restored");
+const bound = records.bindDrafts(doc);
+assert.equal(bound.length, 1);
+assert.equal(notes.value, "restored");
+notes.value = "edited"; notes.dispatchEvent(new Event("input"));
+assert.equal(memory.get("web-ui-drafts:r1:notes"), "edited");
+assert.deepEqual(records.collectDrafts(doc), { "r1:notes": "edited" });
+assert.equal(records.applyDrafts(doc, { "r1:notes": "imported", unknown: "x" }), 1);
+assert.equal(notes.value, "imported");
+assert.equal(memory.get("web-ui-drafts:r1:notes"), "imported");
+const bad = new Node({ "data-ui-draft": "<bad key>" }); bad.tag = "input"; doc.children.push(bad);
+assert.equal(records.bindDrafts(doc).length, 1, "keys outside the allowed charset are ignored");
+// Cards as well as rows: [data-ui-item] children filtered by text and by data-status.
+const list = new Node({ id: "l" });
+const card = (text, status) => { const c = new Node({ "data-ui-item": "" }); c.textContent = text; c.attrs["data-status"] = status; return c; };
+list.children = [card("uv run calc", "pass"), card("curl -fL", "todo"), card("uv tool install", "todo")];
+assert.equal(records.filterItems(list, "uv"), 2);
+assert.equal(records.filterItems(list, "", "todo"), 2);
+assert.equal(records.filterItems(list, "uv", "todo"), 1);
+assert.equal(list.children[0].hidden, true);
+assert.equal(records.filterItems(list), 3);
+// A file's drafts: loaded when the board names no source or the same one, "bad" for nothing to apply or not an object.
+const board = new Node({ "data-ui-records-source": "abc" }); board.children = [notes];
+board.matches = selector => selector === "[data-ui-records-source]";
+assert.equal(records.importDrafts(board, { source: "abc", drafts: { "r1:notes": "same" } }), "loaded");
+assert.equal(notes.value, "same");
+assert.equal(records.importDrafts(board, { source: "fff", drafts: { "r1:notes": "other" } }), "stale");
+assert.equal(notes.value, "other");
+assert.equal(records.importDrafts(board, { drafts: { unknown: "x" } }), "bad");
+assert.equal(records.importDrafts(board, []), "bad");
+console.log("records.js ok");"""
+
+
+class BoardElements(HTMLParser):
+    def __init__(self, source):
+        super().__init__()
+        self.tags = []
+        self.feed(source)
+
+    def handle_starttag(self, tag, attrs):
+        self.tags.append((tag, dict(attrs)))
+
+
+class RecordsBoardTests(unittest.TestCase):
+    hostile = '"><script>alert(1)</script>&'
+
+    def test_data_table_escapes_cells_and_marks_rows(self):
+        html = ui.data_table(("Repo", self.hostile), [("Aoi", self.hostile)], id="t", caption=self.hostile, row_ids=("Aoi#1",))
+        self.assertNotIn("<script>", html)
+        self.assertIn("&lt;script&gt;", html)
+        self.assertIn('<table class="ui-table" id="t">', html)
+        self.assertIn('data-ui-row="Aoi#1"', html)
+        self.assertIn('<th scope="col">Repo</th>', html)
+
+    def test_data_table_trusted_cells_and_shape_checks(self):
+        html = ui.data_table(("CI",), [(ui.badge("失敗"),)], id="t", trusted_cells=True)
+        self.assertIn('<td><span class="ui-tag">失敗</span></td>', html)
+        with self.assertRaises(ValueError):
+            ui.data_table(("A", "B"), [("only one",)], id="t")
+        with self.assertRaises(ValueError):
+            ui.data_table((), [], id="t")
+        with self.assertRaises(ValueError):
+            ui.data_table(("A",), [("x",)], id="t", row_ids=())
+        with self.assertRaises(ValueError):
+            ui.data_table(("A",), [], id="bad id")
+
+    def test_data_table_preserves_legacy_cell_text(self):
+        from html import escape
+        values = (None, {"a": "<script>&"}, {"text": "link", "href": "https://example.com"},
+                  False, 0, 3.5, "<b>trusted</b>")
+        for trusted in (False, True):
+            with self.subTest(trusted=trusted):
+                html = ui.data_table(("Value",), ((value,) for value in values), id="legacy",
+                                     trusted_cells=trusted, row_ids=tuple(str(i) for i in range(len(values))))
+                for i, value in enumerate(values):
+                    text = str(value) if trusted else escape(str(value))
+                    self.assertIn(f'<tr data-ui-row="{i}"><td>{text}</td></tr>', html)
+                self.assertNotIn('<a href=', html)
+        # Rich cells remain available through table(), not the legacy records wrapper.
+        self.assertIn('<a href="https://example.com">link</a>',
+                      ui.table(("Value",), [({"text": "link", "href": "https://example.com"},)]))
+
+    def test_stat_tiles_render_text_values(self):
+        html = ui.stat_tiles((("PR", 12), ("CI失敗", 2, self.hostile)))
+        self.assertEqual(html.count('class="ui-card ui-stat"'), 2)
+        self.assertIn('<b class="ui-stat-value">12</b>', html)
+        self.assertIn("&lt;script&gt;", html)
+        with self.assertRaises(ValueError):
+            ui.stat_tiles((("too", "many", "parts", "here"),))
+
+    def test_filter_and_drafts_declare_records_js_hooks(self):
+        tags = BoardElements(ui.filter_input("t", id="q", count_id="n")).tags
+        attrs = dict(tags)["input"]
+        self.assertEqual(attrs["data-ui-filter"], "#t")
+        self.assertEqual(attrs["data-ui-filter-count"], "#n")
+        self.assertEqual(attrs["type"], "search")
+        area = dict(BoardElements(ui.draft_textarea(key="Aoi#1:notes", id="n1", label="メモ")).tags)["textarea"]
+        self.assertEqual(area["data-ui-draft"], "Aoi#1:notes")
+        sel = dict(BoardElements(ui.draft_select((("todo", "未着手"), ("done", "完了")), key="Aoi#1:state", id="s1", label="状態", selected="done")).tags)["select"]
+        self.assertEqual(sel["data-ui-draft"], "Aoi#1:state")
+        with self.assertRaises(ValueError):
+            ui.draft_textarea(key="bad key with spaces", id="n2", label="x")
+        with self.assertRaises(ValueError):
+            ui.filter_input("bad id", id="q")
+
+    def test_records_io_and_board_markup(self):
+        html = ui.records_board(ui.records_io(filename="audit.json"), id="board")
+        self.assertIn('<section class="ui-records" id="board" data-ui-records>', html)
+        self.assertIn('data-ui-export="audit.json"', html)
+        self.assertIn('accept="application/json" data-ui-import hidden', html)
+        with self.assertRaises(ValueError):
+            ui.records_io(filename="../x.json")
+
+    def test_records_module_is_shared_opt_in_and_valid(self):
+        self.assertIn("records.js", ui.SHARED_SCRIPT_NAMES)
+        self.assertIn("records.js", ui.js_modules())
+        self.assertEqual(ui.shared_scripts(".", names=("records.js",)), ("./js/records.js",))
+        self.assertNotIn("records.js", ui.render_document("A"))
+        source = ui.js_source("records.js")
+        for name in ("filterItems", "bindFilter", "bindDrafts", "collectDrafts", "applyDrafts", "bindRecordsIO", "mount"):
+            self.assertRegex(source, rf"export function {name}\(")
+        self.assertNotIn("fetch(", source)
+        self.assertNotIn("innerHTML", source)
+
+    @unittest.skipUnless(node26(), "run_node requires Node 26+")
+    def test_records_js_contract_in_node(self):
+        """records.js in Node against a small DOM stub (RECORDS_JS): filters, drafts and their JSON file."""
+        self.assertIn("records.js ok", node_js(RECORDS_JS).stdout)
+
+    def test_records_css_uses_multiples_of_eight(self):
+        css = ui._CSS["records.css"]
+        self.assertTrue(all(int(px) % 8 == 0 for px in re.findall(r"(\d+)px", css)), "pixel sizes are multiples of 8")
+        for cls in ("ui-table", "ui-stat", "ui-stats", "ui-records-bar", "ui-records-io"):
+            self.assertIn("." + cls, css)
+
+
+class RunbookTests(unittest.TestCase):
+    """steps_html() and its parts: the runbook olnm's guide and Component Ops' steps were written as by hand."""
+    hostile = '"><script>alert(1)</script>&'
+
+    def spec(self, **extra):
+        step = {"id": "run", "title": self.hostile, "command": "echo " + self.hostile, "expect": "42", "needs": "uv",
+                "trouble": {"seen": "uv: command not found", "fix": "uv を入れる"}}
+        return {"key": "olnm/uvfile", "source": "8f8932e", "steps": [step, {"id": "two", "title": "Two", "command": "true"}], **extra}
+
+    def test_cards_carry_the_command_the_facts_and_a_record_tied_to_drafts(self):
+        html = ui.steps_html(self.spec())
+        self.assertNotIn("<script>alert", html)
+        self.assertIn('<section class="ui-records" id="steps-olnm-uvfile" data-ui-records data-ui-records-source="8f8932e">', html)
+        self.assertEqual(html.count('class="ui-card ui-step"'), 2)
+        self.assertIn('<article class="ui-card ui-step" id="steps-olnm-uvfile-run" data-ui-item data-status="todo">', html)
+        self.assertIn('<span class="ui-tag" data-ui-status-tag>調査中</span>', html)
+        self.assertIn('<pre class="ui-output">echo &quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;&amp;</pre>', html)
+        self.assertIn("<dt>期待される出力</dt><dd>42</dd><dt>前提条件</dt><dd>uv</dd>", html)
+        self.assertIn("<summary>失敗時の確認</summary>", html)
+        for field in ("status", "date", "actual", "note"):
+            self.assertIn(f'data-ui-draft="olnm/uvfile:run:{field}"', html)
+        self.assertIn('<select data-ui-status data-ui-draft="olnm/uvfile:run:status"', html)
+        self.assertIn('data-ui-filter="#steps-olnm-uvfile-list"', html)
+        self.assertIn('data-ui-filter-status="#steps-olnm-uvfile-list"', html)
+        self.assertIn('data-ui-export="olnm-uvfile.json"', html)
+        self.assertEqual(html.count("<details"), 1)                                     # only the step with trouble has one
+        tags = BoardElements(html).tags
+        self.assertEqual(len({a["id"] for _, a in tags if "id" in a}), len([a for _, a in tags if "id" in a]))   # ids are unique
+
+    def test_labels_statuses_and_switches(self):
+        html = ui.steps_html(self.spec(statuses=[["todo", "未移管"], ["pass", "移管済み"], ["block", "ブロッカー"]], labels={"record": "判断"}))
+        self.assertIn(">未移管</span>", html)
+        self.assertIn("<h4>判断</h4>", html)
+        self.assertNotIn('value="hold"', html)
+        bare = ui.steps_html(self.spec(record=False, toolbar=False))
+        self.assertNotIn("data-ui-draft", bare)
+        self.assertNotIn("ui-records-bar", bare)
+
+    def test_five_states_are_shared_by_filter_and_record_and_old_tokens_still_work(self):
+        html = ui.steps_html(self.spec())
+        self.assertEqual([label for _, label in ui.STEP_STATUSES], ["調査中", "着手中", "完了", "保留", "ブロッカー"])
+        self.assertEqual(html.count('<option value="doing">着手中</option>'), 3)
+        for token in ("todo", "pass", "hold", "block"):
+            self.assertIn(f'value="{token}"', html)
+        reduced = ui.steps_html(self.spec(statuses=[["todo", "調査中"], ["doing", "着手中"], ["pass", "完了"]]))
+        self.assertNotIn('value="hold"', reduced)
+
+    def test_bad_runbooks_are_refused(self):
+        good = self.spec()
+        for bad in ({**good, "steps": []}, {**good, "steps": good["steps"] * 2}, {**good, "statuses": [["todo", "a"], ["done", "b"]]},
+                    {**good, "statuses": [["todo", "a"]]}, {**good, "key": "<bad>"}, {**good, "source": "a b"}, {**good, "extra": 1},
+                    {**good, "labels": {"nope": "x"}}, {**good, "steps": [{"id": "Bad", "title": "t", "command": "c"}]},
+                    {**good, "steps": [{"id": "x", "title": "t", "command": ""}]}, {**good, "record": "yes"}):
+            with self.assertRaises(ValueError):
+                ui.steps_html(bad)
+
+    def test_notice_code_block_draft_input_and_status_filter(self):
+        self.assertEqual(ui.notice("a < b", tone="block", title="止まる"), '<p class="ui-notice" data-tone="block"><b>止まる</b> a &lt; b</p>')
+        with self.assertRaises(ValueError):
+            ui.notice("x", tone="red")
+        block = ui.code_block("rm -rf <x>")
+        self.assertIn('<pre class="ui-output">rm -rf &lt;x&gt;</pre>', block)
+        self.assertIn('data-ui-copy data-ui-copied="コピー済み"', block)
+        self.assertIn('data-ui-draft="k:date"', ui.draft_input(key="k:date", id="d", label="日", type="date"))
+        status = ui.status_filter("list", id="state")
+        self.assertIn('<select data-ui-filter-status="#list" class="ui-input" id="state"', status)
+        self.assertIn('<option value="">すべて</option><option value="todo">調査中</option>', status)
+        self.assertIn('data-ui-records-source="v1.2"', ui.records_board("x", source="v1.2"))
+        with self.assertRaises(ValueError):
+            ui.records_board("x", source="<bad>")
+
+    def test_a_showcase_section_holds_a_notice_stats_and_steps(self):
+        spec = {"schema": ui.SHOWCASE_SCHEMA, "id": "guide", "title": "Guide", "sections": [
+            {"id": "a", "label": "A", "icon": "info", "heading": "A", "notice": {"text": "注意", "tone": "warn"}, "stats": [["手順", 2]],
+             "steps": {"key": "guide/a", "steps": [{"id": "s", "title": "S", "command": "true"}]}},
+            {"id": "b", "label": "B", "icon": "info", "heading": "B", "steps": {"key": "guide/b", "steps": [{"id": "s", "title": "S", "command": "true"}]}}]}
+        page = ui.showcase_document(spec)
+        self.assertIn('<p class="ui-notice" data-tone="warn">注意</p>', page)
+        self.assertIn('class="ui-card ui-stat"', page)
+        self.assertEqual(page.count('class="ui-card ui-step"'), 2)
+        self.assertIn("bindCopy();", page)
+        self.assertIn("export function bindStatus", page)                               # records.js comes with the steps
+        plain = ui.showcase_document({**spec, "sections": [{k: v for k, v in s.items() if k != "steps"} for s in spec["sections"]]})
+        self.assertNotIn("export function bindStatus", plain)
+        with self.assertRaises(ValueError):
+            ui.showcase_validate({**spec, "sections": [spec["sections"][0], {**spec["sections"][1], "steps": spec["sections"][0]["steps"]}]})
+
+
+class OperationsPageTests(unittest.TestCase):
+    """page_heading(), download_json() and rows with a state: the Observatory and Component Ops parts that were left."""
+    hostile = '"><script>alert(1)</script>&'
+
+    def test_the_heading_escapes_and_links_chips(self):
+        html = ui.page_heading(self.hostile, eyebrow="OPS " + self.hostile, lead=self.hostile, chips=[self.hostile, ("親", "../"), ("GitHub", "https://github.com/x")],
+                               stamp={"label": "確認日", "value": "2026.11.11", "note": "README\n未実施"}, level=2, id="ops-title")
+        self.assertNotIn("<script>alert", html)
+        self.assertIn('<h2 id="ops-title">&quot;&gt;&lt;script&gt;', html)
+        self.assertIn('<p class="ui-eyebrow">OPS &quot;', html)
+        self.assertIn('<a href="../">親</a><a href="https://github.com/x">GitHub</a>', html)
+        self.assertIn('<aside class="ui-stamp"><small>確認日</small><b>2026.11.11</b><small>README\n未実施</small></aside>', html)
+        self.assertEqual(ui.page_heading("T"), '<header class="ui-heading"><div><h1>T</h1></div></header>')
+        for bad in ({"chips": [("x", "javascript:alert(1)")]}, {"chips": [1]}, {"stamp": {"label": "x"}}, {"stamp": {"value": "v", "extra": "e"}}, {"level": 4}):
+            with self.assertRaises(ValueError):
+                ui.page_heading("T", **bad)
+
+    def test_the_data_travels_in_the_page_and_cannot_close_its_tag(self):
+        import json
+        data = {"repo": "</script><script>alert(1)</script>", "note": "<!-- x", "n": 3}
+        html = ui.download_json(data, id="audit-data", filename="audit-2026-11-12.json", label="↓ 監査データ")
+        self.assertEqual(html.count("</script>"), 1)                                   # only the tag's own end
+        self.assertNotIn("<!--", html)
+        source = html[html.index(">") + 1:html.index("</script>")]
+        self.assertEqual(json.loads(source), data)
+        self.assertIn('data-ui-download="audit-2026-11-12.json" data-ui-download-source="#audit-data">↓ 監査データ</button>', html)
+        for bad in ("audit.txt", "../a.json", "a b.json"):
+            with self.assertRaises(ValueError):
+                ui.download_json(data, id="d", filename=bad)
+
+    def test_rows_carry_a_state_for_the_state_filter(self):
+        rows = [("a", "失敗"), ("b", "成功"), ("c", "—")]
+        html = ui.data_table(("repo", "CI"), rows, id="audit", row_statuses=("fail", "pass", None))
+        self.assertIn('<tr data-status="fail"><td>a</td>', html)
+        self.assertIn("<tr><td>c</td>", html)
+        self.assertIn('<tr data-status="pass" class="ui-pass"><td>b</td>', ui.table(("repo", "CI"), rows, row_statuses=("fail", "pass", None), row_classes=(None, "ui-pass", None)))
+        self.assertEqual(ui.table(("a",), [("x",)]), '<table class="ui-table"><thead><tr><th scope="col">a</th></tr></thead><tbody><tr><td>x</td></tr></tbody></table>')
+        for bad in (("fail",), ("Fail", "pass", None), ("x y", None, None)):
+            with self.assertRaises(ValueError):
+                ui.data_table(("repo", "CI"), rows, id="audit", row_statuses=bad)
+        state = ui.status_filter("audit", (("fail", "失敗"), ("pass", "成功")), id="ci", all_label="すべての CI")
+        self.assertIn('data-ui-filter-status="#audit"', state)
+
+    def test_a_showcase_section_has_an_eyebrow_links_and_a_stamp(self):
+        spec = {"schema": ui.SHOWCASE_SCHEMA, "id": "ops", "title": "Ops", "sections": [
+            {"id": "a", "label": "A", "icon": "info", "heading": "判断へ", "eyebrow": "GUIDE", "links": [["← 親", "../"]], "stamp": {"value": "2026.11.11"}},
+            {"id": "b", "label": "B", "icon": "info", "heading": "B", "lead": "plain"}]}
+        html = ui.showcase_html(spec)
+        self.assertIn('<header class="ui-heading"><div><p class="ui-eyebrow">GUIDE</p><h2 id="ops-h-a">判断へ</h2>', html)
+        self.assertIn('<h2 id="ops-h-b">B</h2><p class="ui-muted">plain</p>', html)        # a section without them renders as before
+        with self.assertRaises(ValueError):
+            ui.showcase_validate({**spec, "sections": [{**spec["sections"][0], "links": [["x", "javascript:x"]]}, spec["sections"][1]]})
+
+
+if __name__ == "__main__":
     unittest.main()
