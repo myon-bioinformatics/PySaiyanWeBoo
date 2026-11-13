@@ -565,12 +565,12 @@ def _pytest_on_mutated_web_ui(replacements: list[tuple[str, str]], test_id: str)
     with tempfile.TemporaryDirectory() as directory:
         overlay = Path(directory)
         shutil.copytree(ROOT / "vendor", overlay / "vendor")
-        source = (ROOT / "web_ui.py").read_text(encoding="utf-8")
+        source = (ROOT / "pysaiyanweboo.py").read_text(encoding="utf-8")
         for old, new in replacements:
             if source.count(old) != 1:
                 raise AssertionError(f"mutation anchor must appear once: {old!r}")
             source = source.replace(old, new, 1)
-        (overlay / "web_ui.py").write_text(source, encoding="utf-8")
+        (overlay / "pysaiyanweboo.py").write_text(source, encoding="utf-8")
         env = os.environ.copy()
         env["PYTHONPATH"] = str(overlay) + os.pathsep + env.get("PYTHONPATH", "")
         completed = subprocess.run(

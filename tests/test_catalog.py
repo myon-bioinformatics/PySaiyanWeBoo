@@ -134,15 +134,15 @@ class CatalogTests(unittest.TestCase):
     def test_isolated_single_file_and_cli(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / 'web_ui.py').write_bytes(Path(ui.__file__).read_bytes())
+            (root / 'pysaiyanweboo.py').write_bytes(Path(ui.__file__).read_bytes())
             (root / 'input.json').write_text(json.dumps(self.spec(), ensure_ascii=False), encoding='utf-8')
-            done = subprocess.run([sys.executable, '-I', '-S', str(root / 'web_ui.py'),
+            done = subprocess.run([sys.executable, '-I', '-S', str(root / 'pysaiyanweboo.py'),
                                    '--catalog', str(root / 'input.json')], capture_output=True, timeout=10)
             self.assertEqual(done.returncode, 0, done.stderr)
             # The copy outside the checkout cannot know its commit; only the generator meta differs.
             self.assertEqual(ui.GENERATOR_META.sub('', done.stdout.decode('utf-8')), ui.GENERATOR_META.sub('', ui.catalog_document(self.spec())))
             (root / 'input.json').write_text('{"invalid": true}', encoding='utf-8')
-            bad = subprocess.run([sys.executable, '-I', '-S', str(root / 'web_ui.py'),
+            bad = subprocess.run([sys.executable, '-I', '-S', str(root / 'pysaiyanweboo.py'),
                                   '--catalog', str(root / 'input.json')], capture_output=True, timeout=10)
             self.assertEqual(bad.returncode, 2)
             self.assertEqual(bad.stdout, b'')

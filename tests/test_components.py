@@ -1,4 +1,4 @@
-"""COMPONENTS: one name gives a component's HTML, stylesheet and module from Python, here and in a repository that vendors web_ui.py."""
+"""COMPONENTS: one name gives a component's HTML, stylesheet and module from Python, here and in a repository that vendors pysaiyanweboo.py."""
 import json
 from pathlib import Path
 import subprocess
@@ -72,13 +72,13 @@ def test_an_unknown_component_names_the_known_ones():
 
 
 def run_cli(*argv, stdin=None):
-    done = subprocess.run([sys.executable, "-S", str(ROOT / "web_ui.py"), *argv], input=stdin, capture_output=True, text=True, timeout=120, check=False)
+    done = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), *argv], input=stdin, capture_output=True, text=True, timeout=120, check=False)
     assert done.returncode == 0, done.stderr
     return done.stdout
 
 
 def test_the_cli_prints_a_component_for_node_and_the_shell():
-    """python -S web_ui.py --component NAME: the same calls by name, with --spec FILE|- and --set KEY=VALUE (JSON values, else text)."""
+    """python -S pysaiyanweboo.py --component NAME: the same calls by name, with --spec FILE|- and --set KEY=VALUE (JSON values, else text)."""
     listing = json.loads(run_cli("--component", "list"))
     assert listing == ui.components() and listing["dial"] == {"html": "dial_html", "css": ["dial.css"], "js": ["dial.js"], "mount": "", "classic": False}
     parts = json.loads(run_cli("--component", "dial", "--set", "name=volume", "--set", "maximum=11", "--set", "label=Volume", "--part", "json"))
@@ -87,17 +87,17 @@ def test_the_cli_prints_a_component_for_node_and_the_shell():
     spec = json.dumps(ui.example_data("school"))
     assert run_cli("--component", "world", "--spec", "-", "--part", "css", stdin=spec) == ui.component_parts("world", ui.example_data("school"))["css"]
     assert run_cli("--component", "door", "--spec", "-", stdin=json.dumps(ui.example_data("door"))) == ui.component_document("door", ui.example_data("door"))
-    bad = subprocess.run([sys.executable, "-S", str(ROOT / "web_ui.py"), "--component", "nope"], capture_output=True, text=True, timeout=60, check=False)
+    bad = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--component", "nope"], capture_output=True, text=True, timeout=60, check=False)
     assert bad.returncode == 2 and "unknown component: nope" in bad.stderr
 
 
 @pytest.mark.skipif(not node26(), reason="Node 26+ not available")
 def test_node_reaches_a_component_through_py_launch(tmp_path):
-    """A Node page builder in another repository: vendor/py_launch.cjs runs web_ui.py --component and reads the JSON."""
+    """A Node page builder in another repository: vendor/py_launch.cjs runs pysaiyanweboo.py --component and reads the JSON."""
     script = tmp_path / "build.cjs"
     script.write_text(
         f'const {{run}} = require({json.dumps(str(ROOT / "vendor" / "py_launch.cjs"))});\n'
-        f'const r = run({json.dumps(str(ROOT / "web_ui.py"))}, ["--component", "dial", "--set", "name=volume", "--part", "json"], {{noSite: true}});\n'
+        f'const r = run({json.dumps(str(ROOT / "pysaiyanweboo.py"))}, ["--component", "dial", "--set", "name=volume", "--part", "json"], {{noSite: true}});\n'
         'process.stdout.write(JSON.stringify(Object.keys(JSON.parse(r.stdout.toString("utf8")))));\n', encoding="utf-8")   # run() is synchronous; stdout is a Buffer
     done = subprocess.run([node26(), str(script)], capture_output=True, text=True, timeout=120, check=True)
     assert json.loads(done.stdout) == ["html", "css", "js"]
@@ -138,6 +138,6 @@ def test_the_showcase_section_tables_are_the_same_table():
 
 def test_the_table_from_the_shell_and_node():
     spec = {"columns": ["page", "ok"], "rows": [["index", None]]}
-    done = subprocess.run([sys.executable, "-S", str(ROOT / "web_ui.py"), "--component", "table", "--spec", "-", "--part", "html"],
+    done = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--component", "table", "--spec", "-", "--part", "html"],
                           input=json.dumps(spec), capture_output=True, text=True, check=True)
     assert done.stdout.strip() == ui.table_html(spec)

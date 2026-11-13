@@ -2,7 +2,7 @@
 
 Opt in with `board.shared_issue = "OWNER/REPOSITORY/NUMBER"` in an existing
 `web-ui-world/1` spec. Omit it to keep the old board. Runtime stays in
-`web_ui.py`, using Python stdlib and generated browser JavaScript. No server,
+`pysaiyanweboo.py`, using Python stdlib and generated browser JavaScript. No server,
 secret token, OAuth handler, network POST, or new runtime dependency is added.
 The default world example connects to [public board #110](https://github.com/myon-bioinformatics/PySaiyanWeBoo/issues/110). It still sends no API request until the visitor clicks refresh.
 

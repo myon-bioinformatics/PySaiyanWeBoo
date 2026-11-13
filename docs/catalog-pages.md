@@ -35,7 +35,7 @@ external destinations appropriately. Links open in the same tab.
 
 There is no base URL rewriting: `./evidence/result.json` stays beside the generated
 page under `/repo-a/` or `/repo-b/nested/`. Consumers must emit the referenced
-files at the corresponding paths. A copied `web_ui.py` is sufficient; the output
+files at the corresponding paths. A copied `pysaiyanweboo.py` is sufficient; the output
 embeds only core CSS and its selected theme, and requires no web-ui gallery,
 brand image, CDN, JavaScript, Python server or storage at runtime.
 
@@ -57,8 +57,8 @@ for name in ("catalog-report", "catalog-projects"):
 Or use the thin CLI:
 
 ```sh
-python -S web_ui.py --example catalog-report > report.json
-python -S web_ui.py --catalog report.json > report.html
+python -S pysaiyanweboo.py --example catalog-report > report.json
+python -S pysaiyanweboo.py --catalog report.json > report.html
 ```
 
 `--site` retains its existing role and page set: it writes web-ui's own gallery.

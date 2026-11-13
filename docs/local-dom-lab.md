@@ -30,7 +30,7 @@ WEB_UI_GRADIO_TEST=1 BTK_ROOT=/path/to/pinned/browser-test-kit uv run --group gr
 The CI lane supplies browser-test-kit commit
 `b94f801a9c57b1914ff6b732519521a7a42fadfe`. The parser is not copied
 into web-ui. Gradio and Playwright are optional test dependencies, not requirements
-of `web_ui.py`. GHI's Markdown fixture exporter can supply the input HTML; there
+of `pysaiyanweboo.py`. GHI's Markdown fixture exporter can supply the input HTML; there
 is no new Markdown converter or CORS workaround here. The earlier Markdown
 round-trip code-block extra-LF finding remains distinct from text extraction.
 

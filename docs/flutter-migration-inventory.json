@@ -1897,7 +1897,7 @@
         "path": "python/validation_http.py",
         "sha256": "c74bccedfc1208b6a29decb27d39927a22c612a9fe5dea4122bfed3816afab4f",
         "status": "successor",
-        "target": "python3 web_ui.py --pattern-serve",
+        "target": "python3 pysaiyanweboo.py --pattern-serve",
         "remaining": "A loopback bridge for every family, with the same Host/Origin/size/media-type rules"
       },
       {

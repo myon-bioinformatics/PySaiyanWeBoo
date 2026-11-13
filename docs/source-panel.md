@@ -1,7 +1,7 @@
 # Source panel
 
 A reusable panel that reads **one JSON response** (asked for by name, or pasted) into **Markdown tables**. The consumer supplies only a small JSON `spec`; the panel, its
-script and its stylesheet are `web_ui.py` data, so a consumer writes no JavaScript or CSS for it.
+script and its stylesheet are `pysaiyanweboo.py` data, so a consumer writes no JavaScript or CSS for it.
 
 ```python
 import web_ui
@@ -13,7 +13,7 @@ extract = web_ui.source_extract(spec, response_text)  # {"title", "tables": [{"h
 markdown = web_ui.source_markdown(extract)
 ```
 
-`python -S web_ui.py --site DIR` writes `DIR/js/source.js`. The panel never ships a network address of its own: the spec names it.
+`python -S pysaiyanweboo.py --site DIR` writes `DIR/js/source.js`. The panel never ships a network address of its own: the spec names it.
 
 ## The spec
 

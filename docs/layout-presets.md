@@ -2,14 +2,14 @@
 
 Pixel values in a layout are choices, not facts. web-ui keeps them as **presets**: named
 sets of CSS custom properties in one JSON file (`web-ui-layout-presets/1`, for example
-`web_ui.EXAMPLES["layout-presets"]`; `python -S web_ui.py --example layout-presets` prints it). Any preset may be the right one for a screen; the page
+`web_ui.EXAMPLES["layout-presets"]`; `python -S pysaiyanweboo.py --example layout-presets` prints it). Any preset may be the right one for a screen; the page
 lets people switch, and tests try them all.
 
 ## The page itself is a preset too
 
 The core reads three layout tokens: `--ui-text` (body font size), `--ui-space` (page, panel
 and card padding; the 8 px grid: 8 / 16 px) and `--ui-max` (page width). `EXAMPLES["page-layouts"]`
-(`python -S web_ui.py --example page-layouts`) is the preset file for them — `comfortable`
+(`python -S pysaiyanweboo.py --example page-layouts`) is the preset file for them — `comfortable`
 (default), `compact`, `wide`, `device` — and the same `css` / radios switch them live. A consumer
 ships them in its stylesheet with `write_bundle(..., layouts=spec)` (CLI `--layouts FILE`) and
 puts `layout_switch_html(spec)` on the page; the sweep below then says which presets hold at
@@ -19,7 +19,7 @@ which widths. The presets API (`validate_layout_presets`, `layout_presets_css`,
 ## Switch live, without reloading
 
 ```sh
-python -S web_ui.py --example layout-presets > layout-presets.json
+python -S pysaiyanweboo.py --example layout-presets > layout-presets.json
 python -S tools/layout_presets.py css layout-presets.json   # Node: node vendor/py_launch.cjs -- tools/layout_presets.py css ...
 python -S tools/layout_presets.py html layout-presets.json  # radio buttons, default checked
 ```
@@ -69,7 +69,7 @@ to the presets. After changing the presets or the page, run the sweep, update th
 ```sh
 python tools/layout_presets.py sweep "file://$PWD/index.html#try" --presets layout-presets.json \
   --items ".ui-matrix-tiles li" --widths 320 384 768 1280 --out /tmp/candidates.json
-python -S web_ui.py --site build/site && cp build/site/index.html index.html
+python -S pysaiyanweboo.py --site build/site && cp build/site/index.html index.html
 ```
 
 The theme radios beside it use `bindTheme()` from the `ui.js` module. Every theme ships in the same CSS, so the

@@ -1,6 +1,6 @@
 # World motion and clock ownership
 
-All runtime source remains in `web_ui.py` (stdlib only). The existing
+All runtime source remains in `pysaiyanweboo.py` (stdlib only). The existing
 `web-ui-world/1` `actors`, `player`, and `board` fields remain supported.
 No Rust/C, browser Python interpreter, new server, dependency or persistent
 storage is added.

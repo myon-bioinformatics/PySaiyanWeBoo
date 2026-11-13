@@ -10,7 +10,7 @@ not implement this opaque-token Basic/Digest/HMAC matrix. The existing pattern
 bridge supplies loopback binding, Host/Origin checks, JSON parsing, the 64 KiB
 body limit, timeout and no-store responses. Those checks are reused.
 
-Run `python -S web_ui.py --pattern-serve`, then open
+Run `python -S pysaiyanweboo.py --pattern-serve`, then open
 `http://127.0.0.1:8765/auth.html`. No third-party runtime dependencies are needed.
 The page prepares public demo requests, permits edits, and displays the actual
 HTTP status, challenge or Retry-After header, and JSON body. Repeat a signed

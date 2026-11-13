@@ -88,7 +88,7 @@ class PythonWrapperTests(unittest.TestCase):
         )
 
     def test_cli_remote_assets_are_css_only(self):
-        command = [sys.executable, '-S', str(ROOT / 'web_ui.py'),
+        command = [sys.executable, '-S', str(ROOT / 'pysaiyanweboo.py'),
                    '--asset-base', 'https://example.test/latest']
         plain = subprocess.run(command, input='ok', text=True, capture_output=True)
         self.assertEqual(plain.returncode, 0, plain.stderr)
@@ -128,7 +128,7 @@ class PythonWrapperTests(unittest.TestCase):
             original = b'body { color: #000; }'
             css.write_bytes(original)
             run = subprocess.run(
-                [sys.executable, '-S', str(ROOT / 'web_ui.py'), '--css', str(css)],
+                [sys.executable, '-S', str(ROOT / 'pysaiyanweboo.py'), '--css', str(css)],
                 input='<b>user</b>',
                 text=True,
                 capture_output=True,
@@ -139,7 +139,7 @@ class PythonWrapperTests(unittest.TestCase):
             self.assertNotIn('<script', run.stdout)
             self.assertEqual(css.read_bytes(), original)
         run = subprocess.run(
-            [sys.executable, '-S', str(ROOT / 'web_ui.py'), '--stub'],  # removed flag: usage error
+            [sys.executable, '-S', str(ROOT / 'pysaiyanweboo.py'), '--stub'],  # removed flag: usage error
             input='',
             text=True,
             capture_output=True,
@@ -150,7 +150,7 @@ class PythonWrapperTests(unittest.TestCase):
             [
                 sys.executable,
                 '-S',
-                str(ROOT / 'web_ui.py'),
+                str(ROOT / 'pysaiyanweboo.py'),
                 '--asset-base',
                 '.',
                 '--with-scripts',
@@ -245,13 +245,13 @@ class BundledCssTests(unittest.TestCase):
 
     @unittest.skipUnless(node26(), "Node 26+ not available")
     def test_node_reaches_the_bundle_through_the_shared_launcher(self):
-        # No Node twin and no web_ui.cjs: Node runs web_ui.py via vendor/py_launch.cjs, so the bytes cannot differ.
+        # No Node twin and no web_ui.cjs: Node runs pysaiyanweboo.py via vendor/py_launch.cjs, so the bytes cannot differ.
         args = ["--css-bundle", "--theme", "green"]
         env = {**os.environ, "PYTHON": sys.executable}
         run = lambda argv: subprocess.run(argv, cwd=ROOT, env=env, input="hello\n", capture_output=True,
                                           text=True, encoding="utf-8", timeout=60)
-        via_node = run(["node", "vendor/py_launch.cjs", "--", "web_ui.py", *args])
-        via_python = run([sys.executable, "-S", "web_ui.py", *args])
+        via_node = run(["node", "vendor/py_launch.cjs", "--", "pysaiyanweboo.py", *args])
+        via_python = run([sys.executable, "-S", "pysaiyanweboo.py", *args])
         self.assertEqual(via_python.returncode, 0, via_python.stderr)
         self.assertEqual((via_node.returncode, via_node.stdout), (0, via_python.stdout))
         self.assertIn('body[data-ui-theme="green"]', via_node.stdout)
@@ -602,7 +602,7 @@ class WorldTests(unittest.TestCase):
         wall = web_ui.theme_wall(range(12))
         self.assertEqual(wall.count('class="ui-wall-cell"'), 12)
         self.assertIn("--ui-radius:", wall)
-        run = lambda *args: subprocess.run([sys.executable, "-S", "web_ui.py", *args], cwd=ROOT, capture_output=True,
+        run = lambda *args: subprocess.run([sys.executable, "-S", "pysaiyanweboo.py", *args], cwd=ROOT, capture_output=True,
                                            text=True, encoding="utf-8", timeout=60)
         with tempfile.TemporaryDirectory() as out:
             spec = Path(out) / "world.json"
@@ -616,7 +616,7 @@ class WorldTests(unittest.TestCase):
 
     def test_site_writes_pages_browser_modules_and_example_data_and_nothing_else(self):
         with tempfile.TemporaryDirectory() as out:
-            done = subprocess.run([sys.executable, "-S", "web_ui.py", "--site", out], cwd=ROOT, capture_output=True,
+            done = subprocess.run([sys.executable, "-S", "pysaiyanweboo.py", "--site", out], cwd=ROOT, capture_output=True,
                                   text=True, encoding="utf-8", timeout=60)
             self.assertEqual(done.returncode, 0, done.stderr)
             pages = web_ui.example_pages()
@@ -1294,7 +1294,7 @@ class RepairRegressionTests(unittest.TestCase):
         self.assertIn('#demo-cat-value-all:checked', web_ui.world_css(spec))
 
     def test_bundle_asset_base_keeps_scripts_not_styles(self):
-        result = subprocess.run([sys.executable, '-S', 'web_ui.py', '--css-bundle', '--asset-base', '.', '--with-scripts'],
+        result = subprocess.run([sys.executable, '-S', 'pysaiyanweboo.py', '--css-bundle', '--asset-base', '.', '--with-scripts'],
                                 cwd=ROOT, input='', text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('rel="stylesheet"', result.stdout)
@@ -2088,7 +2088,7 @@ class BtkAdapterTests(unittest.TestCase):
 
     def test_the_command_line_prints_them(self):
         def run(*args):
-            return subprocess.run([sys.executable, "-S", "web_ui.py", *args], cwd=ROOT, capture_output=True, text=True, timeout=30)
+            return subprocess.run([sys.executable, "-S", "pysaiyanweboo.py", *args], cwd=ROOT, capture_output=True, text=True, timeout=30)
         listed = run("--btk-adapter", "list")
         self.assertEqual((listed.returncode, listed.stdout.split()), (0, sorted(web_ui.BTK_ADAPTERS)))
         one = run("--btk-adapter", "web-ui-photo-studio", "--url", "http://127.0.0.1:9/p.html")
@@ -3067,7 +3067,7 @@ class ReportTests(unittest.TestCase):
             good.write_text('<testsuite><testcase name="a"/></testsuite>')
             bad.write_text('<testsuite><testcase name="a"/><testcase name="b"><failure message="m"/></testcase></testsuite>')
             older.write_text('<testsuite><testcase name="a"/><testcase name="gone"><failure/></testcase></testsuite>')
-            run = lambda *args, **kw: subprocess.run([sys.executable, "-S", str(ROOT / "web_ui.py"), *args], capture_output=True, text=True, timeout=60, **kw)
+            run = lambda *args, **kw: subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), *args], capture_output=True, text=True, timeout=60, **kw)
             ok = run("--junit", str(good))
             self.assertEqual((ok.returncode, json.loads(ok.stdout)["ok"]), (0, True))
             failing = run("--junit", str(bad), "--previous", str(older))
@@ -4164,7 +4164,7 @@ class PatternTests(unittest.TestCase):
                 parse(text)
 
     def test_the_command_line(self):
-        run = lambda *args, **kw: subprocess.run([sys.executable, "-S", str(ROOT / "web_ui.py"), *args], capture_output=True, timeout=60, **kw)
+        run = lambda *args, **kw: subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), *args], capture_output=True, timeout=60, **kw)
         done = run("--pattern", "reduce", input=json.dumps({"mode": "redux", "initial": 1, "actions": [{"type": "increment", "value": 2}]}).encode())
         self.assertEqual((done.returncode, json.loads(done.stdout)), (0, {"history": [1, 3], "mode": "redux", "schema": "state-reducer/1", "state": 3}))
         for stdin in (b'{"mode":"redux","initial":NaN,"actions":[]}', b"[1", b'{"mode":"x"}', "{\"a\":\"".encode() + b"\xff\"}", b" " * (web_ui.PATTERN_MAX_INPUT + 1)):
@@ -5763,9 +5763,9 @@ class ContractTests(unittest.TestCase):
 
     def test_the_command_line_runs_it_on_stdin(self):
         request = json.dumps(web_ui.PATTERN_EXAMPLES["contract"])
-        done = subprocess.run([sys.executable, str(ROOT / "web_ui.py"), "--pattern", "contract"], input=request, capture_output=True, text=True, timeout=60)
+        done = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--pattern", "contract"], input=request, capture_output=True, text=True, timeout=60)
         self.assertEqual((done.returncode, json.loads(done.stdout)), (0, {"failures": [], "ok": True, "operation": "layout", "truncated": 0}))
-        done = subprocess.run([sys.executable, str(ROOT / "web_ui.py"), "--pattern", "contract"], input='{"operation":"layout"}', capture_output=True, text=True, timeout=60)
+        done = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--pattern", "contract"], input='{"operation":"layout"}', capture_output=True, text=True, timeout=60)
         self.assertEqual(done.returncode, 2)
         self.assertIn("⛔ invalid pattern request: viewport needs a positive width and height", done.stderr)
 
@@ -6029,7 +6029,7 @@ class PatternBridgeTests(unittest.TestCase):
         self.assertEqual(stream.getvalue(), "")
 
     def command(self, *arguments):
-        return subprocess.Popen([sys.executable, str(ROOT / "web_ui.py"), *arguments], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return subprocess.Popen([sys.executable, str(ROOT / "pysaiyanweboo.py"), *arguments], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     def test_the_command_serves_and_stops(self):
         process = self.command("--pattern-serve", "--port", "0", "--allow-origin", "http://localhost:8080")

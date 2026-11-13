@@ -1,7 +1,7 @@
 # School world: desks, chairs, an emoji and a walk
 
 An extension of the existing `web-ui-world/1` map, not a new engine. A floor may carry a **tile grid**
-and **props**; the world may offer **avatars**. Everything stays in `web_ui.py` (stdlib only, no server,
+and **props**; the world may offer **avatars**. Everything stays in `pysaiyanweboo.py` (stdlib only, no server,
 no storage, no new dependency). Worlds without these fields produce exactly the same HTML as before.
 
 ```python
@@ -32,9 +32,9 @@ A consuming repository keeps only JSON; Python (stdlib) makes the page, and Node
 
 ```
 echo '{"schema":"web-ui-world/1","avatars":["🙂","🐱","🦊"],"floors":[{"id":"room","label":"教室","classroom":{"rows":5,"groups":3}}]}' \
-  | python -S web_ui.py --world - > school.html
-python -S web_ui.py --example school | python -S web_ui.py --world - > school.html          # the bundled example, as is
-node vendor/py_launch.cjs -- web_ui.py --world - < school.json > school.html                # Node: same bytes
+  | python -S pysaiyanweboo.py --world - > school.html
+python -S pysaiyanweboo.py --example school | python -S pysaiyanweboo.py --world - > school.html          # the bundled example, as is
+node vendor/py_launch.cjs -- pysaiyanweboo.py --world - < school.json > school.html                # Node: same bytes
 python -S -c "import web_ui as u,sys;sys.stdout.write(u.world_document({'schema':u.WORLD_SCHEMA,'avatars':['🙂'],'floors':[{'classroom':{}}]}))"   # in-process
 ```
 
@@ -135,7 +135,7 @@ six lands, a few lines of JSON) and the footer's 🚪 pulldown moves between the
   object, the pond, how many houses). The same arguments always give the same land; `seed` makes another. `cols` 12..48, `rows` 12..32, `tile` a multiple of 8.
 * Each land has a road from the player's start to a village crossroads, and two spots (the town; a landmark on the nearest bank of the water, else the
   farthest tile) on tiles that can be walked to. `spots`, `actors` and `player` beside `land` replace the generated ones, like `classroom`.
-* From Python: `web_ui.land_floor(theme, cols, rows, seed=, tile=, id=, label=)`; from another repository: `... | python -S web_ui.py --world - > lands.html`.
+* From Python: `web_ui.land_floor(theme, cols, rows, seed=, tile=, id=, label=)`; from another repository: `... | python -S pysaiyanweboo.py --world - > lands.html`.
 
 The representation changes by swapping objects, not code: the prop kinds of any floor can be mixed.
 
@@ -261,7 +261,8 @@ the order their options are given: `--timestamp` adds when the run started, in U
 in Tokyo), so names sort in recording order and read the same in any time zone; `--git-commit` adds the git commit the pages were built from
 (`288cbed`, or `288cbed-dirty` when tracked files have uncommitted changes). A repeated option adds nothing. Every scene of one run shares
 the same timestamp and commit. Without `--timestamp` an existing file is refused unless `--force`, so a repeated run by hand or by an agent
-either keeps its own files or says so. `record_demo.add_gif_arguments`, `gif_targets` and `gif_targets_from` are these rules as functions:
+either keeps its own files or says so. `pysaiyanweboo.add_gif_arguments`, `gif_targets` and `gif_targets_from` are these rules as functions
+(record_demo imports them under the same names; `ext=".png"` names stills, so other recorders such as BrowserTestKit's evidence_gif can share them):
 the browser tests name their GIFs through them from `WEB_UI_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"`.
 
 | File | Shows |

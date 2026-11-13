@@ -259,11 +259,11 @@ def test_write_bundle_and_check_bundle_round_trip(tmp_path):
     spec = tmp_path / "brand.json"
     spec.write_text('{"name": "acme", "tokens": {"--ui-bg": "#ffffff", "--ui-fg": "#000000"}}', encoding="utf-8")
     (tmp_path / "extra.css").write_text(".x{}", encoding="utf-8")
-    cli = [sys.executable, "-S", str(ROOT / "web_ui.py"), "--theme", "terminal", "--brand", str(spec), "--extra-css", str(tmp_path / "extra.css")]
+    cli = [sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--theme", "terminal", "--brand", str(spec), "--extra-css", str(tmp_path / "extra.css")]
     assert subprocess.run([*cli, "--bundle", str(target), "--note", "scripts/x.py"], capture_output=True, text=True).returncode == 0
     assert target.read_text(encoding="utf-8").split("\n", 1)[1] == body
     assert subprocess.run([*cli, "--bundle-check", str(target)], capture_output=True, text=True).returncode == 0
-    assert subprocess.run([sys.executable, "-S", str(ROOT / "web_ui.py"), "--bundle-check", str(target)], capture_output=True, text=True).returncode == 1
+    assert subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--bundle-check", str(target)], capture_output=True, text=True).returncode == 1
 
 
 def test_source_commit_is_the_checkout_head_or_the_install_record():
@@ -331,7 +331,7 @@ def test_page_document_builds_a_page_from_a_spec(tmp_path):
     branded = web_ui.page_document({**spec, "theme": "acme"})
     assert '<body data-ui-theme="acme">' in branded and 'body[data-ui-theme="acme"]{--ui-bg:#ffffff' in branded
     (tmp_path / "spec.json").write_text(json.dumps(spec), encoding="utf-8")
-    done = subprocess.run([sys.executable, "-S", str(ROOT / "web_ui.py"), "--page", str(tmp_path / "spec.json")], capture_output=True, text=True)
+    done = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--page", str(tmp_path / "spec.json")], capture_output=True, text=True)
     assert done.returncode == 0 and web_ui.GENERATOR_META.sub("", done.stdout) == web_ui.GENERATOR_META.sub("", web_ui.page_document(spec))
 
 

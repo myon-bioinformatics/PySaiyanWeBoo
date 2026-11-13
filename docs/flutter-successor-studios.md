@@ -94,7 +94,7 @@ all pure calculations need neither npm nor Tone. Build and serve an audio-enable
 site explicitly:
 
 ```sh
-python -S web_ui.py --site build/site
+python -S pysaiyanweboo.py --site build/site
 npm ci --prefix tools/build/studio-audio --ignore-scripts
 node tools/build/studio-audio/build.mjs build/site/vendor
 python -m http.server 8000 --directory build/site

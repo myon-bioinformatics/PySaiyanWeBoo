@@ -2,7 +2,7 @@ name: Successor studios
 on:
   pull_request:
     paths:
-      - web_ui.py
+      - pysaiyanweboo.py
       - 'tools/build/studio-audio/**'
       - tools/flutter_migration_inventory.py
       - docs/flutter-migration-inventory.json

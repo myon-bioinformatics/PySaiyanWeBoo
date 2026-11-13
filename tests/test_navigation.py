@@ -5,7 +5,7 @@ from support import node26, node_js
 ROOT=Path(__file__).resolve().parents[1]
 
 
-spec=importlib.util.spec_from_file_location('web_ui_navigation',ROOT/'web_ui.py');ui=importlib.util.module_from_spec(spec);spec.loader.exec_module(ui)
+spec=importlib.util.spec_from_file_location('web_ui_navigation',ROOT/'pysaiyanweboo.py');ui=importlib.util.module_from_spec(spec);spec.loader.exec_module(ui)
 # navigation.js in Node: URL checks, views, the route table (the same cases as web_ui.route_table) and bindRouteTable on a fake window.
 NAVIGATION_JS = r"""const assert=require('node:assert/strict');
 const ui=require('./js/navigation.js');

@@ -2,7 +2,7 @@
 
 Inputs are JSON produced elsewhere; this tool only presents them with web-ui styles:
 
-- ``--pages``: ``web-ui-flutter-pages/1`` (``python -S web_ui.py --example flutter-pages``): route, emoji key,
+- ``--pages``: ``web-ui-flutter-pages/1`` (``python -S pysaiyanweboo.py --example flutter-pages``): route, emoji key,
   label, published URL and the browser-test-kit adapter id of each representative page;
 - ``--report``: Ironmate ``ironmate-browser-matrix/1`` (tiles and differences per page x environment);
 - ``--dataset`` (optional): browser-test-kit ``btk-platform-matrix/1``, for pass/fail and the
