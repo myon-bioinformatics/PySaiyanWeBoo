@@ -123,6 +123,14 @@ class Response(io.BytesIO):
 
 
 class PlotlyDistributionTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get('WEB_UI_PLOTLY_JS_TEST_FILE'), 'real CDN bytes supplied explicitly for manual verification')
+    def test_actual_jsdelivr_bundle_is_bounded(self):
+        raw = Path(os.environ['WEB_UI_PLOTLY_JS_TEST_FILE']).read_bytes()
+        self.assertEqual(ui.verify_plotly_js(raw), raw)
+        self.assertIn(b'Plotly', raw[:4096])
+        with patch('urllib.request.urlopen', return_value=Response(raw)):
+            self.assertEqual(ui.fetch_plotly_js(), raw)
+
     def test_contract_and_external_tag_agree(self):
         self.assertEqual(ui.PLOTLY_JS_URL, PLOTLY_JSDELIVR)
         self.assertNotRegex(ui.PLOTLY_JS_URL, r"@[0-9]")
@@ -180,6 +188,12 @@ RAW = b'console.log("pinned");\n'
 
 
 class PinnedAssetTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get('WEB_UI_PPTXGENJS_TEST_FILE'),
+                         'npm pack pptxgenjs@4.0.1 bytes (package/dist/pptxgen.bundle.js) supplied explicitly')
+    def test_actual_pptxgenjs_bundle_matches_pin(self):
+        raw = Path(os.environ['WEB_UI_PPTXGENJS_TEST_FILE']).read_bytes()
+        self.assertIs(ui.verify_remote_script('pptxgenjs', raw), raw)
+
     def test_sri_and_hex_pins_accept_exact_bytes(self):
         for algorithm in ('sha256', 'sha384', 'sha512'):
             pin = ui.sri(RAW, algorithm)

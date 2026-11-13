@@ -1,8 +1,10 @@
 """Helpers the test modules share (a test module imports them as ``from support import ...``; pytest puts this directory on the path)."""
 from __future__ import annotations
 
-# 🌱 The only environment variables the tests read (everything else is a fixed path: build/… for evidence, .browser-test-kit-dom for BTK).
-#    ⚙️ = a workflow sets it, so rename both together. One prefix: PSWB_.
+# 🌱 Runtime test settings (optional real-asset inputs below are retained for manual verification).
+#    WEB_UI_PLOTLY_JS_TEST_FILE / WEB_UI_PPTXGENJS_TEST_FILE: explicit local bundle files; no network fetch.
+# 🌱 The environment variables the tests read (everything else is a fixed path: build/… for evidence, .browser-test-kit-dom for BTK).
+#    ⚙️ = a workflow sets it, so rename both together. Runtime switches use PSWB_; the two optional bundle inputs retain their legacy names.
 #    ⚙️ PSWB_BROWSER   platform-matrix.yml, successor-studios.yml (the engine of the matrix row) → integration/pages_browser.py, integration/flutter_browser.py
 #    ⚙️ PSWB_DEVICE    platform-matrix.yml (the emulated device of the row)                      → integration/pages_browser.py
 #    ⚙️ GITHUB_ACTIONS  GitHub itself (CI must have the JUnit importer; locally the test skips)   → test_tooling.py
