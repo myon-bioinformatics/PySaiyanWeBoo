@@ -1971,3 +1971,12 @@ def test_vendor_lock_matches_checked_in_bytes() -> None:
         blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
         assert blob == entry["blob_sha"], entry["destination"]
         assert hashlib.sha256(data).hexdigest() == entry["sha256"], entry["destination"]
+
+
+@pytest.mark.parametrize("name", ["EmbeddedModulesTests", "StaticContractTest", "CatalogTests"])
+def test_documented_stdlib_unittest_recipes_still_run(name):
+    # README, docs/unittest-discovery.md and docs/catalog-pages.md run these classes with `python -S -m unittest` (no pytest installed).
+    done = subprocess.run([sys.executable, "-S", "-m", "unittest", "discover", "-s", "tests", "-p", "test_pages.py", "-k", name],
+                          cwd=ROOT, capture_output=True, text=True, timeout=120)
+    ran = re.search(r"^Ran (\d+) tests?", done.stderr, re.M)
+    assert done.returncode == 0 and ran and int(ran.group(1)) > 0, done.stderr[-2000:]

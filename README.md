@@ -414,7 +414,7 @@ Run the unittest-compatible subset of the static contract checks locally
 file remain part of the full pytest lane:
 
 ```sh
-python -S -m unittest discover -s tests -p test_pages.py -v
+python -S -m unittest discover -s tests -p test_pages.py -v -k StaticContractTest
 ```
 
 Pytest lanes, including those contract modules, run with uv:
