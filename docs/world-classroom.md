@@ -60,6 +60,7 @@ vertical scrolling and nothing changes page. The screen is icons; the words are 
   * **🏠** home: first floor, everything in view, sheet and menus closed.
   * **⭐** favourites: a ☆ in the ☰ list stars a place; the ⭐ panel lists them (on any floor) and takes you there. They are a light cache: kept in this browser
     (`localStorage` key `ui-world:<id>`, only the starred places, the language and the name layer) and restored on the next visit. No dialog, no per-floor favourites, no export.
+  * **🎒** bag (shown when any spot defines `item: {emoji, label, body?}`): the spot's sheet offers a button to add/remove the item, and the 🎒 panel lists collected items (kept in `localStorage` beside `fav`) with arrows back to each spot.
   * **⚙️** settings: ⏸️ pause the motion, 🙂✏️ change the emoji, 🌐 pick the language (a `<select>` of native names), 🏷️ the name layer (names / dots / off), 🔍 a dial for the zoom (turn it, or the wheel on the map turns it), 🫥 a slider for how see-through the controls over the map are (the pad, `data-overlay`; `--ui-overlay-alpha` .2–1, kept with the language).
 * **Side** (this screen): 48px buttons that open a panel over the map (one menu open at a time; Escape, a tap on the map or choosing an item closes it).
   * **☰**: the places of this floor (and the category chips, if any). Each row has an arrow from you to the place (⬆️ ↗️ ➡️ ↘️ ⬇️ ↙️ ⬅️ ↖️, 📍 within one tile,
