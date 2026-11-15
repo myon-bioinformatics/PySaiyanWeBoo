@@ -1381,3 +1381,20 @@ def test_overworld_meadow_has_hirugaoka_and_sweet_potato_item():
     cell = (hirugaoka["x"] // meadow["tile"], hirugaoka["y"] // meadow["tile"])
     assert cell in reach and blocked[cell[1]][cell[0]] == "0"
 
+
+def test_move_confirm_and_blended_spot_labels():
+    spec = _world()
+    assert ui.world_validate(spec)["move"] == "direct"
+    assert 'data-move=' not in ui.world_html(spec) and 'class="ui-world-go"' not in ui.world_html(spec)
+    spec["move"] = "confirm"
+    assert ui.world_validate(spec)["move"] == "confirm"
+    html = ui.world_html(spec)
+    assert 'data-move="confirm"' in html and 'class="ui-world-go"' in html
+    bad = _world()
+    bad["move"] = "teleport"
+    with pytest.raises(ValueError):
+        ui.world_validate(bad)
+    css = ui.world_css(_world())
+    assert "background:transparent" in css and "text-shadow:" in css and "[data-selected]" in css
+
+

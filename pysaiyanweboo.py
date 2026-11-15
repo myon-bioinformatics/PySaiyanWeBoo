@@ -3877,8 +3877,11 @@ def world_validate(spec: Any) -> dict[str, Any]:
     """Checked copy of a ``web-ui-world/1`` spec: optional ``shots`` (scroll scenes) and ``floors`` (maps with spots)."""
     if not isinstance(spec, dict) or spec.get("schema") != WORLD_SCHEMA:
         raise ValueError(f"expected schema {WORLD_SCHEMA}")
-    if set(spec) - {"schema", "id", "title", "shots", "floors", "zoom_max", "board", "avatars", "shell", "tools", "names", "mark_scale"}:
-        raise ValueError("a world has schema, id, title, shots, floors, zoom_max, board, avatars, shell, tools, names and mark_scale")
+    if set(spec) - {"schema", "id", "title", "shots", "floors", "zoom_max", "board", "avatars", "shell", "tools", "names", "mark_scale", "move"}:
+        raise ValueError("a world has schema, id, title, shots, floors, zoom_max, board, avatars, shell, tools, names, mark_scale and move")
+    move = spec.get("move", "direct")
+    if move not in ("direct", "confirm"):
+        raise ValueError("move is direct or confirm")
     mark_scale = spec.get("mark_scale", [1, 1])
     if not isinstance(mark_scale, list) or len(mark_scale) != 2 or any(type(v) not in (int, float) or not .5 <= v <= 4 for v in mark_scale):
         raise ValueError("mark_scale is [x, y], each from 0.5 to 4: the width and height factor of every mark (dot or emoji)")
@@ -4065,7 +4068,7 @@ def world_validate(spec: Any) -> dict[str, Any]:
             built["body"] = _world_text(tool["body"], "body", 400)
         tools[emoji] = built
     return {"schema": WORLD_SCHEMA, "id": world_id, "title": _world_text(spec.get("title", "World"), "title", 80),
-            "shots": shots, "floors": floors, "zoom_max": zoom_max, "board": board, "names": names, "mark_scale": [float(v) for v in mark_scale], **({"avatars": avatars} if avatars else {}),
+            "shots": shots, "floors": floors, "zoom_max": zoom_max, "board": board, "names": names, "move": move, "mark_scale": [float(v) for v in mark_scale], **({"avatars": avatars} if avatars else {}),
             **({"shell": True} if shell else {}), **({"tools": tools} if tools else {})}
 
 
@@ -4573,7 +4576,7 @@ def _world_playable(world: dict[str, Any]) -> bool:
     return bool(world["board"] or any(f["player"] or f["actors"] for f in world["floors"]))
 
 
-def _floor_html(wid: str, f: dict[str, Any], close: str) -> tuple[str, list[str]]:
+def _floor_html(wid: str, f: dict[str, Any], close: str, *, confirm: bool = False) -> tuple[str, list[str]]:
     """One floor's stage (props, spots, actors, player) and the info sheet articles of its spots and actors (``close`` is their closing link)."""
     flip = lambda s: (f' data-flip="{escape(s["flip"], quote=True)}"' if s.get("flip") else "") + (f' data-sign="{s["sign"]}"' if s.get("sign") else "")   # noqa: E731
     mark = lambda s: f';--mark:\'{escape(s["mark"], quote=True)}\'' if s.get("mark") else ""   # noqa: E731  (the dot's replacement, read by CSS content)
@@ -4601,7 +4604,12 @@ def _floor_html(wid: str, f: dict[str, Any], close: str) -> tuple[str, list[str]
                 f'<button type="button" class="ui-world-take" data-item-id="{wid}-spot-{s["id"]}" '
                 f'data-item-emoji="{escape(item["emoji"], quote=True)}" data-item-label="{escape(item["label"], quote=True)}" '
                 f'aria-pressed="false" hidden {_wt("take")}>{escape(item["emoji"])} <span class="ui-world-take-mark" aria-hidden="true">＋</span></button>')
-    sheet = [f'<article class="ui-sheet-item" id="{wid}-spot-{s["id"]}"><h3>{escape(s["label"])}</h3><p>{escape(s["body"])}</p>{take(s)}{close}</article>'
+    def go_btn(s: dict[str, Any]) -> str:
+        if not (confirm and pl and "x" in s and "y" in s):
+            return ""
+        return (f'<button type="button" class="ui-world-go" data-go-floor="{f["id"]}" '
+                f'data-go-x="{s["x"]}" data-go-y="{s["y"]}" hidden {_wt("walk")}>🚶</button>')
+    sheet = [f'<article class="ui-sheet-item" id="{wid}-spot-{s["id"]}"><h3>{escape(s["label"])}</h3><p>{escape(s["body"])}</p>{take(s)}{go_btn(s)}{close}</article>'
              for s in [*f["spots"], *f["actors"]]]
     return stage, sheet
 
@@ -4709,9 +4717,12 @@ def _map_html(world: dict[str, Any]) -> str:
     if categories:
         labels += "".join(f'<label for="{wid}-cat-{"value-" + c if c else "all"}" data-cat="{c}">{escape(c or "all")}</label>' for c in cat_ids)
     close = f'<a class="ui-sheet-close" href="#{wid}-map"' + (f' {_wt("close")}>✖️</a>' if shell else ">Close</a>")          # an icon in a shell world
-    built = [_floor_html(wid, f, close) for f in floors]
+    confirm = world["move"] == "confirm"
+    built = [_floor_html(wid, f, close, confirm=confirm) for f in floors]
     scale = "" if world["mark_scale"] == [1, 1] else f' style="--mark-x:{world["mark_scale"][0]:g};--mark-y:{world["mark_scale"][1]:g}"'
-    head = (f'<section class="ui-world ui-world-map" id="{wid}-map" data-ui-world="map" data-zoom-max="{world["zoom_max"]}" data-names="{world["names"]}"{scale}'
+    move_attr = ' data-move="confirm"' if confirm else ""
+    head = (f'<section class="ui-world ui-world-map" id="{wid}-map" data-ui-world="map" data-zoom-max="{world["zoom_max"]}" data-names="{world["names"]}"'
+            f'{move_attr}{scale}'
             f'{" data-grid" if any(f.get("tile") for f in floors) else ""}{" data-shell" if shell else ""} aria-label="{escape(world["title"], quote=True)}">')
     view = f'<div class="ui-world-view" tabindex="0"><div class="ui-world-cam" style="--fx:0;--fy:0;--z:1">{"".join(stage for stage, _ in built)}</div></div>'
     tail = f'<aside class="ui-sheet" aria-live="polite">{"".join(a for _, articles in built for a in articles)}</aside>{_pick_html(wid, world.get("avatars", []), shell)}</section>'
@@ -4774,10 +4785,13 @@ _WORLD_CSS = (
     # (dots: a dot; the one the player stands by, the one under the pointer and the focused one show their names; off: dots only).
     + DIAL_CSS +
     ".ui-world-map{--ui-layer-ground:0;--ui-layer-name:1;--ui-layer-mark:2;--ui-layer-player:3;--ui-layer-sheet:4}"
-    ".ui-spot{position:absolute;z-index:var(--ui-layer-name);transform:translate(-50%,-50%) scale(calc(1 / var(--z,1)));white-space:nowrap;border:1px solid var(--ui-accent);"
-    "background:var(--ui-bg);color:var(--ui-fg);padding:.2rem .6rem;border-radius:999px;text-decoration:none;font-size:.85rem}"
+    ".ui-spot{position:absolute;z-index:var(--ui-layer-name);transform:translate(-50%,-50%) scale(calc(1 / var(--z,1)));white-space:nowrap;border:1px solid transparent;"
+    "background:transparent;color:color-mix(in srgb,var(--ui-fg) 76%,transparent);padding:.15rem .45rem;border-radius:999px;text-decoration:none;font-size:.74rem;"
+    "text-shadow:0 0 3px var(--ui-bg),0 0 3px var(--ui-bg),0 1px 2px var(--ui-bg)}"
+    ".ui-spot:not([data-sign]):is(:hover,:focus-visible,[data-near],[data-selected]){background:var(--ui-bg);border-color:var(--ui-accent);color:var(--ui-fg);"
+    "font-size:.82rem;padding:.2rem .6rem;text-shadow:none;z-index:var(--ui-layer-mark)}"
     ".ui-spot[data-sign],.ui-world[data-names=dots] .ui-spot:not([data-sign]):not([data-near]):not(:hover):not(:focus-visible),.ui-world[data-names=off] .ui-spot:not([data-sign]):not(:hover):not(:focus-visible)"
-    "{z-index:var(--ui-layer-mark);padding:.3rem .5rem;border-radius:4px;font-size:0;line-height:1;letter-spacing:.04em}"
+    "{z-index:var(--ui-layer-mark);padding:.3rem .5rem;border-radius:4px;font-size:0;line-height:1;letter-spacing:.04em;background:color-mix(in srgb,var(--ui-bg) 78%,transparent);border-color:color-mix(in srgb,var(--ui-border) 80%,transparent);text-shadow:none}"
     ".ui-spot[data-sign]::before,.ui-world[data-names=dots] .ui-spot:not([data-sign]):not([data-near]):not(:hover):not(:focus-visible)::before,"
     ".ui-world[data-names=off] .ui-spot:not([data-sign]):not(:hover):not(:focus-visible)::before{content:var(--mark,\"●\");font-size:.7rem}"
     # A mark (an emoji in --mark) stands in for the dot and leads the name; --mark-x / --mark-y on the world scale every mark's width and height.
@@ -4851,8 +4865,8 @@ _WORLD_CSS = (
     ".ui-world-favs,.ui-world-bag{width:100%}.ui-world-favs:empty,.ui-world-bag:empty{display:none}"
     ".ui-world-empty{margin:0;width:100%;text-align:center;font-size:1.5rem;color:var(--ui-muted)}"
     ".ui-world-panel:has(.ui-world-favs:not(:empty),.ui-world-bag:not(:empty)) .ui-world-empty{display:none}"
-    ".ui-sheet-item .ui-world-take{display:inline-flex;align-items:center;gap:.35rem;margin-right:.5rem;padding:.35rem .75rem;border:1px solid var(--ui-border);border-radius:var(--ui-radius);background:var(--ui-bg);color:var(--ui-fg);font-size:1rem;cursor:pointer}"
-    ".ui-sheet-item .ui-world-take[hidden]{display:none}"
+    ".ui-sheet-item .ui-world-take,.ui-sheet-item .ui-world-go{display:inline-flex;align-items:center;gap:.35rem;margin-right:.5rem;padding:.35rem .75rem;border:1px solid var(--ui-border);border-radius:var(--ui-radius);background:var(--ui-bg);color:var(--ui-fg);font-size:1rem;cursor:pointer}"
+    ".ui-sheet-item .ui-world-take[hidden],.ui-sheet-item .ui-world-go[hidden]{display:none}"
     ".ui-sheet-item .ui-world-take[aria-pressed=true]{background:var(--ui-accent);color:var(--ui-bg)}"
     ".ui-world-item-note{margin:0 0 .5rem;font-size:.9rem;color:var(--ui-muted)}"
     ".ui-world-panel{position:absolute;top:8px;right:72px;width:min(320px,calc(100% - 88px));max-height:calc(100% - 16px);overflow:auto;box-sizing:border-box;"
@@ -5061,7 +5075,9 @@ const alpha=el.querySelector("[data-alpha]"),setAlpha=v=>{v=Number(v);if(!(v>=.2
 alpha?.addEventListener("input",()=>{setAlpha(alpha.value);save({alpha:Number(alpha.value)})});
 const go=(x,y,zoom)=>{fx=x;fy=y;z=zoom;apply()};
 const home=()=>{const[w,h,vw,vh]=size();go(w/2,h/2,vw&&vh?fitZoom(w,h,vw,vh):1)};
-const open=id=>{for(const i of el.querySelectorAll(".ui-sheet-item"))i.toggleAttribute("data-open",i.id===id)};
+const confirmMove=el.dataset.move==='confirm';
+if(confirmMove)for(const b of el.querySelectorAll('.ui-world-go'))b.hidden=false;
+const open=id=>{for(const i of el.querySelectorAll(".ui-sheet-item"))i.toggleAttribute("data-open",i.id===id);for(const s of el.querySelectorAll(".ui-spot"))s.toggleAttribute("data-selected",Boolean(id)&&s.getAttribute("href")==="#"+id)};
 // Side menus (☰ ⋯), the footer pulldown (door to door) and the arrows from the player to each listed spot.
 const menus=[...el.querySelectorAll('.ui-world-menu')],shut=()=>{for(const m of menus)m.open=false},goto=el.querySelector('.ui-world-goto'),rows='.ui-world-rows a';
 for(const m of menus)m.hidden=false;
@@ -5152,10 +5168,10 @@ const close=()=>{open(null);apply();if([...el.querySelectorAll(".ui-sheet-item")
 const focusSpot=a=>{allCategories();setFloor(a.closest(".ui-floor").dataset.floor);const zoom=Math.max(z,2);go(Number(a.dataset.x),Number(a.dataset.y)+lift()*z/zoom,zoom)};
 view.addEventListener("pointerdown",e=>{if(e.button!==0)return;pts.set(e.pointerId,[e.clientX,e.clientY]);if(pts.size===1)moved=0;else moved=9;el.dataset.drag=""});
 view.addEventListener("pointermove",e=>{const p=pts.get(e.pointerId);if(!p)return;if(pts.size===1){const dx=e.clientX-p[0],dy=e.clientY-p[1];moved+=Math.abs(dx)+Math.abs(dy);if(moved>8){follow=false;if(!view.hasPointerCapture(e.pointerId))view.setPointerCapture(e.pointerId)}fx-=dx/z;fy-=dy/z;apply()}else if(pts.size===2){const q=[...pts].find(([id])=>id!==e.pointerId)[1],d0=Math.hypot(p[0]-q[0],p[1]-q[1]),d1=Math.hypot(e.clientX-q[0],e.clientY-q[1]);moved+=9;if(d0)z*=d1/d0;apply()}p[0]=e.clientX;p[1]=e.clientY});
-const end=e=>{const tapping=pts.has(e.pointerId)&&pts.size===1&&moved<=8&&e.type==="pointerup"&&view.contains(e.target)&&!e.target.closest("a,button,input");pts.delete(e.pointerId);if(!pts.size)delete el.dataset.drag;if(tapping&&walk){const f=floor(),r=f.getBoundingClientRect();walk((e.clientX-r.left)*Number(f.dataset.w)/r.width,(e.clientY-r.top)*Number(f.dataset.h)/r.height)}};
+const end=e=>{const tapping=pts.has(e.pointerId)&&pts.size===1&&moved<=8&&e.type==="pointerup"&&view.contains(e.target)&&!e.target.closest("a,button,input");pts.delete(e.pointerId);if(!pts.size)delete el.dataset.drag;if(tapping&&walk&&!confirmMove){const f=floor(),r=f.getBoundingClientRect();walk((e.clientX-r.left)*Number(f.dataset.w)/r.width,(e.clientY-r.top)*Number(f.dataset.h)/r.height)}};
 addEventListener("pointerup",end);addEventListener("pointercancel",end);view.addEventListener("lostpointercapture",end);
 view.addEventListener("wheel",e=>{e.preventDefault();z*=e.deltaY<0?1.1:1/1.1;apply()},{passive:false});
-el.addEventListener("click",e=>{const l=e.target.closest(".ui-world-rows a"),a=l?[...el.querySelectorAll(".ui-spot")].find(s=>s.getAttribute("href")===l.getAttribute("href")):e.target.closest(".ui-spot,.ui-actor");if(e.target.closest(".ui-world-rows a,[data-me],[data-pick-open]"))shut();if(a){e.preventDefault();if(l)moved=0;if(e.detail!==0&&moved>8){moved=0;return}const id=a.getAttribute("href").slice(1);if(!l){const sg=a.dataset.sign!==undefined,two=a.dataset.flip;if(sg||two!==undefined){if(a.dataset.own===undefined)a.dataset.own=a.textContent;const cur=a.dataset.show||(sg?"":"label"),next=sg?(cur===""?"label":cur==="label"&&two?"flip":""):(cur==="label"?"flip":"label");if(next)a.dataset.show=next;else delete a.dataset.show;a.textContent=next==="flip"?two:a.dataset.own}}open(id);history.replaceState(null,"","#"+id);if(a.dataset.x!==undefined){focusSpot(a);walk(Number(a.dataset.x),Number(a.dataset.y))}}else if(e.target.closest(".ui-sheet-close")){e.preventDefault();close()}});
+el.addEventListener("click",e=>{const g=e.target.closest(".ui-world-go");if(g){e.preventDefault();shut();close();setFloor(g.dataset.goFloor);follow=true;lx=ly=undefined;walk(Number(g.dataset.goX),Number(g.dataset.goY));return}const l=e.target.closest(".ui-world-rows a"),a=l?[...el.querySelectorAll(".ui-spot")].find(s=>s.getAttribute("href")===l.getAttribute("href")):e.target.closest(".ui-spot,.ui-actor");if(e.target.closest(".ui-world-rows a,[data-me],[data-pick-open]"))shut();if(a){e.preventDefault();if(l)moved=0;if(e.detail!==0&&moved>8){moved=0;return}const id=a.getAttribute("href").slice(1);if(!l){const sg=a.dataset.sign!==undefined,two=a.dataset.flip;if(sg||two!==undefined){if(a.dataset.own===undefined)a.dataset.own=a.textContent;const cur=a.dataset.show||(sg?"":"label"),next=sg?(cur===""?"label":cur==="label"&&two?"flip":""):(cur==="label"?"flip":"label");if(next)a.dataset.show=next;else delete a.dataset.show;a.textContent=next==="flip"?two:a.dataset.own}}open(id);history.replaceState(null,"","#"+id);if(a.dataset.x!==undefined){focusSpot(a);if(!confirmMove)walk(Number(a.dataset.x),Number(a.dataset.y))}}else if(e.target.closest(".ui-sheet-close")){e.preventDefault();close()}});
 const KEYS={ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]};
 el.addEventListener("keydown",e=>{if(e.key==="Escape"){close();shut()}const k=KEYS[e.key.length>1?e.key:e.key.toLowerCase()];if(k&&walk.step&&!(e.altKey||e.ctrlKey||e.metaKey)&&!e.target.closest("input,textarea,select,button,a")&&!el.hasAttribute("data-pick")&&!el.hasAttribute("data-ask")&&walk.step(...k))e.preventDefault()});
 el.addEventListener("change",e=>{if(e.target.name&&e.target.name.endsWith("-floor"))home()});
@@ -19392,7 +19408,7 @@ EXAMPLES.update({
     # Swap `theme` (meadow, forest, mountain, desert, coast, castle) or the `seed` and the land is another place; spots/actors/player given
     # beside `land` replace the generated ones.
     "overworld": {
-        "schema": WORLD_SCHEMA, "id": "overworld", "title": "Overworld (prototype)", "zoom_max": 4,
+        "schema": WORLD_SCHEMA, "id": "overworld", "title": "Overworld (prototype)", "zoom_max": 4, "move": "confirm",
         "avatars": ["🙂", "🧙", "🧝", "🦸", "🐱", "🐶", "🦊", "🐉", "🦄", "⚔️", "🛡️", "🚀"],
         "tools": {"🧭": {"label": "町", "label_en": "Towns", "labels": {"fr": "Villes", "es": "Pueblos", "de": "Orte", "zh": "城镇"},
                          "spots": ["meadow-town", "forest-town", "desert-town", "coast-town", "castle-town"]}},
