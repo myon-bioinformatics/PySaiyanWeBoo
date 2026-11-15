@@ -114,3 +114,160 @@ producer, not a promise of full compatibility with GHI's optional Python API.
 ## Reuse in other repositories
 
 This repository defines the web-ui verification pattern only. Other repositories may copy or adapt the deterministic smoke, advisory metadata, pytest, or Stagehand pieces independently. References to `flutter_navigation_basic`, Ironmate, `mcp-toolcall-lab`, or future projects are examples, not requirements or cross-repository contracts.
+
+
+## Feature-specific dependency environments
+
+PR #105 separates optional browser assistance from the default development environment. Runtime dependencies remain empty. Node consumers require Node >=26.
+
+| Environment | Command | Purpose |
+| --- | --- | --- |
+| Default | `uv sync --locked` | pytest and PyYAML; Stagehand absent |
+| Gradio | `uv sync --locked --group gradio` | Gradio and Playwright DOM/browser integration; Stagehand absent |
+| Stagehand | `uv sync --locked --group stagehand` | Browser assistance SDK and its Python surface test |
+
+Use separate `UV_PROJECT_ENVIRONMENT` directories when comparing lanes. Count installed distributions with `uv pip list`; measure apparent venv bytes with the same method and Python version for both revisions. Browser binaries and uv caches are separate from venv size.
+
+### Recorded measurements
+
+The PR author measured Linux x86_64, Python 3.14, fresh uv caches, one sync per condition. These are recorded observations, not a repeated performance benchmark.
+
+| Lane | Packages before → after (including web-ui) | Apparent venv bytes before → after | Sync seconds before → after |
+| --- | --- | --- | --- |
+| Default | 24 → 7 | 23,020,089 → 9,468,459 (58.9% reduction) | 4.47 → 1.40 |
+| Gradio | 65 → 60 | 390,345,641 → 386,265,151 (1.0% reduction) | 11.97 → 11.52 |
+| Stagehand opt-in | 24 after | 23,020,019 after | 1.34 after |
+
+### Final CI inspection
+
+For head `5df20ab8b185860693ea4bf1006bcad17f85bfd8`, Tooling smoke run [41287053731](https://github.com/myon-bioinformatics/PySaiyanWeBoo/actions/runs/41287053731) tested the merge with main (`24b771ea619a7c7e4cd94d545a83e65b352f1bde`). Node was **26.13.0**. Both the locked baseline and tooling Node 26 jobs reported **239 passed, 3 skipped, 114 subtests passed**. `test_stagehand_v4_python_surface` explicitly **PASSED**. The Node test command reported **17 passed, 0 failed, 0 skipped**.
+
+The three skips were the separately enabled Gradio DOM test and optional remote Plotly/PptxGenJS bundle probes; Stagehand was not skipped. The Gradio test ran in its dedicated lane with `WEB_UI_GRADIO_TEST=1` and passed in [Local Gradio DOM run 41287053801](https://github.com/myon-bioinformatics/PySaiyanWeBoo/actions/runs/41287053801). That job installed the official Playwright Chromium shell and passed Plotly rendering, controls, offline/HTTP route navigation and live layout preset checks.
+
+[UI smoke run 41287053839](https://github.com/myon-bioinformatics/PySaiyanWeBoo/actions/runs/41287053839) used Node 26, captured six desktop/mobile Chromium screenshots, verified current-run identity and hashes, and passed visual regression checks. Stagehand coverage here is the SDK import/surface contract, not an authenticated external browser-agent service test.
+
+### Accepting future Flutter functionality
+
+Keep the default environment small when receiving functionality from Flutter. Put new framework/browser/service dependencies in a named opt-in dependency group for the feature. Reuse `gradio` for Gradio/Playwright integration and `stagehand` for browser assistance; enable both explicitly only when a feature needs both. Do not add these packages to `dev` merely to avoid local skips.
+
+Every optional feature must have an enabled CI lane that installs its group and actually executes its required tests. A local `importorskip` is acceptable only when a corresponding enabled lane proves the test passes. Compare default and enabled environments, inspect skip reasons, preserve browser evidence, and record package/size measurements with conditions before expanding dependencies.
+
+
+## Focused world test environment
+
+Use `uv run --locked --only-group world-test --exact python -m pytest -q tests/test_worlds.py` from the repository root.
+
+This optional profile preserves pytest and the anyio plugin used by the full environment. Node 26+ is required to exercise all 165 tests of the world file without skips (motion and the shared board were the original 41); set PYTHONPATH=. when invoking from outside the repository.
+
+The default dependency groups and full CI remain unchanged. This command covers only the named tests; it does not replace the complete suite, Docker or real-browser checks.
+
+### Local reference measurement (2026-11-03)
+
+Linux x86_64, CPython 3.12.14, Node 26.13.0. Full source: 3f83a06266303d5067890f3cad5ff680d9da43b0. Three new environments per profile, shared uv cache, alternating full/nano order. Same test identities/results, no skips, same plugin and common package versions. 41 tests passed per run.
+
+Full to focused installed distributions: 25 to 8. Regular-file logical bytes after tests: 46,217,565 to 10,415,278. Excludes shared interpreter, symlinks and uv cache; includes bytecode. These measurements used an isolated explicitly pinned installation before this group was introduced, so they are reference values, not a measurement of the current lock command.
+
+Install timing was not a fair cold-cache comparison (different sync/install paths and initial cache state); no installation or whole-CI speedup is claimed. Pytest-only was rejected because it dropped the anyio plugin.
+
+
+## Focused standard-library test discovery
+
+Run from this repository root with Python 3.11 or newer. These commands use
+Python’s built-in test runner; the listed checks need no third-party Python
+package or browser installation. `-S` disables automatic `site` initialization
+and its usual site-packages path additions; it is not a complete isolation boundary.
+
+```sh
+python -S -m unittest discover -s tests -p test_pages.py -v -k EmbeddedModulesTests
+```
+
+Validated on Linux / CPython 3.12.14: **6 tests, exit 0** (2026-11-03).
+
+To narrow the first command to a test name, use the built-in `-k` filter:
+
+```sh
+python -S -m unittest discover -s tests -p test_pages.py -v -k test_the_embedded_module_is_the_one_source_of_ui_js
+```
+
+`-s` is the discovery start directory, `-p` matches test filenames, `-k`
+filters test names, `-v` prints each executed test, and `-f` stops at the first
+failure. Quote filename patterns so the shell does not expand them. Check the
+final `Ran N tests` line: zero tests is not a successful verification, even
+though unittest can exit 0. `-k` runs selected tests; it is not a list-only mode.
+
+These are focused checks, not the complete project suite. Keep the existing
+pytest/CI command for full coverage and native JUnit or fixture support.
+Unittest does not collect module-level pytest functions or apply pytest
+fixtures, parametrization, markers, conftest hooks or configured pythonpath.
+A broad `test*.py` pattern can import pytest-only modules and fail under `-S`.
+Do not add an extra CI pass over tests already owned by pytest just to expose
+this local command. No custom discovery runner is required.
+
+
+## Python JUnit evidence
+
+The primary Python lane uploads its ordinary pytest JUnit XML and the controlled
+child's evidence as separate `junit-*` Actions artifacts (14 days, including
+producer failure). Raw diagnostics are not published to Pages. The exact two XML
+paths are inputs to the pinned shared JUnit identity collector; missing, malformed
+or truncated reports fail collection. Ordinary pytest failures still fail the
+producer and workflow.
+
+The controlled child is intentionally red inside a green regression. It runs with
+and without JUnit, checks both exit codes are 1, and uses the shared xprobe importer
+to check failure/setup-error identities and sentinel redaction. Compact context
+has `commit_sha=null`; this lane does not infer provenance from Git or connect the
+canonical metadata producer.
+
+The importer is test-only and byte-verified before loading. CI checks out upstream
+xprobe at `7e7015b2df69ad446b968f6fa49711b5b1dbdd3f` into `.junit-tools`.
+Local `uv run pytest` runs skip this optional integration regression when the importer
+is absent. CI and explicit evidence runs require it and fail if it is missing.
+To exercise the regression locally, place that commit's `xprobe.py` in
+`.junit-tools/xprobe.py` first (Git blob `dbc5b7d55005d6288c072a7612584d6170c216f4`).
+No runtime import or dependency is added.
+
+The regression exercises the existing missing-command tooling probe with
+deterministic monkeypatching. The locked vendor job runs the regression too,
+but only the primary tooling job produces reports for this collector. Node,
+canonical metadata, screenshots and Pages reporting remain separate. See
+[pages-ownership.md](docs/pages-ownership.md) for GitHub Pages evidence publishing policies.
+
+
+## Visual regression baselines
+
+`tests/visual-baseline/` is the reviewed PNG baseline lane for deterministic Chromium
+captures.
+
+Current policy:
+
+- pull requests always generate candidate screenshots;
+- if a reviewed baseline exists, exact PNG equality is checked;
+- if no baseline exists, CI reports `missing-baseline` but does not fail;
+- a future enforcement switch may pass `--require-baseline` once reviewed
+  baselines are committed for all stable fixtures;
+- baseline changes must be intentional and reviewed together with the UI change.
+
+The first stable target is `contract/v1/example.html`. Gallery/example pages
+may also receive baselines, but the frozen contract fixture has priority.
+
+
+### Candidate selection
+
+The default checker pattern is `web-ui-*.png`, meaning every deterministic
+screenshot produced by the current CI lane is visible in the candidate report.
+
+Enforcement may be rolled out more narrowly with `--pattern`, for example:
+
+```sh
+python tools/check_visual_regression.py \
+  --candidate-dir . \
+  --pattern "web-ui-contract-*.png" \
+  --require-baseline
+```
+
+This lets the frozen contract fixture become blocking before gallery/demo
+screenshots do.
+
+The directory is created with the first reviewed baseline; until then every
+candidate reports `missing-baseline`.

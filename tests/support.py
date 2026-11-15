@@ -11,7 +11,7 @@ from __future__ import annotations
 #    🎞️ PSWB_GIFS     by hand: "DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]" keeps the demo GIFs → integration/pages_browser.py
 #    📸 PSWB_SHOTS    by hand: DIR keeps a screenshot of every cities check                     → integration/worlds_browser.py
 
-import json, re, shutil, subprocess, tempfile, unittest
+import functools, http.server, json, re, shutil, subprocess, tempfile, threading, unittest
 from pathlib import Path
 
 try:
@@ -78,3 +78,19 @@ def world_js() -> str:
 def flutter_case(tid, sid, name, result="success", **done):
     """The two NDJSON events (testStart, testDone) of one case in a ``flutter test --reporter json`` stream."""
     return [{"type": "testStart", "test": {"id": tid, "suiteID": sid, "name": name}}, {"type": "testDone", "testID": tid, "result": result, **done}]
+
+
+class QuietHandler(http.server.SimpleHTTPRequestHandler):
+    """Static files without a log line per request."""
+    def log_message(self, *args):
+        pass
+
+
+def serve_directory(directory) -> tuple[http.server.ThreadingHTTPServer, str]:
+    """Serve ``directory`` on a free loopback port for a browser test: ``(server, origin)``; the serving thread is ``server.thread``.
+
+    The caller ends it with ``server.shutdown()`` and ``server.server_close()`` (the browser files in tests/integration share this one start)."""
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(QuietHandler, directory=str(directory)))
+    server.thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server.thread.start()
+    return server, f"http://127.0.0.1:{server.server_port}"

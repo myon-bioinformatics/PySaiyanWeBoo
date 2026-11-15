@@ -32,7 +32,7 @@ the file and never in its name), `theme` (a theme name above) and `layout` (a pr
 ## Evidence and diagnostics publishing policy
 
 Execution evidence (JUnit XML reports, raw diagnostic JSONL, visual regression screenshots, and trace logs) must remain cleanly separated from public Pages deployments:
-- **CI Artifact retention:** Raw diagnostics, test outputs, and JUnit XML are captured and stored as GitHub Actions workflow artifacts (typically retained for 14 days). See [junit-evidence.md](./junit-evidence.md).
+- **CI Artifact retention:** Raw diagnostics, test outputs, and JUnit XML are captured and stored as GitHub Actions workflow artifacts (typically retained for 14 days). See [Python JUnit evidence](../TOOLING.md#python-junit-evidence).
 - **Public Pages summaries:** Pages publications should present high-level static summaries or links to specific Actions workflow runs, rather than hosting raw, unparsed test diagnostics or internal logs.
 
 ## Client-side JavaScript and verification lanes
@@ -53,4 +53,4 @@ If a published page offers interactive or visitor-initiated execution (e.g. runn
 - [GitHub Pages static hosting documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)
 - [Manually running GitHub Actions workflows](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
 - [Lightweight JavaScript and verification lanes](./lightweight-js.md)
-- [Python JUnit evidence](./junit-evidence.md)
+- [Python JUnit evidence](../TOOLING.md#python-junit-evidence)

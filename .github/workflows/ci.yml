@@ -29,7 +29,7 @@ jobs:
           activate-environment: true
           enable-cache: false
       - name: Verify minimum Python page syntax and rendering
-        run: python -S -m unittest discover -s tests -p test_page_heading_compat.py -v
+        run: python -S -m unittest discover -s tests -p test_pages.py -v -k PageHeadingCompatibilityTests
 
   resolve-vendor:
     if: needs.changes.outputs.product_changed == 'true'

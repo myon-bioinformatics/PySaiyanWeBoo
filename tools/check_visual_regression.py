@@ -1,6 +1,6 @@
 """Exact PNG visual-regression checker for deterministic Chromium captures.
 
-Baseline files live under tests/visual-baseline/. When a baseline is absent,
+Baseline files live under tests/visual-baseline/ (policy: TOOLING.md). When a baseline is absent,
 candidate mode reports it without failing. Pass --require-baseline to make
 missing or changed screenshots fail.
 """
