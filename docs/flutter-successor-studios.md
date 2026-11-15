@@ -96,7 +96,7 @@ site explicitly:
 ```sh
 python -S pysaiyanweboo.py --site build/site
 npm ci --prefix tools/build/studio-audio --ignore-scripts
-node tools/build/studio-audio/build.mjs build/site/vendor
+python -S tools/build/studio-audio/build.py build/site/vendor
 python -m http.server 8000 --directory build/site
 ```
 
