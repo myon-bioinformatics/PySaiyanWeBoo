@@ -7490,6 +7490,17 @@ def test_the_curl_panel_and_theme_switch_are_builders_with_the_hooks_their_modul
             ui.curl_panel_html(bad)
     switch = ui.theme_switch_html()
     assert switch.count('name="ui-theme"') == 2 + len(ui.CANDIDATE_THEMES) and switch.count(" checked>") == 1 and 'value="modern" checked' in switch
+    # One dropdown instead of seven radios; with page_option the first choice is "the page's own theme" and nothing is preselected.
+    select = ui.theme_switch_html(control="select", legend="Color <b>")
+    assert select.startswith('<label class="ui-layout-switch">Color &lt;b&gt; <select data-ui-theme-switch>') and select.endswith("</select></label>")
+    assert select.count("<option") == 2 + len(ui.CANDIDATE_THEMES) and select.count(" selected>") == 1 and '<option value="modern" selected>' in select
+    assert '<option value="terminal">⬛ terminal</option>' in select and '<option value="purple">⬜ purple</option>' in select   # dark / light grounds
+    own = ui.theme_switch_html(control="select", page_option="Mode & more")
+    assert '<select data-ui-theme-switch><option value="">Mode &amp; more</option><option value="modern">' in own and " selected" not in own
+    for bad in ({"control": "tabs"}, {"page_option": "Mode"}):
+        with pytest.raises(ValueError):
+            ui.theme_switch_html(**bad)
+    assert "export function pageTheme(name)" in ui.js_source("ui.js") and "uiThemeChosen" in ui.js_source("ui.js")
 
 
 def test_dial_html_is_a_range_the_dial_draws_and_validates_its_numbers():
