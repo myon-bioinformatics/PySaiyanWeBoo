@@ -3,8 +3,6 @@
 Controls, layout presets, the route table, the source panel and a jsDelivr Plotly smoke (the unit side: tests/test_pages.py, tests/test_media.py)."""
 
 import base64
-import functools
-import http.server
 import json
 import os
 import random
@@ -33,7 +31,7 @@ from pysaiyanweboo import (
     gauge_state, minutes_until, render_document, route_links, section_browser, shared_scripts, showcase_document, source_panel_html, stub_response,
     theme_wall_document, travel_seconds, utc_offset_label, world_document, write_js, zone_offset, zone_rows,
 )
-from support import flutter_case
+from support import flutter_case, serve_directory
 
 
 # ═══ 🎛️ controls ═════════════════════════════════════════════════════════════════════════════════════════
@@ -54,11 +52,6 @@ def photo_device(playwright):
     options = dict(playwright.devices[name])
     options.pop('default_browser_type', None)
     return options
-
-
-class QuietHandler(http.server.SimpleHTTPRequestHandler):
-    def log_message(self, *args):
-        pass
 
 
 class PageCase(unittest.TestCase):
@@ -102,11 +95,7 @@ class ControlsBrowserTests(unittest.TestCase):
             root = Path(directory)
             (root / 'index.html').write_text(document, encoding='utf-8')
             write_js(root)
-            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0),
-                functools.partial(QuietHandler, directory=directory))
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
-            origin = f'http://127.0.0.1:{server.server_port}'
+            server, origin = serve_directory(directory)
             try:
                 with sync_playwright() as playwright:
                     browser = playwright.chromium.launch()
@@ -171,7 +160,7 @@ class ControlsBrowserTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 server.server_close()
-                thread.join(timeout=5)
+                server.thread.join(timeout=5)
 
 
 class UiHelpersBrowserTests(unittest.TestCase):
@@ -197,9 +186,7 @@ class UiHelpersBrowserTests(unittest.TestCase):
             root = Path(directory)
             (root / 'index.html').write_text(render_document(trusted_html=html, css=bundled_css()), encoding='utf-8')
             write_js(root)
-            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(QuietHandler, directory=directory))
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
+            server, _ = serve_directory(directory)
             try:
                 with sync_playwright() as playwright:
                     browser = playwright.chromium.launch()
@@ -232,7 +219,7 @@ class UiHelpersBrowserTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 server.server_close()
-                thread.join(timeout=5)
+                server.thread.join(timeout=5)
 
     def test_theme_lit_lightbox_and_copy_fallback(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -241,10 +228,7 @@ class UiHelpersBrowserTests(unittest.TestCase):
             write_js(root)
             shutil.copyfile(ROOT / 'docs/brand/icon.png', root / 'a.png')
             shutil.copyfile(ROOT / 'docs/brand/favicon.png', root / 'b.png')
-            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(QuietHandler, directory=directory))
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
-            origin = f'http://127.0.0.1:{server.server_port}'
+            server, origin = serve_directory(directory)
             try:
                 with sync_playwright() as playwright:
                     browser = playwright.chromium.launch()
@@ -317,7 +301,7 @@ class UiHelpersBrowserTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 server.server_close()
-                thread.join(timeout=5)
+                server.thread.join(timeout=5)
 
 
 class WorldBrowserTests(unittest.TestCase):
@@ -328,9 +312,7 @@ class WorldBrowserTests(unittest.TestCase):
         directory = tempfile.mkdtemp()
         for name, html in pages.items():
             (Path(directory) / name).write_text(html, encoding='utf-8')
-        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(QuietHandler, directory=directory))
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        return server, f'http://127.0.0.1:{server.server_port}'
+        return serve_directory(directory)
 
     def test_shots_map_sheet_and_fallback(self):
         import json
@@ -1023,11 +1005,7 @@ class CatalogBrowserTests(unittest.TestCase):
                 spec['items'][0]['links'] = [{'label': 'Local evidence', 'href': './evidence.txt'}]
                 (output / 'index.html').write_text(catalog_document(spec), encoding='utf-8')
                 (output / 'evidence.txt').write_text('fixture evidence', encoding='utf-8')
-            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0),
-                functools.partial(QuietHandler, directory=directory))
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
-            origin = f'http://127.0.0.1:{server.server_port}'
+            server, origin = serve_directory(directory)
             try:
                 with sync_playwright() as playwright:
                     browser = playwright.chromium.launch()
@@ -1086,7 +1064,7 @@ class CatalogBrowserTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 server.server_close()
-                thread.join(timeout=5)
+                server.thread.join(timeout=5)
 
 
 class RepositoryDiagnosticsBrowserTests(unittest.TestCase):
@@ -7078,9 +7056,7 @@ class RouteTableBrowserTests(unittest.TestCase):
     def test_offline_file_and_http_navigate_the_same_table(self):
         with tempfile.TemporaryDirectory() as directory:
             index = route_page_files(directory)
-            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0),
-                                                     functools.partial(QuietHandler, directory=directory))
-            threading.Thread(target=server.serve_forever, daemon=True).start()
+            server, _ = serve_directory(directory)
             try:
                 with sync_playwright() as playwright:
                     browser = playwright.chromium.launch()
@@ -7197,10 +7173,7 @@ class SourcePanelBrowserTests(unittest.TestCase):
     def test_offline_and_http(self):
         with tempfile.TemporaryDirectory() as directory:
             index = source_page_files(directory)
-            handler = functools.partial(QuietHandler, directory=directory)
-            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), handler)
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
+            server, _ = serve_directory(directory)
             try:
                 with sync_playwright() as playwright:
                     browser = launch(playwright)
@@ -7216,7 +7189,7 @@ class SourcePanelBrowserTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 server.server_close()
-                thread.join()
+                server.thread.join()
 
 
 # ═══ 📈 plotly (jsDelivr) ═════════════════════════════════════════════════════════════════════════════════

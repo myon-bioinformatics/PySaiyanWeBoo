@@ -1,15 +1,13 @@
 """Real-browser successor acceptance checks. Audio is generated, not a human listening test."""
-import functools, http.server, json, os, shutil, sys, tempfile, threading, unittest
+import json, os, shutil, sys, tempfile, unittest
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
+sys.path.insert(0,str(ROOT/'tests'))
 import pysaiyanweboo as u
 from playwright.sync_api import sync_playwright, expect
-
-
-class Quiet(http.server.SimpleHTTPRequestHandler):
-    def log_message(self,*args):pass
+from support import serve_directory
 
 
 class SuccessorBrowser(unittest.TestCase):
@@ -21,9 +19,7 @@ class SuccessorBrowser(unittest.TestCase):
         if not (assets/'tone-studio.min.js').is_file():
             raise RuntimeError('Build the optional audio asset before this acceptance suite')
         shutil.copytree(assets,Path(cls.tmp.name)/'vendor',dirs_exist_ok=True)
-        cls.server=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(Quiet,directory=cls.tmp.name))
-        threading.Thread(target=cls.server.serve_forever,daemon=True).start()
-        cls.origin=f'http://127.0.0.1:{cls.server.server_port}'
+        cls.server,cls.origin=serve_directory(cls.tmp.name)
         cls.pw=sync_playwright().start()
         cls.browser=getattr(cls.pw,os.environ.get('PSWB_BROWSER','chromium')).launch(headless=True)
 
