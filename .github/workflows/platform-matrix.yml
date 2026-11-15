@@ -21,7 +21,6 @@ on:
       - 'tests/fixtures/numbered_routes.toml'
       - 'tests/fixtures/contract_golden.json'
       - '.github/workflows/platform-matrix.yml'
-  workflow_dispatch:
   schedule:
     - cron: '41 3 * * 1'
 
