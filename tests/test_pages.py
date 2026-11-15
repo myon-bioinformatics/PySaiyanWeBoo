@@ -230,6 +230,28 @@ class PythonWrapperTests(unittest.TestCase):
         self.assertNotIn('<script', run.stdout)
 
 
+class PageHeadingCompatibilityTests(unittest.TestCase):
+    """The Python 3.11 floor: ci.yml (python311-page-contract) runs this class with ``python -S -m unittest ... -k PageHeadingCompatibilityTests`` on 3.11,
+    so importing this module there also guards the generator's syntax floor."""
+    def test_all_heading_levels_preserve_class_and_escape_text(self):
+        for level in range(1, 7):
+            with self.subTest(level=level):
+                classes = ' class="ui-title"' if level == 1 else ''
+                document = pysaiyanweboo.page_document({
+                    'schema': 'web-ui-page/1', 'title': 'Test',
+                    'blocks': [{'type': 'heading', 'level': level,
+                                'text': '<日本語 & "title">'}],
+                })
+                expected = f'<h{level}{classes}>&lt;日本語 &amp; &quot;title&quot;&gt;</h{level}>'
+                self.assertIn(expected, document)
+
+    def test_invalid_heading_levels_still_fail(self):
+        for level in (0, 7, True, '1'):
+            with self.subTest(level=level), self.assertRaises(ValueError):
+                pysaiyanweboo.page_document({'schema': 'web-ui-page/1', 'title': 'Test',
+                                      'blocks': [{'type': 'heading', 'level': level, 'text': 'x'}]})
+
+
 class BundledCssTests(unittest.TestCase):
     def test_bundle_is_built_in_memory_from_every_source_in_a_fixed_order(self):
         css = bundled_css()
