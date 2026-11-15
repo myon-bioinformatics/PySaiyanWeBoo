@@ -808,7 +808,7 @@ python -S pysaiyanweboo.py --site .   # writes js/records.js next to it
 
 ## Focused test discovery
 
-See [standard-library discovery commands](docs/unittest-discovery.md) for
+See [standard-library discovery commands](TOOLING.md#focused-standard-library-test-discovery) for
 validated `python -S -m unittest discover` recipes, filename/name filtering,
 and the boundary with the full pytest suite.
 

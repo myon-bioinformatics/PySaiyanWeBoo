@@ -545,7 +545,7 @@ def test_parent_workflow_references_use_reviewed_rollout_commit():
 def test_tooling_probe_child_keeps_exit_status_with_junit(tmp_path):
     importer = ROOT / ".junit-tools" / "xprobe.py"
     if not importer.is_file() and os.environ.get("GITHUB_ACTIONS") != "true":
-        pytest.skip("optional local JUnit regression: fetch the pinned importer (docs/junit-evidence.md)")
+        pytest.skip("optional local JUnit regression: fetch the pinned importer (TOOLING.md, Python JUnit evidence)")
     assert importer.is_file(), "CI must provision the pinned test-only JUnit importer"
     evidence = ROOT / "build" / "controlled-failure"  # ci.yml uploads this folder as junit-controlled-python-3.15
     evidence.mkdir(parents=True, exist_ok=True)
@@ -1994,7 +1994,7 @@ def test_vendor_lock_matches_checked_in_bytes() -> None:
 
 @pytest.mark.parametrize("name", ["EmbeddedModulesTests", "StaticContractTest", "CatalogTests"])
 def test_documented_stdlib_unittest_recipes_still_run(name):
-    # README, docs/unittest-discovery.md and docs/catalog-pages.md run these classes with `python -S -m unittest` (no pytest installed).
+    # README, TOOLING.md and docs/catalog-pages.md run these classes with `python -S -m unittest` (no pytest installed).
     done = subprocess.run([sys.executable, "-S", "-m", "unittest", "discover", "-s", "tests", "-p", "test_pages.py", "-k", name],
                           cwd=ROOT, capture_output=True, text=True, timeout=120)
     ran = re.search(r"^Ran (\d+) tests?", done.stderr, re.M)
