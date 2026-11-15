@@ -188,6 +188,52 @@ class UiHelpersBrowserTests(unittest.TestCase):
         '</script>'
     )
 
+    def test_page_option_follows_the_pages_own_theme_until_a_palette_is_chosen(self):
+        """theme_switch_html(control="select", page_option=...): the palettes recolour only when picked; pageTheme() reports the page's own look."""
+        from pysaiyanweboo import theme_switch_html
+        html = (theme_switch_html(control='select', page_option='Mode')
+                + '<script type="module">import{bindTheme,pageTheme}from"./js/ui.js";globalThis.ui={pageTheme};bindTheme()</script>')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'index.html').write_text(render_document(trusted_html=html, css=bundled_css()), encoding='utf-8')
+            write_js(root)
+            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(QuietHandler, directory=directory))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with sync_playwright() as playwright:
+                    browser = playwright.chromium.launch()
+                    try:
+                        page = browser.new_page(viewport={'width': 800, 'height': 600})
+                        errors = []
+                        page.on('pageerror', lambda error: errors.append(str(error)))
+                        page.goto(f'http://127.0.0.1:{server.server_port}/index.html')
+                        body, pick = page.locator('body'), '[data-ui-theme-switch]'
+                        expect(body).to_have_attribute('data-ui-theme', 'modern')          # the page's own theme, nothing chosen
+                        self.assertEqual(page.input_value(pick), '')
+                        self.assertIsNone(body.get_attribute('data-ui-theme-chosen'))
+                        page.evaluate('ui.pageTheme("github-like")')                          # the page changed its own look
+                        expect(body).to_have_attribute('data-ui-theme', 'github-like')
+                        page.select_option(pick, 'purple')                                    # a visitor's palette wins over it
+                        expect(body).to_have_attribute('data-ui-theme', 'purple')
+                        expect(body).to_have_attribute('data-ui-theme-chosen', 'purple')
+                        page.evaluate('ui.pageTheme("modern")')
+                        expect(body).to_have_attribute('data-ui-theme', 'purple')
+                        page.reload()                                                         # and is remembered
+                        expect(body).to_have_attribute('data-ui-theme', 'purple')
+                        self.assertEqual(page.input_value(pick), 'purple')
+                        page.select_option(pick, '')                                          # back to the page's own theme, choice forgotten
+                        expect(body).to_have_attribute('data-ui-theme', 'modern')
+                        self.assertIsNone(body.get_attribute('data-ui-theme-chosen'))
+                        self.assertIsNone(page.evaluate('localStorage.getItem("web-ui-theme")'))
+                        self.assertEqual(errors, [])
+                    finally:
+                        browser.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+
     def test_theme_lit_lightbox_and_copy_fallback(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

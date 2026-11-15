@@ -24,10 +24,12 @@ export function prettyJson(value){return JSON.stringify(value,null,2)}
 export async function copyText(value){const text=String(value);try{await navigator.clipboard.writeText(text)}catch(error){const box=document.createElement("textarea");box.value=text;box.setAttribute("readonly","");box.style.cssText="position:fixed;opacity:0";try{document.body.append(box);box.select();if(typeof document.execCommand!=="function"||!document.execCommand("copy"))throw error}finally{box.remove()}}}
 /** [data-ui-copy] copies the <pre> of its .ui-code box with copyText; the button shows data-ui-copied (or data-ui-copy-failed) for a moment. Returns the buttons. */
 export function bindCopy(root=document){const buttons=[...root.querySelectorAll("[data-ui-copy]")];for(const button of buttons){const box=button.closest(".ui-code"),pre=box&&box.querySelector("pre");if(!pre)continue;const label=button.textContent;button.addEventListener("click",async()=>{let ok=true;try{await copyText(pre.textContent)}catch{ok=false}button.textContent=(ok?button.dataset.uiCopied:button.dataset.uiCopyFailed)||label;setTimeout(()=>{button.textContent=label},1600)})}return buttons}
-/** Switch data-ui-theme on <body> with no reload: controls are <select data-ui-theme-switch> or radios named ui-theme. The choice is remembered (localStorage, best effort). Returns the theme in effect. */
 /** Buttons with data-ui-toggle flip aria-pressed on click (memory only: nothing is saved); data-label-on / data-label-off, when present, rename the button. */
 export function bindToggles(root=document){return[...root.querySelectorAll("[data-ui-toggle]")].map(b=>{const sync=()=>{const label=b.getAttribute("aria-pressed")==="true"?b.dataset.labelOn:b.dataset.labelOff;if(label){b.setAttribute("aria-label",label);b.title=label}};b.addEventListener("click",()=>{b.setAttribute("aria-pressed",String(b.getAttribute("aria-pressed")!=="true"));sync()});sync();return b})}
-export function bindTheme(root=document,{key="web-ui-theme"}={}){const body=document.body,controls=[...root.querySelectorAll("[data-ui-theme-switch],input[name=ui-theme]")];const known=name=>controls.some(c=>c.tagName==="SELECT"?[...c.options].some(o=>o.value===name):c.value===name);const sync=()=>{for(const c of controls){if(c.tagName==="SELECT")c.value=body.dataset.uiTheme;else c.checked=c.value===body.dataset.uiTheme}};let saved=null;try{saved=localStorage.getItem(key)}catch{}if(saved&&known(saved))body.dataset.uiTheme=saved;sync();for(const c of controls)c.addEventListener("change",()=>{if(!known(c.value))return;body.dataset.uiTheme=c.value;sync();try{localStorage.setItem(key,c.value)}catch{}});return body.dataset.uiTheme}
+/** Switch data-ui-theme on <body> with no reload: controls are <select data-ui-theme-switch> or radios named ui-theme. The choice is remembered (localStorage, best effort) and marked on <body> as data-ui-theme-chosen. An empty-valued option means "the page's own theme" (data-ui-theme-page, by default the theme at bind time; see pageTheme): choosing it forgets the choice. Returns the theme in effect. */
+export function bindTheme(root=document,{key="web-ui-theme"}={}){const body=document.body,controls=[...root.querySelectorAll("[data-ui-theme-switch],input[name=ui-theme]")];const known=name=>controls.some(c=>c.tagName==="SELECT"?[...c.options].some(o=>o.value===name):c.value===name);if(body.dataset.uiThemePage===undefined)body.dataset.uiThemePage=body.dataset.uiTheme||"";const sync=()=>{const chosen=body.dataset.uiThemeChosen;for(const c of controls){if(c.tagName==="SELECT")c.value=chosen===undefined&&[...c.options].some(o=>o.value==="")?"":body.dataset.uiTheme;else c.checked=c.value===body.dataset.uiTheme}};const choose=name=>{if(name){body.dataset.uiThemeChosen=name;body.dataset.uiTheme=name}else{delete body.dataset.uiThemeChosen;body.dataset.uiTheme=body.dataset.uiThemePage}};let saved=null;try{saved=localStorage.getItem(key)}catch{}if(saved&&known(saved))choose(saved);sync();for(const c of controls)c.addEventListener("change",()=>{if(!known(c.value))return;choose(c.value);sync();try{if(c.value)localStorage.setItem(key,c.value);else localStorage.removeItem(key)}catch{}});return body.dataset.uiTheme}
+/** Tell bindTheme which theme is the page's own (a page whose own look changes, such as display modes): it shows unless the visitor chose one. Returns the theme in effect. */
+export function pageTheme(name){const body=document.body;body.dataset.uiThemePage=name;if(body.dataset.uiThemeChosen===undefined)body.dataset.uiTheme=name;return body.dataset.uiTheme}
 /** Mark on-screen elements with data-lit (IntersectionObserver); CSS decides what lit looks like. Without IntersectionObserver every element counts as lit. Returns a stop function. */
 export function observeLit(targets,{threshold=0.4,root=null}={}){const nodes=typeof targets==="string"?[...document.querySelectorAll(targets)]:[...targets];if(typeof IntersectionObserver==="undefined"){for(const n of nodes)n.dataset.lit="";return()=>{}}const io=new IntersectionObserver(entries=>{for(const e of entries){if(e.isIntersecting)e.target.dataset.lit="";else delete e.target.dataset.lit}},{threshold,root});for(const n of nodes)io.observe(n);return()=>io.disconnect()}
 /** Click-to-enlarge for <a href="full.png"><img alt="..."></a> items inside [data-ui-lightbox]: one <dialog>; Esc, the backdrop and the close button shut it, arrows, buttons and a 48px swipe step through. Returns {open, close, dialog}, or null without items or <dialog>. */
@@ -5732,11 +5734,26 @@ def seed_roll_html(css: str = "") -> str:
     return f'<button{klass} type="button" data-ui-seed-roll aria-label="Random seed" title="Random seed">🎲</button>'
 
 
-def theme_switch_html(*, legend: str = "Theme") -> str:
-    """The named themes as radios (``bindTheme()`` binds them): modern is checked; the others are THEMES and CANDIDATE_THEMES."""
+def theme_switch_html(*, legend: str = "Theme", control: str = "radio", page_option: str | None = None) -> str:
+    """The named themes as radios (``bindTheme()`` binds them): modern is checked; the others are THEMES and CANDIDATE_THEMES.
+
+    ``control="select"`` gives one labeled dropdown instead (a header has no room for seven radios). ``page_option`` is the
+    label of an extra first choice, "the page's own theme": the palettes then recolour a page only when a visitor picks
+    one, and a page whose own look changes (display modes) reports it with ``pageTheme()`` from ui.js."""
+    if control not in ("radio", "select"):
+        raise ValueError("control must be 'radio' or 'select'")
+    themes = (*THEMES, *CANDIDATE_THEMES)
+    if control == "select":
+        marks = {name: ("⬛" if _luminance(tokens["--ui-bg"]) < 0.18 else "⬜") for name, tokens in theme_palettes().items()}
+        own = f'<option value="">{escape(page_option)}</option>' if page_option is not None else ""
+        return (f'<label class="ui-layout-switch">{escape(legend)} <select data-ui-theme-switch>{own}'
+                + "".join(f'<option value="{t}"{" selected" if t == "modern" and page_option is None else ""}>'
+                          f'{marks.get(t, "🎨")} {t}</option>' for t in themes) + "</select></label>")
+    if page_option is not None:
+        raise ValueError("page_option needs control='select'")
     return (f'<fieldset class="ui-layout-switch"><legend>{escape(legend)}</legend>'
             + "".join(f'<label><input type="radio" name="ui-theme" value="{t}"{" checked" if t == "modern" else ""}> {t}</label>'
-                      for t in (*THEMES, *CANDIDATE_THEMES)) + "</fieldset>")
+                      for t in themes) + "</fieldset>")
 
 
 _CSS["dial.css"] = "@layer components{" + DIAL_CSS + "}"
