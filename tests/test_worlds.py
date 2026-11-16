@@ -1354,3 +1354,47 @@ def test_approved_example_destination():
     html = ui.world_document(value)
     assert 'https://github.com/myon-bioinformatics/PySaiyanWeBoo/issues/110#new_comment_field' in html
     assert 'issues/123#new_comment_field' not in html
+
+
+def test_spot_item_validates_and_renders_bag_menu():
+    spec = _world(shell=True)
+    assert 'ui-world-bag' not in ui.world_html(spec) and 'ui-world-take' not in ui.world_html(spec)
+    spec["floors"][0]["spots"][0]["item"] = {"emoji": "🍠", "label": "サツマイモ", "body": "ヒルガオ科のいも。"}
+    checked = ui.world_validate(spec)
+    assert checked["floors"][0]["spots"][0]["item"] == {"emoji": "🍠", "label": "サツマイモ", "body": "ヒルガオ科のいも。"}
+    html = ui.world_html(checked)
+    assert 'data-menu="bag"' in html and 'class="ui-world-rows ui-world-bag"' in html
+    assert 'class="ui-world-take"' in html and 'data-item-emoji="🍠"' in html and 'data-item-label="サツマイモ"' in html
+    for bad in ({"emoji": "🍠"}, {"label": "x"}, {"emoji": "x", "label": "y"}, {"emoji": "🍠", "label": "y", "extra": 1}, "🍠"):
+        bad_spec = _world()
+        bad_spec["floors"][0]["spots"][0]["item"] = bad
+        with pytest.raises(ValueError):
+            ui.world_validate(bad_spec)
+
+
+def test_overworld_meadow_has_hirugaoka_and_sweet_potato_item():
+    world = ui.world_validate(ui.example_data("overworld"))
+    meadow = next(f for f in world["floors"] if f["id"] == "meadow")
+    hirugaoka = next(s for s in meadow["spots"] if s["id"] == "meadow-hirugaoka")
+    assert "昼ヶ丘" in hirugaoka["label"] and hirugaoka["item"]["emoji"] == "🍠" and "サツマイモ" in hirugaoka["item"]["label"]
+    reach, blocked = _reach(meadow)
+    cell = (hirugaoka["x"] // meadow["tile"], hirugaoka["y"] // meadow["tile"])
+    assert cell in reach and blocked[cell[1]][cell[0]] == "0"
+
+
+def test_move_confirm_and_blended_spot_labels():
+    spec = _world()
+    assert ui.world_validate(spec)["move"] == "direct"
+    assert 'data-move=' not in ui.world_html(spec) and 'class="ui-world-go"' not in ui.world_html(spec)
+    spec["move"] = "confirm"
+    assert ui.world_validate(spec)["move"] == "confirm"
+    html = ui.world_html(spec)
+    assert 'data-move="confirm"' in html and 'class="ui-world-go"' in html
+    bad = _world()
+    bad["move"] = "teleport"
+    with pytest.raises(ValueError):
+        ui.world_validate(bad)
+    css = ui.world_css(_world())
+    assert "background:transparent" in css and "text-shadow:" in css and "[data-selected]" in css
+
+

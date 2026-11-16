@@ -344,6 +344,35 @@ class SchoolTests(unittest.TestCase):
         page.reload()
         self.assertEqual(self.errors, [])
 
+    def test_bag_item_ids_survive_reload_and_removal_ignores_unknown_ids(self):
+        path = Path(self.tmp.name) / "bag.html"
+        path.write_text(pysaiyanweboo.world_document(pysaiyanweboo.example_data("overworld")), encoding="utf-8")
+        page = self.open(path=path)
+        self.start(page, "🧙")
+        item = "overworld-spot-meadow-hirugaoka"
+        key = "ui-world:overworld-map"
+        self.menu(page, "spots")
+        page.click(f'.ui-world-spots a[href="#{item}"]')
+        page.click(f'#{item} .ui-world-take')
+        self.assertEqual(page.get_attribute(f'#{item} .ui-world-take', "aria-pressed"), "true")
+        self.assertEqual(page.evaluate("(key) => JSON.parse(localStorage.getItem(key)).bag", key), [item])
+        page.reload()
+        self.start(page, "🧙")
+        self.menu(page, "bag")
+        self.assertEqual(page.locator(".ui-world-bag li").count(), 1)
+        page.click(".ui-world-bag-rm")
+        self.assertEqual(page.locator(".ui-world-bag li").count(), 0)
+        self.assertEqual(page.evaluate("(key) => JSON.parse(localStorage.getItem(key)).bag", key), [])
+        page.reload()
+        self.assertEqual(page.locator(".ui-world-bag li").count(), 0)
+        page.evaluate("([key, item]) => localStorage.setItem(key, JSON.stringify({bag: [item, 'unknown', 7, item]}))", [key, item])
+        page.reload()
+        self.assertEqual(page.locator(".ui-world-bag li").count(), 1)
+        page.evaluate("(key) => localStorage.setItem(key, JSON.stringify({bag: 'invalid'}))", key)
+        page.reload()
+        self.assertEqual(page.locator(".ui-world-bag li").count(), 0)
+        self.assertEqual(self.errors, [])
+
     def test_overworld_lands_are_swapped_by_the_pulldown_and_walked_across(self):
         """Six lands from one line of JSON each: terrain is CSS (colour and an emoji per tile), the walk is the same grid."""
         path = Path(self.tmp.name) / "overworld.html"
@@ -366,6 +395,7 @@ class SchoolTests(unittest.TestCase):
         spot = next(s for f in pysaiyanweboo.world_validate(pysaiyanweboo.example_data("overworld"))["floors"] if f["id"] == "forest" for s in f["spots"] if s["id"] == "forest-town")
         self.menu(page, "spots")
         page.click('.ui-world-spots[data-floor="forest"] a[href="#overworld-spot-forest-town"]')
+        page.click("#overworld-spot-forest-town .ui-world-go")
         page.wait_for_function(record_demo.SETTLED, timeout=20000)
         x, y = page.evaluate("() => { const s = document.querySelector('.ui-floor[data-floor=\"forest\"] .ui-player').style; return [parseFloat(s.getPropertyValue('--px')), parseFloat(s.getPropertyValue('--py'))]; }")
         self.assertAlmostEqual(x, spot["x"], delta=1)
