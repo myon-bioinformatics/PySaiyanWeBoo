@@ -8,7 +8,6 @@ screenshot of each check, a manifest.json and one index.html in DIR (Pillow writ
 """
 import copy
 from datetime import datetime, timezone
-from html import escape
 import json
 import os
 from pathlib import Path
@@ -22,8 +21,10 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_pla
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "tests"))
 import record_demo  # noqa: E402
 import pysaiyanweboo  # noqa: E402
+from support import write_city_gallery_page  # noqa: E402
 
 SPEC = pysaiyanweboo.example_data("school")
 CLASSROOM = '.ui-floor[data-floor="classroom"]'
@@ -343,6 +344,35 @@ class SchoolTests(unittest.TestCase):
         page.reload()
         self.assertEqual(self.errors, [])
 
+    def test_bag_item_ids_survive_reload_and_removal_ignores_unknown_ids(self):
+        path = Path(self.tmp.name) / "bag.html"
+        path.write_text(pysaiyanweboo.world_document(pysaiyanweboo.example_data("overworld")), encoding="utf-8")
+        page = self.open(path=path)
+        self.start(page, "🧙")
+        item = "overworld-spot-meadow-hirugaoka"
+        key = "ui-world:overworld"
+        self.menu(page, "spots")
+        page.click(f'.ui-world-spots a[href="#{item}"]')
+        page.click(f'#{item} .ui-world-take')
+        self.assertEqual(page.get_attribute(f'#{item} .ui-world-take', "aria-pressed"), "true")
+        self.assertEqual(page.evaluate("(key) => JSON.parse(localStorage.getItem(key)).bag", key), [item])
+        page.reload()
+        self.start(page, "🧙")
+        self.menu(page, "bag")
+        self.assertEqual(page.locator(".ui-world-bag li").count(), 1)
+        page.click(".ui-world-bag-rm")
+        self.assertEqual(page.locator(".ui-world-bag li").count(), 0)
+        self.assertEqual(page.evaluate("(key) => JSON.parse(localStorage.getItem(key)).bag", key), [])
+        page.reload()
+        self.assertEqual(page.locator(".ui-world-bag li").count(), 0)
+        page.evaluate("([key, item]) => localStorage.setItem(key, JSON.stringify({bag: [item, 'unknown', 7, item]}))", [key, item])
+        page.reload()
+        self.assertEqual(page.locator(".ui-world-bag li").count(), 1)
+        page.evaluate("(key) => localStorage.setItem(key, JSON.stringify({bag: 'invalid'}))", key)
+        page.reload()
+        self.assertEqual(page.locator(".ui-world-bag li").count(), 0)
+        self.assertEqual(self.errors, [])
+
     def test_overworld_lands_are_swapped_by_the_pulldown_and_walked_across(self):
         """Six lands from one line of JSON each: terrain is CSS (colour and an emoji per tile), the walk is the same grid."""
         path = Path(self.tmp.name) / "overworld.html"
@@ -365,6 +395,7 @@ class SchoolTests(unittest.TestCase):
         spot = next(s for f in pysaiyanweboo.world_validate(pysaiyanweboo.example_data("overworld"))["floors"] if f["id"] == "forest" for s in f["spots"] if s["id"] == "forest-town")
         self.menu(page, "spots")
         page.click('.ui-world-spots[data-floor="forest"] a[href="#overworld-spot-forest-town"]')
+        page.click("#overworld-spot-forest-town .ui-world-go")
         page.wait_for_function(record_demo.SETTLED, timeout=20000)
         x, y = page.evaluate("() => { const s = document.querySelector('.ui-floor[data-floor=\"forest\"] .ui-player').style; return [parseFloat(s.getPropertyValue('--px')), parseFloat(s.getPropertyValue('--py'))]; }")
         self.assertAlmostEqual(x, spot["x"], delta=1)
@@ -622,7 +653,7 @@ def city_cell(point, tile):
 
 
 def write_city_gallery(out, records, meta):
-    """manifest.json and a one-page index.html (no JavaScript, opens from file://) beside the shots/ written by the sweep.
+    """manifest.json and its one-page index.html (``support.city_gallery``) beside the shots/ written by the sweep.
     A run of some tests only (``CitiesTests.test_every_sign_shows_its_faces``) replaces its own records in an existing manifest and keeps the rest."""
     manifest = out / "manifest.json"
     if manifest.is_file():
@@ -634,34 +665,7 @@ def write_city_gallery(out, records, meta):
     ok = sum(1 for r in records if not r["notes"])
     (out / "manifest.json").write_text(json.dumps({"schema": "web-ui-cities-evidence/1", **meta, "shots": len(records), "clean": ok,
                                                    "noted": len(records) - ok, "records": records}, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    sections = {}
-    for r in records:
-        sections.setdefault((r["kind"], r["viewport"], r["floor"]), []).append(r)
-    css = ("body{font-family:Meiryo,'Hiragino Sans','Noto Sans JP',sans-serif;margin:16px;background:#0c1018;color:#e6edf3}"
-           "a{color:#8fd694}h2{margin:32px 0 8px;font-size:16px}nav a{margin-right:8px;white-space:nowrap}"
-           ".g{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(var(--w),1fr))}.phone{--w:192px}.desktop,.wide,.tablet{--w:320px}"
-           "figure{margin:0;padding:8px;border:1px solid #30363d;border-radius:8px}figure.n{border-color:#d29922}img{width:100%;height:auto;display:block}"
-           "figcaption{font-size:12px;line-height:16px;margin-top:8px}.note{color:#d29922}")
-    names = {"overview": "🗺️", "sheet": "📄", "map": "📍", "sign": "🪧", "layer": "🏷️", "tool": "🧰", "width": "📐", "lang": "🌐", "nojs": "🚫", "pick": "🙂", "favorite": "⭐", "fire": "🔥", "key": "⌨️", "category": "🏷️"}
-    parts = [f"<!doctype html><html lang=ja><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-             f"<title>🗼🎡🥖 cities evidence</title><style>{css}</style><h1>🗼🎡🥖 cities evidence</h1>"
-             f"<p>✅ {ok} · ⚠️ {len(records) - ok} · 📸 {len(records)} · {escape(meta['browser'])} · {escape(meta['date'])} · {escape(meta['commit'][:12])}</p><nav>"]
-    if meta.get("revalidation"):
-        count = len(meta["revalidation"]["files"])
-        parts.append(f"<p>Partial revalidation: {count} records were recaptured; the other {len(records) - count} retain their original capture metadata. "
-                     "<a href='revalidation.md'>Revalidation details</a></p>")
-    keys = list(sections)
-    parts += [f"<a href='#s{i}'>{names.get(k[0], k[0])} {escape(k[1])} {escape(k[2])} ({len(sections[k])})</a>" for i, k in enumerate(keys)]
-    parts.append("</nav>")
-    for i, key in enumerate(keys):
-        kind, viewport, floor = key
-        parts.append(f"<h2 id='s{i}'>{names.get(kind, kind)} {escape(kind)} · {escape(viewport)} · {escape(floor)}</h2><div class='g {escape(viewport.split('-')[0])}'>")
-        for r in sections[key]:
-            notes = "".join(f"<br><span class=note>{escape(n)}</span>" for n in r["notes"])
-            parts.append(f"<figure class='{'n' if r['notes'] else ''}'><a href='shots/{escape(r['file'])}'><img src='shots/{escape(r['file'])}' loading=lazy "
-                         f"alt='{escape(r['label'], quote=True)}'></a><figcaption>{'⚠️' if r['notes'] else '✅'} {escape(r['label'])}{notes}</figcaption></figure>")
-        parts.append("</div>")
-    (out / "index.html").write_text("".join(parts) + "\n", encoding="utf-8")
+    write_city_gallery_page(out)
 
 
 class CitiesTests(unittest.TestCase):

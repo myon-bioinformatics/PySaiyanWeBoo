@@ -346,6 +346,7 @@ def _lands(page, cam, tmp):
         cam.hold(1000)
     more(page, cam, "spots", 900)
     page.click('.ui-world-spots[data-floor="castle"] a[href="#overworld-spot-castle-town"]')
+    page.click("#overworld-spot-castle-town .ui-world-go")
     cam.until(SETTLED)
     cam.hold(900)
 

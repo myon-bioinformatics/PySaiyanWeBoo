@@ -521,7 +521,7 @@ PARENT = "myon-bioinformatics/myon-bioinformatics"
 
 
 def test_parent_workflow_references_use_reviewed_rollout_commit():
-    parent_workflow_pin = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
+    parent_workflow_pin = "81f6aea6231d4490e581443fdeb43a09e6018ff0"
     pins = []
     for path in sorted((ROOT / ".github/workflows").glob("*")):
         if path.suffix not in (".yml", ".yaml"):
@@ -537,6 +537,25 @@ def test_parent_workflow_references_use_reviewed_rollout_commit():
                     pins.append(next((m.group(1) for m in refs if m), None))
     assert pins, "shared parent references must remain observable"
     assert set(pins) == {parent_workflow_pin}, pins
+
+
+def test_cities_review_page_is_built_from_its_manifest_not_committed(tmp_path):
+    """HTML is 1 (index.html) or 0: pages.yml builds the cities review page from the committed manifest.json, byte for byte the page that was reviewed."""
+    from support import city_gallery, write_city_gallery_page
+    folder = "docs/evidence/cities-20261111"
+    manifest = json.loads((ROOT / folder / "manifest.json").read_text(encoding="utf-8"))
+    page = city_gallery(manifest)
+    assert hashlib.sha256(page.encode("utf-8")).hexdigest() == "7ad74c05750ec413431a8412bcbde5495d5ba67ca7af99c5416a3d3085f18aa5"   # the page committed until 2026-11-16
+    assert manifest["shots"] == len(manifest["records"]) == page.count("<figure ") == 468
+    assert all(f"href='shots/{r['file']}'" in page and (ROOT / folder / "shots" / r["file"]).is_file() for r in manifest["records"])
+    assert "<script" not in page
+    shutil.copy(ROOT / folder / "manifest.json", tmp_path)
+    assert write_city_gallery_page(tmp_path).read_bytes() == page.encode("utf-8")
+    build = yaml.safe_load((ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8"))["jobs"]["deploy"]["with"]["build"]
+    assert f"support.write_city_gallery_page('{folder}')" in build
+    tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "*.html"], capture_output=True, text=True)
+    if tracked.returncode == 0 and tracked.stdout:   # a checkout; an sdist has no index to ask
+        assert tracked.stdout.split() == ["index.html"]
 
 
 # ═══ 🧪 junit evidence ════════════════════════════════════════════════════════════════════════════════════
@@ -650,7 +669,7 @@ def _assert_contract(workflow):
     assert collector["if"] == "(always()) && needs.changes.outputs.product_changed == 'true'"
     assert collector.get("continue-on-error", False) is False
     assert collector["uses"] == ("myon-bioinformatics/myon-bioinformatics/.github/workflows/"
-                                 "reusable-junit-identity.yml@9e3da7ae1846e9604ebc24bb5178f7de094a4e77")
+                                 "reusable-junit-identity.yml@81f6aea6231d4490e581443fdeb43a09e6018ff0")
     reports = json.loads(collector["with"]["expected-reports"])
     assert isinstance(reports, list) and len(reports) == 2
     assert set(reports) == {
@@ -1582,7 +1601,6 @@ def test_ui_elements_opt_in_styles_bare_form_elements():
 
 
 def test_write_bundle_and_check_bundle_round_trip(tmp_path):
-    import hashlib
     import subprocess
     import sys
     brand = ("acme", {"--ui-bg": "#ffffff", "--ui-fg": "#000000"})
@@ -1795,7 +1813,6 @@ def _lock_entries(root=ROOT):
 
 
 def _workflow():
-    import yaml
 
     return yaml.load((ROOT / CI_WORKFLOW_NAME).read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 

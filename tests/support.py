@@ -9,9 +9,10 @@ from __future__ import annotations
 #    ⚙️ PSWB_DEVICE    platform-matrix.yml (the emulated device of the row)                      → integration/pages_browser.py
 #    ⚙️ GITHUB_ACTIONS  GitHub itself (CI must have the JUnit importer; locally the test skips)   → test_tooling.py
 #    🎞️ PSWB_GIFS     by hand: "DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]" keeps the demo GIFs → integration/pages_browser.py
-#    📸 PSWB_SHOTS    by hand: DIR keeps a screenshot of every cities check                     → integration/worlds_browser.py
+#    📸 PSWB_SHOTS    by hand: DIR keeps a screenshot of every cities check                     → integration/worlds_browser.py (its page: city_gallery below)
 
 import functools, http.server, json, re, shutil, subprocess, tempfile, threading, unittest
+from html import escape
 from pathlib import Path
 
 try:
@@ -94,3 +95,45 @@ def serve_directory(directory) -> tuple[http.server.ThreadingHTTPServer, str]:
     server.thread = threading.Thread(target=server.serve_forever, daemon=True)
     server.thread.start()
     return server, f"http://127.0.0.1:{server.server_port}"
+
+
+def city_gallery(manifest) -> str:
+    """The review page of a cities sweep (``web-ui-cities-evidence/1``, written by integration/worlds_browser.py with PSWB_SHOTS): one figure per record,
+    no JavaScript, opens from file://. The page is not committed: pages.yml builds it from the committed manifest.json with ``write_city_gallery_page``."""
+    records, meta = manifest["records"], manifest
+    ok = sum(1 for r in records if not r["notes"])
+    sections = {}
+    for r in records:
+        sections.setdefault((r["kind"], r["viewport"], r["floor"]), []).append(r)
+    css = ("body{font-family:Meiryo,'Hiragino Sans','Noto Sans JP',sans-serif;margin:16px;background:#0c1018;color:#e6edf3}"
+           "a{color:#8fd694}h2{margin:32px 0 8px;font-size:16px}nav a{margin-right:8px;white-space:nowrap}"
+           ".g{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(var(--w),1fr))}.phone{--w:192px}.desktop,.wide,.tablet{--w:320px}"
+           "figure{margin:0;padding:8px;border:1px solid #30363d;border-radius:8px}figure.n{border-color:#d29922}img{width:100%;height:auto;display:block}"
+           "figcaption{font-size:12px;line-height:16px;margin-top:8px}.note{color:#d29922}")
+    names = {"overview": "🗺️", "sheet": "📄", "map": "📍", "sign": "🪧", "layer": "🏷️", "tool": "🧰", "width": "📐", "lang": "🌐", "nojs": "🚫", "pick": "🙂", "favorite": "⭐", "fire": "🔥", "key": "⌨️", "category": "🏷️"}
+    parts = [f"<!doctype html><html lang=ja><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+             f"<title>🗼🎡🥖 cities evidence</title><style>{css}</style><h1>🗼🎡🥖 cities evidence</h1>"
+             f"<p>✅ {ok} · ⚠️ {len(records) - ok} · 📸 {len(records)} · {escape(meta['browser'])} · {escape(meta['date'])} · {escape(meta['commit'][:12])}</p><nav>"]
+    if meta.get("revalidation"):
+        count = len(meta["revalidation"]["files"])
+        parts.append(f"<p>Partial revalidation: {count} records were recaptured; the other {len(records) - count} retain their original capture metadata. "
+                     "<a href='revalidation.md'>Revalidation details</a></p>")
+    keys = list(sections)
+    parts += [f"<a href='#s{i}'>{names.get(k[0], k[0])} {escape(k[1])} {escape(k[2])} ({len(sections[k])})</a>" for i, k in enumerate(keys)]
+    parts.append("</nav>")
+    for i, key in enumerate(keys):
+        kind, viewport, floor = key
+        parts.append(f"<h2 id='s{i}'>{names.get(kind, kind)} {escape(kind)} · {escape(viewport)} · {escape(floor)}</h2><div class='g {escape(viewport.split('-')[0])}'>")
+        for r in sections[key]:
+            notes = "".join(f"<br><span class=note>{escape(n)}</span>" for n in r["notes"])
+            parts.append(f"<figure class='{'n' if r['notes'] else ''}'><a href='shots/{escape(r['file'])}'><img src='shots/{escape(r['file'])}' loading=lazy "
+                         f"alt='{escape(r['label'], quote=True)}'></a><figcaption>{'⚠️' if r['notes'] else '✅'} {escape(r['label'])}{notes}</figcaption></figure>")
+        parts.append("</div>")
+    return "".join(parts) + "\n"
+
+
+def write_city_gallery_page(folder) -> Path:
+    """Write ``folder/index.html`` from ``folder/manifest.json`` (``city_gallery``); returns the page's path."""
+    page = Path(folder) / "index.html"
+    page.write_text(city_gallery(json.loads((Path(folder) / "manifest.json").read_text(encoding="utf-8"))), encoding="utf-8")
+    return page
