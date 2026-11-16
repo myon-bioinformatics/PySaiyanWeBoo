@@ -3,6 +3,8 @@
 __pycache__/
 .pytest_cache/
 /build/
+# built by pages.yml from manifest.json (tests/support.py: write_city_gallery_page)
+/docs/evidence/cities-*/index.html
 
 # --- common ignores (shared) ---
 *.py[cod]

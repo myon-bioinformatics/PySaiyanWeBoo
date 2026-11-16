@@ -8,7 +8,6 @@ screenshot of each check, a manifest.json and one index.html in DIR (Pillow writ
 """
 import copy
 from datetime import datetime, timezone
-from html import escape
 import json
 import os
 from pathlib import Path
@@ -22,8 +21,10 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_pla
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "tests"))
 import record_demo  # noqa: E402
 import pysaiyanweboo  # noqa: E402
+from support import write_city_gallery_page  # noqa: E402
 
 SPEC = pysaiyanweboo.example_data("school")
 CLASSROOM = '.ui-floor[data-floor="classroom"]'
@@ -622,7 +623,7 @@ def city_cell(point, tile):
 
 
 def write_city_gallery(out, records, meta):
-    """manifest.json and a one-page index.html (no JavaScript, opens from file://) beside the shots/ written by the sweep.
+    """manifest.json and its one-page index.html (``support.city_gallery``) beside the shots/ written by the sweep.
     A run of some tests only (``CitiesTests.test_every_sign_shows_its_faces``) replaces its own records in an existing manifest and keeps the rest."""
     manifest = out / "manifest.json"
     if manifest.is_file():
@@ -634,34 +635,7 @@ def write_city_gallery(out, records, meta):
     ok = sum(1 for r in records if not r["notes"])
     (out / "manifest.json").write_text(json.dumps({"schema": "web-ui-cities-evidence/1", **meta, "shots": len(records), "clean": ok,
                                                    "noted": len(records) - ok, "records": records}, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    sections = {}
-    for r in records:
-        sections.setdefault((r["kind"], r["viewport"], r["floor"]), []).append(r)
-    css = ("body{font-family:Meiryo,'Hiragino Sans','Noto Sans JP',sans-serif;margin:16px;background:#0c1018;color:#e6edf3}"
-           "a{color:#8fd694}h2{margin:32px 0 8px;font-size:16px}nav a{margin-right:8px;white-space:nowrap}"
-           ".g{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(var(--w),1fr))}.phone{--w:192px}.desktop,.wide,.tablet{--w:320px}"
-           "figure{margin:0;padding:8px;border:1px solid #30363d;border-radius:8px}figure.n{border-color:#d29922}img{width:100%;height:auto;display:block}"
-           "figcaption{font-size:12px;line-height:16px;margin-top:8px}.note{color:#d29922}")
-    names = {"overview": "🗺️", "sheet": "📄", "map": "📍", "sign": "🪧", "layer": "🏷️", "tool": "🧰", "width": "📐", "lang": "🌐", "nojs": "🚫", "pick": "🙂", "favorite": "⭐", "fire": "🔥", "key": "⌨️", "category": "🏷️"}
-    parts = [f"<!doctype html><html lang=ja><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-             f"<title>🗼🎡🥖 cities evidence</title><style>{css}</style><h1>🗼🎡🥖 cities evidence</h1>"
-             f"<p>✅ {ok} · ⚠️ {len(records) - ok} · 📸 {len(records)} · {escape(meta['browser'])} · {escape(meta['date'])} · {escape(meta['commit'][:12])}</p><nav>"]
-    if meta.get("revalidation"):
-        count = len(meta["revalidation"]["files"])
-        parts.append(f"<p>Partial revalidation: {count} records were recaptured; the other {len(records) - count} retain their original capture metadata. "
-                     "<a href='revalidation.md'>Revalidation details</a></p>")
-    keys = list(sections)
-    parts += [f"<a href='#s{i}'>{names.get(k[0], k[0])} {escape(k[1])} {escape(k[2])} ({len(sections[k])})</a>" for i, k in enumerate(keys)]
-    parts.append("</nav>")
-    for i, key in enumerate(keys):
-        kind, viewport, floor = key
-        parts.append(f"<h2 id='s{i}'>{names.get(kind, kind)} {escape(kind)} · {escape(viewport)} · {escape(floor)}</h2><div class='g {escape(viewport.split('-')[0])}'>")
-        for r in sections[key]:
-            notes = "".join(f"<br><span class=note>{escape(n)}</span>" for n in r["notes"])
-            parts.append(f"<figure class='{'n' if r['notes'] else ''}'><a href='shots/{escape(r['file'])}'><img src='shots/{escape(r['file'])}' loading=lazy "
-                         f"alt='{escape(r['label'], quote=True)}'></a><figcaption>{'⚠️' if r['notes'] else '✅'} {escape(r['label'])}{notes}</figcaption></figure>")
-        parts.append("</div>")
-    (out / "index.html").write_text("".join(parts) + "\n", encoding="utf-8")
+    write_city_gallery_page(out)
 
 
 class CitiesTests(unittest.TestCase):
