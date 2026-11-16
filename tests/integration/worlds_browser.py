@@ -350,7 +350,7 @@ class SchoolTests(unittest.TestCase):
         page = self.open(path=path)
         self.start(page, "🧙")
         item = "overworld-spot-meadow-hirugaoka"
-        key = "ui-world:overworld"
+        key = "ui-world:overworld-map"
         self.menu(page, "spots")
         page.click(f'.ui-world-spots a[href="#{item}"]')
         page.click(f'#{item} .ui-world-take')
