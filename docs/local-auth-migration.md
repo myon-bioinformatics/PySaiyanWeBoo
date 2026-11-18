@@ -54,6 +54,9 @@ JWT verifier, or production Digest implementation. No external service is used.
   project, pins crypto 3.0.7, and compares complete responses for 84 requests
   plus 20 helper vectors. Requires Dart >=3.12 and pub access, without Flutter.
   The automatic Local auth contract workflow runs this comparison.
+  Update 2026-11-18: `flutter_navigation_basic` is archived, so this tool and the
+  workflow's `dart-parity` job were removed. The Python tests below remain; the
+  description above is the record of the last comparison.
 - Browser regression: `python -m unittest -v tests.integration.controls_browser.MockAuthBrowserTests`.
   Existing Platform matrix desktop lanes run it in Chromium, Firefox and WebKit.
   It covers eleven presets, actual status/headers, signed success and replay,
