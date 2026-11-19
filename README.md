@@ -734,7 +734,7 @@ boundary](docs/python-controls.md).
 
 `COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `coordinates`,
 `door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `stub`, `curl`, `showcase`,
-`front`, `world`, `repository-diagnostics`, `table`, `steps`, `scroll`; `components()` lists them as data), and two calls wrap them:
+`front`, `world`, `repository-diagnostics`, `table`, `steps`, `scroll`, `stage`, `pager`; `components()` lists them as data), and two calls wrap them:
 
 ```python
 import pysaiyanweboo                            # the vendored copy (vendor/pysaiyanweboo.py) in another repository
@@ -784,9 +784,20 @@ and `row_statuses=` on `table()` / `data_table()` so `status_filter()` narrows t
 
 <img src="docs/demo/component-operations.gif" width="240" alt="An audit view on a phone: a heading with its stamp, a notice, the table narrowed to failed rows by the state filter and by search, then the green and purple themes without a reload">
 
+`stage_html(html, label=, ratio=(16, 9), pin=True)` is a fixed display area 🖼️ (a slide's SVG, a canvas, a photo): it keeps its ratio, is
+never taller than `--ui-stage-room` (64dvh; a phone on its side: the whole height) and, pinned, stays at the top while what is under it scrolls.
+svg, img, canvas and video fill it; other children are overlays the page places. CSS only, no module.
+`pager_html(count, variant=, words=, wrap=, keys=)` is page controls 🧭 in six variants (`pager_variants()`): `arrows` ⬅️ 1/N ➡️, `ends`
+⏮️ ⬅️ 1/N ➡️ ⏭️, the cross-key `dpad` (⬆️ first, ⬇️ last), `dots` (one ● per page), `slider` and `dial` (the dial component). Every variant is
+in the markup and `PAGER_PARTS` is the one table of which parts each shows, so setting `data-ui-pager` switches it with no reload. pager.js
+sends `ui-pager` ({index, count}); `pagerSet(el, index, count)` follows a change the page made itself (a page added); `pager_index()` is
+the same steps in Python. A tap does not take the focus, so a text field being typed in keeps it.
+
+<img src="docs/demo/component-stage-pager.gif" width="240" alt="A slide pinned at the top of a phone while the page scrolls; the pager switches between arrows, cross-key, ends, dots, slider and dial without a reload, and on its side the slide takes the whole height">
+
 <img src="docs/demo/component-table.gif" width="320" alt="A browser matrix table on a phone: the themes change its colors, then it scrolls sideways inside its box while the page stays still">
 
-The GIF comes from the browser test (`PSWB_GIFS=docs/demo python -m pytest tests/integration/pages_browser.py -k TableBrowserTests`).
+The GIFs come from the browser tests (`PSWB_GIFS=docs/demo python -m pytest tests/integration/pages_browser.py -k "TableBrowserTests or StagePagerBrowserTests"`).
 `PSWB_GIFS` takes the recorder's output options too, parsed by the same argparse definitions: `PSWB_GIFS="runs --suffix=-chromium --timestamp --git-commit"`
 writes `runs/component-table-chromium-20261108T113412Z-288cbed.gif` (the suffix after the base name, then when the run started, in UTC, and the commit it ran, in the order given), so repeated runs keep every file without `--force`.
 

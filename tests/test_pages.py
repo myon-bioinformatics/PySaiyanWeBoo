@@ -6525,6 +6525,7 @@ def args_for(name):
     return {"dial": (("level",), {"maximum": 11, "label": "Level"}), "door": ((ui.example_data("door"),), {}), "world": ((ui.example_data("school"),), {}),
             "stub": ((ui.EXAMPLE_STUBS["api"],), {}), "source": ((source_spec,), {}), "showcase": ((ui.example_data("showcase"),), {}),
             "front": (("<p>main</p>", [room]), {"title": "Front"}), "scroll": (("<button>a</button>",), {"label": "Views"}), "repository-diagnostics": (("myon-bioinformatics/web-ui",), {}),
+            "stage": (('<svg viewBox="0 0 16 9"></svg>',), {"label": "Slide"}), "pager": ((5,), {"variant": "dpad"}),
             "table": (({"columns": ["page", "chromium"], "rows": [["index", {"text": "pass", "status": "pass"}]], "row_headers": True},), {}),
             "steps": (({"key": "demo/run", "steps": [{"id": "run", "title": "Run", "command": "python3 -S demo.py", "expect": "42"}]},), {})}.get(name, ((), {}))
 
@@ -6570,6 +6571,71 @@ def test_the_dial_is_a_registered_component():
     assert ui.js_source("dial.js").rstrip().endswith('if(typeof document!=="undefined")bindDial();')
     parts = ui.component_parts("dial", "zoom", minimum=0.1, maximum=4, step=0.05, value=1)
     assert parts["html"] == ui.dial_html("zoom", minimum=0.1, maximum=4, step=0.05, value=1)
+
+
+def test_the_stage_keeps_its_ratio_and_pins_with_css_alone():
+    """🖼️ stage_html: a ratio and a label, pinned by default; STAGE_CSS fills svg/img/canvas/video and leaves the rest as overlays. No module."""
+    assert ui.stage_html("<svg></svg>", label='Slide "1"', ratio=(4, 3), id="s") == (
+        '<div class="ui-stage" role="region" aria-label="Slide &quot;1&quot;" data-ui-stage="pinned" style="--ui-stage-w:4;--ui-stage-h:3" id="s"><svg></svg></div>')
+    assert 'data-ui-stage="free"' in ui.stage_html("<p></p>", label="Photo", pin=False)
+    for bad in ({"ratio": (16, 0)}, {"ratio": (16.0, 9)}, {"label": " "}, {"id": "a b"}):
+        with pytest.raises(ValueError):
+            ui.stage_html("<p></p>", **{"label": "x", **bad})
+    sheet = ui.css_source("stage.css")
+    assert sheet == "@layer components{" + ui.STAGE_CSS + "}" and sheet in ui.bundled_css() and ui.COMPONENTS["stage"]["js"] == ()
+    assert "position:sticky" in sheet and "aspect-ratio:var(--ui-stage-w)/var(--ui-stage-h)" in sheet and "#" not in sheet   # colours are tokens only
+
+
+def test_pager_index_is_one_rule_for_every_variant():
+    """🧭 pager_index: first/prev/next/last or a page number, kept within the pages; wrap turns the ends around."""
+    cases = [((0, 5, "prev"), 0), ((0, 5, "next"), 1), ((4, 5, "next"), 4), ((2, 5, "first"), 0), ((2, 5, "last"), 4), ((2, 5, 9), 4), ((2, 5, -3), 0),
+             ((0, 1, "next"), 0), ((9, 5, "prev"), 4)]
+    assert [ui.pager_index(*args) for args, _ in cases] == [want for _, want in cases]
+    assert (ui.pager_index(0, 5, "prev", wrap=True), ui.pager_index(4, 5, "next", wrap=True), ui.pager_index(0, 1, "next", wrap=True)) == (4, 0, 0)
+    with pytest.raises(ValueError, match="unknown pager action: up"):
+        ui.pager_index(0, 5, "up")
+
+
+def test_every_pager_variant_is_in_the_markup_and_css_shows_one():
+    """The same markup for every variant (so data-ui-pager switches it with no reload); emoji faces, words for screen readers."""
+    assert ui.pager_variants() == ("dpad", "ends", "arrows", "dots", "slider", "dial")
+    words = {"first": "最初", "prev": "前へ", "next": "次へ", "last": "最後", "page": "ページ <1>"}
+    pages = {v: ui.pager_html(4, variant=v, index=1, words=words, label="スライド", id="p") for v in ui.pager_variants()}
+    strip = lambda html: re.sub(r'data-ui-pager="[a-z]+"', "", html)
+    assert len({strip(html) for html in pages.values()}) == 1                           # only the variant word differs
+    html = pages["dpad"]
+    assert html.startswith('<div class="ui-pager" role="group" aria-label="スライド" data-ui-pager="dpad" data-ui-pager-index="1" data-ui-pager-count="4" id="p">')
+    faces = re.findall(r'data-ui-pager-part="(\w+)"[^>]*data-ui-pager-go="(\w+)"[^>]*>([^<]+)</button>', html)
+    assert faces == [("up", "first", "⬆️"), ("first", "first", "⏮️"), ("prev", "prev", "⬅️"), ("next", "next", "➡️"), ("last", "last", "⏭️"), ("down", "last", "⬇️")]
+    assert 'aria-label="前へ" title="前へ">⬅️' in html and "ページ &lt;1&gt; 2" in html and "<1>" not in html
+    assert html.count("data-ui-pager-to=") == 4 and 'data-ui-pager-to="1" aria-label="ページ &lt;1&gt; 2" title="ページ &lt;1&gt; 2" aria-current="page">●' in html
+    assert '<output data-ui-pager-part="page" data-ui-pager-in="arrows ends dpad dots slider dial" aria-live="polite">2/4</output>' in html
+    assert ui.dial_html("page", minimum=1, maximum=4, value=2, label="ページ <1>") in html                 # the dial variant is the dial component
+    first = ui.pager_html(3)
+    assert re.findall(r'data-ui-pager-go="(\w+)"[^>]*?( disabled)?>', first) == [("first", " disabled"), ("first", " disabled"), ("prev", " disabled"), ("next", ""), ("last", ""), ("last", "")]
+    assert "disabled" not in re.search(r'data-ui-pager-go="prev".*?>', ui.pager_html(3, wrap=True)).group(0)       # wrap: ⬅️ on page 1 goes to the last
+    assert ui.pager_html(1).count(" disabled") == 8 and 'max="2"' in ui.pager_html(1)                     # one page: every control rests
+    assert " data-ui-pager-wrap data-ui-pager-keys" in ui.pager_html(2, wrap=True, keys=True)
+    for bad in ({"count": 0}, {"index": 3}, {"variant": "joystick"}, {"label": ""}, {"words": {"back": "x"}}, {"words": {"page": " "}}, {"id": "1"}):
+        with pytest.raises(ValueError):
+            ui.pager_html(**{"count": 3, **bad})
+    sheet, module = ui.css_source("pager.css"), ui.js_source("pager.js")
+    assert sheet == "@layer components{" + ui.PAGER_CSS + "}" and sheet in ui.bundled_css() and "#" not in sheet
+    for variant in ui.pager_variants():
+        assert f".ui-pager[data-ui-pager={variant}]>:not([data-ui-pager-in~={variant}])" in sheet       # each variant hides what it does not show
+    assert all(f"export function {name}" in module for name in ("pagerIndex", "pagerSet", "bindPager"))
+    assert module.rstrip().endswith('if(typeof document!=="undefined")bindPager();') and "fetch(" not in module and "localStorage" not in module
+    parts = ui.component_parts("pager", 4, variant="dots")
+    assert parts["js"] == ui.js_source("dial.js") + ui.js_source("pager.js") and ui.css_source("dial.css") in parts["css"]
+
+
+@pytest.mark.skipif(not node26(), reason="Node 26+ not available")
+def test_pager_js_takes_the_same_steps_as_python():
+    rng = random.Random(20261119)
+    cases = [(rng.randrange(-2, 12), rng.randrange(1, 9), rng.choice(["first", "prev", "next", "last", rng.randrange(-3, 12)]), rng.random() < 0.5) for _ in range(256)]
+    done = node_js('import {pagerIndex} from "./js/pager.js";console.log(JSON.stringify(JSON.parse(process.argv[2]).map(([i,c,a,w])=>pagerIndex(i,c,a,w))))',
+                   json.dumps(cases))
+    assert json.loads(done.stdout) == [ui.pager_index(i, c, a, wrap=w) for i, c, a, w in cases]
 
 
 def test_an_unknown_component_names_the_known_ones():
