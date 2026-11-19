@@ -5964,6 +5964,155 @@ def dial_html(name: str, *, minimum: float = 0, maximum: float = 100, step: floa
     return (f'<span class="ui-dial" data-ui-dial><input type="range" name="{name}" min="{minimum:g}" max="{maximum:g}" step="{step:g}" value="{value:g}"{aria}></span>')
 
 
+# --- 🖼️ A fixed display area and 🧭 page controls in variants: the slide-on-a-phone parts Ironmate's phone page drew by hand ----------------
+STAGE_CSS = (
+    # A stage keeps its ratio (--ui-stage-w / --ui-stage-h, which stage_html sets) and is never taller than --ui-stage-room, so the controls under
+    # it stay in reach; data-ui-stage=pinned keeps it at the top while what is under it scrolls. svg, img, canvas and video children (or any child
+    # marked data-ui-fill) fill it; any other child is an overlay the page places itself (a selection box in %, a badge).
+    ".ui-stage{--ui-stage-w:16;--ui-stage-h:9;--ui-stage-room:64dvh;position:relative;flex:none;align-self:center;box-sizing:border-box;margin:0 auto;"
+    "width:min(100%,calc(var(--ui-stage-room) * var(--ui-stage-w) / var(--ui-stage-h)));aspect-ratio:var(--ui-stage-w)/var(--ui-stage-h);"
+    "overflow:hidden;background:var(--ui-panel);border:1px solid var(--ui-border)}"
+    ".ui-stage[data-ui-stage=pinned]{position:sticky;top:0;z-index:1}"
+    ".ui-stage>:is(svg,img,canvas,video,[data-ui-fill]){position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:contain}"
+    # A phone on its side: the stage may take the whole height, and the page puts its controls beside it.
+    "@media(orientation:landscape) and (max-height:560px){.ui-stage{--ui-stage-room:100dvh}}")
+
+
+def stage_html(trusted_html: str, *, label: str, ratio: tuple[int, int] = (16, 9), pin: bool = True, id: str | None = None) -> str:
+    """🖼️ A fixed display area around trusted HTML (a slide's SVG, a canvas, a photo): it keeps ``ratio`` (width, height), is never taller than
+    ``--ui-stage-room`` (64dvh; on a phone on its side, the whole height) and, with ``pin``, stays at the top while what is under it scrolls.
+    svg / img / canvas / video children (or ``data-ui-fill``) fill it; other children are overlays the page places. STAGE_CSS only: no module.
+    16:9 is the stylesheet's own default, so it carries no ``style`` attribute (a page whose CSP forbids inline styles can use it)."""
+    w, h = ratio
+    if type(w) is not int or type(h) is not int or w <= 0 or h <= 0:
+        raise ValueError("a stage's ratio is two positive integers (width, height)")
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("a stage needs a label")
+    identity = f' id="{_element_id(id)}"' if id is not None else ""
+    shape = "" if (w, h) == (16, 9) else f' style="--ui-stage-w:{w};--ui-stage-h:{h}"'
+    return (f'<div class="ui-stage" role="region" aria-label="{escape(label, quote=True)}" data-ui-stage="{"pinned" if pin else "free"}"'
+            f'{shape}{identity}>{trusted_html}</div>')
+
+
+# One row per part of a pager: (part, emoji, action, the variants that show it), in the order they stand. Every variant is in the markup and the
+# stylesheet shows one, so setting data-ui-pager switches it with no reload: ⬅️ 1/N ➡️ (arrows), ⏮️ ⬅️ 1/N ➡️ ⏭️ (ends), a cross-key with
+# ⬆️ first and ⬇️ last around 1/N (dpad), one ● per page (dots), a range (slider) or a rotary dial (dial, turned by dial.js). A new variant is a word.
+PAGER_PARTS = (("up", "⬆️", "first", "dpad"), ("first", "⏮️", "first", "ends"), ("prev", "⬅️", "prev", "arrows ends dpad"),
+               ("dots", "", "", "dots"), ("slider", "", "", "slider"), ("dial", "", "", "dial"),
+               ("page", "", "", "arrows ends dpad dots slider dial"), ("next", "➡️", "next", "arrows ends dpad"),
+               ("last", "⏭️", "last", "ends"), ("down", "⬇️", "last", "dpad"))
+
+
+def pager_variants() -> tuple[str, ...]:
+    """The pager's variants, in the order PAGER_PARTS first names them (for a page that cycles through them, or a test that tries each)."""
+    return tuple(dict.fromkeys(v for *_, shows in PAGER_PARTS for v in shows.split()))
+
+
+def pager_index(index: int, count: int, action: str | int, *, wrap: bool = False) -> int:
+    """The page a pager goes to, the steps of pager.js's ``pagerIndex``: ``action`` is "first", "prev", "next", "last" or a page number from 0,
+    kept within the ``count`` pages; with ``wrap``, ⬅️ on the first page goes to the last and ➡️ on the last to the first."""
+    last = max(0, count - 1)
+    if type(action) is int:
+        return min(last, max(0, action))
+    if action in ("first", "last"):
+        return 0 if action == "first" else last
+    if action not in ("prev", "next"):
+        raise ValueError(f"unknown pager action: {action}")
+    target = index + (1 if action == "next" else -1)
+    return target % count if wrap and count > 0 else min(last, max(0, target))
+
+
+def pager_html(count: int, *, variant: str = "arrows", index: int = 0, label: str = "Pages", words: dict[str, str] | None = None,
+               wrap: bool = False, keys: bool = False, id: str | None = None) -> str:
+    """🧭 Page controls over ``count`` pages, showing ``variant`` (one of pager_variants()). The faces are emoji; ``words`` (first, prev, next,
+    last, page) are what screen readers and the tooltips say. pager.js keeps n/N, the ends, the dots and the ranges in step and sends ``ui-pager``
+    (detail: {index, count}) when the page changes; ``pagerSet(el, index, count)`` follows a change the page made itself (a page added).
+    ``keys`` also takes ←/→/Home/End anywhere on the page but in a text field. A tap does not take the focus, so a text field being typed in
+    keeps it and the layout does not move under the finger."""
+    if type(count) is not int or count < 1 or type(index) is not int or not 0 <= index < count:
+        raise ValueError("a pager has at least one page and starts on one of them")
+    if variant not in pager_variants():
+        raise ValueError(f"a pager variant is one of {', '.join(pager_variants())}")
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("a pager needs a label")
+    say = {"first": "First page", "prev": "Previous page", "next": "Next page", "last": "Last page", "page": "Page", **(words or {})}
+    if len(say) != 5 or not all(isinstance(v, str) and v.strip() for v in say.values()):
+        raise ValueError("a pager's words are first, prev, next, last and page, each some text")
+    page, top = escape(say["page"], quote=True), max(2, count)                     # a range needs two ends; one page disables it
+
+    def part(name: str, glyph: str, action: str, shows: str) -> str:
+        tag = f'data-ui-pager-part="{name}" data-ui-pager-in="{shows}"'
+        if action:
+            word, still = escape(say[action], quote=True), pager_index(index, count, action, wrap=wrap) == index
+            return f'<button type="button" {tag} data-ui-pager-go="{action}" aria-label="{word}" title="{word}"{" disabled" if still else ""}>{glyph}</button>'
+        if name == "page":
+            return f'<output {tag} aria-live="polite">{index + 1}/{count}</output>'
+        if name == "dots":
+            return (f'<span {tag} data-ui-pager-word="{page}">' + "".join(
+                f'<button type="button" data-ui-pager-to="{i}" aria-label="{page} {i + 1}" title="{page} {i + 1}"'
+                + (' aria-current="page">●' if i == index else ">○") + "</button>" for i in range(count)) + "</span>")
+        off = " disabled" if count < 2 else ""
+        if name == "slider":
+            return f'<input type="range" {tag} min="1" max="{top}" step="1" value="{index + 1}" aria-label="{page}"{off}>'
+        return f'<span {tag}>{dial_html("page", minimum=1, maximum=top, value=index + 1, label=say["page"], attrs=off.strip())}</span>'
+
+    flags = (" data-ui-pager-wrap" if wrap else "") + (" data-ui-pager-keys" if keys else "")
+    identity = f' id="{_element_id(id)}"' if id is not None else ""
+    return (f'<div class="ui-pager" role="group" aria-label="{escape(label, quote=True)}" data-ui-pager="{variant}" data-ui-pager-index="{index}" '
+            f'data-ui-pager-count="{count}"{flags}{identity}>' + "".join(part(*row) for row in PAGER_PARTS) + "</div>")
+
+
+PAGER_CSS = (
+    ".ui-pager{display:inline-flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;max-width:100%}"
+    ".ui-pager button{box-sizing:border-box;min-width:48px;min-height:48px;padding:0 8px;font-size:24px;line-height:1;color:var(--ui-fg);"
+    "background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:var(--ui-radius);cursor:pointer;touch-action:manipulation}"
+    ".ui-pager button:disabled{opacity:.32;cursor:default}.ui-pager button:focus-visible{outline:2px solid var(--ui-accent);outline-offset:2px}"
+    ".ui-pager output{min-width:48px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}"
+    ".ui-pager>[data-ui-pager-part=dots]{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:100%}"
+    ".ui-pager>[data-ui-pager-part=dots] button{min-width:32px;min-height:32px;padding:0;font-size:16px;color:var(--ui-accent)}"
+    ".ui-pager>input[type=range]{width:160px;max-width:100%;min-height:48px;margin:0;accent-color:var(--ui-accent)}"
+    # The cross-key: a 3×3 grid with n/N in the middle.
+    ".ui-pager[data-ui-pager=dpad]{display:inline-grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px)}"
+    "[data-ui-pager=dpad]>[data-ui-pager-part=up]{grid-area:1/2}[data-ui-pager=dpad]>[data-ui-pager-part=prev]{grid-area:2/1}"
+    "[data-ui-pager=dpad]>[data-ui-pager-part=page]{grid-area:2/2;place-self:center}[data-ui-pager=dpad]>[data-ui-pager-part=next]{grid-area:2/3}"
+    "[data-ui-pager=dpad]>[data-ui-pager-part=down]{grid-area:3/2}"
+    # Each variant hides the parts it does not show (one selector per word in PAGER_PARTS).
+    + ",".join(f".ui-pager[data-ui-pager={v}]>:not([data-ui-pager-in~={v}])" for v in pager_variants()) + "{display:none}")
+
+PAGER_JS = r"""/* 🧭 Page controls (pager_html): every variant is in the markup and the stylesheet shows one, so data-ui-pager switches it with no reload.
+ pagerIndex takes pager_index's steps; a change sends ui-pager {index, count}; pagerSet(el, index, count) follows a change the page made itself. */
+export function pagerIndex(index,count,action,wrap=false){const last=Math.max(0,count-1);
+ if(typeof action==="number")return Math.min(last,Math.max(0,Math.trunc(action)));
+ if(action==="first"||action==="last")return action==="first"?0:last;
+ if(action!=="prev"&&action!=="next")throw Error("unknown pager action: "+action);
+ const target=index+(action==="next"?1:-1);return wrap&&count>0?((target%count)+count)%count:Math.min(last,Math.max(0,target))}
+export function pagerSet(el,index=Number(el.dataset.uiPagerIndex)||0,count=Number(el.dataset.uiPagerCount)||1){
+ count=Math.max(1,Math.trunc(count));index=pagerIndex(0,count,index);const wrap="uiPagerWrap"in el.dataset;el.dataset.uiPagerIndex=index;el.dataset.uiPagerCount=count;
+ for(const b of el.querySelectorAll("[data-ui-pager-go]"))b.disabled=pagerIndex(index,count,b.dataset.uiPagerGo,wrap)===index;
+ for(const o of el.querySelectorAll('output[data-ui-pager-part="page"]'))o.textContent=`${index+1}/${count}`;
+ for(const dots of el.querySelectorAll('[data-ui-pager-part="dots"]')){const word=dots.dataset.uiPagerWord||"Page";
+  while(dots.children.length<count)dots.append(Object.assign(document.createElement("button"),{type:"button"}));
+  while(dots.children.length>count)dots.lastElementChild.remove();
+  [...dots.children].forEach((d,i)=>{d.dataset.uiPagerTo=i;d.textContent=i===index?"●":"○";d.title=`${word} ${i+1}`;d.setAttribute("aria-label",d.title);
+   i===index?d.setAttribute("aria-current","page"):d.removeAttribute("aria-current")})}
+ for(const r of el.querySelectorAll('input[type="range"]')){r.max=Math.max(2,count);r.disabled=count<2;
+  if(r.value!==String(index+1)){r.value=index+1;r.dispatchEvent(new Event("input"))}}}
+export function bindPager(root=document){
+ for(const el of root.querySelectorAll("[data-ui-pager]")){if("uiPagerBound"in el.dataset)continue;el.dataset.uiPagerBound="";
+  const go=action=>{const index=Number(el.dataset.uiPagerIndex)||0,count=Number(el.dataset.uiPagerCount)||1,next=pagerIndex(index,count,action,"uiPagerWrap"in el.dataset);
+   pagerSet(el,next,count);if(next!==index)el.dispatchEvent(new CustomEvent("ui-pager",{bubbles:true,detail:{index:next,count}}))};
+  el.addEventListener("pointerdown",e=>{if(e.target.closest("button"))e.preventDefault()});
+  el.addEventListener("click",e=>{const b=e.target.closest("[data-ui-pager-go],[data-ui-pager-to]");if(b&&!b.disabled)go(b.dataset.uiPagerGo??Number(b.dataset.uiPagerTo))});
+  el.addEventListener("input",e=>{if(e.target.type==="range")go(Number(e.target.value)-1)});
+  if("uiPagerKeys"in el.dataset)document.addEventListener("keydown",e=>{const action={ArrowLeft:"prev",ArrowRight:"next",Home:"first",End:"last"}[e.key];
+   if(!action||e.defaultPrevented||e.altKey||e.ctrlKey||e.metaKey||!el.isConnected||e.target.closest?.("input,textarea,select,[contenteditable]"))return;e.preventDefault();go(action)});
+  pagerSet(el)}}
+if(typeof document!=="undefined")bindPager();
+"""
+_CSS["stage.css"] = "@layer components{" + STAGE_CSS + "}"
+_CSS["pager.css"] = "@layer components{" + PAGER_CSS + "}"
+
+
 # --- Repository diagnostics: the page ascii_artist, markdown and mcp-toolcall-lab each wrote by hand, as one builder ----------------------
 # --- Components as a Python wrapper: one name gives the HTML builder, the stylesheet and the module, for pages here and in other repositories ---
 COMPONENTS: dict[str, dict[str, Any]] = {
@@ -5971,6 +6120,8 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     # does not bind itself on load, "spec" when the builder wants a checked spec, and "classic" for a classic script (not an ES module).
     # Specs and keyword arguments pass through to the builder.
     "dial": {"html": "dial_html", "css": ("dial.css",), "js": ("dial.js",)},
+    "stage": {"html": "stage_html", "css": ("stage.css",), "js": ()},
+    "pager": {"html": "pager_html", "css": ("pager.css", "dial.css"), "js": ("dial.js", "pager.js")},
     "scroll": {"html": "scroll_html", "css": ("scroll.css",), "js": ("scroll.js",)},
     "seed-dial": {"html": "seed_dial_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
     "theme-switch": {"html": "theme_switch_html", "css": (), "js": ("theme.js",), "mount": "bindTheme();"},
@@ -19622,8 +19773,8 @@ def _index_page() -> str:
 
 
 def js_modules() -> dict[str, str]:
-    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, scroll.js, world.js)."""
-    return {**_JS, "dial.js": DIAL_JS, "world.js": WORLD_JS}
+    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, pager.js, scroll.js, world.js)."""
+    return {**_JS, "dial.js": DIAL_JS, "pager.js": PAGER_JS, "world.js": WORLD_JS}
 
 
 def js_source(name: str) -> str:

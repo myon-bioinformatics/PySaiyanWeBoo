@@ -61,6 +61,35 @@ jobs:
           # Pull requests restore the cache and never write it; only main saves it.
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
+      - name: Bound apt mirror stalls for iPhone WebKit
+        if: matrix.profile == 'iphone'
+        timeout-minutes: 2
+        run: |
+          sudo tee /etc/apt/apt.conf.d/zzz-pswb-webkit-ci >/dev/null <<'APT'
+          Acquire::Retries "1";
+          Acquire::http::Timeout "15";
+          Acquire::https::Timeout "15";
+          APT::Update::Error-Mode "any";
+          APT
+          sudo python3 -S - <<'PYTHON'
+          from pathlib import Path
+
+          # Prefer only an official HTTPS archive already present in the runner's
+          # mirror list. Retain other mirrors and all source/signing settings.
+          mirrors = Path("/etc/apt/apt-mirrors.txt")
+          if mirrors.is_file():
+              original = mirrors.read_bytes()
+              entry = b"https://archive.ubuntu.com/ubuntu/\tpriority:"
+              lines = original.splitlines(keepends=True)
+              for i, line in enumerate(lines):
+                  if line.startswith(entry) and line[len(entry):].strip().isdigit():
+                      lines[i] = entry + b"0" + line[len(line.rstrip(b"\r\n")):]
+              updated = b"".join(lines)
+              if updated != original:
+                  mirrors.write_bytes(updated)
+                  print("Preferred existing official HTTPS Ubuntu archive.")
+          PYTHON
+          sudo apt-config dump Acquire::Retries Acquire::http::Timeout Acquire::https::Timeout APT::Update::Error-Mode
       - name: System libraries and the browser (bounded; WebKit needs many packages)
         timeout-minutes: 20
         run: uv run --locked --group gradio python -m playwright install --with-deps --only-shell "${{ matrix.browser }}"

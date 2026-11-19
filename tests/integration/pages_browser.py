@@ -1293,6 +1293,105 @@ def table_spec():
     return {'columns': ['', *envs, 'bytes', 'score'], 'rows': rows, 'row_headers': True, 'caption': 'Screenshots per browser', 'missing': 'not run'}
 
 
+class StagePagerBrowserTests(unittest.TestCase):
+    """🖼️ stage_html + 🧭 pager_html on a phone: the slide keeps 16:9 and stays at the top while the page scrolls, every pager variant is one
+    data-ui-pager word away (no reload) and fits without overflow or overlap, each moves the page its own way, a tap keeps a text field's focus,
+    and on its side the stage takes the whole height. ``PSWB_GIFS`` keeps component-stage-pager.gif (record_demo.gif_targets_from naming)."""
+
+    def test_the_stage_stays_put_and_every_pager_variant_moves_the_page(self):
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import record_demo
+        from pysaiyanweboo import PAGER_PARTS, bundled_css, component_parts, module_script, pager_variants, render_document
+        faces = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣']
+        svg = ('<svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg"><rect width="160" height="90" fill="#fff"/>'
+               '<text id="face" x="80" y="58" text-anchor="middle" font-size="40">1️⃣</text></svg>')
+        stage, pager = component_parts('stage', svg, label='Slide'), component_parts('pager', 5, keys=True, label='Slides', id='pager')
+        glue = (f'const faces={json.dumps(faces)};window.seen=[];window.pagerSet=pagerSet;'
+                'document.addEventListener("ui-pager",e=>{seen.push(e.detail.index);document.getElementById("face").textContent=faces[e.detail.index]});')
+        filler = ''.join(f'<p>{i}</p>' for i in range(40))
+        html = render_document(trusted_html='<main class="ui-page">' + stage['html'] + '<p>' + pager['html'] + '</p><textarea id="note" rows="2"></textarea>'
+                               + filler + '</main>' + module_script(pager['js'] + glue), title='Stage and pager', css=bundled_css())
+        server, origin = WorldBrowserTests.serve({'stage.html': html})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={'width': 392, 'height': 600}, has_touch=True)
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/stage.html')
+                    nav, cam = page.locator('#pager'), record_demo.Camera(page)
+                    at = lambda: page.locator('#pager output').text_content()
+                    box = lambda: page.locator('.ui-stage').bounding_box()
+                    b = box()
+                    self.assertAlmostEqual(b['width'] / b['height'], 16 / 9, delta=0.02)          # the ratio, whatever the width
+                    self.assertLessEqual(b['height'], 600 * 0.64 + 1)                            # and never past its room
+                    self.assertEqual((at(), page.locator('[data-ui-pager-part=prev]').is_disabled()), ('1/5', True))
+                    cam.hold(400)
+                    for _ in range(2):
+                        page.locator('[data-ui-pager-part=next]').tap()
+                        cam.hold(240)
+                    self.assertEqual((at(), page.evaluate('seen'), page.locator('#face').text_content()), ('3/5', [1, 2], '3️⃣'))
+                    page.mouse.wheel(0, 900)
+                    page.wait_for_function('scrollY > 400')
+                    cam.hold(400)
+                    self.assertEqual(round(box()['y']), 0)                                       # pinned: the slide stays at the top
+                    page.evaluate('scrollTo(0, 0)')
+                    shown = lambda: nav.evaluate('e => [...e.children].filter(c => c.checkVisibility()).map(c => c.dataset.uiPagerPart)')
+                    rects = lambda: nav.evaluate('e => [...e.children].filter(c => c.checkVisibility()).map(c => { const r = c.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom] })')
+                    moves = {'dpad': [('down', '5/5'), ('up', '1/5')], 'ends': [('last', '5/5'), ('first', '1/5')], 'arrows': [('next', '2/5')]}
+                    for variant in pager_variants():
+                        nav.evaluate('(e, v) => e.dataset.uiPager = v', variant)                  # no reload: one attribute
+                        self.assertEqual(shown(), [p for p, _, _, shows in PAGER_PARTS if variant in shows.split()], variant)
+                        boxes = rects()
+                        self.assertTrue(all(0 <= l and r <= 392 for l, _, r, _ in boxes), (variant, boxes))
+                        self.assertFalse([(i, j) for i in range(len(boxes)) for j in range(i) if boxes[i][0] < boxes[j][2] and boxes[j][0] < boxes[i][2]
+                                          and boxes[i][1] < boxes[j][3] and boxes[j][1] < boxes[i][3]], (variant, boxes))   # nothing overlaps
+                        self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0, variant)
+                        cam.hold(320)
+                        for part, want in moves.get(variant, []):
+                            page.locator(f'[data-ui-pager-part={part}]').tap()
+                            self.assertEqual(at(), want, (variant, part))
+                            cam.hold(240)
+                        if variant == 'dots':
+                            page.locator('[data-ui-pager-to="3"]').tap()
+                            self.assertEqual((at(), page.locator('[aria-current=page]').get_attribute('data-ui-pager-to')), ('4/5', '3'))
+                        elif variant == 'slider':
+                            page.locator('input[data-ui-pager-part=slider]').fill('2')
+                            self.assertEqual((at(), page.locator('.ui-dial input').input_value()), ('2/5', '2'))   # the dial follows the slider
+                        elif variant == 'dial':
+                            page.locator('.ui-dial input').focus()
+                            page.keyboard.press('ArrowRight')
+                            self.assertEqual((at(), page.locator('input[data-ui-pager-part=slider]').input_value()), ('3/5', '3'))
+                        cam.hold(240)
+                    page.evaluate('document.activeElement.blur()')
+                    page.keyboard.press('End')
+                    self.assertEqual(at(), '5/5')                                                  # keys: ←/→/Home/End off a text field
+                    page.locator('#note').focus()
+                    page.keyboard.press('Home')
+                    self.assertEqual(at(), '5/5')                                                  # ...and not while typing
+                    nav.evaluate("e => e.dataset.uiPager = 'arrows'")
+                    page.locator('[data-ui-pager-part=prev]').tap()
+                    self.assertEqual((at(), page.evaluate('document.activeElement.id')), ('4/5', 'note'))   # a tap keeps the text field's focus
+                    sent = len(page.evaluate('seen'))
+                    nav.evaluate("e => { e.dataset.uiPager = 'dots'; pagerSet(e, 5, 6) }")       # the page added a slide and went to it itself:
+                    self.assertEqual((at(), page.locator('[data-ui-pager-to]').count(), len(page.evaluate('seen'))), ('6/6', 6, sent))   # no ui-pager back
+                    cam.hold(400)
+                    page.set_viewport_size({'width': 848, 'height': 392})
+                    page.wait_for_function('innerHeight === 392')
+                    self.assertAlmostEqual(box()['height'], 392, delta=1)                         # on its side: the whole height
+                    cam.hold(600)
+                    self.assertEqual(errors, [])
+                    gif = record_demo.encode(cam.shots)
+                    self.assertTrue(gif.startswith(b'GIF89a'))
+                    if os.environ.get('PSWB_GIFS'):
+                        record_demo.gif_targets_from(os.environ['PSWB_GIFS'], ['component-stage-pager'])['component-stage-pager'].write_bytes(gif)
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
 class TableBrowserTests(unittest.TestCase):
     """component_document("table", spec): an escaped table in its own scroller, styled by shell.css under every theme, no script.
     The GIF walks the themes and scrolls the table sideways on a phone; ``PSWB_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"``
