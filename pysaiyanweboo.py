@@ -5981,15 +5981,17 @@ STAGE_CSS = (
 def stage_html(trusted_html: str, *, label: str, ratio: tuple[int, int] = (16, 9), pin: bool = True, id: str | None = None) -> str:
     """🖼️ A fixed display area around trusted HTML (a slide's SVG, a canvas, a photo): it keeps ``ratio`` (width, height), is never taller than
     ``--ui-stage-room`` (64dvh; on a phone on its side, the whole height) and, with ``pin``, stays at the top while what is under it scrolls.
-    svg / img / canvas / video children (or ``data-ui-fill``) fill it; other children are overlays the page places. STAGE_CSS only: no module."""
+    svg / img / canvas / video children (or ``data-ui-fill``) fill it; other children are overlays the page places. STAGE_CSS only: no module.
+    16:9 is the stylesheet's own default, so it carries no ``style`` attribute (a page whose CSP forbids inline styles can use it)."""
     w, h = ratio
     if type(w) is not int or type(h) is not int or w <= 0 or h <= 0:
         raise ValueError("a stage's ratio is two positive integers (width, height)")
     if not isinstance(label, str) or not label.strip():
         raise ValueError("a stage needs a label")
     identity = f' id="{_element_id(id)}"' if id is not None else ""
-    return (f'<div class="ui-stage" role="region" aria-label="{escape(label, quote=True)}" data-ui-stage="{"pinned" if pin else "free"}" '
-            f'style="--ui-stage-w:{w};--ui-stage-h:{h}"{identity}>{trusted_html}</div>')
+    shape = "" if (w, h) == (16, 9) else f' style="--ui-stage-w:{w};--ui-stage-h:{h}"'
+    return (f'<div class="ui-stage" role="region" aria-label="{escape(label, quote=True)}" data-ui-stage="{"pinned" if pin else "free"}"'
+            f'{shape}{identity}>{trusted_html}</div>')
 
 
 # One row per part of a pager: (part, emoji, action, the variants that show it), in the order they stand. Every variant is in the markup and the

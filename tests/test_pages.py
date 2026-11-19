@@ -6577,7 +6577,7 @@ def test_the_stage_keeps_its_ratio_and_pins_with_css_alone():
     """🖼️ stage_html: a ratio and a label, pinned by default; STAGE_CSS fills svg/img/canvas/video and leaves the rest as overlays. No module."""
     assert ui.stage_html("<svg></svg>", label='Slide "1"', ratio=(4, 3), id="s") == (
         '<div class="ui-stage" role="region" aria-label="Slide &quot;1&quot;" data-ui-stage="pinned" style="--ui-stage-w:4;--ui-stage-h:3" id="s"><svg></svg></div>')
-    assert 'data-ui-stage="free"' in ui.stage_html("<p></p>", label="Photo", pin=False)
+    assert ui.stage_html("<p></p>", label="Photo", pin=False) == '<div class="ui-stage" role="region" aria-label="Photo" data-ui-stage="free"><p></p></div>'  # 16:9: no style attribute
     for bad in ({"ratio": (16, 0)}, {"ratio": (16.0, 9)}, {"label": " "}, {"id": "a b"}):
         with pytest.raises(ValueError):
             ui.stage_html("<p></p>", **{"label": "x", **bad})
