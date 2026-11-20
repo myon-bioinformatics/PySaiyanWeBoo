@@ -886,6 +886,49 @@ class FrontPageBrowserTests(unittest.TestCase):
     def tokens(self, page):
         return page.evaluate('names => Object.fromEntries(names.map(n => [n, document.body.style.getPropertyValue(n)]))', list(self.TOKENS))
 
+    def test_header_avatar_tracks_mouse_and_touch_then_returns_to_idle(self):
+        page = self.open(has_touch=True)
+        face = page.get_by_role('button', name='Blink', exact=True)
+        eyes = face.locator('.ui-gaze-eyes')
+        box = face.bounding_box()
+        self.assertAlmostEqual(box['x'] + box['width'] / 2, page.viewport_size['width'] / 2, delta=1)
+        page.mouse.move(12, 24)
+        page.wait_for_function("parseFloat(document.querySelector('.ui-gaze').style.getPropertyValue('--gaze-x')) < 0")
+        page.touchscreen.tap(370, 24)
+        page.wait_for_function("parseFloat(document.querySelector('.ui-gaze').style.getPropertyValue('--gaze-x')) > 0")
+        expect(face).not_to_have_attribute('data-looking', '')
+        expect(face.locator('.ui-gaze-look')).to_have_css('animation-name', 'ui-gaze-wander')
+        face.press('Enter')
+        self.assertTrue(eyes.evaluate("el => el.getAnimations().some(a => !(a instanceof CSSAnimation))"))
+        page.emulate_media(reduced_motion='reduce')
+        page.mouse.move(100, 24)
+        expect(face.locator('.ui-gaze-look')).to_have_css('transform', 'none')
+        expect(eyes).to_have_css('animation-name', 'none')
+        page.close()
+
+    def test_header_avatar_keeps_short_touch_until_idle(self):
+        page = self.open(has_touch=True)
+        face = page.get_by_role('button', name='Blink', exact=True)
+        # Deliver the whole non-hover touch sequence before requestAnimationFrame.
+        face.evaluate("""face => {
+          const root = document.documentElement;
+          const touch = {pointerType: 'touch', isPrimary: true, clientX: innerWidth - 20, clientY: 24};
+          face.dispatchEvent(new PointerEvent('pointerdown', {...touch, bubbles: true}));
+          face.dispatchEvent(new PointerEvent('pointerup', {...touch, bubbles: true}));
+          root.dispatchEvent(new PointerEvent('pointerleave', touch));
+        }""")
+        expect(face).to_have_attribute('data-looking', '')
+        self.assertGreater(face.evaluate("face => parseFloat(face.style.getPropertyValue('--gaze-x'))"), 0)
+        expect(face).not_to_have_attribute('data-looking', '')
+
+        page.mouse.move(12, 24)
+        expect(face).to_have_attribute('data-looking', '')
+        page.evaluate("""() => document.documentElement.dispatchEvent(
+            new PointerEvent('pointerleave', {pointerType: 'mouse', isPrimary: true})
+        )""")
+        self.assertIsNone(face.get_attribute('data-looking'))
+        page.close()
+
     def test_the_world_fills_the_viewport_and_the_rooms_wait_behind_the_door(self):
         for viewport in ({'width': 390, 'height': 844}, {'width': 1280, 'height': 800}):
             page = self.open(viewport)

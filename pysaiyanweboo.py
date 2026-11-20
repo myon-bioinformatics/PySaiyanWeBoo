@@ -3159,6 +3159,208 @@ def section_browser(sections: tuple[tuple[str, str], ...], *, id: str = "section
             f'<script type="application/json" data-ui-section-data>{payload}</script></section>')
 
 
+_HTML_IMPORT_JS = r"""import {setText,prettyJson} from __UI_MODULE__;
+// Browser companion to the pinned lab extractor. Input nodes never enter the live DOM.
+const excluded = new Set(['script', 'style', 'template', 'noscript']);
+export const MAX_BYTES = 2 * 1024 * 1024;
+import __NAV_MODULE__;
+export const sourceURL = globalThis.webUiNavigation.sourceURL;
+export function parseHTML(html) {
+  if (typeof html !== 'string' || new TextEncoder().encode(html).length > MAX_BYTES) throw Error('HTMLの上限は2 MiBです。');
+  const template = document.createElement('template');
+  template.innerHTML = html; // inert: no script, image, iframe or stylesheet activation
+  const root = {tag:'document', attrs:{}, parent:null, children:[]};
+  function convert(dom, parent, depth) {
+    if (dom.nodeType === 3) return dom.data;
+    if (dom.nodeType !== 1) return null;
+    if (depth >= 128) throw Error('HTMLの階層が128を超えています。');
+    const node = {tag:dom.localName, attrs:Object.fromEntries([...dom.attributes].map(a=>[a.name,a.value])), parent, children:[]};
+    // template content and excluded descendants are deliberately not visited.
+    if (!excluded.has(node.tag)) node.children = [...dom.childNodes].map(c=>convert(c,node,depth+1)).filter(c=>c!==null);
+    return node;
+  }
+  root.children = [...template.content.childNodes].map(c=>convert(c,root,1)).filter(c=>c!==null);
+  return root;
+}
+function walk(node) { if (excluded.has(node.tag)) return []; return [node,...node.children.filter(c=>typeof c!=='string').flatMap(walk)]; }
+function rawText(node) { return excluded.has(node.tag)?'':node.children.map(c=>typeof c==='string'?c:rawText(c)).join(' '); }
+// Python str.split whitespace includes NEL and U+001C..1F, but excludes BOM.
+const clean = n=>rawText(n).replace(/[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/g,' ').replace(/^ +| +$/g,'');
+const words = s=>(s||'').split(/\s+/);
+function select(nodes, selector) {
+  if (typeof selector!=='string' || !selector.trim() || selector.length>512) throw Error('selector must be a non-empty string of at most 512 characters');
+  const tokens=selector.match(/>|[^\s>]+/g), parts=[], relations=[];
+  let relation=null;
+  for (const t of tokens) {
+    if (t==='>') { if (!parts.length || relation==='>') throw Error('invalid selector combinator'); relation='>'; continue; }
+    if (t!==':root' && !/^(?:[a-zA-Z][\w-]*|\*)?(?:[.#][a-zA-Z_][\w-]*)*$/.test(t)) throw Error('unsupported selector syntax');
+    if(parts.length) relations.push(relation||' '); parts.push(t); relation=null;
+  }
+  if(relation || !parts.length) throw Error('invalid selector combinator');
+  function matches(n,t) {
+    if (t===':root') return n.parent?.tag==='document';
+    const tag=t.match(/^[a-zA-Z][\w-]*|^\*/)?.[0];
+    if (tag && tag!=='*' && n.tag!==tag.toLowerCase()) return false;
+    for(const m of t.matchAll(/([.#])([a-zA-Z_][\w-]*)/g)) if(m[1]==='#'?n.attrs.id!==m[2]:!words(n.attrs.class).includes(m[2])) return false;
+    return n.tag!=='document';
+  }
+  function chain(n,i) {
+    if(!n || !matches(n,parts[i])) return false;
+    if(!i) return true;
+    if(relations[i-1]==='>') return chain(n.parent,i-1);
+    for(let p=n.parent;p;p=p.parent) if(chain(p,i-1)) return true;
+    return false;
+  }
+  return nodes.filter(n=>chain(n,parts.length-1));
+}
+const resolve = (href,url)=>{try{const u=new URL(href,url);return ['http:','https:'].includes(u.protocol)?u.href:null;}catch{return null;}};
+export function extract(root, url, profile='generic', selector=null) {
+  sourceURL(url);
+  if(!['generic','github-readme'].includes(profile)) throw Error('unknown HTML profile');
+  const nodes=walk(root); let scopes=nodes.filter(n=>n.tag==='article'), scope='article';
+  if(selector!==null) {
+    if(profile!=='generic') throw Error('selector requires generic profile');
+    scopes=select(nodes,selector); scope=selector;
+    if(!scopes.length) throw Error('selector matched no elements');
+  } else if(profile==='github-readme') {
+    scopes=scopes.filter(n=>words(n.attrs.class).includes('markdown-body'));
+    if(scopes.length!==1) throw Error('github-readme requires exactly one article.markdown-body');
+  } else if(!scopes.length) { scopes=nodes.filter(n=>n.tag==='main'); if(!scopes.length) scopes=[root]; scope=scopes[0]===root?'document':'main'; }
+  const descendants=new Set(scopes.flatMap(n=>walk(n).slice(1)));
+  scopes=scopes.filter(n=>!descendants.has(n));
+  const content=scopes.flatMap(walk), text=scopes.map(clean).filter(Boolean).join(' ');
+  if(!text) throw Error('selected HTML scope has no text');
+  return {source_url:url,profile,scope,scope_count:scopes.length,title:clean(nodes.find(n=>n.tag==='title')||{children:[]}),
+    headings:content.filter(n=>/^h[1-6]$/.test(n.tag)).map(n=>({level:n.tag,text:clean(n)})),text,
+    links:content.filter(n=>n.tag==='a' && n.attrs.href && resolve(n.attrs.href,url)).map(n=>({text:clean(n),url:resolve(n.attrs.href,url)})),
+    structure:nodes.filter(n=>['main','article'].includes(n.tag)).map(n=>({tag:n.tag,id:n.attrs.id??null,class:n.attrs.class??null})),
+    stylesheets:nodes.filter(n=>n.tag==='link' && words((n.attrs.rel||'').toLowerCase()).includes('stylesheet') && n.attrs.href && resolve(n.attrs.href,url)).map(n=>resolve(n.attrs.href,url))};
+}
+
+function bindImportPage() {
+  const $=id=>document.getElementById(id);
+  let loaded=null, result=null, revision=0;
+  const sourceLink=globalThis.webUiNavigation.bindSourceLink($('source-url'),$('source-open'));
+  function clearResult(){result=null;setText($('body-result'),'');setText($('headings-result'),'');setText($('links-result'),'');setText($('provenance'),'');$('download').disabled=true;}
+  function fail(e){clearResult();setText($('status'),e.message);}
+  function apply(){
+    clearResult();
+    if(!loaded) return setText($('status'),'まずHTMLを取り込んでください。');
+    try {
+      const extraction=extract(loaded.root,loaded.snapshot.url,$('profile').value,$('selector').value.trim()||null);
+      const {html,...metadata}=loaded.snapshot;
+      result={snapshot:metadata,input:{kind:loaded.kind,name:loaded.name},extraction};
+      setText($('body-result'),extraction.text);setText($('headings-result'),prettyJson(extraction.headings));setText($('links-result'),prettyJson(extraction.links));
+      setText($('provenance'),prettyJson({...metadata,input:result.input,scope:extraction.scope,scope_count:extraction.scope_count}));
+      setText($('status'),'抽出しました。同じ取込データで条件を変更できます。');$('download').disabled=false;
+    }catch(e){fail(e);}
+  }
+  async function load(html,kind,name,url,token){
+    const root=parseHTML(html);
+    const bytes=new TextEncoder().encode(html);
+    const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+    if(token!==revision) return;
+    loaded={root,kind,name,snapshot:{schema:'html-snapshot/1',url,html,fetched_at:null,encoding:'utf-8',response_sha256:null,content_sha256:hash}};
+    apply();
+  }
+  $('paste-load').addEventListener('click',async()=>{
+    const token=++revision;loaded=null;clearResult();
+    try{await load($('html-input').value,'paste',null,sourceURL($('source-url').value.trim()),token);}catch(e){if(token===revision)fail(e);}
+  });
+  $('file-input').addEventListener('change',async()=>{
+    const token=++revision;loaded=null;clearResult();
+    const file=$('file-input').files[0];if(!file)return;
+    try{
+      const url=sourceURL($('source-url').value.trim());
+      if(file.size>MAX_BYTES)throw Error('HTMLの上限は2 MiBです。');
+      const html=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());
+      if(token===revision) await load(html,'file',file.name,url,token);
+    }catch(e){if(token===revision)fail(e);}
+  });
+  $('apply').addEventListener('click',apply);
+  $('download').addEventListener('click',()=>{
+    if(!result)return;
+    const url=URL.createObjectURL(new Blob([prettyJson(result)+'\n'],{type:'application/json'}));
+    const a=document.createElement('a');a.href=url;a.download='html-extraction.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  });
+  $('clear').addEventListener('click',()=>{++revision;loaded=null;clearResult();$('html-input').value='';$('file-input').value='';$('source-url').value='';sourceLink.update();setText($('status'),'取込データと結果を消去しました。');});
+}
+
+if (typeof document !== 'undefined' && document.querySelector('script[type="module"][src="./extract.mjs"]')) bindImportPage();
+"""
+
+
+_HTML_IMPORT_BODY = '''<main class="ui-page">
+<h1>📄 HTML文書取込</h1>
+<p>貼り付けたHTMLやローカルファイルから本文・見出し・リンクを取り出します。入力と結果はこのページのメモリ内で処理し、運営者へ自動送信・保存しません。HTML内のスクリプトや画像は実行・取得しません。</p>
+<section class="ui-panel" aria-labelledby="input-title"><h2 id="input-title">1. 取り込む</h2>
+<label for="source-url">取得元URL（絶対HTTP(S)、相対リンクの基準）</label>
+<input class="ui-input" id="source-url" type="url" placeholder="https://example.org/page" autocomplete="off">
+__SOURCE_LINK__
+<p>上のリンクを選んだ時だけ指定サイトへアクセスします。開いたサイトでHTMLを保存するかソースをコピーし、このページへ取り込んでください。サイトの表示内容を自動取得する機能ではありません。</p>
+<p>URLは出典の申告です。取込・抽出処理はアクセスしません。元URLが不明な場合は明示した仮のURLを使用してください。ダウンロード済みの証明にはなりません。</p>
+<label for="html-input">HTMLを貼り付ける</label><textarea class="ui-input" id="html-input" rows="8" spellcheck="false" placeholder="&lt;article&gt;&lt;h1&gt;見出し&lt;/h1&gt;&lt;p&gt;本文&lt;/p&gt;&lt;/article&gt;"></textarea>
+<button class="ui-button" id="paste-load" type="button">貼り付けを取り込む</button>
+<label for="file-input">またはHTMLファイルを選択（UTF-8、2 MiBまで）</label>
+<input class="ui-input" id="file-input" type="file" accept=".html,.htm,text/html">
+</section>
+<section class="ui-panel" aria-labelledby="options-title"><h2 id="options-title">2. 抽出条件</h2>
+<label for="profile">抽出プロファイル</label><select class="ui-input" id="profile"><option value="generic">一般（article → main → 文書全体）</option><option value="github-readme">GitHub README（article.markdown-bodyが1件）</option></select>
+<label for="selector">一般プロファイルのセレクター（任意）</label><input class="ui-input" id="selector" placeholder="main > article.note" autocomplete="off">
+<p>対応：タグ、#id、.class、子孫、&gt;、:root。CSS・外部参照は読み込みません。条件変更は取込済みデータを使い、ファイルを再読込しません。</p>
+<button class="ui-button" id="apply" type="button">条件を適用</button> <button class="ui-button" id="clear" type="button">入力と結果を消去</button>
+</section>
+<p id="status" role="status" aria-live="polite">まず取得元URLとHTMLを指定してください。</p>
+<section class="ui-panel"><h2>3. 結果</h2><button class="ui-button" id="download" type="button" disabled>結果JSONをダウンロード</button>
+<h3>取得元・取込方法</h3><pre class="ui-output" id="provenance"></pre>
+<h3>本文</h3><pre class="ui-output" id="body-result"></pre>
+<h3>見出し</h3><pre class="ui-output" id="headings-result"></pre>
+<h3>リンク（表示のみ、追跡しません）</h3><pre class="ui-output" id="links-result"></pre></section>
+<details class="ui-panel"><summary>対応範囲と制約</summary>
+<p>通常のHTML文書・整形式のarticle/main、見出しh1〜h6、HTTP(S)リンクを対象にします。script/style/template/noscriptの内容は除外します。HTMLのbase要素は無視します。隠された文字もCSSで判定せず、空白は正規化します。</p>
+<p>ブラウザはHTML5として木構造を補正します。省略・不正なタグ、tableの補正、重複属性、SVG/MathML、特殊な文字参照、URLの正規化ではPythonと差が出る場合があります。Python/JS一致は共有fixtureで確認した範囲です。完全なCSS、計算済みスタイル、PDF、JS生成ページ、外部ファイルの取得、文字コード自動判定は未対応です。</p>
+<p>JSONはhtml-snapshot/1のメタデータと抽出結果を含み、元HTML本文は含みません。fetched_atとresponse_sha256はnullです。入力はページを離れると失われます。保存は利用者がダウンロードを選んだ場合のみです。__DOCS_LINK__</p></details>
+</main>'''
+_HTML_IMPORT_CSS = 'label{display:block;margin:1rem 0 .3rem}input,textarea,select{width:100%;max-width:100%}button{margin:.3rem 0;min-height:44px}pre{overflow-wrap:anywhere}h1{font-size:1.8rem}'
+
+
+def html_import_files(*, shared_base: str | None = None, docs_href: str | None = None) -> dict[str, bytes]:
+    """Build the Japanese HTML import tool. Write the returned relative paths under one directory.
+    With shared_base, reuse an existing PSWB css/ and js/ deployment relative to the tool.
+    Without it, include the required browser helpers and inline the core stylesheet.
+    """
+    files = {}
+    base = "." if shared_base is None else shared_base.rstrip("/")
+    if shared_base is not None:
+        _require_local_script_path(shared_base, label="shared_base")
+        if base and not base.startswith(("./", "../", "/")) and base not in (".", ".."):
+            base = "./" + base
+    stylesheets = ()
+    css = _HTML_IMPORT_CSS
+    if shared_base is None:
+        for name in ("ui.js", "navigation.js"):
+            files["js/" + name] = js_source(name).encode()
+        css = core_css() + css
+    else:
+        stylesheets = tuple(f"{base}/css/{name}.css" for name in ("tokens", "base", "components", "themes/modern"))
+    link = ""
+    if docs_href is not None:
+        link = f'<a href="{escape(_spec_href(docs_href), quote=True)}">抽出契約と検証方法</a>'
+    document = render_document(title="HTML文書取込", trusted_html=_HTML_IMPORT_BODY.replace(
+        "__SOURCE_LINK__", source_link("source-url")).replace("__DOCS_LINK__", link),
+        css=css, stylesheets=stylesheets, scripts=("./extract.mjs",))
+    csp = (
+        "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self'; connect-src 'none'; frame-src 'none'; object-src 'none'; "
+        "base-uri 'none'; form-action 'none'"
+    )
+    document = document.replace("<head>", '<head><meta http-equiv="Content-Security-Policy" content="' + csp + '">', 1)
+    files["index.html"] = document.replace('<html lang="en">', '<html lang="ja">', 1).encode()
+    module = _HTML_IMPORT_JS.replace("__UI_MODULE__", json.dumps(f"{base}/js/ui.js"))
+    files["extract.mjs"] = module.replace("__NAV_MODULE__", json.dumps(f"{base}/js/navigation.js")).encode()
+    return files
+
+
 def source_link(input_id: str, *, link_id: str = "source-open", label: str = "取得元サイトを新しいタブで開く ↗") -> str:
     """Link to a visitor-selected HTTP(S) input. No request until clicked.
 
@@ -6188,6 +6390,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     # does not bind itself on load, "spec" when the builder wants a checked spec, and "classic" for a classic script (not an ES module).
     # Specs and keyword arguments pass through to the builder.
     "dial": {"html": "dial_html", "css": ("dial.css",), "js": ("dial.js",)},
+    "gaze-avatar": {"html": "gaze_avatar_html", "css": ("gaze_avatar_css",), "js": ("gaze-avatar.js",)},
     "stage": {"html": "stage_html", "css": ("stage.css",), "js": ()},
     "pager": {"html": "pager_html", "css": ("pager.css", "dial.css"), "js": ("dial.js", "pager.js")},
     "scroll": {"html": "scroll_html", "css": ("scroll.css",), "js": ("scroll.js",)},
@@ -6219,7 +6422,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
 }
 # Stylesheets that are built rather than stored: the spec (the first argument) decides them.
 _COMPONENT_CSS = {"world_css": lambda *a: world_css(a[0], base=False), "showcase_css": lambda *a: showcase_css(showcase_validate(a[0])),
-                  "front_css": lambda *a: front_css()}
+                  "front_css": lambda *a: front_css(), "gaze_avatar_css": lambda: GAZE_AVATAR_CSS}
 
 
 def component_parts(name: str, /, *args: Any, **kwargs: Any) -> dict[str, str]:
@@ -19713,10 +19916,97 @@ _INDEX_LAYOUT_CANDIDATES = {"schema": "web-ui-layout-candidates/1", "presets": {
 # to the page, add a room made from a builder; to improve the page, improve the builder. The main view fills one 48px-barred viewport; a room opens over it
 # through :target (no script; :has(:target) so a link to an anchor inside a room opens it too). Pixel values are multiples of 8.
 FRONT_RESERVED = "rooms"
+
+
+def gaze_avatar_html(*, label: str = "Blink") -> str:
+    """Button markup for the gaze-avatar component. The label names the blink action."""
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("the avatar label must be nonempty text")
+    return (f'<button type="button" class="ui-gaze" aria-label="{escape(label, quote=True)}">'
+            '<span class="ui-gaze-face" aria-hidden="true"><span class="ui-gaze-look">'
+            '<span class="ui-gaze-eyes"></span></span></span></button>')
+
+
+GAZE_AVATAR_CSS = """
+button.ui-gaze,.ui-front-bar button.ui-gaze {
+  display:inline-grid;place-items:center;width:44px;height:44px;padding:0;border:0;
+  background:transparent;border-radius:50%;vertical-align:middle;cursor:pointer;
+}
+.ui-gaze:focus-visible {outline:2px solid currentColor;outline-offset:-2px}
+.ui-gaze-face {
+  display:grid;place-items:center;width:36px;height:34px;border-radius:49% 57% 46% 43%;
+  background:radial-gradient(ellipse at 32% 20%,#d8fbff 0%,#83deed 45%,#45afcc 100%);
+  box-shadow:inset 0 -2px 2px #2186a34d;transform:rotate(-6deg);
+}
+.ui-gaze-look {display:grid;place-items:center;animation:ui-gaze-wander 7s ease-in-out infinite}
+.ui-gaze-eyes {display:block;width:15px;height:8px;position:relative;animation:ui-gaze-blink 4.6s linear infinite}
+.ui-gaze-eyes::before,.ui-gaze-eyes::after {
+  content:"";position:absolute;top:0;width:4px;height:100%;border-radius:50%;background:#172f40;
+}
+.ui-gaze-eyes::before {left:0}.ui-gaze-eyes::after {right:0}
+.ui-gaze[data-looking] .ui-gaze-look {animation:none;transform:translate(var(--gaze-x),var(--gaze-y));transition:transform 110ms ease-out}
+@keyframes ui-gaze-wander {
+  0%,20%,95%,100% {transform:translate(0,0)} 32%,48% {transform:translate(3px,-1px)} 65%,80% {transform:translate(-3px,1px)}
+}
+@keyframes ui-gaze-blink {0%,90%,96%,100% {transform:scaleY(1)} 93% {transform:scaleY(.14)}}
+@media (prefers-reduced-motion:reduce) {
+  .ui-gaze .ui-gaze-eyes,.ui-gaze .ui-gaze-look,.ui-gaze[data-looking] .ui-gaze-look {animation:none;transform:none;transition:none}
+}
+"""
+
+
+GAZE_AVATAR_JS = """
+for (const face of (typeof document === 'undefined' ? [] : document.querySelectorAll('.ui-gaze'))) {
+  if (face.hasAttribute('data-gaze-bound')) continue;
+  face.setAttribute('data-gaze-bound', '');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const eyes = face.querySelector('.ui-gaze-eyes');
+  let idleTimer, frame, x, y;
+  function rest() {
+    cancelAnimationFrame(frame);
+    clearTimeout(idleTimer);
+    frame = 0;
+    delete face.dataset.looking;
+  }
+  function look() {
+    frame = 0;
+    const rect = face.getBoundingClientRect();
+    const dx = x - rect.left - rect.width / 2;
+    const dy = y - rect.top - rect.height / 2;
+    const distance = Math.max(22, Math.hypot(dx, dy));
+    face.style.setProperty('--gaze-x', (5 * dx / distance) + 'px');
+    face.style.setProperty('--gaze-y', (4 * dy / distance) + 'px');
+    face.dataset.looking = '';
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(rest, 1500);
+  }
+  function point(event) {
+    if (reduced.matches || !event.isPrimary) return;
+    x = event.clientX;
+    y = event.clientY;
+    if (!frame) frame = requestAnimationFrame(look);
+  }
+  document.addEventListener('pointermove', point, {passive:true});
+  document.addEventListener('pointerdown', point, {passive:true});
+  // A short tap leaves the viewport before its queued gaze frame can run.
+  document.documentElement.addEventListener('pointerleave', e => {if (e.pointerType !== 'touch') rest()});
+  window.addEventListener('blur', rest);
+  reduced.addEventListener('change', rest);
+  face.addEventListener('click', () => {
+    if (!reduced.matches) eyes.animate([
+      {transform:'scaleY(1)'}, {transform:'scaleY(.12)',offset:.4}, {transform:'scaleY(1)'}
+    ], 260);
+  });
+}
+"""
+
+
 _FRONT_CSS = (
     ".ui-front{display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden;background:var(--ui-bg);color:var(--ui-fg)}"
     ".ui-front-bar,.ui-room-bar{display:flex;align-items:center;gap:8px;box-sizing:border-box;height:48px;padding:0 8px;border-bottom:1px solid var(--ui-border);"
     "background:var(--ui-panel)}.ui-front-bar{flex:none}.ui-room-bar{position:sticky;top:0;z-index:2;justify-content:flex-end}"
+    ".ui-front-bar:has(>.ui-gaze){position:relative}.ui-front-bar>.ui-gaze{position:absolute;left:50%;transform:translateX(-50%)}"
+    ".ui-front-bar:has(>.ui-gaze) .ui-front-title{max-width:calc(50% - 72px);margin-right:auto}"
     ".ui-front-bar img{flex:none;width:32px;height:32px;border-radius:var(--ui-radius)}"
     ".ui-front-title{flex:1;min-width:0;margin:0;font-size:1rem;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
     ".ui-front-bar a,.ui-front-bar button,.ui-room-bar a{display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;box-sizing:border-box;"
@@ -19781,8 +20071,15 @@ def front_html(main: str, rooms: Any, *, title: str, lead: str = "", tags: Any =
 
 
 def front_document(main: str, rooms: Any, *, title: str, lead: str = "", tags: Any = (), icon: str | None = None, tools: str = "", css: str = "",
-                   scripts: str = "", document_title: str | None = None, favicon: str | None = None, theme: str = "modern") -> str:
-    """front_html() as a single-file page: the bundled CSS, front_css(), your ``css`` (trusted), and ``scripts`` (trusted module script tags, e.g. from module_script())."""
+                   scripts: str = "", document_title: str | None = None, favicon: str | None = None, theme: str = "modern",
+                   gaze_label: str | None = None) -> str:
+    """front_html() as a single-file page: the bundled CSS, front_css(), your ``css`` (trusted), and ``scripts`` (trusted module script tags, e.g. from module_script()).
+    Set gaze_label to the blink action name to include the interactive header avatar."""
+    if gaze_label is not None:
+        avatar = component_parts("gaze-avatar", label=gaze_label)
+        tools = avatar["html"] + tools
+        css += avatar["css"]
+        scripts += module_script(avatar["js"])
     return render_document(trusted_html=front_html(main, rooms, title=title, lead=lead, tags=tags, icon=icon, tools=tools) + scripts,
                            title=document_title or title, theme=theme, css=bundled_css() + front_css() + css, favicon=favicon, touch_icon=icon)
 
@@ -19837,13 +20134,13 @@ def _index_page() -> str:
     scripts = (module_script(stub_script(EXAMPLE_STUBS["mcp"], EXAMPLE_STUBS["api"]) + "bindTheme();\n") + module_script(_JS["theme.js"] + "bindSeed();\n")
                + module_script(_JS["curl.js"]) + module_script(WORLD_JS))
     return front_document(world_html(overworld), rooms, title="PySaiyanWeBoo", lead="Shared static-first UI contract for myon-bioinformatics projects.",
-                          tags=("v1", "build-free"), icon="./docs/brand/icon.png", tools=seed_roll_html(), css=css, scripts=scripts,
+                          tags=("v1", "build-free"), icon="./docs/brand/icon.png", tools=seed_roll_html(), gaze_label="Blink", css=css, scripts=scripts,
                           document_title="PySaiyanWeBoo — static UI contract", favicon="./docs/brand/favicon.png")
 
 
 def js_modules() -> dict[str, str]:
-    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, pager.js, scroll.js, world.js, issue-bulletin.js)."""
-    return {**_JS, "dial.js": DIAL_JS, "pager.js": PAGER_JS, "world.js": WORLD_JS, "issue-bulletin.js": ISSUE_BULLETIN_JS}
+    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, pager.js, scroll.js, world.js, issue-bulletin.js, gaze-avatar.js)."""
+    return {**_JS, "dial.js": DIAL_JS, "pager.js": PAGER_JS, "world.js": WORLD_JS, "issue-bulletin.js": ISSUE_BULLETIN_JS, "gaze-avatar.js": GAZE_AVATAR_JS}
 
 
 def js_source(name: str) -> str:
