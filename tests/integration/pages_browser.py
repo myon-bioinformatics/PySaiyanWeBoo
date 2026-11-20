@@ -906,6 +906,29 @@ class FrontPageBrowserTests(unittest.TestCase):
         expect(eyes).to_have_css('animation-name', 'none')
         page.close()
 
+    def test_header_avatar_keeps_short_touch_until_idle(self):
+        page = self.open(has_touch=True)
+        face = page.get_by_role('button', name='Blink', exact=True)
+        # Deliver the whole non-hover touch sequence before requestAnimationFrame.
+        face.evaluate("""face => {
+          const root = document.documentElement;
+          const touch = {pointerType: 'touch', isPrimary: true, clientX: innerWidth - 20, clientY: 24};
+          face.dispatchEvent(new PointerEvent('pointerdown', {...touch, bubbles: true}));
+          face.dispatchEvent(new PointerEvent('pointerup', {...touch, bubbles: true}));
+          root.dispatchEvent(new PointerEvent('pointerleave', touch));
+        }""")
+        expect(face).to_have_attribute('data-looking', '')
+        self.assertGreater(face.evaluate("face => parseFloat(face.style.getPropertyValue('--gaze-x'))"), 0)
+        expect(face).not_to_have_attribute('data-looking', '')
+
+        page.mouse.move(12, 24)
+        expect(face).to_have_attribute('data-looking', '')
+        page.evaluate("""() => document.documentElement.dispatchEvent(
+            new PointerEvent('pointerleave', {pointerType: 'mouse', isPrimary: true})
+        )""")
+        self.assertIsNone(face.get_attribute('data-looking'))
+        page.close()
+
     def test_the_world_fills_the_viewport_and_the_rooms_wait_behind_the_door(self):
         for viewport in ({'width': 390, 'height': 844}, {'width': 1280, 'height': 800}):
             page = self.open(viewport)

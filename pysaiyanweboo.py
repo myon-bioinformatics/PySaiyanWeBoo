@@ -19970,7 +19970,8 @@ for (const face of (typeof document === 'undefined' ? [] : document.querySelecto
   }
   document.addEventListener('pointermove', point, {passive:true});
   document.addEventListener('pointerdown', point, {passive:true});
-  document.documentElement.addEventListener('pointerleave', rest);
+  // A short tap leaves the viewport before its queued gaze frame can run.
+  document.documentElement.addEventListener('pointerleave', e => {if (e.pointerType !== 'touch') rest()});
   window.addEventListener('blur', rest);
   reduced.addEventListener('change', rest);
   face.addEventListener('click', () => {
