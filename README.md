@@ -76,6 +76,10 @@ Front page layout: `front_document(main, rooms, title=...)` is one view that fil
 (no script; ✖️ closes). A room is `{"id", "emoji", "title", "text", "html"}`: add one to put something on the page, improve a builder to improve the page.
 `index.html` is exactly that call over the library's builders (`world_html`, `stub_html`, `curl_panel_html`, `theme_switch_html`, `seed_dial_html`, `theme_wall`; `dial_html` + `dial.js` is the rotary dial the map's 🔍 uses), and a test
 requires every one of their outputs to be in it. `render_document` takes optional `favicon` / `touch_icon` PNG links for such pages.
+The small face in the center of the header looks toward the pointer or a tap, wanders after 1.5 seconds of inactivity, and blinks when pressed.
+To reuse it from a vendored `pysaiyanweboo.py`, pass `tools=gaze_avatar_html()`, `css=GAZE_AVATAR_CSS` and `scripts=module_script(GAZE_AVATAR_JS)` to
+`front_document()`. With reduced motion enabled the face stays still.
+
 [Motion and clock ownership](docs/world-motion.md) explains Python-generated plans, the browser
 projection, keyboard/reduced-motion controls, and daily countdown/timezone semantics.
 [School world](docs/world-classroom.md) adds a floor `tile` grid with solid `props` (desks, board, shelves; `classroom_floor()` writes a classroom),

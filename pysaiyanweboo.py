@@ -19695,10 +19695,90 @@ _INDEX_LAYOUT_CANDIDATES = {"schema": "web-ui-layout-candidates/1", "presets": {
 # to the page, add a room made from a builder; to improve the page, improve the builder. The main view fills one 48px-barred viewport; a room opens over it
 # through :target (no script; :has(:target) so a link to an anchor inside a room opens it too). Pixel values are multiples of 8.
 FRONT_RESERVED = "rooms"
+def gaze_avatar_html(*, label: str = "Blink") -> str:
+    """A small face for a header. Include GAZE_AVATAR_CSS and module_script(GAZE_AVATAR_JS) once per page."""
+    return (f'<button type="button" class="ui-gaze" aria-label="{escape(label, quote=True)}">'
+            '<span class="ui-gaze-face" aria-hidden="true"><span class="ui-gaze-look">'
+            '<span class="ui-gaze-eyes"></span></span></span></button>')
+
+
+GAZE_AVATAR_CSS = """
+button.ui-gaze,.ui-front-bar button.ui-gaze {
+  display:inline-grid;place-items:center;width:44px;height:44px;padding:0;border:0;
+  background:transparent;border-radius:50%;vertical-align:middle;cursor:pointer;
+}
+.ui-gaze:focus-visible {outline:2px solid currentColor;outline-offset:-2px}
+.ui-gaze-face {
+  display:grid;place-items:center;width:36px;height:34px;border-radius:49% 57% 46% 43%;
+  background:radial-gradient(ellipse at 32% 20%,#d8fbff 0%,#83deed 45%,#45afcc 100%);
+  box-shadow:inset 0 -2px 2px #2186a34d;transform:rotate(-6deg);
+}
+.ui-gaze-look {display:grid;place-items:center;animation:ui-gaze-wander 7s ease-in-out infinite}
+.ui-gaze-eyes {display:block;width:15px;height:8px;position:relative;animation:ui-gaze-blink 4.6s linear infinite}
+.ui-gaze-eyes::before,.ui-gaze-eyes::after {
+  content:"";position:absolute;top:0;width:4px;height:100%;border-radius:50%;background:#172f40;
+}
+.ui-gaze-eyes::before {left:0}.ui-gaze-eyes::after {right:0}
+.ui-gaze[data-looking] .ui-gaze-look {animation:none;transform:translate(var(--gaze-x),var(--gaze-y));transition:transform 110ms ease-out}
+@keyframes ui-gaze-wander {
+  0%,20%,95%,100% {transform:translate(0,0)} 32%,48% {transform:translate(3px,-1px)} 65%,80% {transform:translate(-3px,1px)}
+}
+@keyframes ui-gaze-blink {0%,90%,96%,100% {transform:scaleY(1)} 93% {transform:scaleY(.14)}}
+@media (prefers-reduced-motion:reduce) {
+  .ui-gaze .ui-gaze-eyes,.ui-gaze .ui-gaze-look,.ui-gaze[data-looking] .ui-gaze-look {animation:none;transform:none;transition:none}
+}
+"""
+
+
+GAZE_AVATAR_JS = """
+for (const face of document.querySelectorAll('.ui-gaze')) {
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const eyes = face.querySelector('.ui-gaze-eyes');
+  let idleTimer, frame, x, y;
+  function rest() {
+    cancelAnimationFrame(frame);
+    clearTimeout(idleTimer);
+    frame = 0;
+    delete face.dataset.looking;
+  }
+  function look() {
+    frame = 0;
+    const rect = face.getBoundingClientRect();
+    const dx = x - rect.left - rect.width / 2;
+    const dy = y - rect.top - rect.height / 2;
+    const distance = Math.max(22, Math.hypot(dx, dy));
+    face.style.setProperty('--gaze-x', (5 * dx / distance) + 'px');
+    face.style.setProperty('--gaze-y', (4 * dy / distance) + 'px');
+    face.dataset.looking = '';
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(rest, 1500);
+  }
+  function point(event) {
+    if (reduced.matches || !event.isPrimary) return;
+    x = event.clientX;
+    y = event.clientY;
+    if (!frame) frame = requestAnimationFrame(look);
+  }
+  document.addEventListener('pointermove', point, {passive:true});
+  document.addEventListener('pointerdown', point, {passive:true});
+  document.documentElement.addEventListener('pointerleave', rest);
+  window.addEventListener('blur', rest);
+  reduced.addEventListener('change', rest);
+  face.addEventListener('click', () => {
+    if (!reduced.matches) eyes.animate([
+      {transform:'scaleY(1)'}, {transform:'scaleY(.12)',offset:.4}, {transform:'scaleY(1)'}
+    ], 260);
+  });
+}
+"""
+
+
 _FRONT_CSS = (
     ".ui-front{display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden;background:var(--ui-bg);color:var(--ui-fg)}"
     ".ui-front-bar,.ui-room-bar{display:flex;align-items:center;gap:8px;box-sizing:border-box;height:48px;padding:0 8px;border-bottom:1px solid var(--ui-border);"
     "background:var(--ui-panel)}.ui-front-bar{flex:none}.ui-room-bar{position:sticky;top:0;z-index:2;justify-content:flex-end}"
+    ".ui-front-bar:has(>.ui-gaze){position:relative}.ui-front-bar>.ui-gaze{position:absolute;left:50%;transform:translateX(-50%)}"
+    ".ui-front-bar:has(>.ui-gaze) .ui-front-title{max-width:calc(50% - 72px);margin-right:auto}"
     ".ui-front-bar img{flex:none;width:32px;height:32px;border-radius:var(--ui-radius)}"
     ".ui-front-title{flex:1;min-width:0;margin:0;font-size:1rem;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
     ".ui-front-bar a,.ui-front-bar button,.ui-room-bar a{display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;box-sizing:border-box;"
@@ -19817,9 +19897,9 @@ def _index_page() -> str:
     ]
     css = layout_presets.css(presets) + world_css(world) + world_css(overworld, base=False) + world_css(school, base=False) + world_css(cities, base=False) + _WALL_CSS
     scripts = (module_script(stub_script(EXAMPLE_STUBS["mcp"], EXAMPLE_STUBS["api"]) + "bindTheme();\n") + module_script(_JS["theme.js"] + "bindSeed();\n")
-               + module_script(_JS["curl.js"]) + module_script(WORLD_JS))
+               + module_script(_JS["curl.js"]) + module_script(WORLD_JS) + module_script(GAZE_AVATAR_JS))
     return front_document(world_html(overworld), rooms, title="PySaiyanWeBoo", lead="Shared static-first UI contract for myon-bioinformatics projects.",
-                          tags=("v1", "build-free"), icon="./docs/brand/icon.png", tools=seed_roll_html(), css=css, scripts=scripts,
+                          tags=("v1", "build-free"), icon="./docs/brand/icon.png", tools=gaze_avatar_html() + seed_roll_html(), css=css + GAZE_AVATAR_CSS, scripts=scripts,
                           document_title="PySaiyanWeBoo — static UI contract", favicon="./docs/brand/favicon.png")
 
 
