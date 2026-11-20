@@ -34,6 +34,12 @@ PLOTLY_JSDELIVR = "https://cdn.jsdelivr.net/npm/plotly.js-dist-min/plotly.min.js
 
 
 class PlotlyFigureTests(unittest.TestCase):
+    def test_plotly_runtime_matches_dragowing_pin(self):
+        from tools.build.sync_dragowing_plotly import TARGET, bounds, verify
+        source = TARGET.read_bytes()
+        start, end = bounds(source)
+        verify(source[start:end])
+
     def test_remote_scripts_allowlist_is_explicit(self):
         self.assertEqual(remote_scripts("plotly.js"), (PLOTLY_JSDELIVR,))
         with self.assertRaises(ValueError):

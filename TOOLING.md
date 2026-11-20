@@ -271,3 +271,11 @@ screenshots do.
 
 The directory is created with the first reviewed baseline; until then every
 candidate reports `missing-baseline`.
+
+### Plotly
+
+DRAgoWing owns the shared Plotly initializer and bounded CDN reader. PSWB keeps
+its public figure API, theme, CSP nonce handling and single-file distribution.
+Check the vendored region offline with `python tools/build/sync_dragowing_plotly.py`.
+To update it, set the reviewed DRAgoWing commit and region SHA-256 in that script,
+then run `python tools/build/sync_dragowing_plotly.py --from-repo ../DRAgoWing`.
