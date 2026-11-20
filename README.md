@@ -77,10 +77,10 @@ Front page layout: `front_document(main, rooms, title=...)` is one view that fil
 `index.html` is exactly that call over the library's builders (`world_html`, `stub_html`, `curl_panel_html`, `theme_switch_html`, `seed_dial_html`, `theme_wall`; `dial_html` + `dial.js` is the rotary dial the map's 🔍 uses), and a test
 requires every one of their outputs to be in it. `render_document` takes optional `favicon` / `touch_icon` PNG links for such pages.
 The small face in the center of the header looks toward the pointer or a tap, wanders after 1.5 seconds of inactivity, and blinks when pressed.
-Pass `gaze_label="まばたき"` to an existing `front_document(...)` call to add the face, its styles and its behavior. With reduced motion enabled it stays still.
-For a standalone HTML page, call `component_document("gaze-avatar", label="まばたき")` or run
-`python -S pysaiyanweboo.py --component gaze-avatar --set label=まばたき > avatar.html`.
-For a custom layout, `component_parts("gaze-avatar", label="まばたき")` returns the button HTML, CSS and JavaScript as strings.
+Pass `gaze_label="Blink"` to an existing `front_document(...)` call to add the face, its styles and its behavior. With reduced motion enabled it stays still.
+The component defaults to the accessible name `Blink`. For a standalone HTML page, call `component_document("gaze-avatar")` or run
+`python -S pysaiyanweboo.py --component gaze-avatar > avatar.html`.
+For a custom layout, `component_parts("gaze-avatar")` returns the button HTML, CSS and JavaScript as strings.
 Place the button wherever needed and include the CSS and module once per page.
 
 [Motion and clock ownership](docs/world-motion.md) explains Python-generated plans, the browser
