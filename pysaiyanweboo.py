@@ -6171,6 +6171,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     # does not bind itself on load, "spec" when the builder wants a checked spec, and "classic" for a classic script (not an ES module).
     # Specs and keyword arguments pass through to the builder.
     "dial": {"html": "dial_html", "css": ("dial.css",), "js": ("dial.js",)},
+    "gaze-avatar": {"html": "gaze_avatar_html", "css": ("gaze_avatar_css",), "js": ("gaze-avatar.js",)},
     "stage": {"html": "stage_html", "css": ("stage.css",), "js": ()},
     "pager": {"html": "pager_html", "css": ("pager.css", "dial.css"), "js": ("dial.js", "pager.js")},
     "scroll": {"html": "scroll_html", "css": ("scroll.css",), "js": ("scroll.js",)},
@@ -6202,7 +6203,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
 }
 # Stylesheets that are built rather than stored: the spec (the first argument) decides them.
 _COMPONENT_CSS = {"world_css": lambda *a: world_css(a[0], base=False), "showcase_css": lambda *a: showcase_css(showcase_validate(a[0])),
-                  "front_css": lambda *a: front_css()}
+                  "front_css": lambda *a: front_css(), "gaze_avatar_css": lambda: GAZE_AVATAR_CSS}
 
 
 def component_parts(name: str, /, *args: Any, **kwargs: Any) -> dict[str, str]:
@@ -19695,8 +19696,12 @@ _INDEX_LAYOUT_CANDIDATES = {"schema": "web-ui-layout-candidates/1", "presets": {
 # to the page, add a room made from a builder; to improve the page, improve the builder. The main view fills one 48px-barred viewport; a room opens over it
 # through :target (no script; :has(:target) so a link to an anchor inside a room opens it too). Pixel values are multiples of 8.
 FRONT_RESERVED = "rooms"
+
+
 def gaze_avatar_html(*, label: str = "Blink") -> str:
-    """A small face for a header. Include GAZE_AVATAR_CSS and module_script(GAZE_AVATAR_JS) once per page."""
+    """Button markup for the gaze-avatar component. The label names the blink action."""
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("the avatar label must be nonempty text")
     return (f'<button type="button" class="ui-gaze" aria-label="{escape(label, quote=True)}">'
             '<span class="ui-gaze-face" aria-hidden="true"><span class="ui-gaze-look">'
             '<span class="ui-gaze-eyes"></span></span></span></button>')
@@ -19731,7 +19736,9 @@ button.ui-gaze,.ui-front-bar button.ui-gaze {
 
 
 GAZE_AVATAR_JS = """
-for (const face of document.querySelectorAll('.ui-gaze')) {
+for (const face of (typeof document === 'undefined' ? [] : document.querySelectorAll('.ui-gaze'))) {
+  if (face.hasAttribute('data-gaze-bound')) continue;
+  face.setAttribute('data-gaze-bound', '');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const eyes = face.querySelector('.ui-gaze-eyes');
   let idleTimer, frame, x, y;
@@ -19843,8 +19850,15 @@ def front_html(main: str, rooms: Any, *, title: str, lead: str = "", tags: Any =
 
 
 def front_document(main: str, rooms: Any, *, title: str, lead: str = "", tags: Any = (), icon: str | None = None, tools: str = "", css: str = "",
-                   scripts: str = "", document_title: str | None = None, favicon: str | None = None, theme: str = "modern") -> str:
-    """front_html() as a single-file page: the bundled CSS, front_css(), your ``css`` (trusted), and ``scripts`` (trusted module script tags, e.g. from module_script())."""
+                   scripts: str = "", document_title: str | None = None, favicon: str | None = None, theme: str = "modern",
+                   gaze_label: str | None = None) -> str:
+    """front_html() as a single-file page: the bundled CSS, front_css(), your ``css`` (trusted), and ``scripts`` (trusted module script tags, e.g. from module_script()).
+    Set gaze_label to the blink action name to include the interactive header avatar."""
+    if gaze_label is not None:
+        avatar = component_parts("gaze-avatar", label=gaze_label)
+        tools = avatar["html"] + tools
+        css += avatar["css"]
+        scripts += module_script(avatar["js"])
     return render_document(trusted_html=front_html(main, rooms, title=title, lead=lead, tags=tags, icon=icon, tools=tools) + scripts,
                            title=document_title or title, theme=theme, css=bundled_css() + front_css() + css, favicon=favicon, touch_icon=icon)
 
@@ -19897,15 +19911,15 @@ def _index_page() -> str:
     ]
     css = layout_presets.css(presets) + world_css(world) + world_css(overworld, base=False) + world_css(school, base=False) + world_css(cities, base=False) + _WALL_CSS
     scripts = (module_script(stub_script(EXAMPLE_STUBS["mcp"], EXAMPLE_STUBS["api"]) + "bindTheme();\n") + module_script(_JS["theme.js"] + "bindSeed();\n")
-               + module_script(_JS["curl.js"]) + module_script(WORLD_JS) + module_script(GAZE_AVATAR_JS))
+               + module_script(_JS["curl.js"]) + module_script(WORLD_JS))
     return front_document(world_html(overworld), rooms, title="PySaiyanWeBoo", lead="Shared static-first UI contract for myon-bioinformatics projects.",
-                          tags=("v1", "build-free"), icon="./docs/brand/icon.png", tools=gaze_avatar_html() + seed_roll_html(), css=css + GAZE_AVATAR_CSS, scripts=scripts,
+                          tags=("v1", "build-free"), icon="./docs/brand/icon.png", tools=seed_roll_html(), gaze_label="Blink", css=css, scripts=scripts,
                           document_title="PySaiyanWeBoo — static UI contract", favicon="./docs/brand/favicon.png")
 
 
 def js_modules() -> dict[str, str]:
-    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, pager.js, scroll.js, world.js, issue-bulletin.js)."""
-    return {**_JS, "dial.js": DIAL_JS, "pager.js": PAGER_JS, "world.js": WORLD_JS, "issue-bulletin.js": ISSUE_BULLETIN_JS}
+    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, pager.js, scroll.js, world.js, issue-bulletin.js, gaze-avatar.js)."""
+    return {**_JS, "dial.js": DIAL_JS, "pager.js": PAGER_JS, "world.js": WORLD_JS, "issue-bulletin.js": ISSUE_BULLETIN_JS, "gaze-avatar.js": GAZE_AVATAR_JS}
 
 
 def js_source(name: str) -> str:

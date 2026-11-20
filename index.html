@@ -548,7 +548,9 @@ export function bindWorlds(root=document){return[...root.querySelectorAll("[data
 globalThis.webUiWorld={fitZoom,clampFocus,travelSeconds,minutesUntil,boardClock,boardSeconds,gaugeState,gaugeCells,clockLabel,utcOffsetLabel,zoneOffset,cleanMessage,motionWalk,motionSample,motionRoute,routeSample,gridPath,gridRoute,direction,cleanAvatar,bindWorlds};
 bindWorlds();
 </script><script type="module">
-for (const face of document.querySelectorAll('.ui-gaze')) {
+for (const face of (typeof document === 'undefined' ? [] : document.querySelectorAll('.ui-gaze'))) {
+  if (face.hasAttribute('data-gaze-bound')) continue;
+  face.setAttribute('data-gaze-bound', '');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const eyes = face.querySelector('.ui-gaze-eyes');
   let idleTimer, frame, x, y;

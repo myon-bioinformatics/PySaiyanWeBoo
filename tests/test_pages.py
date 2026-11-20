@@ -402,6 +402,19 @@ class WorldTests(unittest.TestCase):
             seen.add(theme["--ui-bg"])
         self.assertGreater(len(seen), 150)
 
+    def test_front_avatar_is_opt_in_and_uses_the_shared_component(self):
+        main, rooms = args_for("front")[0]
+        parts = ui.component_parts("gaze-avatar", label='まばたき "A"')
+        plain = ui.front_document(main, rooms, title="Demo")
+        self.assertNotIn(parts["js"], plain)
+        self.assertNotIn('class="ui-gaze"', plain)
+        self.assertIn("&quot;A&quot;", parts["html"])
+        page = ui.front_document(main, rooms, title="Demo", gaze_label='まばたき "A"', tools="<i>tool</i>")
+        for fragment in (parts["html"] + "<i>tool</i>", parts["css"], ui.module_script(parts["js"])):
+            self.assertEqual(page.count(fragment), 1)
+        self.assertEqual(run_cli("--component", "gaze-avatar", "--set", "label=まばたき"),
+                         ui.component_document("gaze-avatar", label="まばたき"))
+
     def test_front_page_is_what_the_generator_writes(self):
         page = (ROOT / "index.html").read_text(encoding="utf-8")
         self.assertEqual(page, pysaiyanweboo.example_pages()["index.html"])
