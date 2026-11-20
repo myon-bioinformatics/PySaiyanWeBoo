@@ -1321,9 +1321,9 @@ def shared_scripts(asset_base: str, *, names: tuple[str, ...] = ("ui.js",)) -> t
 
 def module_asset(name: str = "ui.js") -> tuple[bytes, str]:
     """Return immutable bundled module bytes and the JavaScript MIME type."""
-    if name not in ("ui.js", "world.js"):
+    if name not in ("ui.js", "world.js", "issue-bulletin.js"):
         raise ValueError("unknown embedded module")
-    return (EMBEDDED_UI_JS if name == "ui.js" else WORLD_JS).encode("utf-8"), "text/javascript; charset=utf-8"
+    return (EMBEDDED_UI_JS if name == "ui.js" else js_source(name)).encode("utf-8"), "text/javascript; charset=utf-8"
 
 
 def gif_recorder_document(*, title: str = "web_ui GIF recorder") -> str:
@@ -4002,9 +4002,8 @@ def world_validate(spec: Any) -> dict[str, Any]:
                 or not isinstance(board.get("offset_label", False), bool):
             raise ValueError("a board has a title, 1..12 items, and optional post, offset_label, offset_minutes, zones and shared_issue")
         shared_issue = board.get("shared_issue")
-        if shared_issue is not None and (not isinstance(shared_issue, str) or (len(shared_issue.split("/")) == 3 and shared_issue.split("/")[1] in {".", ".."}) or not re.fullmatch(
-                r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}/[1-9][0-9]{0,8}", shared_issue)):
-            raise ValueError("shared_issue must be owner/repository/positive-issue-number")
+        if shared_issue is not None:
+            issue_bulletin_urls(shared_issue)
         zones, seen_zones = [], set()
         zones_in = board.get("zones", [])
         if not isinstance(zones_in, list) or len(zones_in) > 6:
@@ -4438,6 +4437,47 @@ def _shots_html(world: dict[str, Any]) -> str:
             f'<div class="ui-shots-stage">{articles}</div>{marks}</div></div></section>')
 
 
+def issue_bulletin_urls(target: str) -> tuple[str, str]:
+    """Return anonymous read URL and native GitHub post link for an Issues bulletin."""
+    if not isinstance(target, str) or (len(target.split("/")) == 3 and target.split("/")[1] in {".", ".."}) or not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}/[1-9][0-9]{0,8}", target):
+        raise ValueError("shared_issue must be owner/repository/positive-issue-number")
+    owner, repo, number = target.split("/")
+    return (f"https://api.github.com/repos/{owner}/{repo}/issues/{number}/comments?per_page=100",
+            f"https://github.com/{owner}/{repo}/issues/{number}#new_comment_field")
+
+
+def bulletin_html(post_url: str, *, title: str, notice: str, post_label: str) -> str:
+    """Render a bulletin with a trusted HTTPS destination; never accept a feed URL here."""
+    return _bulletin_html(post_url, title=title, notice=notice, post_label=post_label)
+
+
+def _bulletin_html(post_url: str, *, title: str, notice: str, post_label: str, issue_api: str | None = None) -> str:
+    if not isinstance(post_url, str) or any(ord(c) <= 32 or ord(c) == 127 or c == "\\" for c in post_url):
+        raise ValueError("bulletin post URL must be an absolute HTTPS URL without credentials")
+    parts = urlsplit(post_url)
+    if parts.scheme != "https" or not parts.hostname or parts.username is not None:
+        raise ValueError("bulletin post URL must be an absolute HTTPS URL without credentials")
+    api_attr = f' data-api="{escape(issue_api, quote=True)}"' if issue_api else ""
+    return (f'<details class="ui-board-shared"{api_attr}>'
+            f'<summary>{escape(title)}</summary><p>{escape(notice)}</p>'
+            f'<a href="{escape(post_url, quote=True)}" target="_blank" rel="noopener noreferrer">{escape(post_label)}</a> '
+            '<button type="button" data-shared-refresh>共有コメントを取得・更新</button>'
+            '<p role="status" data-shared-status>未取得。自動更新なし。更新間隔は最低120秒。</p>'
+            '<ul data-shared-comments></ul></details>')
+
+
+def issue_bulletin_html(target: str, *, extra_notice: str = "") -> str:
+    """Render a public, GitHub-posted bulletin independent of any World."""
+    api_url, post_url = issue_bulletin_urls(target)
+    return _bulletin_html(
+        post_url, title="共有掲示板（GitHub公開コメント）",
+        notice="投稿はGitHubへのログインが必要です。本文・アカウント名・投稿時刻はインターネットに公開されます。"
+               "個人情報や秘密の待ち合わせ情報は書かないでください。" + extra_notice,
+        post_label="GitHubで公開投稿（別タブ）", issue_api=api_url,
+    )
+
+
 def _board_html(board: dict[str, Any] | None) -> str:
     """The info board: a clock and a constant-speed scrolling line; items with ``at`` get "in N min" from the page's clock."""
     if not board:
@@ -4467,19 +4507,8 @@ def _board_html(board: dict[str, Any] | None) -> str:
     form = ('<form class="ui-board-post"><input class="ui-input" name="message" maxlength="60" placeholder="Leave a line" '
             'aria-label="Leave a line on the board" autocomplete="off"><button class="ui-button" type="submit">Post</button></form>'
             if board["post"] else "")
-    shared = ""
-    if board.get("shared_issue"):
-        owner, repo, number = board["shared_issue"].split("/")
-        issue_url = f"https://github.com/{owner}/{repo}/issues/{number}"
-        api_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{number}/comments?per_page=100"
-        shared = (f'<details class="ui-board-shared" data-api="{escape(api_url, quote=True)}">'
-                  '<summary>共有掲示板（GitHub公開コメント）</summary>'
-                  '<p>投稿はGitHubへのログインが必要です。本文・アカウント名・投稿時刻はインターネットに公開されます。'
-                  '個人情報や秘密の待ち合わせ情報は書かないでください。ページ内Postはこのページだけで、共有されません。</p>'
-                  f'<a href="{escape(issue_url, quote=True)}#new_comment_field" target="_blank" rel="noopener noreferrer">GitHubで公開投稿（別タブ）</a> '
-                  '<button type="button" data-shared-refresh>共有コメントを取得・更新</button>'
-                  '<p role="status" data-shared-status>未取得。自動更新なし。更新間隔は最低120秒。</p>'
-                  '<ul data-shared-comments></ul></details>')
+    shared = (issue_bulletin_html(board["shared_issue"], extra_notice="ページ内Postはこのページだけで、共有されません。")
+              if board.get("shared_issue") else "")
     label = " data-offset-label" if board["offset_label"] else ""
     chips = "".join(f'<span class="ui-board-zone" data-zone-id="{z["id"]}" data-rows="{json.dumps(list(zone_rows(z["tz"])), separators=(",", ":"))}">'
                     f'{escape(z["label"])} <b data-zone-clock>--:--</b></span>' for z in board["zones"])
@@ -5005,8 +5034,9 @@ function bindPlayer(el,floor,onMove){
 """
 
 
-WORLD_SHARED_JS = r"""
+ISSUE_BULLETIN_JS = r"""
 // GET only. No credentials, storage, Markdown rendering, or automatic polling.
+export function cleanMessage(text,limit=60){if(typeof text!=="string")return null;const kept=[...text].map(c=>/[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/.test(c)?" ":(c!=="\u200d"&&/[\p{Cc}\p{Cf}\p{Cn}\p{Co}\p{Cs}\p{Zs}\p{Zl}\p{Zp}]/u.test(c)?"":c)).join("").split(" ").filter(Boolean).join(" ");const cut=[...kept].slice(0,limit).join("").trimEnd();return cut||null}
 export function sharedLines(comments){
  if(!Array.isArray(comments))throw new Error("Invalid comments response");
  return comments.slice(0,100).filter(c=>c&&typeof c.body==="string"&&typeof c.user?.login==="string")
@@ -5018,8 +5048,9 @@ export function sharedWait(response,now){
  return Math.max(now+120000, retry&&Number.isFinite(Number(retry))?now+Number(retry)*1000:0,
  response.headers.get("x-ratelimit-remaining")==="0"&&Number.isFinite(Number(reset))?Number(reset)*1000:0);
 }
-export function bindSharedBoard(board){
- const panel=board.querySelector(".ui-board-shared");if(!panel)return;
+// read is supplied by trusted code, never a URL or expression from a spec.
+export function bindBulletin(panel,read,{rangeText="最大5件、本文60文字。",moreText="続きは投稿先で確認してください。",errorText="取得できませんでした。前回の表示を保持します。"}={}){
+ if(!panel||typeof read!=="function")return;
  const button=panel.querySelector("[data-shared-refresh]"),status=panel.querySelector("[data-shared-status]"),list=panel.querySelector("[data-shared-comments]");
  let next=0,busy=false;
  button.addEventListener("click",async()=>{
@@ -5028,19 +5059,40 @@ export function bindSharedBoard(board){
   busy=true;button.disabled=true;next=Date.now()+120000;
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);
   try{
-   const response=await fetch(panel.dataset.api,{method:"GET",cache:"no-store",credentials:"omit",referrerPolicy:"no-referrer",headers:{Accept:"application/vnd.github+json"},signal:controller.signal});
-   next=sharedWait(response,Date.now());
-   if(!response.ok)throw new Error("HTTP "+response.status);
-   const lines=sharedLines(await response.json());if(!panel.isConnected)return;
-   const nodes=lines.map(line=>{const li=document.createElement("li");li.textContent=line.author+" · "+line.time+" — "+line.text;return li});
+   const result=await read(controller.signal,headers=>{next=sharedWait({headers},Date.now())});
+   if(!Array.isArray(result?.lines))throw new Error("Invalid bulletin lines");
+   if(!panel.isConnected)return;
+   const nodes=[];
+   for(const line of result.lines.slice(0,5)){
+    const text=cleanMessage(line?.text);if(!text)continue;
+    const author=cleanMessage(line.author,100)||"",time=cleanMessage(line.time,30)||"";
+    const li=document.createElement("li");li.textContent=author+" · "+time+" — "+text;nodes.push(li);
+   }
    list.replaceChildren(...nodes);
-   status.textContent="取得済み（"+new Date().toLocaleTimeString()+"）。先頭100コメント内の末尾最大5件、本文60文字。"+(response.headers.get("link")?.includes('rel="next"')?"続きはGitHubで確認してください。":"");
-  }catch(error){if(panel.isConnected)status.textContent="取得できませんでした（通信・API制限・公開設定を確認）。前回の表示を保持します。"}
+   status.textContent="取得済み（"+new Date().toLocaleTimeString()+"）。"+rangeText+(result.more?moreText:"");
+  }catch(error){if(panel.isConnected)status.textContent=errorText}
   finally{clearTimeout(timeout);busy=false;button.disabled=false}
  });
 }
+export function bindIssueBulletin(panel){
+ if(!panel)return;
+ const api=panel.dataset.api;
+ const target=typeof api==="string"&&/^https:\/\/api\.github\.com\/repos\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/([A-Za-z0-9_.-]{1,100})\/issues\/[1-9][0-9]{0,8}\/comments\?per_page=100$/.exec(api);
+ if(!target||target[0]!==api||target[1]==="."||target[1]==="..")return;
+ bindBulletin(panel,async(signal,observe)=>{
+  const response=await fetch(api,{method:"GET",cache:"no-store",credentials:"omit",redirect:"error",referrerPolicy:"no-referrer",headers:{Accept:"application/vnd.github+json"},signal});
+  observe(response.headers);
+  if(!response.ok)throw new Error("HTTP "+response.status);
+  return {lines:sharedLines(await response.json()), more:response.headers.get("link")?.includes('rel="next"')};
+ }, {rangeText:"先頭100コメント内の末尾最大5件、本文60文字。",moreText:"続きはGitHubで確認してください。",errorText:"取得できませんでした（通信・API制限・公開設定を確認）。前回の表示を保持します。"});
+}
+
 """
 
+# Backward-compatible exports for existing world.js consumers.
+WORLD_SHARED_JS = ISSUE_BULLETIN_JS + r"""
+export function bindSharedBoard(board){bindIssueBulletin(board.querySelector(".ui-board-shared"))}
+"""
 WORLD_JS = WORLD_MOTION_JS + WORLD_SHARED_JS + WORLD_TEXT_JS + DIAL_JS + r"""/* web-ui world: one page, a camera. Shots: scroll marks light up (data-lit). Map: drag, wheel and pinch move a camera; spots open a sheet. No page changes. */
 const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
 export function fitZoom(w,h,vw,vh){return Math.min(vw/w,vh/h)}
@@ -5053,7 +5105,6 @@ export function gaugeCells(filled,cells,done,todo){return done.repeat(filled)+to
 export function clockLabel(minutes){const h=Math.floor(minutes/60)%24,m=minutes%60;return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0")}
 export function zoneOffset(rows,t){let lo=0,hi=rows.length/2-1;while(lo<hi){const mid=(lo+hi+1)>>1;if(rows[2*mid]<=t)lo=mid;else hi=mid-1}return rows[2*lo+1]}
 export function utcOffsetLabel(offset){if(offset===0)return"UTC";const a=Math.abs(offset),h=Math.floor(a/60),m=a%60;return"UTC"+(offset>0?"+":"-")+h+(m?":"+String(m).padStart(2,"0"):"")}
-export function cleanMessage(text,limit=60){if(typeof text!=="string")return null;const kept=[...text].map(c=>/[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/.test(c)?" ":(c!=="\u200d"&&/[\p{Cc}\p{Cf}\p{Cn}\p{Co}\p{Cs}\p{Zs}\p{Zl}\p{Zp}]/u.test(c)?"":c)).join("").split(" ").filter(Boolean).join(" ");const cut=[...kept].slice(0,limit).join("").trimEnd();return cut||null}
 export function clampFocus(fx,fy,z,w,h,vw,vh){const hw=vw/(2*z),hh=vh/(2*z);return[w>2*hw?clamp(fx,hw,w-hw):w/2,h>2*hh?clamp(fy,hh,h-hh):h/2]}
 function bindShots(el){el.dataset.js="";const marks=[...el.querySelectorAll(".ui-shot-mark")];if(typeof IntersectionObserver==="undefined"){marks[0].dataset.lit="";return el}const io=new IntersectionObserver(es=>{for(const e of es){if(e.isIntersecting)e.target.dataset.lit="";else delete e.target.dataset.lit}},{root:el.querySelector(".ui-shots-scroll"),threshold:0.5});for(const m of marks)io.observe(m);return el}
 function bindMap(el){el.dataset.js="";const view=el.querySelector(".ui-world-view"),cam=el.querySelector(".ui-world-cam"),zmax=Number(el.dataset.zoomMax||4),pts=new Map();let fx=0,fy=0,z=1,moved=0,onFloor=()=>{};
@@ -19773,8 +19824,8 @@ def _index_page() -> str:
 
 
 def js_modules() -> dict[str, str]:
-    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, pager.js, scroll.js, world.js)."""
-    return {**_JS, "dial.js": DIAL_JS, "pager.js": PAGER_JS, "world.js": WORLD_JS}
+    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, pager.js, scroll.js, world.js, issue-bulletin.js)."""
+    return {**_JS, "dial.js": DIAL_JS, "pager.js": PAGER_JS, "world.js": WORLD_JS, "issue-bulletin.js": ISSUE_BULLETIN_JS}
 
 
 def js_source(name: str) -> str:
