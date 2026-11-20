@@ -1398,3 +1398,63 @@ def test_move_confirm_and_blended_spot_labels():
     assert "background:transparent" in css and "text-shadow:" in css and "[data-selected]" in css
 
 
+
+
+def test_standalone_bulletin_markup():
+    html = ui.bulletin_html("https://example.test/community#post", title="<bulletin>", notice="<public>", post_label="External post")
+    assert "https://example.test/community#post" in html and "data-api" not in html
+    assert "&lt;bulletin&gt;" in html and "&lt;public&gt;" in html
+    for invalid in ("javascript:alert(1)", "//example.test", "https://user:pass@example.test", "https://bad\\host", "https://bad\nhost"):
+        with pytest.raises(ValueError):
+            ui.bulletin_html(invalid, title="", notice="", post_label="")
+    project = "myon-bioinformatics/PySaiyanWeBoo/110"
+    api, post = ui.issue_bulletin_urls(project)
+    assert api == "https://api.github.com/repos/myon-bioinformatics/PySaiyanWeBoo/issues/110/comments?per_page=100"
+    assert post == "https://github.com/myon-bioinformatics/PySaiyanWeBoo/issues/110#new_comment_field"
+    issue_html = ui.issue_bulletin_html(project)
+    assert api in issue_html and post in issue_html and "ページ内Post" not in issue_html
+    assert ui.module_asset("issue-bulletin.js")[0].decode() == ui.js_source("issue-bulletin.js")
+
+
+def test_standalone_bulletin_reader_and_issue_transport():
+    node26() or pytest.skip("Node 26+ required")
+    harness = r"""
+      const assert=(await import('node:assert/strict')).default;
+      let now=1000;Date.now=()=>now;
+      globalThis.document={createElement(){return {}}};
+      function makePanel(api){
+       const refs={refresh:{addEventListener(type,cb){this.click=cb}},status:{},comments:{replaceChildren(...nodes){this.nodes=nodes}}};
+       return {isConnected:true,dataset:{api},refs,querySelector(s){return refs[s.slice(13,-1)]}};
+      }
+      const generic=makePanel(),trustedRead=async(signal,observe)=>{
+       assert.equal(signal.aborted,false);
+       observe(new Headers());
+       return {lines:[{author:'fixture',time:'today',text:'<b>plain text</b>'}],more:true};
+      };
+      bindBulletin(generic,trustedRead,{moreText:'external continuation'});
+      assert.equal(generic.refs.comments.nodes,undefined);
+      await generic.refs.refresh.click();
+      assert.equal(generic.refs.comments.nodes[0].textContent,'fixture · today — <b>plain text</b>');
+      assert.match(generic.refs.status.textContent,/external continuation/);
+      for(const api of ['https://example.test/comments','https://api.github.com/repos/a/../issues/2/comments?per_page=100',
+                        'https://api.github.com/repos/a/b/issues/2/comments?per_page=100&token=test','https://api.github.com/repos/a/b/issues/2/comments?per_page=100\n']){
+       const rogue=makePanel(api);bindIssueBulletin(rogue);assert.equal(rogue.refs.refresh.click,undefined);
+      }
+      const api='https://api.github.com/repos/myon-bioinformatics/PySaiyanWeBoo/issues/110/comments?per_page=100';
+      const issue=makePanel(api);let count=0,ok=true;
+      globalThis.fetch=async(url,options)=>{
+       count++;assert.equal(url,api);assert.equal(options.method,'GET');assert.equal(options.credentials,'omit');
+       assert.equal(options.redirect,'error');assert.equal(options.referrerPolicy,'no-referrer');
+       return {ok,status:ok?200:404,headers:new Headers(),
+        json:async()=>[{body:'a comment on a closed issue',user:{login:'fixture'},created_at:'2030-01-01T00:00:00Z'}]};
+      };
+      bindIssueBulletin(issue);assert.equal(count,0);
+      await issue.refs.refresh.click();assert.equal(count,1);
+      assert.match(issue.refs.comments.nodes[0].textContent,/a comment on a closed issue/);
+      now+=120001;ok=false;
+      await issue.refs.refresh.click();assert.equal(count,2);
+      assert.match(issue.refs.status.textContent,/前回/);
+      assert.match(issue.refs.comments.nodes[0].textContent,/a comment on a closed issue/);
+      console.log('standalone bulletin passed');
+    """
+    assert 'standalone bulletin passed' in node_js(ui.js_source("issue-bulletin.js") + harness).stdout
