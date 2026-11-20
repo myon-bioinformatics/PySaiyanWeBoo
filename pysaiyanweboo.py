@@ -1360,12 +1360,24 @@ def classic_script(source: str, *, nonce: str | None = None) -> str:
 
     Inline bodies require CSP script-src nonce/hash/unsafe-inline authorization.
     """
-    if nonce is not None and (not nonce or not re.fullmatch(r"[A-Za-z0-9+/_=-]+", nonce)):
+    return _inline_script(source, nonce=nonce, module=False)
+
+
+def _nonce_attribute(nonce: str | None) -> str:
+    if nonce is None:
+        return ""
+    if not re.fullmatch(r"[A-Za-z0-9+/_=-]+", nonce):
         raise ValueError("invalid CSP nonce")
+    return f' nonce="{escape(nonce, quote=True)}"'
+
+
+def _inline_script(source: str, *, nonce: str | None, module: bool) -> str:
+    attribute = _nonce_attribute(nonce)
     if re.search(r"</script(?=[\s/>])", source, re.IGNORECASE):
-        raise ValueError("script contains HTML script end tag")
-    attribute = f' nonce="{escape(nonce, quote=True)}"' if nonce else ""
-    return f"<script{attribute}>{source}</script>"
+        kind = "module" if module else "script"
+        raise ValueError(f"{kind} contains HTML script end tag")
+    script_type = ' type="module"' if module else ""
+    return f"<script{script_type}{attribute}>{source}</script>"
 
 
 def module_script(source: str, *, mode: str = "inline", nonce: str | None = None) -> str:
@@ -1376,17 +1388,13 @@ def module_script(source: str, *, mode: str = "inline", nonce: str | None = None
     """
     if mode not in ("inline", "data"):
         raise ValueError("unknown module mode")
-    if nonce is not None and (not nonce or not re.fullmatch(r"[A-Za-z0-9+/_=-]+", nonce)):
-        raise ValueError("invalid CSP nonce")
     if mode == "data":
         if nonce is not None:
+            _nonce_attribute(nonce)
             raise ValueError("nonce is only supported for inline mode")
         encoded = base64.b64encode(source.encode("utf-8")).decode("ascii")
         return f'<script type="module" src="data:text/javascript;base64,{encoded}"></script>'
-    if re.search(r"</script(?=[\s/>])", source, re.IGNORECASE):
-        raise ValueError("module contains HTML script end tag")
-    attribute = f' nonce="{escape(nonce, quote=True)}"' if nonce else ""
-    return f'<script type="module"{attribute}>{source}</script>'
+    return _inline_script(source, nonce=nonce, module=True)
 
 
 def module_csp_hash(source: str) -> str:
@@ -1513,7 +1521,7 @@ def _collection_equal(actual, expected):
     return type(actual) is type(expected) and actual == expected
 
 
-def _collection_number(value):
+def _finite_number(value: Any) -> bool:
     return type(value) in (int, float) and math.isfinite(value)
 
 
@@ -1523,7 +1531,7 @@ def _collection_ranges(spec):
     out = {}
     for key, bounds in spec.items():
         if not isinstance(bounds, dict) or not bounds or set(bounds) - {"min", "max"} \
-                or any(not _collection_number(v) for v in bounds.values()) \
+                or any(not _finite_number(v) for v in bounds.values()) \
                 or ("min" in bounds and "max" in bounds and bounds["min"] > bounds["max"]):
             raise ValueError("a range has numeric min and/or max, with min <= max")
         out[key] = bounds
@@ -1549,7 +1557,7 @@ def _collection_sort(items, sorts):
     items = list(items)
     for key, descending in reversed(sorts):
         present = [item[key] for item in items if item.get(key) is not None]
-        if any(type(v) is bool or not (isinstance(v, str) or _collection_number(v)) for v in present):
+        if any(type(v) is bool or not (isinstance(v, str) or _finite_number(v)) for v in present):
             raise ValueError("sort values must be strings or finite numbers: " + key)
         if len({isinstance(v, str) for v in present}) > 1:
             raise ValueError("mixed string and number sort values: " + key)
@@ -1615,7 +1623,7 @@ def filter_request(request):
                     else _collection_equal(item.get(key), expected))
                for key, expected in facets.items()):
             continue
-        if any(not _collection_number(item.get(key)) or not bounds.get("min", -math.inf) <= item[key] <= bounds.get("max", math.inf)
+        if any(not _finite_number(item.get(key)) or not bounds.get("min", -math.inf) <= item[key] <= bounds.get("max", math.inf)
                for key, bounds in ranges.items()):
             continue
         output.append(item)
@@ -1750,16 +1758,9 @@ def repository_diagnostics_page(
     ``jsonl_name`` is linked as the raw metadata record. Consumers produce the JSON with their own
     gh_identity / resolver data and call this for the HTML, so one renderer serves every repository.
     """
-    if not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
-        raise ValueError("repository must be owner/name")
-    for name, label in ((json_name, "json_name"), (jsonl_name, "jsonl_name")):
-        _require_local_script_path(name, label=label)
-    if icon is not None:
-        _require_local_or_https(icon, label="icon", allow_query=False)
-    title = f"{repository} repository diagnostics"
     body = ('<main class="ui-page">' + repository_diagnostics_body(repository, json_name=json_name, jsonl_name=jsonl_name, icon=icon, description=description)
             + "</main>" + classic_script(js_source("repository-diagnostics.js")) + classic_script(f'RepositoryDiagnostics.mount(document, "./{json_name}");'))
-    return render_document(trusted_html=body, title=title, theme=theme, css=bundled_css(),
+    return render_document(trusted_html=body, title=f"{repository} repository diagnostics", theme=theme, css=bundled_css(),
                            favicon=favicon, touch_icon=icon)
 
 
@@ -6866,10 +6867,19 @@ def photo_png(width: int, height: int, rgba: bytes | None = None) -> bytes:
     rows = rgba if rgba is not None else bytes(width * height * 4)
     if len(rows) != width * height * 4:
         raise ValueError("rgba must hold width * height * 4 bytes")
-    raw = b"".join(b"\x00" + rows[y * width * 4:(y + 1) * width * 4] for y in range(height))
-    chunk = lambda kind, body: len(body).to_bytes(4, "big") + kind + body + zlib.crc32(kind + body).to_bytes(4, "big")
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", width.to_bytes(4, "big") + height.to_bytes(4, "big") + b"\x08\x06\x00\x00\x00")
-            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+    return _rgba_png(width, height, rows, compression=zlib.Z_DEFAULT_COMPRESSION)
+
+
+def _rgba_png(width: int, height: int, rgba: bytes, *, compression: int) -> bytes:
+    """Encode validated RGBA pixels as filter-0 scanlines."""
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    stride = width * 4
+    raw = b"".join(b"\x00" + rgba[y * stride:(y + 1) * stride] for y in range(height))
+    header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+            + chunk(b"IDAT", zlib.compress(raw, compression)) + chunk(b"IEND", b""))
 
 
 # Normalised rectangles are ``{"left", "top", "right", "bottom"}`` in 0..1 of the canvas.
@@ -9818,21 +9828,21 @@ def pattern_query(req: Any) -> Any:
         return [item for item in items if matches(item)]
     if op == "range":
         key, low, high = req.get("key"), req.get("minimum"), req.get("maximum")
-        _pat_need(isinstance(key, str) and _js_num(low) and _js_num(high) and low <= high, "invalid numeric range")
+        _pat_need(isinstance(key, str) and _finite_number(low) and _finite_number(high) and low <= high, "invalid numeric range")
         result = []
         for item in items:
             _pat_need(isinstance(item, dict) and key in item, "missing range key")
-            _pat_need(_js_num(item[key]), "invalid range value")
+            _pat_need(_finite_number(item[key]), "invalid range value")
             if low <= item[key] <= high:
                 result.append(item)
         return result
     if op == "geo":
         lat, lon, radius = (req.get(k) for k in ("latitude", "longitude", "radius_km"))
-        _pat_need(all(_js_num(v) for v in (lat, lon, radius)) and -90 <= lat <= 90 and -180 <= lon <= 180 and radius >= 0, "invalid geographic search")
+        _pat_need(all(_finite_number(v) for v in (lat, lon, radius)) and -90 <= lat <= 90 and -180 <= lon <= 180 and radius >= 0, "invalid geographic search")
         def distance(row: Any) -> float:
             _pat_need(isinstance(row, dict), "invalid point")
             a, b = row.get("latitude"), row.get("longitude")
-            _pat_need(_js_num(a) and _js_num(b) and -90 <= a <= 90 and -180 <= b <= 180, "invalid point coordinates")
+            _pat_need(_finite_number(a) and _finite_number(b) and -90 <= a <= 90 and -180 <= b <= 180, "invalid point coordinates")
             p1, p2 = math.radians(lat), math.radians(a)
             dp, dl = p2 - p1, math.radians(b - lon)
             h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
@@ -9977,7 +9987,7 @@ def pattern_score(payload: Any) -> Any:
     if operation == "minheap":
         _pat_need(not (set(payload) - {"operation", "values", "pops"}), "unexpected heap fields")
         values, pops = payload.get("values"), payload.get("pops", 0)
-        _pat_need(isinstance(values, list) and all(_js_num(x) for x in values), "heap values must be finite numbers")
+        _pat_need(isinstance(values, list) and all(_finite_number(x) for x in values), "heap values must be finite numbers")
         _pat_need(type(pops) is int and 0 <= pops <= len(values), "invalid pop count")
         heap = values.copy()
         heapq.heapify(heap)
@@ -10087,7 +10097,7 @@ def pattern_convert(req: Any) -> dict[str, Any]:
     if op == "unit":
         unit_from, unit_to = req.get("from"), req.get("to")
         try:      # math.isfinite converts ints to float: huge ints raise OverflowError
-            finite = type(value) in (int, float) and math.isfinite(value)
+            finite = _finite_number(value)
         except OverflowError:
             finite = False
         _pat_need(finite, "unit value must be finite number")
@@ -10744,11 +10754,6 @@ def _js_int(value: Any) -> bool:
     return type(value) is int or (type(value) is float and math.isfinite(value) and value.is_integer())
 
 
-def _js_num(value: Any) -> bool:
-    """typeof value === "number" && Number.isFinite(value)."""
-    return type(value) in (int, float) and math.isfinite(value)
-
-
 def _pat_js_json(value: Any) -> str:
     """JSON.stringify(value): key order kept, an integral number written as an int."""
     def plain(v: Any) -> Any:
@@ -10824,7 +10829,7 @@ def pattern_future(request: Any) -> dict[str, Any]:
             step = _pat_js_object(raw, "step")
             _pat_js_fields(step, ("op", "by"), ("op",))
             if step["op"] in ("add", "multiply"):
-                _pat_need(_js_num(step.get("by")), "numeric by required")
+                _pat_need(_finite_number(step.get("by")), "numeric by required")
             elif step["op"] == "uppercase":
                 _pat_js_fields(step, ("op",))
             else:
@@ -10846,7 +10851,7 @@ def pattern_future(request: Any) -> dict[str, Any]:
             _pat_need(isinstance(value, str), "string input required")
             value = value.upper()
         else:
-            _pat_need(_js_num(value), "numeric input required")
+            _pat_need(_finite_number(value), "numeric input required")
             value = value + step["by"] if step["op"] == "add" else value * step["by"]
     return {"schema": "future-patterns/1", "mode": mode, "value": value}
 
@@ -10908,7 +10913,7 @@ def pattern_stream(request: Any) -> dict[str, Any]:
             elif op == "map_add":
                 moved = []
                 for x in xs:
-                    _pat_need(_js_num(x["value"]) and _js_num(step.get("value")), "map_add numbers")
+                    _pat_need(_finite_number(x["value"]) and _finite_number(step.get("value")), "map_add numbers")
                     moved.append({**x, "value": x["value"] + step["value"]})
                 xs = moved
             else:
@@ -11015,7 +11020,7 @@ def pattern_event_loop(request: Any) -> dict[str, Any]:
         for raw in steps:
             step = _pat_event_fields(raw, ("op", "value"), ("op", "value"))
             if step["op"] == "map_add":
-                _pat_need(_js_num(step["value"]) and all(_js_num(x) for x in out), "numbers required")
+                _pat_need(_finite_number(step["value"]) and all(_finite_number(x) for x in out), "numbers required")
                 out = [x + step["value"] for x in out]
             elif step["op"] == "where_equals":
                 out = [x for x in out if _pat_js_json(x) == _pat_js_json(step["value"])]
@@ -11044,7 +11049,7 @@ class PatternDebouncer:
     that ``clear_timeout(handle)`` accepts."""
 
     def __init__(self, callback: Any, delay_ms: Any, set_timeout: Any, clear_timeout: Any) -> None:
-        if not callable(callback) or not _js_num(delay_ms) or delay_ms < 0:
+        if not callable(callback) or not _finite_number(delay_ms) or delay_ms < 0:
             raise TypeError("invalid debounce arguments")
         self.callback, self.delay_ms, self.set_timeout, self.clear_timeout = callback, delay_ms, set_timeout, clear_timeout
         self.timer: Any = None
@@ -11071,7 +11076,7 @@ def pattern_virtual_window(params: Any) -> dict[str, Any]:
     count, height, top, viewport = (params.get(k) for k in ("count", "itemHeight", "scrollTop", "viewportHeight"))
     overscan = params["overscan"] if "overscan" in params else 2
     for value in (count, height, top, viewport, overscan):
-        _pat_need(_js_num(value) and value >= 0, "invalid viewport number")
+        _pat_need(_finite_number(value) and value >= 0, "invalid viewport number")
     _pat_need(_js_int(count) and _js_int(overscan) and height != 0, "invalid viewport configuration")
     count, overscan = int(count), int(overscan)
     start = max(0, min(count, math.floor(top / height) - overscan))
@@ -13162,7 +13167,7 @@ def contract_locales(locales: Any) -> dict[str, Any]:
 def _con_num(boxes: dict[str, Any], name: str, field: str) -> float:
     """One measurement of one box, read only when a rule needs it (a box a rule does not look at may lack the fields that rule does not use, as in the original)."""
     box = boxes[name]
-    _pat_need(isinstance(box, dict) and _js_num(box.get(field)), f"box {name!r} needs a numeric {field}")
+    _pat_need(isinstance(box, dict) and _finite_number(box.get(field)), f"box {name!r} needs a numeric {field}")
     return box[field]
 
 
@@ -13179,7 +13184,7 @@ def contract_layout(request: Any) -> dict[str, Any]:
     ``y`` and ``height`` for the others); a number that is missing, not finite or a bool is a ``ValueError``."""
     _pat_need(isinstance(request, dict) and all(key in ("operation", "viewport", "boxes", "within", "aligned", "stacked") for key in request), "unknown request keys")
     viewport = request.get("viewport")
-    _pat_need(isinstance(viewport, dict) and _js_num(viewport.get("width")) and viewport["width"] > 0 and _js_num(viewport.get("height")) and viewport["height"] > 0,
+    _pat_need(isinstance(viewport, dict) and _finite_number(viewport.get("width")) and viewport["width"] > 0 and _finite_number(viewport.get("height")) and viewport["height"] > 0,
               "viewport needs a positive width and height")
     boxes = request.get("boxes")
     _pat_need(isinstance(boxes, dict) and len(boxes) <= CONTRACT_MAX_BOXES, f"boxes must be an object of at most {CONTRACT_MAX_BOXES} boxes")
@@ -13203,7 +13208,7 @@ def contract_layout(request: Any) -> dict[str, Any]:
         _pat_need(isinstance(entry, dict) and all(key in ("name", "below", "min_height") for key in entry) and isinstance(entry.get("name"), str) and entry["name"] in boxes, "stacked entries need a box name")
         floor = _con_names(entry, "below", boxes)
         minimum = entry.get("min_height", CONTRACT_MIN_ROW_HEIGHT)
-        _pat_need(_js_num(minimum) and minimum >= 0, "min_height must be a non-negative number")
+        _pat_need(_finite_number(minimum) and minimum >= 0, "min_height must be a non-negative number")
         name = entry["name"]
         if floor and num(name, "y") < max(num(other, "y") + num(other, "height") for other in floor) - CONTRACT_EDGE:
             failures.append(f"{name}: overlaps the row above")
@@ -13254,15 +13259,15 @@ def contract_swap(request: Any) -> dict[str, Any]:
     before, after = _con_png(request.get("before"), "before"), _con_png(request.get("after"), "after")
     _pat_need(before[:2] == after[:2], "capture dimensions changed during the gesture")
     scale = geometry.get("device_scale_factor")
-    _pat_need(_js_num(scale) and scale > 0, "invalid device scale factor")
+    _pat_need(_finite_number(scale) and scale > 0, "invalid device scale factor")
     viewport = geometry.get("viewport")
-    _pat_need(isinstance(viewport, dict) and all(_js_num(viewport.get(key)) for key in ("width", "height")), "viewport needs a width and height")
+    _pat_need(isinstance(viewport, dict) and all(_finite_number(viewport.get(key)) for key in ("width", "height")), "viewport needs a width and height")
     _pat_need(all(abs(before[index] - viewport[key] * scale) <= 1 for index, key in enumerate(("width", "height"))), "PNG dimensions do not match the recorded viewport")
     slots = geometry.get("slots")
     _pat_need(isinstance(slots, list) and len(slots) == 2, "exactly two pre-drag slots are required")
     boxes = []
     for slot in slots:
-        _pat_need(isinstance(slot, dict) and all(_js_num(slot.get(key)) for key in ("x", "y", "width", "height")), "invalid card bounds")
+        _pat_need(isinstance(slot, dict) and all(_finite_number(slot.get(key)) for key in ("x", "y", "width", "height")), "invalid card bounds")
         x, y, width, height = (slot[key] for key in ("x", "y", "width", "height"))
         _pat_need(width > 16 and height > 16, "card interior is too small")
         box = tuple(round(value * scale) for value in (x + 8, y + 8, x + width - 8, y + height - 8))
@@ -14427,7 +14432,7 @@ def _stu_need(condition: Any, message: str) -> None:
 
 
 def _stu_num(value: Any, low: float, high: float) -> bool:
-    return _js_num(value) and low <= value <= high
+    return _finite_number(value) and low <= value <= high
 
 
 def _stu_color(value: Any) -> bool:
@@ -15408,10 +15413,7 @@ def studio_png_encode(width: int, height: int, rgba: bytes) -> bytes:
     """RGBA bytes as a PNG (8 bits, no interlace, no filter)."""
     if len(rgba) != width * height * 4:
         raise StudioError("PNGの大きさが合いません")
-    stride = width * 4
-    raw = b"".join(b"\x00" + rgba[y * stride:(y + 1) * stride] for y in range(height))
-    chunk = lambda kind, body: struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
-    return bytes([137, 80, 78, 71, 13, 10, 26, 10]) + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+    return _rgba_png(width, height, rgba, compression=9)
 
 
 def studio_image_source(scene: dict[str, Any]) -> Any:
