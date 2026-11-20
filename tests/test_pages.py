@@ -402,6 +402,21 @@ class WorldTests(unittest.TestCase):
             seen.add(theme["--ui-bg"])
         self.assertGreater(len(seen), 150)
 
+    def test_html_import_files_are_portable_or_reuse_shared_assets(self):
+        standalone = ui.html_import_files()
+        self.assertEqual(set(standalone), {"index.html", "extract.mjs", "js/ui.js", "js/navigation.js"})
+        for module in ("ui.js", "navigation.js"):
+            self.assertEqual(standalone["js/" + module], ui.js_source(module).encode())
+            self.assertIn(f'"./js/{module}"'.encode(), standalone["extract.mjs"])
+        shared = ui.html_import_files(shared_base="../shared/", docs_href="contract.html")
+        self.assertEqual(set(shared), {"index.html", "extract.mjs"})
+        self.assertIn(b'href="contract.html"', shared["index.html"])
+        self.assertIn(b'src="./extract.mjs"', shared["index.html"])
+        self.assertIn(b'"../shared/js/navigation.js"', shared["extract.mjs"])
+        self.assertIn(b"connect-src 'none'", shared["index.html"])
+        with self.assertRaises(ValueError):
+            ui.html_import_files(shared_base="https://example.org")
+
     def test_front_avatar_is_opt_in_and_uses_the_shared_component(self):
         main, rooms = args_for("front")[0]
         parts = ui.component_parts("gaze-avatar", label='まばたき "A"')
