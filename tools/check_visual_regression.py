@@ -14,8 +14,9 @@ PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 DEFAULT_PATTERN = "web-ui-*.png"
 
 
-def png_size(path: Path) -> tuple[int, int]:
-    data = path.read_bytes()
+def png_size(path: Path, *, data: bytes | None = None) -> tuple[int, int]:
+    if data is None:
+        data = path.read_bytes()
     if not data.startswith(PNG_SIGNATURE) or len(data) < 24:
         raise ValueError(f"{path} is not a valid PNG")
     return struct.unpack(">II", data[16:24])
@@ -23,6 +24,12 @@ def png_size(path: Path) -> tuple[int, int]:
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _png_metadata(path: Path, prefix: str) -> dict:
+    data = path.read_bytes()
+    return {prefix + "_sha256": hashlib.sha256(data).hexdigest(),
+            prefix + "_size": png_size(path, data=data)}
 
 
 def compare(
@@ -51,17 +58,12 @@ def compare(
     report = []
     for candidate in candidates:
         baseline = baseline_dir / candidate.name
-        item = {
-            "name": candidate.name,
-            "candidate_sha256": digest(candidate),
-            "candidate_size": png_size(candidate),
-        }
+        item = {"name": candidate.name, **_png_metadata(candidate, "candidate")}
         if not baseline.exists():
             item["status"] = "missing-baseline"
             failed = failed or require_baseline
         else:
-            item["baseline_sha256"] = digest(baseline)
-            item["baseline_size"] = png_size(baseline)
+            item.update(_png_metadata(baseline, "baseline"))
             item["status"] = "match" if item["candidate_sha256"] == item["baseline_sha256"] else "changed"
             failed = failed or item["status"] == "changed"
         report.append(item)
