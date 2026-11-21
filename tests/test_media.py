@@ -946,6 +946,24 @@ class VisualRegressionTest(unittest.TestCase):
             (root_path / "web-ui-contract.png").write_bytes(_png())
             self.assertEqual(compare(root_path, root_path / "baseline", True), 1)
 
+    def test_comparison_reads_each_png_once(self):
+        with tempfile.TemporaryDirectory() as root:
+            candidate = Path(root) / "web-ui-contract.png"
+            baseline = Path(root) / "baseline"
+            baseline.mkdir()
+            original = rgb_png(2, 3, (4, 5, 6))
+            candidate.write_bytes(original)
+            reference = baseline / candidate.name
+            reference.write_bytes(original)
+            with patch.object(Path, "read_bytes", autospec=True, side_effect=Path.read_bytes) as read:
+                with patch("sys.stdout", new_callable=io.StringIO) as output:
+                    self.assertEqual(compare(candidate.parent, baseline, True), 0)
+            self.assertEqual([call.args[0] for call in read.call_args_list], [candidate, reference])
+            row, = json.loads(output.getvalue())
+            self.assertEqual(row["candidate_size"], [2, 3])
+            self.assertEqual(row["baseline_sha256"], hashlib.sha256(original).hexdigest())
+            self.assertEqual(row["status"], "match")
+
     def test_pattern_can_limit_enforcement_scope(self):
         with tempfile.TemporaryDirectory() as root:
             root_path = Path(root)
