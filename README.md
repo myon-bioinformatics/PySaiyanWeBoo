@@ -6,7 +6,7 @@
 
 [Icon](docs/brand/icon.png) · [Favicon](docs/brand/favicon.png)
 
-Shared CSS themes, semantic UI components, and small JavaScript utilities for static interfaces across myon-bioinformatics projects.
+Shared CSS themes, semantic UI components, and small browser modules for static interfaces across myon-bioinformatics projects, all built by one standard-library Python module (`pysaiyanweboo.py`) that keeps them as Python data.
 
 **Static-first · build-free runtime · dependency-light · cross-repository**
 
@@ -770,7 +770,7 @@ table, so `component_document()` inlines `<script>`, not a module) and the mount
 one `no-store` GET fills `#metadata`, `#summary` and one escaped card per observation (a link only for an `https://` URL), and a failed GET says
 "Diagnostics could not be loaded."
 
-`table` is the report table Ironmate (`browser_matrix.py`, `image_digest.py`), markdown (`real_world_pages_report.py`) and browser-test-kit
+`table` is the report table Ironmate (`browser_matrix.py`, `image_digest.py`), markdown (`real_world_pages_report.py`) and BrowserTestKit
 (`app_digest.py`) each build by hand, and the one the showcase sections already used: `table_html({"columns", "rows", "caption", "row_headers",
 "missing"})` is `table()` (the one table renderer, `.ui-table`) from a JSON spec, in its own horizontal scroller, no script; `table(headers, rows,
 row_headers=, missing=)` takes the same rich cells from Python. A cell is text (line breaks kept), a finite number (right-aligned, `data-num`), `null` (the `missing` text, muted) or
