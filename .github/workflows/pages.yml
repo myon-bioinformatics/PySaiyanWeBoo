@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   deploy:
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@81f6aea6231d4490e581443fdeb43a09e6018ff0
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@98a0e611cc879fde2d047da806de5a2121a65524
     with:
       artifact_path: .
       # HTML is built from Python, not committed: the cities review page comes from its committed manifest.json.
