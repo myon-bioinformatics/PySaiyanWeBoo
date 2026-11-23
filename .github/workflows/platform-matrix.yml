@@ -42,12 +42,12 @@ jobs:
           - {name: chromium / Pixel 7 (emulation), browser: chromium, profile: pixel, device: 'Pixel 7', tests: 'PhotoPageBrowserTests'}
           - {name: webkit / iPhone 13 (emulation), browser: webkit, profile: iphone, device: 'iPhone 13', tests: 'PhotoPageBrowserTests'}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Check out pinned browser-test-kit (the platform probe)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/BrowserTestKit
           ref: cc7322bc2e0a7c8c28f43380f6417c9e00a819f0
@@ -139,7 +139,7 @@ jobs:
           python3 -S .browser-test-kit/tools/platform_probe.py summary build/platform/app-results > build/platform/summary.txt || status=1
           { echo 'Local example pages; Pixel and iPhone profiles are emulation, not devices; Playwright WebKit is not Safari.'; echo '```text'; cat build/platform/summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: platform-web-ui-${{ matrix.browser }}-${{ matrix.profile }}
@@ -152,18 +152,18 @@ jobs:
     if: always()
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Check out pinned browser-test-kit (merge and render)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/BrowserTestKit
           ref: cc7322bc2e0a7c8c28f43380f6417c9e00a819f0
           path: .browser-test-kit
           persist-credentials: false
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: platform-web-ui-*
           path: collected
@@ -175,7 +175,7 @@ jobs:
           python3 -S .browser-test-kit/tools/platform_probe.py summary matrix/dataset.json > matrix/summary.txt || true
           cp -r collected matrix/collected
           { echo '```text'; cat matrix/summary.txt; echo '```'; echo 'Per-engine decode evidence (what each engine said about nine tiny pictures): artifact platform-web-ui-matrix, collected/*/photo-evidence/*.json'; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: platform-web-ui-matrix
