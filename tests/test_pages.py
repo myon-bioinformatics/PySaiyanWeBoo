@@ -251,6 +251,31 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
                 pysaiyanweboo.page_document({'schema': 'web-ui-page/1', 'title': 'Test',
                                       'blocks': [{'type': 'heading', 'level': level, 'text': 'x'}]})
 
+    def test_home_puts_the_way_back_first_and_only_safe_links_go_in(self):
+        """🏠 A spec's home: one data-ui-back link before the title, HTTPS or relative, text never HTML."""
+        page = pysaiyanweboo.page_document({'schema': 'web-ui-page/1', 'title': 'Guide', 'blocks': [],
+                                            'home': {'href': 'https://myon-bioinformatics.github.io/', 'label': '← 🏠 <Portfolio>'}})
+        main = page[page.index('<main'):]
+        self.assertLess(main.index('data-ui-back'), main.index('<h1'))
+        self.assertIn('<a href="https://myon-bioinformatics.github.io/" data-ui-back>← 🏠 &lt;Portfolio&gt;</a>', main)
+        default = pysaiyanweboo.page_document({'schema': 'web-ui-page/1', 'title': 'Guide', 'blocks': [], 'home': {'href': '../'}})
+        self.assertIn('<a href="../" data-ui-back>← 🏠</a>', default)
+        self.assertNotIn('data-ui-back', pysaiyanweboo.page_document({'schema': 'web-ui-page/1', 'title': 'Guide', 'blocks': []}))
+        for home in ({'href': 'javascript:alert(1)'}, {'href': 'http://example.com/'}, {'href': '//evil.example/'},
+                     {'label': 'x'}, {'href': '../', 'extra': 1}, '../'):
+            with self.subTest(home=home), self.assertRaises(ValueError):
+                pysaiyanweboo.page_document({'schema': 'web-ui-page/1', 'title': 'Guide', 'blocks': [], 'home': home})
+
+    def test_add_back_nav_gives_any_built_page_the_same_way_back_once(self):
+        built = '<!doctype html><html><body><main class="x"><h1>A</h1></main></body></html>'
+        once = pysaiyanweboo.add_back_nav(built, '../../index.html#tools', '← Tools & Demos', test_id='portfolio-back')
+        self.assertIn('<main class="x"><nav class="ui-back" aria-label="Back"><a href="../../index.html#tools" data-ui-back '
+                      'data-testid="portfolio-back">← Tools &amp; Demos</a></nav><h1>', once)
+        self.assertEqual(pysaiyanweboo.add_back_nav(once, '../'), once)                       # idempotent
+        self.assertIn('<body><nav class="ui-back"', pysaiyanweboo.add_back_nav('<html><body><p>x</p></body></html>', '../'))
+        with self.assertRaises(ValueError):
+            pysaiyanweboo.add_back_nav('<p>no body</p>', '../')
+
 
 class BundledCssTests(unittest.TestCase):
     def test_bundle_is_built_in_memory_from_every_source_in_a_fixed_order(self):

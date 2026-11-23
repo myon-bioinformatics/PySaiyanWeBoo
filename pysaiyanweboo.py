@@ -1948,10 +1948,32 @@ def _blocks(value: Any, depth: int) -> list:
     return value
 
 
+def back_nav_html(href: str, label: str = "← 🏠", *, test_id: str | None = None) -> str:
+    """🏠 The way back: one link before a page's content, marked ``data-ui-back`` (``href`` is a path relative to the page
+    or HTTPS, as in a spec; ``label`` is text). ``test_id`` adds ``data-testid`` for a consumer's browser tests."""
+    test = f' data-testid="{escape(_spec_text(test_id, "test id", limit=80, required=True), quote=True)}"' if test_id is not None else ""
+    return (f'<nav class="ui-back" aria-label="Back"><a href="{escape(_spec_href(href), quote=True)}" data-ui-back{test}>'
+            f'{escape(_spec_text(label, "back label", limit=80, required=True))}</a></nav>')
+
+
+def add_back_nav(page: str, href: str, label: str = "← 🏠", *, test_id: str | None = None) -> str:
+    """🏠 Put ``back_nav_html`` right after the opening ``<main>`` (else ``<body>``) of a built page, for pages made
+    without ``page_document`` (a page that already has a way back keeps it). The same as a spec's ``home``."""
+    if "data-ui-back" in page:
+        return page
+    for tag in ("<main", "<body"):
+        start = page.find(tag)
+        end = page.find(">", start) if start >= 0 else -1
+        if end >= 0:
+            return page[:end + 1] + back_nav_html(href, label, test_id=test_id) + page[end + 1:]
+    raise ValueError("page has no <main> or <body> to put the way back in")
+
+
 def page_document(spec: Any, *, layouts: Any = None) -> str:
     """One self-contained page from a ``web-ui-page/1`` spec — the consumer owns the data, web_ui the HTML and CSS.
 
-    ``{"schema", "title", "theme"?, "description"?, "icon"?, "favicon"?, "blocks": [...]}``; blocks are ``heading``,
+    ``{"schema", "title", "theme"?, "description"?, "icon"?, "favicon"?, "home"?, "blocks": [...]}``; ``home``
+    (``{"href", "label"?}``) puts the way back (``back_nav_html``) first, such as to the portfolio. Blocks are ``heading``,
     ``text`` (paragraphs; ``muted``), ``output`` (preformatted), ``table`` (headers, rows, caption), ``card`` /
     ``section`` (title, text, nested blocks), ``links``, ``image``, ``kv`` (key–value rows) and ``badges``
     (``{text, status: pass|fail}``). Text is never HTML; links and images are relative paths or HTTPS. The theme is one
@@ -1960,13 +1982,18 @@ def page_document(spec: Any, *, layouts: Any = None) -> str:
     """
     if not isinstance(spec, dict) or spec.get("schema") != PAGE_SCHEMA:
         raise ValueError(f"expected schema {PAGE_SCHEMA}")
-    if spec.keys() - {"schema", "title", "theme", "description", "icon", "favicon", "blocks"}:
-        raise ValueError("page has schema, title, blocks and optional theme, description, icon, favicon")
+    if spec.keys() - {"schema", "title", "theme", "description", "icon", "favicon", "home", "blocks"}:
+        raise ValueError("page has schema, title, blocks and optional theme, description, icon, favicon, home")
     title = _spec_text(spec.get("title"), "title", limit=200, required=True)
     theme = spec.get("theme", "modern")
     if not _theme_name(theme):
         raise ValueError("unknown theme")
     body = [f'<main class="ui-page">']
+    if "home" in spec:
+        home = spec["home"]
+        if not isinstance(home, dict) or "href" not in home or home.keys() - {"href", "label"}:
+            raise ValueError("home has href and an optional label")
+        body.append(back_nav_html(home["href"], home.get("label", "← 🏠")))
     if "icon" in spec:
         body.append(f'<img src="{escape(_spec_href(spec["icon"]), quote=True)}" width="80" height="80" alt="">')
     body.append(f'<h1 class="ui-title">{escape(title)}</h1>')
