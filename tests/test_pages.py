@@ -2,6 +2,8 @@
 source panel, theme seed, records board). Node runs the browser modules through ``support.node_js`` (``pysaiyanweboo.run_node``)."""
 
 import base64
+import contextlib
+import io
 import copy
 import hashlib
 import html
@@ -250,6 +252,52 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
             with self.subTest(level=level), self.assertRaises(ValueError):
                 pysaiyanweboo.page_document({'schema': 'web-ui-page/1', 'title': 'Test',
                                       'blocks': [{'type': 'heading', 'level': level, 'text': 'x'}]})
+
+    def test_the_way_back_from_a_repository_is_the_portfolio_then_github(self):
+        """🏠🐙 OWNER/REPO gives the owner's portfolio and the repository, one data-ui-back nav, links as a links block."""
+        nav = pysaiyanweboo.back_nav_html("myon-bioinformatics/BlueProbe")
+        self.assertEqual(nav, '<nav class="ui-back" aria-label="関連リンク" data-ui-back><p class="ui-links">'
+                              '<a href="https://myon-bioinformatics.github.io/">🏠 ポートフォリオ</a> · '
+                              '<a href="https://github.com/myon-bioinformatics/BlueProbe">🐙 GitHub リポジトリ</a></p></nav>')
+        for bad in ("BlueProbe", "a/b/c", "../x", "a/..", "a b/c", "/x", "", ["x"], [{"href": "javascript:alert(1)"}]):
+            with self.subTest(back=bad), self.assertRaises(ValueError):
+                pysaiyanweboo.back_nav_html(bad)
+
+    def test_add_back_nav_gives_any_built_page_the_same_way_back_once(self):
+        built = '<!doctype html><html><body><main class="x"><h1>A</h1></main></body></html>'
+        once = pysaiyanweboo.add_back_nav(built, [{"label": "← Tools & Demos", "href": "../../index.html#tools"}],
+                                          test_id="portfolio-back")
+        self.assertIn('<main class="x"><nav class="ui-back" aria-label="関連リンク" data-ui-back data-testid="portfolio-back">'
+                      '<p class="ui-links"><a href="../../index.html#tools">← Tools &amp; Demos</a></p></nav><h1>', once)
+        self.assertEqual(pysaiyanweboo.add_back_nav(once, "o/r"), once)                       # idempotent
+        self.assertIn('<body><nav class="ui-back"', pysaiyanweboo.add_back_nav('<html><body><p>x</p></body></html>', "o/r"))
+        with self.assertRaises(ValueError):
+            pysaiyanweboo.add_back_nav('<p>no body</p>', "o/r")
+
+    def test_front_page_keeps_the_way_back_behind_the_door(self):
+        """🚪 A front page's way back is first in the door menu: the view under the bar stays one screen."""
+        ROOM = [{"id": "one", "emoji": "1️⃣", "title": "One", "html": "<p id=\"one\">1</p>"}]
+        page = pysaiyanweboo.front_html("<p>view</p>", ROOM, title="T", back="o/r")
+        main, menu = page.split("</main>", 1)
+        self.assertNotIn("data-ui-back", main)
+        self.assertIn('id="rooms"><nav class="ui-room-bar" aria-label="Rooms">', menu)
+        self.assertLess(menu.index("data-ui-back"), menu.index('<header class="stub-header">'))
+        self.assertNotIn("data-ui-back", pysaiyanweboo.front_html("<p>view</p>", ROOM, title="T"))
+        self.assertEqual(pysaiyanweboo.example_pages()["index.html"].count("data-ui-back"), 1)
+
+    def test_page_cli_puts_the_way_back_first_with_repository(self):
+        """🏠 --page SPEC --repository OWNER/REPO: the nav comes right after <main>, before the title; without it, none."""
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = Path(tmp) / "guide.page.json"
+            spec.write_text(json.dumps({"schema": "web-ui-page/1", "title": "Guide", "blocks": []}), encoding="utf-8")
+            for argv, expect in ((["--page", str(spec), "--repository", "myon-bioinformatics/xprobe"], True),
+                                 (["--page", str(spec)], False)):
+                out = io.StringIO()
+                with self.subTest(argv=argv), contextlib.redirect_stdout(out):
+                    self.assertEqual(pysaiyanweboo.main(argv), 0)
+                page = out.getvalue()
+                self.assertEqual('<main class="ui-page"><nav class="ui-back"' in page, expect)
+                self.assertEqual(page.count("data-ui-back"), int(expect))
 
 
 class BundledCssTests(unittest.TestCase):
