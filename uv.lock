@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -1398,10 +1398,6 @@ gradio = [
 stagehand = [
     { name = "stagehand" },
 ]
-stdlib-test = [
-    { name = "pytest" },
-    { name = "pyyaml" },
-]
 world-test = [
     { name = "anyio" },
     { name = "pillow" },
@@ -1423,10 +1419,6 @@ gradio = [
     { name = "pytest", specifier = ">=9.1.1" },
 ]
 stagehand = [{ name = "stagehand", specifier = ">=4" }]
-stdlib-test = [
-    { name = "pytest", specifier = ">=8" },
-    { name = "pyyaml", specifier = ">=6" },
-]
 world-test = [
     { name = "anyio", specifier = ">=4.15.1" },
     { name = "pillow", specifier = ">=13.0.0" },
