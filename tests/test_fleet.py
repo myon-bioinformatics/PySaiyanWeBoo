@@ -1,13 +1,11 @@
 """🚢 Fleet contracts through the parent's shared checks (vendor/fleet_check.py): its locked bytes, and scripts."""
-import importlib.util
 import unittest
 from pathlib import Path
 
+from support import fleet
+
 ROOT = Path(__file__).resolve().parents[1]
-_spec = importlib.util.spec_from_file_location("pysaiyanweboo_fleet_check", ROOT / "vendor/fleet_check.py")
-fleet = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(fleet)
-ACCEPTED = {"vendor/fleet_check.py": "64db25eb0fd9025dbe3cbcbced8b88a39ecb9266"}
+ACCEPTED = {"vendor/fleet_check.py": "64db25eb0fd9025dbe3cbcbced8b88a39ecb9266", "vendor/cli_args.py": "5ae22b1a1b808eca93e3c385a8db867fbeb8ee32"}
 
 
 class VendorLock(unittest.TestCase):

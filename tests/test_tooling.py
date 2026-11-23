@@ -24,7 +24,7 @@ import yaml
 
 import pysaiyanweboo
 import pysaiyanweboo as ui
-from support import node_js
+from support import cli_args, node_js, pswb_cli
 from tools import repository_metadata as rm
 from tools.repository_metadata import collect
 
@@ -170,8 +170,7 @@ def test_duplicate_canonical_owners_fail_before_probing(monkeypatch, collision):
 
 def test_standalone_json_is_stdlib_only_and_does_not_need_checkout(tmp_path):
     env = {**os.environ, "PATH": str(tmp_path), "PYTHONPATH": ""}
-    result = subprocess.run([sys.executable, "-S", str(ROOT / "tools/repository_metadata.py"), "tooling"],
-                            cwd=tmp_path, env=env, capture_output=True, text=True, timeout=15)
+    result = cli_args.run_cli(ROOT / "tools/repository_metadata.py", "tooling", python_options=("-S",), cwd=tmp_path, env=env, timeout=15)
     assert result.returncode == 0, result.stderr
     assert result.stderr == ""
     record = json.loads(result.stdout)
@@ -1627,11 +1626,11 @@ def test_write_bundle_and_check_bundle_round_trip(tmp_path):
     spec = tmp_path / "brand.json"
     spec.write_text('{"name": "acme", "tokens": {"--ui-bg": "#ffffff", "--ui-fg": "#000000"}}', encoding="utf-8")
     (tmp_path / "extra.css").write_text(".x{}", encoding="utf-8")
-    cli = [sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--theme", "terminal", "--brand", str(spec), "--extra-css", str(tmp_path / "extra.css")]
-    assert subprocess.run([*cli, "--bundle", str(target), "--note", "scripts/x.py"], capture_output=True, text=True).returncode == 0
+    cli = ["--theme", "terminal", "--brand", spec, "--extra-css", tmp_path / "extra.css"]
+    assert pswb_cli(*cli, "--bundle", target, "--note", "scripts/x.py").returncode == 0
     assert target.read_text(encoding="utf-8").split("\n", 1)[1] == body
-    assert subprocess.run([*cli, "--bundle-check", str(target)], capture_output=True, text=True).returncode == 0
-    assert subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--bundle-check", str(target)], capture_output=True, text=True).returncode == 1
+    assert pswb_cli(*cli, "--bundle-check", target).returncode == 0
+    assert pswb_cli("--bundle-check", target).returncode == 1
 
 
 def test_source_commit_is_the_checkout_head_or_the_install_record():
@@ -1699,7 +1698,7 @@ def test_page_document_builds_a_page_from_a_spec(tmp_path):
     branded = pysaiyanweboo.page_document({**spec, "theme": "acme"})
     assert '<body data-ui-theme="acme">' in branded and 'body[data-ui-theme="acme"]{--ui-bg:#ffffff' in branded
     (tmp_path / "spec.json").write_text(json.dumps(spec), encoding="utf-8")
-    done = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--page", str(tmp_path / "spec.json")], capture_output=True, text=True)
+    done = pswb_cli("--page", tmp_path / "spec.json")
     assert done.returncode == 0 and pysaiyanweboo.GENERATOR_META.sub("", done.stdout) == pysaiyanweboo.GENERATOR_META.sub("", pysaiyanweboo.page_document(spec))
 
 
@@ -1835,6 +1834,8 @@ def test_vendor_lock_lists_expected_sources():
         ),
         ("myon-bioinformatics/myon-bioinformatics", "py_launch.cjs", "vendor/py_launch.cjs"),
         ("myon-bioinformatics/myon-bioinformatics", "fleet_check.py", "vendor/fleet_check.py"),
+        ("myon-bioinformatics/cli_args", "cli_args.py", "vendor/cli_args.py"),
+        ("myon-bioinformatics/cli_args", "LICENSE", "vendor/cli_args-LICENSE"),
     }
     actual = {(e["repository"], e["source"], e["destination"]) for e in _lock_entries()}
     assert actual == expected
