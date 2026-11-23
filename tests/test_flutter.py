@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 import pysaiyanweboo as u
-from support import node26, node_value
+from support import cli_args, node26, node_value
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -404,14 +404,12 @@ def test_viewer_rejects_bad_inputs(change):
 def test_cli_writes_a_page_or_exits_2(tmp_path):
     (tmp_path / "report.json").write_text(json.dumps(report()), encoding="utf-8")
     (tmp_path / "pages.json").write_text(json.dumps(PAGES), encoding="utf-8")
-    run = subprocess.run([sys.executable, "-S", str(ROOT / "tools/capture_matrix.py"), "--pages",
-                          str(tmp_path / "pages.json"), "--report", str(tmp_path / "report.json")],
-                         capture_output=True, text=True, encoding="utf-8", cwd=tmp_path)
+    run = cli_args.run_cli(ROOT / "tools/capture_matrix.py", "--pages", tmp_path / "pages.json", "--report", tmp_path / "report.json",
+                           python_options=("-S",), cwd=tmp_path)
     assert run.returncode == 0 and run.stdout.startswith("<!doctype html>") and "<style>" in run.stdout
     (tmp_path / "bad.json").write_text('{"schema": "x"}', encoding="utf-8")
-    bad = subprocess.run([sys.executable, "-S", str(ROOT / "tools/capture_matrix.py"), "--pages",
-                          str(tmp_path / "bad.json"), "--report", str(tmp_path / "report.json")],
-                         capture_output=True, text=True, encoding="utf-8")
+    bad = cli_args.run_cli(ROOT / "tools/capture_matrix.py", "--pages", tmp_path / "bad.json", "--report", tmp_path / "report.json",
+                           python_options=("-S",))
     assert bad.returncode == 2 and "expected schema web-ui-flutter-pages/1" in bad.stderr
 
 

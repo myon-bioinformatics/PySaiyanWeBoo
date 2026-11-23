@@ -8,10 +8,11 @@ from __future__ import annotations
 #    ⚙️ PSWB_BROWSER   platform-matrix.yml, successor-studios.yml (the engine of the matrix row) → integration/pages_browser.py, integration/flutter_browser.py
 #    ⚙️ PSWB_DEVICE    platform-matrix.yml (the emulated device of the row)                      → integration/pages_browser.py
 #    ⚙️ GITHUB_ACTIONS  GitHub itself (CI must have the JUnit importer; locally the test skips)   → test_tooling.py
+#    🟢 NODE           by hand: the Node to use instead of the one on PATH (vendor/fleet_check.py node(), like vendor/njs_launch.py) → node26 below
 #    🎞️ PSWB_GIFS     by hand: "DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]" keeps the demo GIFs → integration/pages_browser.py
 #    📸 PSWB_SHOTS    by hand: DIR keeps a screenshot of every cities check                     → integration/worlds_browser.py (its page: city_gallery below)
 
-import functools, http.server, json, re, shutil, subprocess, tempfile, threading, unittest
+import functools, http.server, importlib.util, json, subprocess, sys, tempfile, threading, unittest
 from html import escape
 from pathlib import Path
 
@@ -33,17 +34,29 @@ except ImportError:  # `python -S -m unittest discover -p test_pages.py -k Class
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def vendored(name: str):
+    """The test-only module ``vendor/NAME.py``, loaded once by path (the repository root need not be importable; pysaiyanweboo.py and tools/ never import it)."""
+    key = f"pysaiyanweboo_vendor_{name}"
+    if key not in sys.modules:
+        spec = importlib.util.spec_from_file_location(key, ROOT / "vendor" / f"{name}.py")
+        sys.modules[key] = importlib.util.module_from_spec(spec)   # registered first: dataclasses looks the module up while it loads
+        spec.loader.exec_module(sys.modules[key])
+    return sys.modules[key]
+
+
+cli_args, fleet = vendored("cli_args"), vendored("fleet_check")
+
+
 def node26() -> str | None:
-    """The path of an existing Node 26 or newer, else None: the Node-side tests skip, nothing is installed."""
-    node = shutil.which("node")
-    if not node:
-        return None
-    try:
-        done = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=10, check=False)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    match = re.match(r"v?(\d+)", done.stdout.strip())
-    return node if match and int(match.group(1)) >= 26 else None
+    """The path of an existing Node 26 or newer, else None: the Node-side tests skip, nothing is installed (the fleet's one lookup: ``$NODE``, then PATH)."""
+    return fleet.node()
+
+
+def pswb_cli(*args, python_options=("-S",), **kwargs):
+    """``python -S pysaiyanweboo.py ARGS`` once, through the vendored ``cli_args.run_cli`` (keywords: stdin, cwd, env, timeout).
+
+    The result has ``returncode``, ``stdout`` and ``stderr`` (UTF-8 text; a timeout is ``returncode`` None, not an exception)."""
+    return cli_args.run_cli(ROOT / "pysaiyanweboo.py", *args, python_options=python_options, **kwargs)
 
 
 def node_js(source: str, *argv: str, timeout: float = 60) -> subprocess.CompletedProcess[str]:

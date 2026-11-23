@@ -21,7 +21,7 @@ from PIL import Image, ImageSequence
 import pysaiyanweboo
 import pysaiyanweboo as ui
 from pysaiyanweboo import classic_script, plotly_figure, pptx_arrow_geometry, pptx_connector, pptx_presentation, remote_scripts, render_document
-from support import node26, node_js
+from support import node26, node_js, pswb_cli
 from tools.check_visual_regression import compare, rgb_png
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -88,20 +88,7 @@ class PlotlyFigureTests(unittest.TestCase):
             classic_script("</script>")
 
     def test_cli_with_remote_scripts(self):
-        run = subprocess.run(
-            [
-                sys.executable,
-                "-S",
-                str(ROOT / "pysaiyanweboo.py"),
-                "--trusted-html",
-                "--with-remote-scripts",
-                "plotly.js",
-            ],
-            input=plotly_figure({"data": []}),
-            text=True,
-            capture_output=True,
-            cwd=ROOT,
-        )
+        run = pswb_cli("--trusted-html", "--with-remote-scripts", "plotly.js", stdin=plotly_figure({"data": []}), cwd=ROOT)
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertIn("plotly.js-dist-min/plotly.min.js", run.stdout)
         self.assertNotIn("integrity=", run.stdout)
@@ -577,13 +564,7 @@ class PptxPresentationTests(unittest.TestCase):
         fragment = pptx_presentation({"slides": [{"items": [
             {"kind": "text", "text": "Hello", "x": 0.5, "y": 0.5, "w": 3, "h": 0.5},
         ]}]})
-        run = subprocess.run(
-            [sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--trusted-html", "--with-remote-scripts", "pptxgenjs"],
-            input=fragment,
-            text=True,
-            capture_output=True,
-            cwd=ROOT,
-        )
+        run = pswb_cli("--trusted-html", "--with-remote-scripts", "pptxgenjs", stdin=fragment, cwd=ROOT)
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertIn(PPTX_SRI, run.stdout)
         self.assertIn("writeFile", run.stdout)

@@ -34,7 +34,7 @@ from pysaiyanweboo import (
     EMBEDDED_UI_JS, _njs_launch_module, bundled_css, filter_request, module_asset, module_csp_hash, module_script, plotly_figure, render_document,
     run_node, shared_scripts,
 )
-from support import flutter_case, node26, node_js, pytest  # pytest: the real one, or a stand-in under python -S
+from support import flutter_case, node26, node_js, pswb_cli, pytest  # pytest: the real one, or a stand-in under python -S
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -121,15 +121,13 @@ class PythonWrapperTests(unittest.TestCase):
         )
 
     def test_cli_remote_assets_are_css_only(self):
-        command = [sys.executable, '-S', str(ROOT / 'pysaiyanweboo.py'),
-                   '--asset-base', 'https://example.test/latest']
-        plain = subprocess.run(command, input='ok', text=True, capture_output=True)
+        command = ['--asset-base', 'https://example.test/latest']
+        plain = pswb_cli(*command, stdin='ok')
         self.assertEqual(plain.returncode, 0, plain.stderr)
         self.assertNotIn('<script', plain.stdout)
         for names in ([], ['ui.js']):
             with self.subTest(names=names):
-                linked = subprocess.run(command + ['--with-scripts'] + names,
-                                        input='ok', text=True, capture_output=True)
+                linked = pswb_cli(*command, '--with-scripts', *names, stdin='ok')
                 self.assertEqual(linked.returncode, 2)
                 self.assertEqual(linked.stdout, '')
                 self.assertIn('must be a local path', linked.stderr)
@@ -160,40 +158,16 @@ class PythonWrapperTests(unittest.TestCase):
             css = Path(directory) / 'palette.css'
             original = b'body { color: #000; }'
             css.write_bytes(original)
-            run = subprocess.run(
-                [sys.executable, '-S', str(ROOT / 'pysaiyanweboo.py'), '--css', str(css)],
-                input='<b>user</b>',
-                text=True,
-                capture_output=True,
-            )
+            run = pswb_cli('--css', css, stdin='<b>user</b>')
             self.assertEqual(run.returncode, 0, run.stderr)
             self.assertIn('&lt;b&gt;user&lt;/b&gt;', run.stdout)
             self.assertIn(original.decode(), run.stdout)
             self.assertNotIn('<script', run.stdout)
             self.assertEqual(css.read_bytes(), original)
-        run = subprocess.run(
-            [sys.executable, '-S', str(ROOT / 'pysaiyanweboo.py'), '--stub'],  # removed flag: usage error
-            input='',
-            text=True,
-            capture_output=True,
-        )
+        run = pswb_cli('--stub', stdin='')  # removed flag: usage error
         self.assertEqual(run.returncode, 2)
         self.assertEqual(run.stdout, '')
-        linked = subprocess.run(
-            [
-                sys.executable,
-                '-S',
-                str(ROOT / 'pysaiyanweboo.py'),
-                '--asset-base',
-                '.',
-                '--with-scripts',
-                'ui.js',
-            ],
-            input='ok',
-            text=True,
-            capture_output=True,
-            cwd=ROOT,
-        )
+        linked = pswb_cli('--asset-base', '.', '--with-scripts', 'ui.js', stdin='ok', cwd=ROOT)
         self.assertEqual(linked.returncode, 0, linked.stderr)
         self.assertIn('<script type="module" src="./js/ui.js"></script>', linked.stdout)
 
@@ -730,8 +704,7 @@ class WorldTests(unittest.TestCase):
         wall = pysaiyanweboo.theme_wall(range(12))
         self.assertEqual(wall.count('class="ui-wall-cell"'), 12)
         self.assertIn("--ui-radius:", wall)
-        run = lambda *args: subprocess.run([sys.executable, "-S", "pysaiyanweboo.py", *args], cwd=ROOT, capture_output=True,
-                                           text=True, encoding="utf-8", timeout=60)
+        run = lambda *args: pswb_cli(*args, cwd=ROOT, timeout=60)
         with tempfile.TemporaryDirectory() as out:
             spec = Path(out) / "world.json"
             spec.write_text(run("--example", "world").stdout, encoding="utf-8")
@@ -744,8 +717,7 @@ class WorldTests(unittest.TestCase):
 
     def test_site_writes_pages_browser_modules_and_example_data_and_nothing_else(self):
         with tempfile.TemporaryDirectory() as out:
-            done = subprocess.run([sys.executable, "-S", "pysaiyanweboo.py", "--site", out], cwd=ROOT, capture_output=True,
-                                  text=True, encoding="utf-8", timeout=60)
+            done = pswb_cli("--site", out, cwd=ROOT, timeout=60)
             self.assertEqual(done.returncode, 0, done.stderr)
             pages = pysaiyanweboo.example_pages()
             modules = {f"js/{name}": source for name, source in pysaiyanweboo.js_modules().items()}
@@ -1422,8 +1394,7 @@ class RepairRegressionTests(unittest.TestCase):
         self.assertIn('#demo-cat-value-all:checked', pysaiyanweboo.world_css(spec))
 
     def test_bundle_asset_base_keeps_scripts_not_styles(self):
-        result = subprocess.run([sys.executable, '-S', 'pysaiyanweboo.py', '--css-bundle', '--asset-base', '.', '--with-scripts'],
-                                cwd=ROOT, input='', text=True, capture_output=True, timeout=30)
+        result = pswb_cli('--css-bundle', '--asset-base', '.', '--with-scripts', cwd=ROOT, stdin='', timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('rel="stylesheet"', result.stdout)
         self.assertIn('src="./js/ui.js"', result.stdout)
@@ -2216,7 +2187,7 @@ class BtkAdapterTests(unittest.TestCase):
 
     def test_the_command_line_prints_them(self):
         def run(*args):
-            return subprocess.run([sys.executable, "-S", "pysaiyanweboo.py", *args], cwd=ROOT, capture_output=True, text=True, timeout=30)
+            return pswb_cli(*args, cwd=ROOT, timeout=30)
         listed = run("--btk-adapter", "list")
         self.assertEqual((listed.returncode, listed.stdout.split()), (0, sorted(pysaiyanweboo.BTK_ADAPTERS)))
         one = run("--btk-adapter", "web-ui-photo-studio", "--url", "http://127.0.0.1:9/p.html")
@@ -3195,7 +3166,7 @@ class ReportTests(unittest.TestCase):
             good.write_text('<testsuite><testcase name="a"/></testsuite>')
             bad.write_text('<testsuite><testcase name="a"/><testcase name="b"><failure message="m"/></testcase></testsuite>')
             older.write_text('<testsuite><testcase name="a"/><testcase name="gone"><failure/></testcase></testsuite>')
-            run = lambda *args, **kw: subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), *args], capture_output=True, text=True, timeout=60, **kw)
+            run = lambda *args: pswb_cli(*args, timeout=60)
             ok = run("--junit", str(good))
             self.assertEqual((ok.returncode, json.loads(ok.stdout)["ok"]), (0, True))
             failing = run("--junit", str(bad), "--previous", str(older))
@@ -5888,9 +5859,9 @@ class ContractTests(unittest.TestCase):
 
     def test_the_command_line_runs_it_on_stdin(self):
         request = json.dumps(pysaiyanweboo.PATTERN_EXAMPLES["contract"])
-        done = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--pattern", "contract"], input=request, capture_output=True, text=True, timeout=60)
+        done = pswb_cli("--pattern", "contract", python_options=(), stdin=request, timeout=60)
         self.assertEqual((done.returncode, json.loads(done.stdout)), (0, {"failures": [], "ok": True, "operation": "layout", "truncated": 0}))
-        done = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--pattern", "contract"], input='{"operation":"layout"}', capture_output=True, text=True, timeout=60)
+        done = pswb_cli("--pattern", "contract", python_options=(), stdin='{"operation":"layout"}', timeout=60)
         self.assertEqual(done.returncode, 2)
         self.assertIn("⛔ invalid pattern request: viewport needs a positive width and height", done.stderr)
 
@@ -6720,7 +6691,7 @@ def test_an_unknown_component_names_the_known_ones():
 
 
 def run_cli(*argv, stdin=None):
-    done = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), *argv], input=stdin, capture_output=True, text=True, timeout=120, check=False)
+    done = pswb_cli(*argv, stdin=stdin, timeout=120)
     assert done.returncode == 0, done.stderr
     return done.stdout
 
@@ -6735,7 +6706,7 @@ def test_the_cli_prints_a_component_for_node_and_the_shell():
     spec = json.dumps(ui.example_data("school"))
     assert run_cli("--component", "world", "--spec", "-", "--part", "css", stdin=spec) == ui.component_parts("world", ui.example_data("school"))["css"]
     assert run_cli("--component", "door", "--spec", "-", stdin=json.dumps(ui.example_data("door"))) == ui.component_document("door", ui.example_data("door"))
-    bad = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--component", "nope"], capture_output=True, text=True, timeout=60, check=False)
+    bad = pswb_cli("--component", "nope", timeout=60)
     assert bad.returncode == 2 and "unknown component: nope" in bad.stderr
 
 
@@ -7218,8 +7189,7 @@ def test_python_filter_and_cli(case):
     request = copy.deepcopy(case["request"])
     assert filter_request(request) == case["expected"]
     assert request == case["request"]
-    result = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--collection"],
-                            input=json.dumps(request, ensure_ascii=False), text=True, capture_output=True)
+    result = pswb_cli("--collection", stdin=json.dumps(request, ensure_ascii=False))
     assert result.returncode == 0, result.stderr
     assert result.stderr == ""
     assert json.loads(result.stdout) == case["expected"]
@@ -7228,8 +7198,7 @@ def test_python_filter_and_cli(case):
 
 @pytest.mark.parametrize("payload", FILTER_CASES["invalid"])
 def test_invalid_request_fails_closed(payload):
-    result = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--collection"],
-                            input=json.dumps(payload), text=True, capture_output=True)
+    result = pswb_cli("--collection", stdin=json.dumps(payload))
     assert result.returncode == 2
     assert result.stdout == ""
     assert result.stderr.startswith("error: ")
@@ -7237,8 +7206,7 @@ def test_invalid_request_fails_closed(payload):
 
 def test_malformed_json_fails_without_partial_output():
     for data in ("{", '{"items": [], "query": NaN}', '{"items": []} trailing'):
-        result = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--collection"],
-                                input=data, text=True, capture_output=True)
+        result = pswb_cli("--collection", stdin=data)
         assert result.returncode == 2
         assert result.stdout == ""
 
