@@ -19449,7 +19449,7 @@ def example_pages() -> dict[str, str]:
         "examples/image-studio.html": imagestudio_document(),
         "examples/parts.html": parts_document(),
         "contract/v1/example.html": page(contract, "web-ui HTML contract v1 fixture"),
-        "index.html": add_back_nav(_index_page(), "myon-bioinformatics/PySaiyanWeBoo"),   # 🏠 the way back
+        "index.html": _index_page(),
     }
 
 
@@ -20073,9 +20073,10 @@ def front_rooms(rooms: Any) -> list[dict[str, str]]:
     return out
 
 
-def front_html(main: str, rooms: Any, *, title: str, lead: str = "", tags: Any = (), icon: str | None = None, tools: str = "") -> str:
+def front_html(main: str, rooms: Any, *, title: str, lead: str = "", tags: Any = (), icon: str | None = None, tools: str = "", back: Any = None) -> str:
     """A page that is one view and a door: ``main`` (trusted HTML) fills the viewport under a bar (``icon``, the ``title``, trusted ``tools`` such as seed_roll_html(),
-    and 🚪); 🚪 opens the menu of ``rooms`` and each room opens over the view, ✖️ closes it. The menu's cards and the bars are built here from the rooms' data."""
+    and 🚪); 🚪 opens the menu of ``rooms`` and each room opens over the view, ✖️ closes it. The menu's cards and the bars are built here from the rooms' data.
+    ``back`` (as back_nav_html) puts the way back first in the menu, so the view keeps the whole screen."""
     checked = front_rooms(rooms)
     if not isinstance(main, str) or not isinstance(tools, str):
         raise ValueError("main and tools are HTML strings")
@@ -20090,7 +20091,7 @@ def front_html(main: str, rooms: Any, *, title: str, lead: str = "", tags: Any =
                                        f'<div class="ui-page">{inner}</div></section>')
     cards = "".join(f'<article class="ui-card"><h2>{escape(r["emoji"])} {escape(r["title"])}</h2><p>{escape(r["text"])}</p><a href="#{r["id"]}">{escape(r["link"])} →</a></article>'
                     for r in checked)
-    menu = room(f'<header class="stub-header"><div><h2 class="ui-title">🚪 {escape(name)}</h2><p class="ui-muted">{escape(lead)}</p></div>'
+    menu = room((back_nav_html(back) if back is not None else "") + f'<header class="stub-header"><div><h2 class="ui-title">🚪 {escape(name)}</h2><p class="ui-muted">{escape(lead)}</p></div>'
                 f'<div class="stub-meta">{"".join(badge(_world_text(t, "tag", 24)) for t in tags)}</div></header><section class="ui-grid">{cards}</section>', close, FRONT_RESERVED)
     picture = f'<img src="{escape(icon, quote=True)}" width="32" height="32" alt="{escape(name, quote=True)} icon">' if icon else ""
     return (f'<main class="ui-front"><header class="ui-front-bar">{picture}<h1 class="ui-front-title">{escape(name)}</h1>{tools}{door}</header>{main}</main>'
@@ -20099,7 +20100,7 @@ def front_html(main: str, rooms: Any, *, title: str, lead: str = "", tags: Any =
 
 def front_document(main: str, rooms: Any, *, title: str, lead: str = "", tags: Any = (), icon: str | None = None, tools: str = "", css: str = "",
                    scripts: str = "", document_title: str | None = None, favicon: str | None = None, theme: str = "modern",
-                   gaze_label: str | None = None) -> str:
+                   gaze_label: str | None = None, back: Any = None) -> str:
     """front_html() as a single-file page: the bundled CSS, front_css(), your ``css`` (trusted), and ``scripts`` (trusted module script tags, e.g. from module_script()).
     Set gaze_label to the blink action name to include the interactive header avatar."""
     if gaze_label is not None:
@@ -20107,7 +20108,7 @@ def front_document(main: str, rooms: Any, *, title: str, lead: str = "", tags: A
         tools = avatar["html"] + tools
         css += avatar["css"]
         scripts += module_script(avatar["js"])
-    return render_document(trusted_html=front_html(main, rooms, title=title, lead=lead, tags=tags, icon=icon, tools=tools) + scripts,
+    return render_document(trusted_html=front_html(main, rooms, title=title, lead=lead, tags=tags, icon=icon, tools=tools, back=back) + scripts,
                            title=document_title or title, theme=theme, css=bundled_css() + front_css() + css, favicon=favicon, touch_icon=icon)
 
 
@@ -20162,7 +20163,8 @@ def _index_page() -> str:
                + module_script(_JS["curl.js"]) + module_script(WORLD_JS))
     return front_document(world_html(overworld), rooms, title="PySaiyanWeBoo", lead="Shared static-first UI contract for myon-bioinformatics projects.",
                           tags=("v1", "build-free"), icon="./docs/brand/icon.png", tools=seed_roll_html(), gaze_label="Blink", css=css, scripts=scripts,
-                          document_title="PySaiyanWeBoo — static UI contract", favicon="./docs/brand/favicon.png")
+                          document_title="PySaiyanWeBoo — static UI contract", favicon="./docs/brand/favicon.png",
+                          back="myon-bioinformatics/PySaiyanWeBoo")   # 🏠 first behind the 🚪 door; the world keeps the screen
 
 
 def js_modules() -> dict[str, str]:

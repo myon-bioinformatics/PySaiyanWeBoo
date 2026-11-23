@@ -274,6 +274,17 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pysaiyanweboo.add_back_nav('<p>no body</p>', "o/r")
 
+    def test_front_page_keeps_the_way_back_behind_the_door(self):
+        """🚪 A front page's way back is first in the door menu: the view under the bar stays one screen."""
+        ROOM = [{"id": "one", "emoji": "1️⃣", "title": "One", "html": "<p id=\"one\">1</p>"}]
+        page = pysaiyanweboo.front_html("<p>view</p>", ROOM, title="T", back="o/r")
+        main, menu = page.split("</main>", 1)
+        self.assertNotIn("data-ui-back", main)
+        self.assertIn('id="rooms"><nav class="ui-room-bar" aria-label="Rooms">', menu)
+        self.assertLess(menu.index("data-ui-back"), menu.index('<header class="stub-header">'))
+        self.assertNotIn("data-ui-back", pysaiyanweboo.front_html("<p>view</p>", ROOM, title="T"))
+        self.assertEqual(pysaiyanweboo.example_pages()["index.html"].count("data-ui-back"), 1)
+
     def test_page_cli_puts_the_way_back_first_with_repository(self):
         """🏠 --page SPEC --repository OWNER/REPO: the nav comes right after <main>, before the title; without it, none."""
         with tempfile.TemporaryDirectory() as tmp:
