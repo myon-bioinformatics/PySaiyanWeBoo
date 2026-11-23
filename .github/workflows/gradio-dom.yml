@@ -17,11 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/BrowserTestKit
           ref: 9d3183ab9244c763be519ee18ca513205c4d3374
@@ -40,7 +40,7 @@ jobs:
         run: uv run --locked --group gradio python tests/integration/pages_browser.py -v
       - name: Compare Gradio DOM with shared extraction (the test finds .browser-test-kit-dom and writes build/gradio-dom)
         run: uv run --group gradio pytest -v tests/integration/test_gradio_dom.py --junitxml=build/gradio-dom/junit.xml
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: gradio-dom-evidence
