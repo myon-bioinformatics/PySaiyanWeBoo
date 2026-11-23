@@ -7,7 +7,7 @@ jobs:
   changes:
     permissions:
       contents: read
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-change-detection.yml@81f6aea6231d4490e581443fdeb43a09e6018ff0
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-change-detection.yml@98a0e611cc879fde2d047da806de5a2121a65524
 
   # Tooling smoke already runs these unittest cases through pytest on Python 3.15.
   # Keep this workflow focused on real-browser capture and visual evidence.
