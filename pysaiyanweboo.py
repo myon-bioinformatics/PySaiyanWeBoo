@@ -979,7 +979,7 @@ _CSS = {
     "tokens.css": r""":root{--ui-bg:#0d1117;--ui-panel:#101820;--ui-fg:#d1f7c4;--ui-muted:#8b949e;--ui-border:#58a6ff;--ui-accent:#7ee787;--ui-danger:#cf222e;--ui-radius:0;--ui-text:16px;--ui-space:1rem;--ui-max:960px;--ui-font:Meiryo,メイリオ,sans-serif;--ui-font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
 """,
     "base.css": r"""@layer base{*{box-sizing:border-box}body{margin:0;background:var(--ui-bg);color:var(--ui-fg);font:var(--ui-text)/1.6 var(--ui-font)}pre,code,kbd,samp{font-family:var(--ui-font-mono)!important}.ui-page{max-width:var(--ui-max);margin:auto;padding:var(--ui-space)}.ui-title{overflow-wrap:anywhere}a{color:inherit}.ui-print-only{display:none}@media print{body{background:#fff;color:#000}.ui-page{max-width:none;padding:0}.ui-no-print{display:none}.ui-print-only{display:block}a{text-decoration:none}}@media(prefers-reduced-motion:reduce){*,::before,::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}}""",
-    "components.css": r"""@layer components{.ui-panel,.ui-card{background:var(--ui-panel);border:1px solid var(--ui-border);padding:var(--ui-space);margin:var(--ui-space) 0;border-radius:var(--ui-radius)}.ui-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}.ui-tag{display:inline-block;border:1px solid var(--ui-border);padding:.1rem .4rem}.ui-button,.ui-input,.ui-elements button,.ui-elements select,.ui-elements textarea,.ui-elements input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file]){font:inherit;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);padding:.6rem;border-radius:var(--ui-radius)}.ui-button,.ui-elements button{cursor:pointer}.ui-button:hover,.ui-elements button:hover{border-color:var(--ui-accent)}.ui-button:disabled,.ui-elements button:disabled{opacity:.4;cursor:default}.ui-elements input[type=range],.ui-elements input[type=checkbox],.ui-elements input[type=radio]{accent-color:var(--ui-accent)}.ui-elements label{color:var(--ui-muted)}.ui-muted{color:var(--ui-muted)}.ui-back{margin:0 0 8px;font-size:.875rem}.ui-back a{color:var(--ui-muted);text-decoration:none}.ui-back a:hover,.ui-back a:focus-visible{color:var(--ui-accent);text-decoration:underline}.ui-output{font:inherit;white-space:pre-wrap;overflow:auto;background:#d8dee4;color:#161b22;border:1px solid #8c959f;border-radius:4px;padding:.75rem}pre code,.ui-output code{font-family:inherit;color:inherit}pre.ui-output code{background:transparent}@media(max-width:480px){.ui-page{padding:.75rem}.ui-grid{grid-template-columns:1fr}.ui-card,.ui-panel{margin:.75rem 0;padding:.75rem}}.ui-lightbox{border:1px solid var(--ui-border);background:var(--ui-panel);color:var(--ui-fg);padding:1rem;max-width:min(96vw,960px);max-height:96vh;border-radius:var(--ui-radius)}.ui-lightbox::backdrop{background:rgba(0,0,0,.72)}.ui-lightbox img{display:block;max-width:100%;max-height:calc(96vh - 8rem);margin:auto}.ui-lightbox-bar{display:flex;gap:.5rem;justify-content:space-between;margin-top:.75rem}body:has(.ui-lightbox[open]){overflow:hidden}.ui-table,.ui-elements table{border-collapse:collapse;width:100%}.ui-table th,.ui-table td,.ui-elements th,.ui-elements td{border-bottom:1px solid var(--ui-border);padding:.25rem .5rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}.ui-table th,.ui-elements th{color:var(--ui-muted);font-weight:500}.ui-table caption,.ui-elements caption{text-align:left;color:var(--ui-muted);padding:.25rem 0}.ui-pass{color:var(--ui-accent)}.ui-fail{color:var(--ui-danger)}.ui-changed{background:color-mix(in srgb,var(--ui-accent) 18%,transparent)}.ui-tag.ui-pass{border-color:var(--ui-accent)}.ui-tag.ui-fail{border-color:var(--ui-danger)}}""",
+    "components.css": r"""@layer components{.ui-panel,.ui-card{background:var(--ui-panel);border:1px solid var(--ui-border);padding:var(--ui-space);margin:var(--ui-space) 0;border-radius:var(--ui-radius)}.ui-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}.ui-tag{display:inline-block;border:1px solid var(--ui-border);padding:.1rem .4rem}.ui-button,.ui-input,.ui-elements button,.ui-elements select,.ui-elements textarea,.ui-elements input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file]){font:inherit;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);padding:.6rem;border-radius:var(--ui-radius)}.ui-button,.ui-elements button{cursor:pointer}.ui-button:hover,.ui-elements button:hover{border-color:var(--ui-accent)}.ui-button:disabled,.ui-elements button:disabled{opacity:.4;cursor:default}.ui-elements input[type=range],.ui-elements input[type=checkbox],.ui-elements input[type=radio]{accent-color:var(--ui-accent)}.ui-elements label{color:var(--ui-muted)}.ui-muted{color:var(--ui-muted)}.ui-back{margin:0 0 8px;font-size:.875rem}.ui-back .ui-links{margin:0}.ui-back a{color:var(--ui-muted);text-decoration:none}.ui-back a:hover,.ui-back a:focus-visible{color:var(--ui-accent);text-decoration:underline}.ui-output{font:inherit;white-space:pre-wrap;overflow:auto;background:#d8dee4;color:#161b22;border:1px solid #8c959f;border-radius:4px;padding:.75rem}pre code,.ui-output code{font-family:inherit;color:inherit}pre.ui-output code{background:transparent}@media(max-width:480px){.ui-page{padding:.75rem}.ui-grid{grid-template-columns:1fr}.ui-card,.ui-panel{margin:.75rem 0;padding:.75rem}}.ui-lightbox{border:1px solid var(--ui-border);background:var(--ui-panel);color:var(--ui-fg);padding:1rem;max-width:min(96vw,960px);max-height:96vh;border-radius:var(--ui-radius)}.ui-lightbox::backdrop{background:rgba(0,0,0,.72)}.ui-lightbox img{display:block;max-width:100%;max-height:calc(96vh - 8rem);margin:auto}.ui-lightbox-bar{display:flex;gap:.5rem;justify-content:space-between;margin-top:.75rem}body:has(.ui-lightbox[open]){overflow:hidden}.ui-table,.ui-elements table{border-collapse:collapse;width:100%}.ui-table th,.ui-table td,.ui-elements th,.ui-elements td{border-bottom:1px solid var(--ui-border);padding:.25rem .5rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}.ui-table th,.ui-elements th{color:var(--ui-muted);font-weight:500}.ui-table caption,.ui-elements caption{text-align:left;color:var(--ui-muted);padding:.25rem 0}.ui-pass{color:var(--ui-accent)}.ui-fail{color:var(--ui-danger)}.ui-changed{background:color-mix(in srgb,var(--ui-accent) 18%,transparent)}.ui-tag.ui-pass{border-color:var(--ui-accent)}.ui-tag.ui-fail{border-color:var(--ui-danger)}}""",
     "matrix.css": r"""@layer components{.ui-matrix:has(>section:target)>section:not(:target){display:none}.ui-matrix>section{scroll-margin-top:16px}.ui-matrix-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--ui-matrix-col,160px),1fr));gap:var(--ui-matrix-gap,8px);padding:0;list-style:none}.ui-matrix-tiles li{border:1px solid var(--ui-border);padding:var(--ui-matrix-pad,8px);font-size:.8rem;overflow-wrap:anywhere}.ui-matrix-tiles img{display:block;width:100%;height:auto;margin:var(--ui-matrix-pad,8px) 0;background:#fff}.ui-matrix-tiles .is-missing{border-style:dashed;color:var(--ui-muted)}.ui-matrix-tiles .is-fail{outline:2px solid var(--ui-danger)}.ui-matrix-tiles .is-reference{outline:2px solid var(--ui-accent)}.ui-matrix-page>nav{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.ui-matrix-page>nav .ui-button{white-space:nowrap;text-decoration:none}.ui-matrix a{overflow-wrap:anywhere}}
 """,
     "repository-diagnostics.css": r""".repo-diagnostics{box-sizing:border-box;border:1px solid var(--ui-border,#c9c9cf);border-radius:1rem;padding:1.25rem;background:var(--ui-surface,#fff);color:var(--ui-text,#222)}.repo-diagnostics h2{margin:0 0 .75rem;font-size:1.25rem}.repo-diagnostics__commit{overflow-wrap:anywhere}.repo-diagnostics__measurements{display:grid;grid-template-columns:minmax(8rem,1fr) 1fr;gap:.45rem 1rem;margin:1rem 0 0}.repo-diagnostics__measurements dt,.repo-diagnostics__measurements dd{margin:0}.repo-diagnostics__measurements dd{font-variant-numeric:tabular-nums}@media(max-width:30rem){.repo-diagnostics__measurements{grid-template-columns:1fr}.repo-diagnostics__measurements dd{margin-bottom:.35rem}}
@@ -1948,32 +1948,37 @@ def _blocks(value: Any, depth: int) -> list:
     return value
 
 
-def back_nav_html(href: str, label: str = "← 🏠", *, test_id: str | None = None) -> str:
-    """🏠 The way back: one link before a page's content, marked ``data-ui-back`` (``href`` is a path relative to the page
-    or HTTPS, as in a spec; ``label`` is text). ``test_id`` adds ``data-testid`` for a consumer's browser tests."""
+def back_nav_html(back: Any, *, test_id: str | None = None) -> str:
+    """🏠 The way back, before a page's content: ``OWNER/REPO`` gives 🏠 the owner's portfolio (``https://OWNER.github.io/``)
+    · 🐙 the repository on GitHub; or pass a ``links`` block's items (``[{"label", "href"}]``) for another way back. It is
+    marked ``data-ui-back``; ``test_id`` adds ``data-testid`` for a consumer's browser tests."""
+    if isinstance(back, str):
+        parts = back.split("/")
+        if len(parts) != 2 or not all(p and p not in {".", ".."} and all(c.isalnum() or c in "._-" for c in p) for p in parts):
+            raise ValueError("the way back is OWNER/REPO or a list of links")
+        back = [{"label": "🏠 ポートフォリオ", "href": f"https://{parts[0].lower()}.github.io/"},
+                {"label": "🐙 GitHub リポジトリ", "href": f"https://github.com/{parts[0]}/{parts[1]}"}]
     test = f' data-testid="{escape(_spec_text(test_id, "test id", limit=80, required=True), quote=True)}"' if test_id is not None else ""
-    return (f'<nav class="ui-back" aria-label="Back"><a href="{escape(_spec_href(href), quote=True)}" data-ui-back{test}>'
-            f'{escape(_spec_text(label, "back label", limit=80, required=True))}</a></nav>')
+    return f'<nav class="ui-back" aria-label="関連リンク" data-ui-back{test}>{_page_block({"type": "links", "items": back}, depth=0)}</nav>'
 
 
-def add_back_nav(page: str, href: str, label: str = "← 🏠", *, test_id: str | None = None) -> str:
-    """🏠 Put ``back_nav_html`` right after the opening ``<main>`` (else ``<body>``) of a built page, for pages made
-    without ``page_document`` (a page that already has a way back keeps it). The same as a spec's ``home``."""
+def add_back_nav(page: str, back: Any, *, test_id: str | None = None) -> str:
+    """🏠 Put ``back_nav_html(back)`` right after the opening ``<main>`` (else ``<body>``) of a built page (a page that
+    already has a way back keeps it). From the shell: ``--page spec.json --repository OWNER/REPO``."""
     if "data-ui-back" in page:
         return page
     for tag in ("<main", "<body"):
         start = page.find(tag)
         end = page.find(">", start) if start >= 0 else -1
         if end >= 0:
-            return page[:end + 1] + back_nav_html(href, label, test_id=test_id) + page[end + 1:]
+            return page[:end + 1] + back_nav_html(back, test_id=test_id) + page[end + 1:]
     raise ValueError("page has no <main> or <body> to put the way back in")
 
 
 def page_document(spec: Any, *, layouts: Any = None) -> str:
     """One self-contained page from a ``web-ui-page/1`` spec — the consumer owns the data, web_ui the HTML and CSS.
 
-    ``{"schema", "title", "theme"?, "description"?, "icon"?, "favicon"?, "home"?, "blocks": [...]}``; ``home``
-    (``{"href", "label"?}``) puts the way back (``back_nav_html``) first, such as to the portfolio. Blocks are ``heading``,
+    ``{"schema", "title", "theme"?, "description"?, "icon"?, "favicon"?, "blocks": [...]}``. Blocks are ``heading``,
     ``text`` (paragraphs; ``muted``), ``output`` (preformatted), ``table`` (headers, rows, caption), ``card`` /
     ``section`` (title, text, nested blocks), ``links``, ``image``, ``kv`` (key–value rows) and ``badges``
     (``{text, status: pass|fail}``). Text is never HTML; links and images are relative paths or HTTPS. The theme is one
@@ -1982,18 +1987,13 @@ def page_document(spec: Any, *, layouts: Any = None) -> str:
     """
     if not isinstance(spec, dict) or spec.get("schema") != PAGE_SCHEMA:
         raise ValueError(f"expected schema {PAGE_SCHEMA}")
-    if spec.keys() - {"schema", "title", "theme", "description", "icon", "favicon", "home", "blocks"}:
-        raise ValueError("page has schema, title, blocks and optional theme, description, icon, favicon, home")
+    if spec.keys() - {"schema", "title", "theme", "description", "icon", "favicon", "blocks"}:
+        raise ValueError("page has schema, title, blocks and optional theme, description, icon, favicon")
     title = _spec_text(spec.get("title"), "title", limit=200, required=True)
     theme = spec.get("theme", "modern")
     if not _theme_name(theme):
         raise ValueError("unknown theme")
     body = [f'<main class="ui-page">']
-    if "home" in spec:
-        home = spec["home"]
-        if not isinstance(home, dict) or "href" not in home or home.keys() - {"href", "label"}:
-            raise ValueError("home has href and an optional label")
-        body.append(back_nav_html(home["href"], home.get("label", "← 🏠")))
     if "icon" in spec:
         body.append(f'<img src="{escape(_spec_href(spec["icon"]), quote=True)}" width="80" height="80" alt="">')
     body.append(f'<h1 class="ui-title">{escape(title)}</h1>')
@@ -19449,7 +19449,7 @@ def example_pages() -> dict[str, str]:
         "examples/image-studio.html": imagestudio_document(),
         "examples/parts.html": parts_document(),
         "contract/v1/example.html": page(contract, "web-ui HTML contract v1 fixture"),
-        "index.html": add_back_nav(_index_page(), "https://myon-bioinformatics.github.io/", "← 🏠 Portfolio"),   # 🏠 the way back
+        "index.html": add_back_nav(_index_page(), "myon-bioinformatics/PySaiyanWeBoo"),   # 🏠 the way back
     }
 
 
@@ -20296,6 +20296,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--parts", action="store_true", help="print the parts × themes × layouts page (see parts_document; --brand adds a registered theme) and exit")
     parser.add_argument("--page", type=Path, metavar="FILE",
                         help="print a self-contained page for a web-ui-page/1 JSON spec (see page_document; --brand registers its theme, --layouts adds presets) and exit")
+    parser.add_argument("--repository", metavar="OWNER/REPO", help="with --page: put the way back first — 🏠 the owner's portfolio · 🐙 the repository (see back_nav_html)")
     parser.add_argument("--world", type=Path, metavar="FILE",
                         help="print a single-file page for a web-ui-world/1 JSON spec and exit; `-` reads the spec from stdin")
     parser.add_argument("--component", metavar="NAME", help="print one component of COMPONENTS (a page by default; --part html, css, js or json)."
@@ -20402,7 +20403,8 @@ def main(argv: list[str] | None = None) -> int:
                 brand = json.loads(args.brand.read_text(encoding="utf-8"))
                 theme_css(str(brand["name"]), dict(brand["tokens"]))
             layouts = json.loads(args.layouts.read_text(encoding="utf-8")) if args.layouts else None
-            sys.stdout.write(page_document(spec, layouts=layouts))
+            page = page_document(spec, layouts=layouts)
+            sys.stdout.write(add_back_nav(page, args.repository) if args.repository else page)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             parser.error(str(exc))
         return 0

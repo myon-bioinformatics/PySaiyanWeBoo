@@ -631,8 +631,8 @@ one that holds as a candidate.
 (`heading`, `text`, `output`, `table`, `card`, `section`, `links`, `image`, `kv`, `badges`) — as one self-contained page,
 every string escaped and every link relative or HTTPS, with a brand theme (`theme_css`) and switchable layouts
 (`layouts=`). `python -S pysaiyanweboo.py --example page` prints a spec; `--page spec.json [--brand brand.json --layouts
-page-layouts.json]` renders it from the shell or Node, so a report script owns only its data. 🏠 `"home": {"href", "label"?}`
-puts the way back (such as to the portfolio) first; `add_back_nav(page, href, label)` gives a page built some other way the same link.
+page-layouts.json]` renders it from the shell or Node, so a report script owns only its data. 🏠 `--repository OWNER/REPO`
+puts the way back first (🏠 portfolio · 🐙 GitHub); `add_back_nav(page, "OWNER/REPO")` gives a page built some other way the same nav.
 
 🎞️ `gif.js` (`UiGif`) turns canvas frames into one animated GIF89a with no dependency: the browser decodes, resizes, zooms and
 captions the images it is given (`Composer`), and the module adds only what browsers lack — a bucket histogram while frames arrive,
