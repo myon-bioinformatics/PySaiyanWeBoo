@@ -27,9 +27,8 @@ import layout_presets
 import pysaiyanweboo
 import pysaiyanweboo as ui
 from pysaiyanweboo import (
-    EXAMPLE_STUBS, board_clock, board_seconds, bundled_css, clamp_focus, clean_message, clock_label, contrast_ratio, fit_zoom, gauge_cells,
-    gauge_state, minutes_until, render_document, route_links, section_browser, shared_scripts, showcase_document, source_panel_html, stub_response,
-    theme_wall_document, travel_seconds, utc_offset_label, world_document, write_js, zone_offset, zone_rows,
+    bundled_css, contrast_ratio, render_document, route_links, section_browser, shared_scripts, showcase_document, source_panel_html,
+    theme_wall_document, write_js,
 )
 from support import flutter_case, serve_directory
 
@@ -304,443 +303,19 @@ class UiHelpersBrowserTests(unittest.TestCase):
                 server.thread.join(timeout=5)
 
 
-class WorldBrowserTests(unittest.TestCase):
-    """The world engine in real Chromium: scroll shots, map camera, sheet, no-JS fallback, and the random theme wall."""
+def serve_pages(pages):
+    """Write ``pages`` (name -> HTML) to a temporary folder and serve it on loopback: ``(server, origin)``."""
+    directory = tempfile.mkdtemp()
+    for name, html in pages.items():
+        (Path(directory) / name).write_text(html, encoding='utf-8')
+    return serve_directory(directory)
 
-    @staticmethod
-    def serve(pages):
-        directory = tempfile.mkdtemp()
-        for name, html in pages.items():
-            (Path(directory) / name).write_text(html, encoding='utf-8')
-        return serve_directory(directory)
 
-    def test_shots_map_sheet_and_fallback(self):
-        import json
-        from pysaiyanweboo import example_data
-        spec = example_data('world')
-        server, origin = self.serve({'index.html': world_document(spec, theme='github-like')})
-        try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch()
-                try:
-                    page = browser.new_page(viewport={'width': 800, 'height': 900})
-                    errors, external = [], []
-                    page.on('pageerror', lambda error: errors.append(str(error)))
-                    page.on('request', lambda r: external.append(r.url) if not r.url.startswith(origin + '/') else None)
-                    page.goto(origin + '/index.html')
-                    # Shots: scrolling the box lights one mark, and CSS shows that shot on that shot's color.
-                    scroller = page.locator('.ui-shots-scroll')
-                    height = scroller.evaluate('el => el.clientHeight')
-                    expect(page.locator('.ui-shot-mark[data-i="0"]')).to_have_attribute('data-lit', '')
-                    scroller.evaluate(f'el => el.scrollTop = {height * 2}')
-                    expect(page.locator('.ui-shot-mark[data-i="2"]')).to_have_attribute('data-lit', '')
-                    expect(page.locator('.ui-shot[data-i="2"]')).to_have_css('opacity', '1')
-                    expect(page.locator('.ui-shot[data-i="0"]')).to_have_css('opacity', '0')
-                    expect(page.locator('.ui-shots-stage')).to_have_css('background-color', 'rgb(90, 42, 26)')
-                    # Map: Python's camera arithmetic and the JS agree on every case.
-                    cases = [(10, 10, 2, 960, 640, 400, 300), (950, 630, 2, 960, 640, 400, 300),
-                             (0, 0, 0.25, 960, 640, 400, 300), (480, 320, 1, 960, 640, 390, 844), (5, 900, 3, 960, 640, 390, 844)]
-                    got = page.evaluate('cases => cases.map(c => webUiWorld.clampFocus(...c))', cases)
-                    for case, result in zip(cases, got):
-                        self.assertEqual(result, list(clamp_focus(*case)), case)
-                    self.assertAlmostEqual(page.evaluate('webUiWorld.fitZoom(960, 640, 390, 844)'), fit_zoom(960, 640, 390, 844))
-                    world = page.locator('#demo-map')
-                    view = world.locator('.ui-world-view')
-                    expect(world).to_have_attribute('data-js', '')
-                    expect(world.locator('.ui-floor[data-floor="1f"]')).to_be_visible()
-                    expect(world.locator('.ui-floor[data-floor="2f"]')).to_be_hidden()
-                    cam = world.locator('.ui-world-cam')
-                    z0 = float(cam.evaluate('el => el.style.getPropertyValue("--z")'))
-                    world.locator('.ui-world-view').hover()
-                    page.mouse.wheel(0, -300)
-                    page.wait_for_function('z => parseFloat(document.querySelector("#demo-map .ui-world-cam").style.getPropertyValue("--z")) > z', arg=z0)
-                    box = view.bounding_box()
-                    fx0 = float(cam.evaluate('el => el.style.getPropertyValue("--fx")'))
-                    page.mouse.move(box['x'] + 300, box['y'] + 150)
-                    page.mouse.down()
-                    page.mouse.move(box['x'] + 200, box['y'] + 150, steps=5)
-                    page.mouse.up()
-                    self.assertGreater(float(cam.evaluate('el => el.style.getPropertyValue("--fx")')), fx0)   # dragged left, camera moved right
-                    # Categories and floors switch by CSS alone (radios).
-                    world.locator('label[data-cat="food"]').click()
-                    expect(world.locator('.ui-spot[data-category="info"]').first).to_be_hidden()
-                    expect(world.locator('.ui-spot[data-category="food"]').first).to_be_visible()
-                    world.locator('label[data-cat=""]').click()
-                    world.locator('label[for="demo-floor-2f"]').click()
-                    expect(world.locator('.ui-floor[data-floor="2f"]')).to_be_visible()
-                    expect(world.locator('.ui-floor[data-floor="1f"]')).to_be_hidden()
-                    # Spot -> sheet -> Escape; the camera moves to the spot, the URL gains a hash, the page does not change.
-                    world.locator('label[for="demo-floor-1f"]').click()
-                    world.locator('.ui-spot', has_text='Hall').click()
-                    sheet = world.locator('#demo-spot-hall')
-                    expect(sheet).to_be_visible()
-                    self.assertTrue(page.url.endswith('#demo-spot-hall'))
-                    self.assertGreaterEqual(float(cam.evaluate('el => el.style.getPropertyValue("--z")')), 2)
-                    page.keyboard.press('Escape')
-                    expect(sheet).to_be_hidden()
-                    # Deep link: a fresh load with a hash opens that spot (here a spot on the other floor).
-                    page.goto(origin + '/index.html#demo-spot-lab')
-                    expect(page.locator('#demo-spot-lab')).to_be_visible()
-                    expect(page.locator('.ui-floor[data-floor="2f"]')).to_be_visible()
-                    self.assertEqual(errors, [])
-                    self.assertEqual(external, [])
-                    # Without JavaScript the sheet still opens through :target and scrolling still works.
-                    no_js = browser.new_context(java_script_enabled=False)
-                    try:
-                        plain = no_js.new_page()
-                        plain.goto(origin + '/index.html#demo-spot-gate')
-                        expect(plain.locator('#demo-spot-gate')).to_be_visible()
-                        expect(plain.locator('.ui-shot[data-i="3"]')).to_be_visible()
-                    finally:
-                        no_js.close()
-                finally:
-                    browser.close()
-        finally:
-            server.shutdown()
-            server.server_close()
-
-    def test_world_interrupted_repeated_and_history_flows(self):
-        import json
-        from pysaiyanweboo import example_data
-        spec = example_data('world')
-        spec['floors'][0]['spots'][0]['category'] = 'all'
-        server, origin = self.serve({'index.html': world_document(spec)})
-        try:
-            with sync_playwright() as pw:
-                browser = pw.chromium.launch()
-                try:
-                    page = browser.new_page(viewport={'width': 800, 'height': 900})
-                    page.goto(origin + '/index.html#demo-spot-lab')
-                    world = page.locator('#demo-map')
-                    sheet = page.locator('#demo-spot-lab')
-                    expect(sheet).to_be_visible()
-                    world.locator('.ui-world-view').focus()
-                    page.keyboard.press('Escape')
-                    expect(sheet).to_be_hidden()
-                    self.assertEqual(page.evaluate('location.hash'), '')
-                    page.goto(origin + '/index.html#demo-spot-lab')
-                    sheet.locator('.ui-sheet-close').click()
-                    expect(sheet).to_be_hidden()
-                    self.assertEqual(page.evaluate('location.hash'), '')
-                    # A category named all is distinct from the unfiltered choice.
-                    world.locator('label[for="demo-floor-1f"]').click()
-                    world.locator('label[data-cat="all"]').click()
-                    expect(world.locator('.ui-spot', has_text='Gate')).to_be_visible()
-                    expect(world.locator('.ui-spot', has_text='Hall')).to_be_hidden()
-                    world.locator('label[data-cat=""]').click()
-                    expect(world.locator('.ui-spot', has_text='Hall')).to_be_visible()
-                    # Rebinding must not double the wheel handler.
-                    page.evaluate('webUiWorld.bindWorlds(); webUiWorld.bindWorlds()')
-                    view = world.locator('.ui-world-view')
-                    z = view.evaluate('e => parseFloat(e.firstElementChild.style.getPropertyValue("--z"))')
-                    view.dispatch_event('wheel', {'deltaY': -100})
-                    z1 = view.evaluate('e => parseFloat(e.firstElementChild.style.getPropertyValue("--z"))')
-                    self.assertAlmostEqual(z1, z * 1.1)
-                    # Interrupted pointers clear drag state; keyboard activation still works.
-                    for event in ('pointercancel', 'lostpointercapture'):
-                        view.dispatch_event('pointerdown', {'pointerId': 11, 'button': 0, 'clientX': 100, 'clientY': 100})
-                        view.dispatch_event(event, {'pointerId': 11})
-                        expect(world).not_to_have_attribute('data-drag', '')
-                    # A real completed drag must not poison subsequent keyboard activation.
-                    box = view.bounding_box()
-                    page.mouse.move(box['x'] + 200, box['y'] + 150)
-                    page.mouse.down()
-                    page.mouse.move(box['x'] + 150, box['y'] + 150, steps=4)
-                    page.mouse.up()
-                    expect(world).not_to_have_attribute('data-drag', '')
-                    hall = world.locator('.ui-spot', has_text='Hall')
-                    hall.dispatch_event('click', {'detail': 1})
-                    expect(page.locator('#demo-spot-hall')).to_be_hidden()
-                    self.assertEqual(page.evaluate('location.hash'), '')
-                    hall.focus(); page.keyboard.press('Enter')
-                    expect(page.locator('#demo-spot-hall')).to_be_visible()
-                    # Hash navigation resets a conflicting filter and restores both directions.
-                    world.locator('label[data-cat="food"]').click()
-                    page.evaluate('location.hash = "demo-spot-lab"')
-                    expect(sheet).to_be_visible()
-                    expect(world.locator('.ui-spot', has_text='Lab')).to_be_visible()
-                    page.go_back()
-                    expect(page.locator('#demo-spot-hall')).to_be_visible()
-                    expect(sheet).to_be_hidden()
-                    page.go_forward()
-                    expect(sheet).to_be_visible()
-                    expect(page.locator('#demo-spot-hall')).to_be_hidden()
-                finally:
-                    browser.close()
-        finally:
-            server.shutdown(); server.server_close()
-
-    def test_board_follows_the_viewers_time_zone_and_shows_only_the_offset(self):
-        import datetime
-        from pysaiyanweboo import example_data
-        spec = example_data('world')
-        spec['board']['zones'] = []                                         # authored zone labels are the page's own words; here only the viewer's clock is shown
-        spec['board']['items'] = [i for i in spec['board']['items'] if not i.get('zone')]
-        server, origin = self.serve({'index.html': world_document(spec)})
-        try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch()
-                try:
-                    # 2026-11-03 10:00 UTC seen from five places: the clock, the gauges and the stamp all use the viewer's local minutes.
-                    for zone, offset in (('UTC', 0), ('Asia/Tokyo', 540), ('Asia/Kolkata', 330), ('America/New_York', -300), ('Pacific/Chatham', 825)):
-                        with self.subTest(zone=zone):
-                            context = browser.new_context(viewport={'width': 800, 'height': 900}, timezone_id=zone)
-                            page = context.new_page()
-                            page.clock.set_fixed_time(datetime.datetime(2026, 11, 3, 10, 0, tzinfo=datetime.timezone.utc))
-                            page.goto(origin + '/index.html')
-                            local = (600 + offset) % 1440
-                            expect(page.locator('[data-clock]')).to_have_text(f'{clock_label(local)} {utc_offset_label(offset)}')
-                            filled, percent, _ = gauge_state(local, 540, 1080, 10)
-                            first = page.locator('.ui-board-run .ui-board-gauge').first
-                            self.assertEqual(first.locator('.ui-board-cells').text_content(), gauge_cells(filled, 10, ('⌛', '⏳')))
-                            self.assertEqual(first.locator('.ui-board-pct').text_content(), f'{percent}%')
-                            page.locator('.ui-board-post input').fill('hi')
-                            page.locator('.ui-board-post input').press('Enter')
-                            self.assertEqual(page.locator('.ui-board-note .ui-board-stamp').first.text_content(), clock_label(local))
-                            board_text = page.locator('.ui-board').inner_text()                  # an offset, never a place name
-                            for place in zone.split('/')[1:]:
-                                self.assertNotIn(place.replace('_', ' '), board_text)
-                            self.assertNotIn('/', board_text)
-                            context.close()
-                finally:
-                    browser.close()
-        finally:
-            server.shutdown()
-            server.server_close()
-
-    def test_board_zone_clocks_and_items_follow_the_tz_database_not_the_viewer(self):
-        import datetime
-        import random
-        from pysaiyanweboo import example_data
-        spec = example_data('world')
-        spec['board']['items'].append({'text': 'Tokyo hours', 'gauge': {'from': '09:00', 'to': '18:00', 'cells': 10}, 'zone': 'tokyo'})
-        server, origin = self.serve({'index.html': world_document(spec)})
-        utc = lambda *a: datetime.datetime(*a, tzinfo=datetime.timezone.utc)
-        try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch()
-                try:
-                    # The page's lookup agrees with Python's: every change to the second, and thousands of seeded instants.
-                    rng = random.Random(20261103)
-                    for tz in ('Europe/London', 'America/New_York', 'Australia/Sydney', 'Asia/Kolkata', 'Pacific/Auckland'):
-                        rows = list(zone_rows(tz))
-                        instants = [t + d for t in rows[2::2] for d in (-1, 0, 1)] + [rng.randrange(1_500_000_000, 2_300_000_000) for _ in range(2000)] + [0, 4_000_000_000]
-                        page = browser.new_page()
-                        page.goto(origin + '/index.html')
-                        got = page.evaluate('([rows, ts]) => ts.map(t => webUiWorld.zoneOffset(rows, t))', [rows, instants])
-                        self.assertEqual(got, [zone_offset(rows, t) for t in instants], tz)
-                        page.close()
-                    # Either side of a change, seen by a viewer in New York: London's clock jumps, New York repeats an hour.
-                    cases = [(utc(2026, 3, 29, 0, 59), {'tokyo': '09:59', 'london': '00:59', 'ny': '20:59'}),
-                             (utc(2026, 3, 29, 1, 0), {'tokyo': '10:00', 'london': '02:00', 'ny': '21:00'}),
-                             (utc(2026, 11, 1, 5, 59), {'tokyo': '14:59', 'london': '05:59', 'ny': '01:59'}),
-                             (utc(2026, 11, 1, 6, 0), {'tokyo': '15:00', 'london': '06:00', 'ny': '01:00'})]
-                    for moment, expected in cases:
-                        with self.subTest(moment=moment.isoformat()):
-                            context = browser.new_context(viewport={'width': 800, 'height': 900}, timezone_id='America/New_York')
-                            page = context.new_page()
-                            page.clock.set_fixed_time(moment)
-                            page.goto(origin + '/index.html')
-                            shown = {z: page.locator(f'[data-zone-id="{z}"] [data-zone-clock]').text_content() for z in expected}
-                            self.assertEqual(shown, expected)
-                            for z, tz in (('tokyo', 'Asia/Tokyo'), ('london', 'Europe/London'), ('ny', 'America/New_York')):    # and Python says the same
-                                self.assertEqual(shown[z], board_clock(moment.timestamp(), zone_offset(zone_rows(tz), moment.timestamp()))['clock'])
-                            context.close()
-                    # Items with a zone count in that zone's local time (London lunch 12:00, Tokyo hours 09:00..18:00); the others use the viewer's.
-                    context = browser.new_context(viewport={'width': 800, 'height': 900}, timezone_id='America/New_York')
-                    page = context.new_page()
-                    page.clock.set_fixed_time(utc(2026, 11, 3, 1, 0))                       # Tokyo 10:00, London 01:00, viewer 20:00 the day before
-                    page.goto(origin + '/index.html')
-                    texts = page.locator('.ui-board-run [data-at]').all_text_contents()
-                    viewer, london = 20 * 60, 60
-                    expected = [f'あと{minutes_until(viewer, h * 60 + m)}分' for h, m in ((10, 30), (14, 0), (17, 30))] + [f'あと{minutes_until(london, 12 * 60)}分']
-                    self.assertEqual(texts, expected * 2)
-                    last = page.locator('.ui-board-run .ui-board-gauge').last
-                    filled, percent, _ = gauge_state(10 * 60, 540, 1080, 10)
-                    self.assertEqual((last.locator('.ui-board-cells').text_content(), last.locator('.ui-board-pct').text_content()), (gauge_cells(filled, 10, ('⌛', '⏳')), f'{percent}%'))
-                    self.assertEqual(percent, 11)
-                    context.close()
-                finally:
-                    browser.close()
-        finally:
-            server.shutdown()
-            server.server_close()
-
-    def test_board_line_stays_readable_on_a_phone(self):
-        from pysaiyanweboo import example_data
-        spec = example_data('world')
-        spec['board']['items'].append({'text': 'emoji', 'gauge': {'from': '09:00', 'to': '18:00',
-                                      'cells': 20, 'glyphs': ['👩\u200d💻', 'ABCDEFGH']}})
-        server, origin = self.serve({'index.html': world_document(spec)})
-        try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch()
-                try:
-                    for width in (320, 390, 800):
-                        with self.subTest(width=width):
-                            page = browser.new_page(viewport={'width': width, 'height': 700})
-                            page.goto(origin + '/index.html')
-                            self.assertEqual(page.locator('.ui-board-gauge[data-todo=\"ABCDEFGH\"]').count(), 2)
-                            track, board = page.locator('.ui-board-track').bounding_box(), page.locator('.ui-board').bounding_box()
-                            self.assertGreater(track['width'], 200)                                 # the scrolling line is not squeezed away
-                            self.assertLessEqual(track['x'] + track['width'], board['x'] + board['width'] + 1)
-                            form = page.locator('.ui-board-post').bounding_box()
-                            self.assertLessEqual(form['x'] + form['width'], board['x'] + board['width'] + 1)
-                            page.close()
-                finally:
-                    browser.close()
-        finally:
-            server.shutdown()
-            server.server_close()
-
-    def test_board_keeps_nothing_and_sends_nothing(self):
-        from pysaiyanweboo import example_data
-        spec = example_data('world')
-        server, origin = self.serve({'index.html': world_document(spec)})
-        try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch()
-                try:
-                    page = browser.new_page(viewport={'width': 800, 'height': 900})
-                    requests = []
-                    page.goto(origin + '/index.html')
-                    page.on('request', lambda request: requests.append(request.url))
-                    before = page.evaluate('performance.getEntriesByType("resource").length')
-                    form = page.locator('.ui-board-post input')
-                    for text in ('meet at the gate 14:00', 'second line', '\U0001f9d1\u200d\U0001f33e hi'):
-                        form.fill(text)
-                        form.press('Enter')
-                    self.assertEqual(page.locator('.ui-board-note').count(), 6)
-                    page.wait_for_timeout(400)
-                    # No storage of any kind, no cookie, no cache, no database, and not one request after the page loaded.
-                    state = page.evaluate("""async () => ({
-                        local: localStorage.length, session: sessionStorage.length, cookie: document.cookie,
-                        databases: (await indexedDB.databases()).length, caches: (await caches.keys()).length,
-                        resources: performance.getEntriesByType('resource').length})""")
-                    self.assertEqual(state, {'local': 0, 'session': 0, 'cookie': '', 'databases': 0, 'caches': 0, 'resources': before})
-                    self.assertEqual(requests, [])
-                    # Reload: everything a visitor wrote is gone, the board is back to what the page was built with.
-                    page.reload()
-                    self.assertEqual(page.locator('.ui-board-note').count(), 0)
-                    self.assertEqual(page.evaluate('localStorage.length + sessionStorage.length'), 0)
-                finally:
-                    browser.close()
-        finally:
-            server.shutdown()
-            server.server_close()
-
-    def test_villagers_player_board_clock_and_visitor_lines(self):
-        import datetime
-        from pysaiyanweboo import example_data
-        spec = example_data('world')
-        server, origin = self.serve({'index.html': world_document(spec)})
-        try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch()
-                try:
-                    context = browser.new_context(viewport={'width': 800, 'height': 900}, timezone_id='UTC')
-                    page = context.new_page()
-                    page.clock.set_fixed_time(datetime.datetime(2026, 11, 3, 10, 0, tzinfo=datetime.timezone.utc))
-                    errors = []
-                    page.on('pageerror', lambda error: errors.append(str(error)))
-                    page.goto(origin + '/index.html')
-                    # Villagers: a CSS animation per actor, and they really move (straight, constant speed is checked in Python).
-                    cat = page.locator('#demo-actor-cat')
-                    self.assertNotEqual(cat.evaluate('el => getComputedStyle(el).animationName'), 'none')
-                    first = cat.bounding_box()
-                    page.wait_for_timeout(900)
-                    second = cat.bounding_box()
-                    self.assertTrue(abs(first['x'] - second['x']) + abs(first['y'] - second['y']) > 1, (first, second))
-                    # Touching a villager shows what it says; the map keeps its camera.
-                    cat.dispatch_event('click')
-                    expect(page.locator('#demo-spot-cat')).to_be_visible()
-                    page.keyboard.press('Escape')
-                    # The player walks to a tapped spot at constant speed: Python's travel time is what the page uses.
-                    page.locator('.ui-spot', has_text='Hall').click()
-                    player = page.locator('.ui-player')
-                    expect(player).to_have_attribute('data-speed', '96')
-                    walk = float(player.evaluate('el => el.style.getPropertyValue("--walk")').rstrip('s'))
-                    self.assertAlmostEqual(walk, travel_seconds(120, 320, 480, 320, 96), places=6)
-                    self.assertEqual(player.get_attribute('data-target-x'), '480')
-                    # Board: the clock and "in N min" come from the page's clock, by the same rule as Python.
-                    expect(page.locator('[data-clock]')).to_have_text('10:00 UTC')
-                    texts = page.locator('.ui-board-run [data-at]').all_text_contents()
-                    expected = [f'あと{minutes_until(600, h * 60 + m)}分' for h, m in ((10, 30), (14, 0), (17, 30), (12, 0))] * 2   # the last one follows London (GMT in November)
-                    self.assertEqual(texts, expected)
-                    cases = [(600, 630), (600, 600), (1430, 10), (0, 1439)]
-                    self.assertEqual(page.evaluate('cases => cases.map(c => webUiWorld.minutesUntil(...c))', cases), [minutes_until(*c) for c in cases])
-                    self.assertEqual(page.evaluate('[1, 64, 160, 400].map(n => webUiWorld.boardSeconds(n))'), [board_seconds(n) for n in (1, 64, 160, 400)])
-                    # Gauges: the same integer rule as Python, for the demo's two glyph sets (visible line and its aria-hidden twin).
-                    gauges = page.locator('.ui-board-run .ui-board-gauge')
-                    self.assertEqual(gauges.count(), 4)
-                    for index, ((start, end, cells, glyphs)) in enumerate([(540, 1080, 10, ('⌛', '⏳')), (360, 1320, 8, ('🌕', '🌑'))] * 2):
-                        filled, percent, phase = gauge_state(600, start, end, cells)
-                        self.assertEqual(phase, 'active')
-                        self.assertEqual(gauges.nth(index).locator('.ui-board-cells').text_content(), gauge_cells(filled, cells, glyphs))
-                        self.assertEqual(gauges.nth(index).locator('.ui-board-pct').text_content(), f'{percent}%')
-                    windows = [(540, 1080, 10), (1320, 120, 8), (0, 1439, 20), (1439, 0, 3), (360, 1320, 8)]
-                    cases = [[now, start, end, cells] for start, end, cells in windows for now in range(1440)]
-                    self.assertEqual(page.evaluate('cases => cases.map(c => webUiWorld.gaugeState(...c))', cases),
-                                     [list(gauge_state(*c)) for c in cases])
-                    self.assertEqual(page.evaluate('() => [0, 1, 9, 600, 1439].map(m => webUiWorld.clockLabel(m))'), [clock_label(m) for m in (0, 1, 9, 600, 1439)])
-                    offsets = [0, 540, 330, -300, -210, 765, -720, 60, -60]
-                    self.assertEqual(page.evaluate('offsets => offsets.map(o => webUiWorld.utcOffsetLabel(o))', offsets), [utc_offset_label(o) for o in offsets])
-                    self.assertEqual(page.evaluate('() => webUiWorld.gaugeCells(3, 5, "🔥", "🪵")'), gauge_cells(3, 5, ('🔥', '🪵')))
-                    # Visitor lines: same cleaning as Python, shown as text, kept only on this page view.
-                    lines = ['  hello   world  ', '<img src=x onerror=1>', 'x' * 100, '   ', '\U0001f9d1\u200d\U0001f33e hi']
-                    self.assertEqual(page.evaluate('lines => lines.map(t => webUiWorld.cleanMessage(t))', lines), [clean_message(t) for t in lines])
-                    form = page.locator('.ui-board-post')
-                    for text in lines[:3]:
-                        form.locator('input').fill(text)
-                        form.locator('input').press('Enter')
-                    form.locator('input').fill('   ')
-                    form.locator('input').press('Enter')                                   # nothing to show: ignored
-                    notes = page.locator('.ui-board-note').all_text_contents()
-                    self.assertEqual(notes, [f'10:00 {clean_message(t)}' for t in reversed(lines[:3])] * 2)          # the stamp is the page's clock at posting
-                    self.assertEqual(page.locator('.ui-board-note .ui-board-stamp').all_text_contents(), ['10:00'] * 6)
-                    self.assertEqual(page.locator('.ui-board-run img').count(), 0)
-                    self.assertEqual(page.evaluate('globalThis.pwned'), None)
-                    page.reload()
-                    self.assertEqual(page.locator('.ui-board-note').count(), 0)            # nothing is stored
-                    self.assertEqual(errors, [])
-                finally:
-                    browser.close()
-        finally:
-            server.shutdown()
-            server.server_close()
-
-    def test_board_posts_keep_two_bounded_identical_halves(self):
-        from pysaiyanweboo import example_data, board_seconds
-        server, origin = self.serve({'index.html': world_document(example_data('world'))})
-        try:
-            with sync_playwright() as pw:
-                browser = pw.chromium.launch()
-                try:
-                    page = browser.new_page()
-                    # Posting can cross a real minute boundary; this assertion compares one fixed instant.
-                    page.clock.set_fixed_time(1794528000000)
-                    page.goto(origin + '/index.html')
-                    board = page.locator('.ui-board')
-                    base = int(board.get_attribute('data-chars'))
-                    for i in range(8):
-                        board.locator('input[name="message"]').fill(f'{i}😀')
-                        board.locator('button[type="submit"]').click()
-                    halves = board.evaluate("""b => {const rows=[...b.querySelectorAll('.ui-board-item')].map(n=>{const c=n.cloneNode(true);c.querySelectorAll('.ui-board-stamp').forEach(s=>s.remove());return c.textContent.trim()});return [rows.slice(0,rows.length/2),rows.slice(rows.length/2)]}""")
-                    self.assertEqual(halves[0], halves[1])
-                    self.assertEqual(halves[0][:5], ['7😀', '6😀', '5😀', '4😀', '3😀'])
-                    self.assertEqual(board.locator('.ui-board-note').count(), 10)
-                    self.assertEqual(int(board.get_attribute('data-chars')), base + 40)
-                    self.assertEqual(len(set(board.locator('.ui-board-note .ui-board-stamp').all_text_contents())), 1)   # each line carries its HH:MM stamp
-                    expect(board.locator('.ui-board-run')).to_have_css('animation-duration', f'{board_seconds(base + 40):g}s')
-                    page.reload()
-                    self.assertEqual(page.locator('.ui-board-note').count(), 0)
-                finally:
-                    browser.close()
-        finally:
-            server.shutdown(); server.server_close()
+class ThemeWallBrowserTests(unittest.TestCase):
+    """🎲 The random theme wall in Chromium: every cell reads and nothing overflows."""
 
     def test_random_theme_wall_reads_in_every_cell_without_overflow(self):
-        server, origin = self.serve({'wall.html': theme_wall_document(24)})
+        server, origin = serve_pages({'wall.html': theme_wall_document(24)})
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
@@ -765,47 +340,14 @@ class WorldBrowserTests(unittest.TestCase):
             server.server_close()
 
 
-class StubBrowserTests(unittest.TestCase):
-    """Generated stub pages in Chromium: the mock answers exactly what Python's stub_response says."""
-
-    def test_mock_stubs_answer_like_python_on_their_own_page_and_on_the_front_page(self):
-        import json
-        from pysaiyanweboo import stub_document
-        pages = {'mcp.html': stub_document(EXAMPLE_STUBS['mcp']), 'api.html': stub_document(EXAMPLE_STUBS['api']),
-                 'index.html': (ROOT / 'index.html').read_text(encoding='utf-8')}
-        server, origin = WorldBrowserTests.serve(pages)
-        try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch()
-                try:
-                    for name, ids in (('mcp.html', ['mcp']), ('api.html', ['api']), ('index.html', ['mcp', 'api'])):
-                        page = browser.new_page(viewport={'width': 800, 'height': 900})
-                        errors = []
-                        page.on('pageerror', lambda error: errors.append(str(error)))
-                        page.goto(f'{origin}/{name}')
-                        for sid in ids:
-                            if name == 'index.html':
-                                page.goto(f'{origin}/{name}#{sid}')                   # on the front page each stub is a room behind the door
-                            for query in ('tools/list', 'a$&b <x> "q"'):
-                                page.fill(f'#{sid}-query', query)
-                                page.click(f'#{sid}-run')
-                                expected = json.dumps(stub_response(EXAMPLE_STUBS[sid]['mock'], query), indent=2, ensure_ascii=False)
-                                expect(page.locator(f'#{sid}-output')).to_have_text(expected)
-                            self.assertEqual(page.locator(f'#{sid}-output').evaluate('el => el.children.length'), 0)  # text, never HTML
-                        self.assertEqual(errors, [], name)
-                        page.close()
-                finally:
-                    browser.close()
-        finally:
-            server.shutdown()
-            server.server_close()
-
+class CurlBrowserTests(unittest.TestCase):
+    """📋 The request draft on the front page reads curl exactly like Python and never sends it."""
 
     def test_curl_in_the_page_reads_exactly_like_python_and_masks_credentials(self):
         sys.path.insert(0, str(ROOT / 'tests'))
         from test_pages import CURL_CASES, curl_fuzz_inputs
         from pysaiyanweboo import mask_curl, parse_curl
-        server, origin = WorldBrowserTests.serve({'index.html': (ROOT / 'index.html').read_text(encoding='utf-8')})
+        server, origin = serve_pages({'index.html': (ROOT / 'index.html').read_text(encoding='utf-8')})
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
@@ -857,12 +399,12 @@ class StubBrowserTests(unittest.TestCase):
 
 
 class FrontPageBrowserTests(unittest.TestCase):
-    """The front page: the overworld fills one viewport, everything else is a room behind 🚪, and the seed dial wears Python's palettes."""
-    ROOMS = ('try', 'mcp', 'api', 'curl', 'world', 'school', 'cities', 'wall')
+    """The front page: 🎛️ the switches and 🎲 the wall fill one viewport, everything else is a room behind 🚪, and the seed dial wears Python's palettes."""
+    ROOMS = ('parts', 'curl', 'demos')
     TOKENS = ('--ui-bg', '--ui-panel', '--ui-fg', '--ui-muted', '--ui-border', '--ui-accent', '--ui-danger', '--ui-radius')
 
     def setUp(self):
-        self.server, self.origin = WorldBrowserTests.serve({'index.html': (ROOT / 'index.html').read_text(encoding='utf-8')})
+        self.server, self.origin = serve_pages({'index.html': (ROOT / 'index.html').read_text(encoding='utf-8')})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
         self.browser = self.playwright.chromium.launch()
@@ -929,14 +471,14 @@ class FrontPageBrowserTests(unittest.TestCase):
         self.assertIsNone(face.get_attribute('data-looking'))
         page.close()
 
-    def test_the_world_fills_the_viewport_and_the_rooms_wait_behind_the_door(self):
+    def test_the_switches_fill_the_viewport_and_the_rooms_wait_behind_the_door(self):
         for viewport in ({'width': 390, 'height': 844}, {'width': 1280, 'height': 800}):
             page = self.open(viewport)
-            self.assertLessEqual(page.evaluate('document.documentElement.scrollHeight'), viewport['height'], viewport)   # one screen, no scrolling
-            world = page.locator('#overworld-map')
-            expect(world).to_be_visible()
-            expect(world).to_have_attribute('data-js', '')
-            box = world.bounding_box()
+            self.assertLessEqual(page.evaluate('document.documentElement.scrollHeight'), viewport['height'], viewport)   # one screen; the view scrolls inside
+            view = page.locator('.ui-front-view')
+            expect(view.locator('#try')).to_be_visible()
+            expect(view.locator('#wall')).to_be_attached()
+            box = view.bounding_box()
             self.assertGreaterEqual(box['height'], viewport['height'] - 48, viewport)                                      # all but the 48px bar
             self.assertGreaterEqual(box['width'], viewport['width'], viewport)
             for room in self.ROOMS:
@@ -949,19 +491,19 @@ class FrontPageBrowserTests(unittest.TestCase):
                 expect(page.locator(f'#{room}')).to_be_visible()
                 expect(page.locator('#rooms')).to_be_hidden()
                 self.assertLessEqual(page.evaluate('document.documentElement.scrollHeight'), viewport['height'])
-                page.click(f'.ui-room:has(#{room}) .ui-room-bar a[href="#"]')                                               # ✖️ back to the world
+                page.click(f'.ui-room:has(#{room}) .ui-room-bar a[href="#"]')                                               # ✖️ back to the switches
                 expect(page.locator(f'#{room}')).to_be_hidden()
                 self.assertEqual(page.evaluate('location.hash'), '')
             page.close()
 
     def test_every_room_opens_from_its_link_alone_and_without_script(self):
-        page = self.open(hash='#school', java_script_enabled=False)
+        page = self.open(hash='#demos', java_script_enabled=False)
         for room in self.ROOMS:
             page.goto(f'{self.origin}/index.html#{room}')
             expect(page.locator(f'#{room}')).to_be_visible()
         page.goto(f'{self.origin}/index.html')
-        expect(page.locator('#overworld-map')).to_be_visible()
-        expect(page.locator('#wall')).to_be_hidden()
+        expect(page.locator('#try')).to_be_visible()
+        expect(page.locator('#demos')).to_be_hidden()
         page.close()
 
     def test_the_seed_dial_wears_the_palette_python_draws_for_that_seed(self):
@@ -990,14 +532,14 @@ class FrontPageBrowserTests(unittest.TestCase):
         self.assertEqual(self.tokens(page), {name: '' for name in self.TOKENS})
         page.close()
 
-    def test_the_bar_dice_rolls_a_seed_on_the_world_and_a_wall_cell_is_picked_by_a_tap(self):
+    def test_the_bar_dice_rolls_a_seed_and_a_wall_cell_is_picked_by_a_tap(self):
         import pysaiyanweboo
         page = self.open()
         page.evaluate('Math.random = () => 0.5')
         page.click('.ui-front-bar [data-ui-seed-roll]')                                                                     # 🎲 on the main page: floor(0.5 * 100)
         self.assertEqual(self.tokens(page), pysaiyanweboo.random_theme(50))
         bg = pysaiyanweboo.random_theme(50)['--ui-bg']
-        self.assertEqual(page.evaluate('getComputedStyle(document.querySelector("#overworld-map")).backgroundColor'),
+        self.assertEqual(page.evaluate('getComputedStyle(document.querySelector(".ui-front")).backgroundColor'),
                          'rgb(%d, %d, %d)' % tuple(int(bg[i:i + 2], 16) for i in (1, 3, 5)))
         page.goto(f'{self.origin}/index.html#wall')
         page.click('.ui-wall-cell[data-seed="5"] h3')
@@ -1024,10 +566,9 @@ class GeneratedSiteBrowserTests(unittest.TestCase):
                     page.goto((Path(directory) / 'index.html').as_uri() + '#try')
                     page.check('input[name="ui-theme"][value="green"]')
                     expect(page.locator('body')).to_have_attribute('data-ui-theme', 'green')
-                    page.goto((Path(directory) / 'index.html').as_uri() + '#api')
-                    page.fill('#api-query', '/local/offline')
-                    page.click('#api-run')
-                    expect(page.locator('#api-output')).to_contain_text('/local/offline')
+                    page.goto((Path(directory) / 'index.html').as_uri() + '#curl')
+                    page.locator('[data-curl-input]').fill('curl http://local/offline')
+                    expect(page.locator('[data-curl-output]')).to_contain_text('local/offline')
                     self.assertTrue(page.locator('img').first.evaluate('e => e.complete && e.naturalWidth > 0'))
                     self.assertEqual(errors, [])
                 finally:
@@ -1122,7 +663,7 @@ class RepositoryDiagnosticsBrowserTests(unittest.TestCase):
             {'kind': 'repository', 'status': 'public', 'http_status': 200, 'url': 'https://github.com/myon-bioinformatics/Ironmate'},
             {'kind': 'pages', 'status': 'missing', 'http_status': None, 'url': 'javascript:alert(1)'}]}}
         page = repository_diagnostics_page('myon-bioinformatics/Ironmate', icon=None, favicon=None)
-        server, origin = WorldBrowserTests.serve({'repository-diagnostics.html': page, 'repository-diagnostics.json': json.dumps(payload),
+        server, origin = serve_pages({'repository-diagnostics.html': page, 'repository-diagnostics.json': json.dumps(payload),
                                                   'broken.html': page.replace('mount(document, "./repository-diagnostics.json")', 'mount(document, "./missing.json")', 1)})
         try:
             with sync_playwright() as playwright:
@@ -1171,9 +712,8 @@ class RunbookBrowserTests(unittest.TestCase):
     def test_copy_record_filter_and_reload_on_a_phone(self):
         sys.path.insert(0, str(ROOT / 'tools'))
         import json
-        import record_demo
         from pysaiyanweboo import showcase_document
-        server, origin = WorldBrowserTests.serve({'guide.html': showcase_document(runbook_showcase())})
+        server, origin = serve_pages({'guide.html': showcase_document(runbook_showcase())})
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
@@ -1184,7 +724,7 @@ class RunbookBrowserTests(unittest.TestCase):
                     errors = []
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     page.goto(origin + '/guide.html')
-                    cam = record_demo.Camera(page)
+                    cam = ui.GifCamera(page)
                     cards = page.locator('#steps-guide-uvfile-list .ui-step')
                     expect(cards).to_have_count(2)
                     expect(page.locator('.ui-notice[data-tone="warn"]')).to_contain_text('記録')
@@ -1237,10 +777,10 @@ class RunbookBrowserTests(unittest.TestCase):
                     expect(first.locator('textarea').first).to_have_value('42')
                     cam.hold(800)
                     self.assertEqual(errors, [])
-                    gif = record_demo.encode(cam.shots)
+                    gif = ui.encode_gif(cam.shots)
                     self.assertTrue(gif.startswith(b'GIF89a'))
                     if os.environ.get('PSWB_GIFS'):
-                        record_demo.gif_targets_from(os.environ['PSWB_GIFS'], ['component-steps'])['component-steps'].write_bytes(gif)
+                        ui.gif_targets_from(os.environ['PSWB_GIFS'], ['component-steps'])['component-steps'].write_bytes(gif)
                 finally:
                     browser.close()
         finally:
@@ -1278,9 +818,8 @@ class OperationsPageBrowserTests(unittest.TestCase):
     def test_filter_rows_by_state_download_the_data_and_switch_to_purple(self):
         sys.path.insert(0, str(ROOT / 'tools'))
         import json
-        import record_demo
         html, data = operations_page()
-        server, origin = WorldBrowserTests.serve({'audit.html': html})
+        server, origin = serve_pages({'audit.html': html})
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
@@ -1289,7 +828,7 @@ class OperationsPageBrowserTests(unittest.TestCase):
                     errors = []
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     page.goto(origin + '/audit.html')
-                    cam = record_demo.Camera(page)
+                    cam = ui.GifCamera(page)
                     expect(page.locator('.ui-stamp b')).to_have_text('2026.11.12')
                     expect(page.locator('.ui-eyebrow')).to_have_text('ENGINEERING HEALTH')
                     rows = page.locator('#audit tbody tr')
@@ -1317,10 +856,10 @@ class OperationsPageBrowserTests(unittest.TestCase):
                     self.assertEqual((before != accent(), accent()), (True, '#6750a4'))      # flutter's Material 3 primary, no reload
                     self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)
                     self.assertEqual(errors, [])
-                    gif = record_demo.encode(cam.shots)
+                    gif = ui.encode_gif(cam.shots)
                     self.assertTrue(gif.startswith(b'GIF89a'))
                     if os.environ.get('PSWB_GIFS'):
-                        record_demo.gif_targets_from(os.environ['PSWB_GIFS'], ['component-operations'])['component-operations'].write_bytes(gif)
+                        ui.gif_targets_from(os.environ['PSWB_GIFS'], ['component-operations'])['component-operations'].write_bytes(gif)
                 finally:
                     browser.close()
         finally:
@@ -1339,11 +878,10 @@ def table_spec():
 class StagePagerBrowserTests(unittest.TestCase):
     """🖼️ stage_html + 🧭 pager_html on a phone: the slide keeps 16:9 and stays at the top while the page scrolls, every pager variant is one
     data-ui-pager word away (no reload) and fits without overflow or overlap, each moves the page its own way, a tap keeps a text field's focus,
-    and on its side the stage takes the whole height. ``PSWB_GIFS`` keeps component-stage-pager.gif (record_demo.gif_targets_from naming)."""
+    and on its side the stage takes the whole height. ``PSWB_GIFS`` keeps component-stage-pager.gif (pysaiyanweboo.gif_targets_from naming)."""
 
     def test_the_stage_stays_put_and_every_pager_variant_moves_the_page(self):
         sys.path.insert(0, str(ROOT / 'tools'))
-        import record_demo
         from pysaiyanweboo import PAGER_PARTS, bundled_css, component_parts, module_script, pager_variants, render_document
         faces = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣']
         svg = ('<svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg"><rect width="160" height="90" fill="#fff"/>'
@@ -1354,7 +892,7 @@ class StagePagerBrowserTests(unittest.TestCase):
         filler = ''.join(f'<p>{i}</p>' for i in range(40))
         html = render_document(trusted_html='<main class="ui-page">' + stage['html'] + '<p>' + pager['html'] + '</p><textarea id="note" rows="2"></textarea>'
                                + filler + '</main>' + module_script(pager['js'] + glue), title='Stage and pager', css=bundled_css())
-        server, origin = WorldBrowserTests.serve({'stage.html': html})
+        server, origin = serve_pages({'stage.html': html})
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
@@ -1363,7 +901,7 @@ class StagePagerBrowserTests(unittest.TestCase):
                     errors = []
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     page.goto(origin + '/stage.html')
-                    nav, cam = page.locator('#pager'), record_demo.Camera(page)
+                    nav, cam = page.locator('#pager'), ui.GifCamera(page)
                     at = lambda: page.locator('#pager output').text_content()
                     box = lambda: page.locator('.ui-stage').bounding_box()
                     b = box()
@@ -1425,10 +963,10 @@ class StagePagerBrowserTests(unittest.TestCase):
                     self.assertAlmostEqual(box()['height'], 392, delta=1)                         # on its side: the whole height
                     cam.hold(600)
                     self.assertEqual(errors, [])
-                    gif = record_demo.encode(cam.shots)
+                    gif = ui.encode_gif(cam.shots)
                     self.assertTrue(gif.startswith(b'GIF89a'))
                     if os.environ.get('PSWB_GIFS'):
-                        record_demo.gif_targets_from(os.environ['PSWB_GIFS'], ['component-stage-pager'])['component-stage-pager'].write_bytes(gif)
+                        ui.gif_targets_from(os.environ['PSWB_GIFS'], ['component-stage-pager'])['component-stage-pager'].write_bytes(gif)
                 finally:
                     browser.close()
         finally:
@@ -1438,15 +976,14 @@ class StagePagerBrowserTests(unittest.TestCase):
 class TableBrowserTests(unittest.TestCase):
     """component_document("table", spec): an escaped table in its own scroller, styled by shell.css under every theme, no script.
     The GIF walks the themes and scrolls the table sideways on a phone; ``PSWB_GIFS="DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"``
-    keeps it as DIR/<P>component-table<S>[-<run detail>...].gif through record_demo.gif_targets_from (the recorder's own naming rules)."""
+    keeps it as DIR/<P>component-table<S>[-<run detail>...].gif through pysaiyanweboo.gif_targets_from (the recorders' shared naming rules)."""
 
     def test_the_table_scrolls_inside_its_box_on_a_phone_and_follows_every_theme(self):
         table_tile = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="40"><rect width="64" height="40" fill="#3fb950"/></svg>'
         sys.path.insert(0, str(ROOT / 'tools'))
-        import record_demo
         from PIL import Image
         from pysaiyanweboo import CANDIDATE_THEMES, THEMES, component_document
-        server, origin = WorldBrowserTests.serve({'table.html': component_document('table', table_spec(), document_title='Table'), 'tile.svg': table_tile})
+        server, origin = serve_pages({'table.html': component_document('table', table_spec(), document_title='Table'), 'tile.svg': table_tile})
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
@@ -1464,7 +1001,7 @@ class TableBrowserTests(unittest.TestCase):
                     box = page.locator('.ui-shell-scroll')
                     self.assertGreater(box.evaluate('e => e.scrollWidth - e.clientWidth'), 0)        # the table scrolls in its box...
                     self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)   # ...not the page
-                    cam, borders = record_demo.Camera(page, crop='.ui-shell-scroll'), set()
+                    cam, borders = ui.GifCamera(page, crop='.ui-shell-scroll'), set()
                     for theme in (*THEMES, *CANDIDATE_THEMES):
                         page.evaluate('t => document.body.dataset.uiTheme = t', theme)
                         borders.add(page.locator('td').first.evaluate('e => getComputedStyle(e).borderBottomColor'))
@@ -1476,11 +1013,11 @@ class TableBrowserTests(unittest.TestCase):
                     cam.hold(600)
                     self.assertGreater(len(borders), 1)                                  # the border follows the theme tokens
                     self.assertEqual(errors, [])
-                    gif = record_demo.encode(cam.shots)
+                    gif = ui.encode_gif(cam.shots)
                     frames = Image.open(__import__('io').BytesIO(gif))
                     self.assertTrue(gif.startswith(b'GIF89a') and getattr(frames, 'n_frames', 1) > 1)
                     if os.environ.get('PSWB_GIFS'):
-                        record_demo.gif_targets_from(os.environ['PSWB_GIFS'], ['component-table'])['component-table'].write_bytes(gif)
+                        ui.gif_targets_from(os.environ['PSWB_GIFS'], ['component-table'])['component-table'].write_bytes(gif)
                 finally:
                     browser.close()
         finally:
@@ -1492,7 +1029,7 @@ class ShowcaseBrowserTests(unittest.TestCase):
 
     def pages(self):
         from pysaiyanweboo import example_data
-        return WorldBrowserTests.serve({'showcase.html': showcase_document(example_data('showcase'))})
+        return serve_pages({'showcase.html': showcase_document(example_data('showcase'))})
 
     def test_sections_switch_by_rail_bottom_bar_and_keyboard_without_a_reload(self):
         server, origin = self.pages()
@@ -1615,49 +1152,6 @@ class ShowcaseBrowserTests(unittest.TestCase):
             server.server_close()
 
 
-class CatalogueBrowserTests(unittest.TestCase):
-    """A 198-screen catalogue as a map, in Chromium: floors and categories filter it, a tap opens the sheet, and it fits a phone."""
-
-    def test_floors_categories_and_sheets_work_on_a_large_catalogue(self):
-        sys.path.insert(0, str(ROOT / 'tests'))
-        from test_pages import screens_like
-        from pysaiyanweboo import catalogue_world
-        server, origin = WorldBrowserTests.serve({'index.html': world_document(catalogue_world(screens_like(), title='Screens'))})
-        try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch()
-                try:
-                    for width in (390, 1280):
-                        with self.subTest(width=width):
-                            page = browser.new_page(viewport={'width': width, 'height': 800})
-                            errors = []
-                            page.on('pageerror', lambda error: errors.append(str(error)))
-                            page.goto(origin + '/index.html')
-                            world = page.locator('#catalogue-map')
-                            self.assertEqual(world.locator('.ui-world-bar label[for^="catalogue-floor-"]').count(), 5)
-                            shown = lambda: world.locator('.ui-floor:visible .ui-spot:visible').count()
-                            world.locator('label[for="catalogue-floor-f3"]').click()
-                            self.assertEqual(world.locator('.ui-floor:visible').get_attribute('data-floor'), 'f3')
-                            expect(world.locator('.ui-floor:visible .ui-spot').first).to_be_visible()
-                            everything = world.locator('.ui-floor:visible .ui-spot').count()
-                            self.assertEqual(everything, 40)
-                            world.locator('label[data-cat="display"]').click()                 # a category chip narrows the floor
-                            narrowed = world.locator('.ui-floor:visible .ui-spot:visible').count()
-                            self.assertTrue(0 < narrowed < everything, narrowed)
-                            world.locator('label[data-cat=""]').click()
-                            self.assertEqual(world.locator('.ui-floor:visible .ui-spot:visible').count(), everything)
-                            spot = world.locator('.ui-floor:visible .ui-spot').first
-                            spot.dispatch_event('click', {'detail': 0})
-                            self.assertTrue(page.locator('.ui-sheet-item[data-open]').is_visible())
-                            self.assertIn('about', page.locator('.ui-sheet-item[data-open]').inner_text())
-                            self.assertEqual(page.evaluate('document.documentElement.scrollWidth <= innerWidth'), True)
-                            self.assertEqual(errors, [])
-                            page.close()
-                finally:
-                    browser.close()
-        finally:
-            server.shutdown()
-            server.server_close()
 
 
 class ShelfBrowserTests(unittest.TestCase):
@@ -1665,7 +1159,7 @@ class ShelfBrowserTests(unittest.TestCase):
 
     def serve_page(self):
         from pysaiyanweboo import shelf_document
-        return WorldBrowserTests.serve({'shelf.html': shelf_document()})
+        return serve_pages({'shelf.html': shelf_document()})
 
     def test_the_pages_rules_equal_pythons_on_ironmates_cases_and_a_seeded_fuzz(self):
         sys.path.insert(0, str(ROOT / 'tests'))
@@ -1849,7 +1343,7 @@ class DoorBrowserTests(unittest.TestCase):
         import pysaiyanweboo
         from pysaiyanweboo import door_document, door_draw, door_options, door_validate, emoji_path, example_data, mulberry32
         door = door_validate(example_data('door'))
-        server, origin = WorldBrowserTests.serve({'door.html': door_document(door)})
+        server, origin = serve_pages({'door.html': door_document(door)})
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
@@ -1908,7 +1402,7 @@ class DoorBrowserTests(unittest.TestCase):
         door = door_validate(spec)
         pages = {'door.html': door_document(spec), 'home.html': '<title>home</title><p id=here>HOME</p>', 'a.html': '<p id=here>A</p>',
                  'b.html': '<p id=here>B</p>', 'c.html': '<p id=here>C</p>', 'd.html': '<p id=here>D</p>'}
-        server, origin = WorldBrowserTests.serve(pages)
+        server, origin = serve_pages(pages)
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
@@ -1960,7 +1454,7 @@ class StudioBrowserTests(unittest.TestCase):
 
     def serve_page(self):
         from pysaiyanweboo import studio_document
-        return WorldBrowserTests.serve({'studio.html': studio_document()})
+        return serve_pages({'studio.html': studio_document()})
 
     def test_every_rule_in_the_page_equals_pythons(self):
         import random
@@ -2166,7 +1660,7 @@ class CoordinatesBrowserTests(unittest.TestCase):
 
     def serve_page(self):
         from pysaiyanweboo import coordinates_document
-        return WorldBrowserTests.serve({'coord.html': coordinates_document()})
+        return serve_pages({'coord.html': coordinates_document()})
 
     def test_every_rule_in_the_page_equals_pythons(self):
         import random
@@ -2330,7 +1824,7 @@ class PhotoBrowserTests(unittest.TestCase):
 
     def serve_page(self):
         from pysaiyanweboo import photo_document
-        return WorldBrowserTests.serve({'photo.html': photo_document()})
+        return serve_pages({'photo.html': photo_document()})
 
     def test_every_rule_in_the_page_equals_pythons(self):
         import json
@@ -2529,7 +2023,7 @@ class PhotoPageBrowserTests(PageCase):
         from test_pages import PHOTO_CASES, photo_file
         self.cases, self.file = PHOTO_CASES, photo_file
         from pysaiyanweboo import photo_document
-        self.server, self.origin = WorldBrowserTests.serve({'photo.html': photo_document()})
+        self.server, self.origin = serve_pages({'photo.html': photo_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
         self.browser = photo_engine(self.playwright).launch()
@@ -2861,7 +2355,7 @@ class BtkAdapterBrowserTests(unittest.TestCase):
     def test_every_adapter_fits_its_page_and_its_click_does_what_it_says(self):
         import pysaiyanweboo
         pages = pysaiyanweboo.example_pages()
-        server, origin = WorldBrowserTests.serve({pysaiyanweboo.BTK_ADAPTERS[i]['page']: pages['examples/' + pysaiyanweboo.BTK_ADAPTERS[i]['page']] for i in pysaiyanweboo.BTK_ADAPTERS})
+        server, origin = serve_pages({pysaiyanweboo.BTK_ADAPTERS[i]['page']: pages['examples/' + pysaiyanweboo.BTK_ADAPTERS[i]['page']] for i in pysaiyanweboo.BTK_ADAPTERS})
         try:
             with sync_playwright() as playwright:
                 browser = photo_engine(playwright).launch()
@@ -2918,7 +2412,7 @@ class ClipboardBrowserTests(PageCase):
         import test_pages as t
         self.t = t
         from pysaiyanweboo import shelf_document, photo_document
-        self.server, self.origin = WorldBrowserTests.serve({'shelf.html': shelf_document(), 'photo.html': photo_document()})
+        self.server, self.origin = serve_pages({'shelf.html': shelf_document(), 'photo.html': photo_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
         self.browser = photo_engine(self.playwright).launch()
@@ -3224,7 +2718,7 @@ class PlaygroundBrowserTests(PageCase):
     def setUp(self):
         from pysaiyanweboo import playground_document
         html = playground_document().replace('data-ui-play ', f'data-ui-play data-play-seed="{self.SEED}" ', 1)
-        self.server, self.origin = WorldBrowserTests.serve({'play.html': html})
+        self.server, self.origin = serve_pages({'play.html': html})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
         self.browser = photo_engine(self.playwright).launch()
@@ -3454,7 +2948,7 @@ class ReportBrowserTests(PageCase):
 
     def setUp(self):
         from pysaiyanweboo import report_document
-        self.server, self.origin = WorldBrowserTests.serve({'report.html': report_document()})
+        self.server, self.origin = serve_pages({'report.html': report_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
         self.browser = photo_engine(self.playwright).launch()
@@ -3757,7 +3251,7 @@ class McpBrowserTests(PageCase):
 
     def setUp(self):
         from pysaiyanweboo import mcp_document
-        self.server, self.origin = WorldBrowserTests.serve({'mcp.html': mcp_document()})
+        self.server, self.origin = serve_pages({'mcp.html': mcp_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
         self.browser = photo_engine(self.playwright).launch()
@@ -4648,7 +4142,7 @@ class PatternBrowserTests(PageCase):
 
     def setUp(self):
         from pysaiyanweboo import patterns_document
-        self.server, self.origin = WorldBrowserTests.serve({'patterns.html': patterns_document()})
+        self.server, self.origin = serve_pages({'patterns.html': patterns_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
         self.browser = photo_engine(self.playwright).launch()
@@ -5382,7 +4876,7 @@ class PatternBridgeBrowserTests(unittest.TestCase):
 
     def other_origin(self, allow=()):
         """A second server, on another port: a page there is another origin as far as the browser is concerned."""
-        server, origin = WorldBrowserTests.serve({'other.html': '<!doctype html><title>other</title><body>other</body>'})
+        server, origin = serve_pages({'other.html': '<!doctype html><title>other</title><body>other</body>'})
         self.addCleanup(server.shutdown)
         return origin
 
@@ -5453,7 +4947,7 @@ class ScreensBrowserTests(PageCase):
 
     def setUp(self):
         from pysaiyanweboo import screens_document
-        self.server, self.origin = WorldBrowserTests.serve({'screens.html': screens_document()})
+        self.server, self.origin = serve_pages({'screens.html': screens_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
         self.browser = photo_engine(self.playwright).launch()
@@ -5910,7 +5404,7 @@ class ImageStudioBrowserTests(PageCase):
 
     def setUp(self):
         from pysaiyanweboo import imagestudio_document
-        self.server, self.origin = WorldBrowserTests.serve({'image-studio.html': imagestudio_document()})
+        self.server, self.origin = serve_pages({'image-studio.html': imagestudio_document()})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
         self.browser = photo_engine(self.playwright).launch()

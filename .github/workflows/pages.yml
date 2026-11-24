@@ -14,5 +14,3 @@ jobs:
     uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@fbf433b296ec047f1c9acdf4d5d12c81ff7f59e8
     with:
       artifact_path: .
-      # HTML is built from Python, not committed: the cities review page comes from its committed manifest.json.
-      build: python3 -S -c "import sys; sys.path.insert(0, 'tests'); import support; support.write_city_gallery_page('docs/evidence/cities-20261111')"

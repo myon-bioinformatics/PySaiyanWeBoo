@@ -969,3 +969,151 @@ class VisualRegressionTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ═══ 🏷️ output names for recordings (were tested through the world's demo recorder, which moved to the portfolio) ═══
+import argparse  # noqa: E402
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+JST_RUN = datetime(2026, 11, 8, 20, 34, 12, tzinfo=timezone(timedelta(hours=9)))
+
+
+def test_output_names_live_in_pysaiyanweboo_for_every_recorder(tmp_path):
+    """The naming rules are pysaiyanweboo's, for every recorder: .png stills too, and git-commit of a chosen checkout."""
+    import pysaiyanweboo
+    assert pysaiyanweboo.gif_targets(tmp_path, ["top"], prefix="p-", suffix="-dark", ext=".png") == {"top": tmp_path / "p-top-dark.png"}
+    assert pysaiyanweboo.gif_targets_from(f"{tmp_path} --suffix=-x --git-commit", ["top"], revision="abc1234", ext=".png") == {
+        "top": tmp_path / "top-x-abc1234.png"}
+    for bad in ("png", ".PNG", "", ".toolongext"):
+        with pytest.raises(ValueError):
+            pysaiyanweboo.gif_targets(tmp_path, ["top"], ext=bad)
+    with pytest.raises(ValueError, match="needs a git checkout"):
+        pysaiyanweboo.gif_targets(tmp_path, ["top"], run_details=["git-commit"], root=tmp_path, force=True)
+
+
+def test_recorders_name_files_with_a_prefix_a_suffix_and_run_details_in_order(tmp_path):
+    """gif_targets(): <prefix><stem><suffix>[-<run detail>...].gif, the details left to right in the order given; one timestamp and commit per batch."""
+    plain = pysaiyanweboo.gif_targets(tmp_path / "new", ["school-pick", "school-keys"])
+    assert plain == {"school-pick": tmp_path / "new/school-pick.gif", "school-keys": tmp_path / "new/school-keys.gif"} and (tmp_path / "new").is_dir()
+    assert pysaiyanweboo.gif_targets(tmp_path, ["school-pick"], prefix="ci-", suffix="-chrome") == {"school-pick": tmp_path / "ci-school-pick-chrome.gif"}
+    both = pysaiyanweboo.gif_targets(tmp_path, ["school-pick", "school-keys"], prefix="ci-", suffix="-chrome", run_details=["timestamp", "git-commit"],
+                                  now=JST_RUN, revision="288cbed")
+    assert both == {"school-pick": tmp_path / "ci-school-pick-chrome-20261108T113412Z-288cbed.gif",
+                    "school-keys": tmp_path / "ci-school-keys-chrome-20261108T113412Z-288cbed.gif"}
+    swapped = pysaiyanweboo.gif_targets(tmp_path, ["school-pick"], suffix="-chrome", run_details=["git-commit", "timestamp"], now=JST_RUN, revision="288cbed")
+    assert swapped["school-pick"].name == "school-pick-chrome-288cbed-20261108T113412Z.gif"          # the order given is the order in the name
+    assert pysaiyanweboo.run_timestamp(JST_RUN) == "20261108T113412Z"                        # 20:34:12 in Tokyo is 11:34:12 UTC
+    assert pysaiyanweboo.run_timestamp(JST_RUN) < pysaiyanweboo.run_timestamp(JST_RUN + timedelta(seconds=1))   # names sort in recording order
+    with pytest.raises(ValueError, match="time zone"):
+        pysaiyanweboo.run_timestamp(datetime(2026, 11, 8, 20, 34, 12))
+    (tmp_path / "school-pick-20261108T113412Z.gif").write_bytes(b"GIF89a")
+    with pytest.raises(FileExistsError, match="--timestamp"):                               # the same second twice is still refused
+        pysaiyanweboo.gif_targets(tmp_path, ["school-pick"], run_details=["timestamp"], now=JST_RUN)
+    assert pysaiyanweboo.gif_targets(tmp_path, ["school-pick"], run_details=["timestamp"], now=JST_RUN, force=True)["school-pick"].name == "school-pick-20261108T113412Z.gif"
+    for bad in ({"prefix": "a/b"}, {"suffix": "a b"}):
+        with pytest.raises(argparse.ArgumentTypeError):
+            pysaiyanweboo.gif_targets(tmp_path, ["x"], **bad)
+    with pytest.raises(ValueError, match="distinct"):
+        pysaiyanweboo.gif_targets(tmp_path, ["x", "x"])
+    for bad in (["timestamp", "timestamp"], ["commit"]):
+        with pytest.raises(ValueError, match="run_details"):
+            pysaiyanweboo.gif_targets(tmp_path, ["x"], run_details=bad)
+
+
+def test_recorders_read_the_commit_from_git(tmp_path):
+    """source_commit(): `git rev-parse --short=7 HEAD`, plus -dirty when a tracked file changed; outside a checkout --git-commit says so."""
+    def git(*args):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
+    git("init", "-q")
+    (tmp_path / "page.txt").write_text("one\n", encoding="utf-8")
+    git("add", "page.txt")
+    git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "one")
+    head = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "--short=7", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    assert pysaiyanweboo.checkout_commit(tmp_path) == head and len(head) == 7
+    (tmp_path / "untracked.txt").write_text("x", encoding="utf-8")
+    assert pysaiyanweboo.checkout_commit(tmp_path) == head                                     # untracked files do not count
+    (tmp_path / "page.txt").write_text("two\n", encoding="utf-8")
+    assert pysaiyanweboo.checkout_commit(tmp_path) == head + "-dirty"
+    with pytest.raises(ValueError, match="--git-commit needs a git checkout"):
+        pysaiyanweboo.checkout_commit(tmp_path / "missing")
+
+
+def test_recorder_setting_string_is_parsed_by_the_same_argparse_rules(tmp_path):
+    """PSWB_GIFS="DIR --prefix P --suffix=-S --timestamp --git-commit" goes through add_gif_arguments too: same checks, same order, errors raised, no abbreviations."""
+    target = pysaiyanweboo.gif_targets_from(f"{tmp_path} --prefix ci- --suffix=-chromium --timestamp --git-commit", ["component-table"],
+                                          now=JST_RUN, revision="288cbed")["component-table"]
+    assert target == tmp_path / "ci-component-table-chromium-20261108T113412Z-288cbed.gif"
+    swapped = pysaiyanweboo.gif_targets_from(f"{tmp_path} --git-commit --suffix=-chromium --timestamp --git-commit --prefix ci-", ["component-table"],
+                                           now=JST_RUN, revision="288cbed")["component-table"]
+    assert swapped.name == "ci-component-table-chromium-288cbed-20261108T113412Z.gif"       # prefix leftmost and suffix after the base name
+                                                                                             # wherever they are given; details in order, a repeat adds nothing
+    assert pysaiyanweboo.gif_targets_from(f"'{tmp_path / 'a dir'}'", ["component-table"])["component-table"] == tmp_path / "a dir/component-table.gif"
+    for spec, message in ((f"{tmp_path} --time", "unrecognized"), (f"{tmp_path} --timestamp=yes", "ignored explicit argument"),
+                          (f"{tmp_path} --prefix a/b", "letters"), (f"{tmp_path} --suffix -chrome", "expected one argument"),
+                          ("", "required: out"), (f"{tmp_path} --number", "unrecognized"), (f"{tmp_path} --commit", "unrecognized"),
+                          (f"{tmp_path} --git", "unrecognized")):                     # the old name and an abbreviation are both refused
+        with pytest.raises(argparse.ArgumentError, match=message):
+            pysaiyanweboo.gif_targets_from(spec, ["x"])
+
+
+# ═══ 🎞 GifCamera and encode_gif (were tools/record_demo.py's Camera and encode) ═══
+import io  # noqa: E402
+import time  # noqa: E402
+
+
+def _gif_png(color, mark=None, size=(64, 48)):
+    from tools.check_visual_regression import rgb_png
+    if isinstance(color, str):
+        color = {"black": (0, 0, 0), "white": (255, 255, 255)}[color]
+    rectangles = [((8, 8, 24, 24), mark)] if mark else []
+    return rgb_png(*size, color, rectangles=rectangles)
+
+
+def test_gif_keeps_real_timing_and_decodes_to_the_same_pictures():
+    pytest.importorskip("PIL")
+    from PIL import Image, ImageChops
+    shots = [(10.0, _gif_png((13, 17, 23))), (10.003, _gif_png((13, 17, 23), (255, 0, 0))), (10.5, _gif_png((13, 17, 23), (0, 255, 0))), (11.0, _gif_png((0, 0, 255)))]
+    gif = pysaiyanweboo.encode_gif(shots, tail_ms=700)
+    image = Image.open(io.BytesIO(gif))
+    assert gif[:6] == b"GIF89a" and image.n_frames == 4 and image.info["loop"] == 0
+    delays = []
+    for index in range(image.n_frames):
+        image.seek(index)
+        delays.append(image.info["duration"])
+    assert delays == [20, 500, 500, 700]                       # 3 ms is lifted to 20 ms; real gaps round to 10 ms; the tail is the last frame
+    for index, (_, png) in enumerate(shots):                   # delta frames still show exactly what was on screen
+        image.seek(index)
+        assert ImageChops.difference(image.convert("RGB"), Image.open(io.BytesIO(png)).convert("RGB")).getbbox() is None
+
+
+def test_gif_merges_still_frames_and_can_shrink():
+    pytest.importorskip("PIL")
+    from PIL import Image
+    shots = [(0.0, _gif_png("black")), (0.1, _gif_png("black")), (0.2, _gif_png("black")), (0.3, _gif_png("white"))]
+    image = Image.open(io.BytesIO(pysaiyanweboo.encode_gif(shots, width=32)))
+    assert image.size == (32, 24) and image.n_frames == 2
+
+
+def test_gif_zoom_goes_in_toward_the_anchor_and_stays_on_the_real_clock():
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    class Page:                                                 # a screenshot of a red corner (bottom left) on blue
+        def screenshot(self, type):
+            from tools.check_visual_regression import rgb_png
+            return rgb_png(40, 40, (0, 0, 255), rectangles=[((0, 20, 20, 40), (255, 0, 0))])
+
+    camera = pysaiyanweboo.GifCamera(Page())
+    camera.zoom(anchor=(0, 1), factor=2, steps=4, hold_ms=300)
+    assert len(camera.shots) == 4                               # three steps in, then the peak
+    times = [t for t, _ in camera.shots]
+    assert times == sorted(times) and round((times[-1] - times[-2]) * 1000) == 60 and round((times[1] - times[0]) * 1000) == 60
+    frames = [Image.open(io.BytesIO(png)).convert("RGB") for _, png in camera.shots]
+    assert frames[3].getpixel((20, 20)) == (255, 0, 0)          # at the peak the bottom-left corner fills the picture
+    assert time.monotonic() >= times[-1] + 0.3      # the real clock was let catch up (the peak is held 300 ms)
+    for anchor in ("↙️", "↙", "bottom-left", (0, 1)):          # an arrow emoji, an anchor name or a fraction: the same corner
+        camera = pysaiyanweboo.GifCamera(Page())
+        camera.zoom(anchor=anchor, factor=2, steps=2, hold_ms=20)
+        assert Image.open(io.BytesIO(camera.shots[-1][1])).convert("RGB").getpixel((20, 20)) == (255, 0, 0), anchor
+    with pytest.raises(ValueError):
+        pysaiyanweboo.GifCamera(Page()).zoom(anchor="x")
