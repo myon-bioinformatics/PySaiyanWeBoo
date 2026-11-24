@@ -2292,13 +2292,14 @@ def _features_api(source: str) -> tuple[str, list[list[str]]]:
 
 
 def add_features(spec: Any, module: str | os.PathLike[str], *, timeout: float = 30) -> dict:
-    """🧩 ``spec`` (web-ui-page/1) with every feature of the Python file ``module`` added to its 🧩 機能一覧 tab.
+    """📚 ``spec`` (web-ui-page/1) with a 📚 機能全一覧 tab: every feature of the Python file ``module``.
 
     ⌨️ CLI: each argparse command with its help and options, read by running the file only up to its first
     ``parse_args`` (nothing after it runs; no CLI → no section). 🐍 Python: every name in ``__all__`` (or, without it,
-    each public function and class) with the first line of its docstring, read without importing. The sections land
-    in the tab whose label has 機能 (a new 🧩 機能一覧 tab, or the page end, when there is none), so the list always
-    covers the code. Returns a new spec; ``spec`` is not changed."""
+    each public function and class) with the first line of its docstring, read without importing. The tab goes right
+    after the hand-written 🧩 機能一覧 tab — unless that tab already names every command and name, which needs no full
+    list — and replaces an earlier 📚 機能全一覧 tab; a page without tabs gets the sections at its end, titled
+    📚 機能全一覧. Returns a new spec; ``spec`` is not changed."""
     path = Path(module)
     source = path.read_text(encoding="utf-8")
     spec = json.loads(json.dumps(spec))
@@ -2333,13 +2334,25 @@ def add_features(spec: Any, module: str | os.PathLike[str], *, timeout: float = 
         return spec
     tabs = next((b for b in spec["blocks"] if isinstance(b, dict) and b.get("type") == "tabs"), None)
     if tabs is None:
+        for section in sections:
+            section["title"] = f"📚 機能全一覧 · {section['title']}"
         spec["blocks"].extend(sections)
         return spec
-    tab = next((t for t in tabs.get("tabs", []) if isinstance(t, dict) and "機能" in str(t.get("label", ""))), None)
-    if tab is None:
-        tab = {"label": "🧩 機能一覧", "blocks": []}
-        tabs.setdefault("tabs", []).append(tab)
-    tab.setdefault("blocks", []).extend(sections)
+    every = tabs.setdefault("tabs", [])
+    labels = [str(t.get("label", "")) if isinstance(t, dict) else "" for t in every]
+    full = {"label": "📚 機能全一覧", "blocks": sections}
+    if "📚 機能全一覧" in labels:                   # 🔁 made before: this run's list replaces it
+        every[labels.index("📚 機能全一覧")] = full
+        return spec
+    hand = next((i for i, label in enumerate(labels) if "機能" in label), None)
+    if hand is not None:
+        names = [name for name, _, _ in cli["commands"]] if cli and cli["commands"] else \
+                [short.split()[0] for _, _, short in cli["options"]] if cli else []
+        names += [row[0].split(" ", 1)[1].removesuffix("()") for row in rows]
+        written = json.dumps(every[hand], ensure_ascii=False)
+        if all(name in written for name in names):  # ✅ the hand-written 🧩 機能一覧 already names everything
+            return spec
+    every.insert(len(every) if hand is None else hand + 1, full)
     return spec
 
 
