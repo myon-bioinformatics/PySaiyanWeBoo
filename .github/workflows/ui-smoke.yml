@@ -3,6 +3,9 @@ on:
   push:
     branches: [main]
   pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   changes:
     permissions:
@@ -12,6 +15,7 @@ jobs:
   # Tooling smoke already runs these unittest cases through pytest on Python 3.15.
   # Keep this workflow focused on real-browser capture and visual evidence.
   screenshot:
+    timeout-minutes: 30
     if: needs.changes.outputs.product_changed == 'true'
     needs: changes
     runs-on: ubuntu-latest
