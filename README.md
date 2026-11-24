@@ -590,6 +590,7 @@ every string escaped and every link relative or HTTPS, with a brand theme (`them
 (`layouts=`). `python -S pysaiyanweboo.py --example page` prints a spec; `--page spec.json [--brand brand.json --layouts
 page-layouts.json]` renders it from the shell or Node, so a report script owns only its data. 🏠 `--repository OWNER/REPO`
 puts the way back first (🏠 portfolio · 🐙 GitHub); `add_back_nav(page, "OWNER/REPO")` gives a page built some other way the same nav.
+📲 `--home-screen DIR` (`home_screen(spec, DIR)`) makes the spec's icon into square, opaque `icon-180/192/512.png` and a `manifest.webmanifest` next to the page, and writes the spec back with `home` — the short name, the source's SHA-256 and each size as Base64 (a cache Python reads without decoding again) — so "Add to Home Screen" and shortcuts show the repository's own icon (iOS: `apple-touch-icon` 180 · Android / desktop: the manifest). No Pillow: nearest-neighbour scaling keeps pixel icons crisp.
 
 🎞️ `gif.js` (`UiGif`) turns canvas frames into one animated GIF89a with no dependency: the browser decodes, resizes, zooms and
 captions the images it is given (`Composer`), and the module adds only what browsers lack — a bucket histogram while frames arrive,

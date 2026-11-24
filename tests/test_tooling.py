@@ -1673,6 +1673,40 @@ def test_page_document_tabs_switch_without_a_script():
             pysaiyanweboo.page_document({"schema": "web-ui-page/1", "title": "Guide", "blocks": [bad]})
 
 
+def test_home_screen_icons_manifest_and_base64_cache(tmp_path):
+    """🏠 A see-through, non-square icon becomes square opaque 180/192/512 PNGs, a manifest and a Base64 cache in the spec;
+    the page links them; an unchanged source reuses the cache; the CLI writes them next to the page."""
+    import base64
+    import pytest
+    import subprocess
+    import sys
+    w, h = 3, 2                                            # top-left see-through, one opaque red pixel
+    rgba = bytes([0, 0, 0, 0] * 5 + [255, 0, 0, 255])
+    (tmp_path / "icon.png").write_bytes(pysaiyanweboo.studio_png_encode(w, h, rgba))
+    spec = {"schema": "web-ui-page/1", "title": "🧪 Demo 利用ガイド", "icon": "./icon.png", "blocks": [{"type": "text", "text": "x"}]}
+    cached, files = pysaiyanweboo.home_screen(spec, tmp_path)
+    assert sorted(files) == ["icon-180.png", "icon-192.png", "icon-512.png", "manifest.webmanifest"]
+    for size in pysaiyanweboo.HOME_SIZES:
+        sw, sh, pixels = pysaiyanweboo.studio_png_decode(files[f"icon-{size}.png"])
+        assert (sw, sh) == (size, size) and set(pixels[3::4]) == {255}                       # square and opaque
+        assert pixels[:3] == b"\xff\xff\xff" and base64.b64decode(cached["home"]["icons"][str(size)]) == files[f"icon-{size}.png"]
+    manifest = json.loads(files["manifest.webmanifest"])
+    assert manifest["short_name"] == cached["home"]["short_name"] == "🧪 Demo" and manifest["icons"][2]["sizes"] == "512x512"
+    page = pysaiyanweboo.page_document(cached)
+    assert '<link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">' in page and 'href="./icon.png">' not in page.split("</head>")[0]
+    assert '<link rel="manifest" href="./manifest.webmanifest">' in page and 'content="🧪 Demo"' in page
+    stale = {**cached, "home": {**cached["home"], "icons": {**cached["home"]["icons"], "180": "AAAA"}}}
+    assert pysaiyanweboo.home_screen(stale, tmp_path)[0]["home"]["icons"]["180"] == "AAAA"           # same source: cache kept
+    assert pysaiyanweboo.home_screen({**stale, "home": {**stale["home"], "source_sha256": "0"}}, tmp_path)[0] == cached
+    with pytest.raises(ValueError):
+        pysaiyanweboo.page_document({**cached, "home": {"short_name": "x", "icons": {}}})
+    (tmp_path / "page.json").write_text(json.dumps(spec), encoding="utf-8")
+    out = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--page", str(tmp_path / "page.json"),
+                          "--home-screen", str(tmp_path)], capture_output=True, text=True, check=True).stdout
+    assert 'rel="manifest"' in out and (tmp_path / "icon-512.png").is_file()
+    assert json.loads((tmp_path / "page.json").read_text(encoding="utf-8"))["home"] == cached["home"]
+
+
 def test_page_document_builds_a_page_from_a_spec(tmp_path):
     import pytest
     import subprocess
