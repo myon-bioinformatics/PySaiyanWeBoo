@@ -274,27 +274,21 @@ def test_repository_metadata_v1_roundtrip_and_cli(tmp_path):
     assert pretty == line == record
 
     cli_out = tmp_path / "cli"
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-S",
-            str(ROOT / "tools/repository_metadata.py"),
-            "repo-metadata",
-            "--format",
-            "v1",
-            "--repository",
-            "myon-bioinformatics/PySaiyanWeBoo",
-            "--root",
-            str(checkout),
-            "--output-dir",
-            str(cli_out),
-        ],
-        check=True,
+    result = cli_args.run_cli(
+        ROOT / "tools/repository_metadata.py",
+        "repo-metadata",
+        "--format",
+        "v1",
+        "--repository",
+        "myon-bioinformatics/PySaiyanWeBoo",
+        "--root",
+        checkout,
+        "--output-dir",
+        cli_out,
+        python_options=("-S",),
         env=env,
-        capture_output=True,
-        text=True,
     )
-    assert result.returncode == 0
+    assert result.returncode == 0, result.stderr
     assert json.loads((cli_out / "repository-metadata.json").read_text(encoding="utf-8"))["head"]["sha"] == sha
 
 
@@ -502,14 +496,12 @@ def test_module_main_entrypoint(tmp_path):
     )
     # -m tools.repository_metadata may fail if tools is not a package; allow script path
     if result.returncode != 0:
-        result = subprocess.run(
-            [sys.executable, str(ROOT / "tools/repository_metadata.py"), "repo-metadata",
-             "--repository", "myon-bioinformatics/PySaiyanWeBoo",
-             "--root", str(checkout)],
-            capture_output=True,
-            text=True,
-            check=True,
+        result = cli_args.run_cli(
+            ROOT / "tools/repository_metadata.py", "repo-metadata",
+            "--repository", "myon-bioinformatics/PySaiyanWeBoo",
+            "--root", checkout,
         )
+        assert result.returncode == 0, result.stderr
     assert "schema_version" in result.stdout
 
 

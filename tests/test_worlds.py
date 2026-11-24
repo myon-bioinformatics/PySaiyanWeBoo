@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 import pysaiyanweboo as ui
-from support import node26, node_js, node_value, world_js
+from support import node26, node_js, node_value, pswb_cli, world_js
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -380,29 +380,25 @@ def test_classroom_directive_refuses_bad_data(floor):
 ONE_LINER = {"schema": ui.WORLD_SCHEMA, "avatars": ["🙂", "🐱"], "floors": [{"id": "room", "label": "教室", "classroom": {"rows": 5, "groups": 3}}]}
 
 
-def _cli(*args, stdin):
-    return subprocess.run([sys.executable, "-S", "pysaiyanweboo.py", *args], input=stdin.encode("utf-8"), capture_output=True, cwd=ROOT, timeout=60)
-
-
 def test_world_page_from_stdin_equals_the_page_from_a_file(tmp_path):
     expected = ui.world_document(ONE_LINER)
-    result = _cli("--world", "-", stdin=json.dumps(ONE_LINER, ensure_ascii=False))
-    assert result.returncode == 0 and result.stdout.decode("utf-8") == expected
+    result = pswb_cli("--world", "-", stdin=json.dumps(ONE_LINER, ensure_ascii=False), cwd=ROOT, timeout=60)
+    assert result.returncode == 0 and result.stdout == expected
     (tmp_path / "w.json").write_text(json.dumps(ONE_LINER, ensure_ascii=False), encoding="utf-8")
-    assert _cli("--world", str(tmp_path / "w.json"), stdin="").stdout.decode("utf-8") == expected
-    piped = _cli("--world", "-", stdin=_cli("--example", "school", stdin="").stdout.decode("utf-8"))   # the pipe in one line
-    assert piped.returncode == 0 and piped.stdout.decode("utf-8") == ui.world_document(ui.example_data("school"))
+    assert pswb_cli("--world", tmp_path / "w.json", stdin="", cwd=ROOT, timeout=60).stdout == expected
+    piped = pswb_cli("--world", "-", stdin=pswb_cli("--example", "school", stdin="", cwd=ROOT, timeout=60).stdout, cwd=ROOT, timeout=60)   # the pipe in one line
+    assert piped.returncode == 0 and piped.stdout == ui.world_document(ui.example_data("school"))
 
 
 @pytest.mark.parametrize("bad", ["not json", "", "[]", json.dumps({**ONE_LINER, "floors": [{"id": "r", "label": "x", "classroom": {"rows": 99}}]})])
 def test_world_from_stdin_reports_bad_specs_without_a_traceback(bad):
-    result = _cli("--world", "-", stdin=bad)
-    assert result.returncode == 2 and result.stdout == b"" and b"Traceback" not in result.stderr and b"error" in result.stderr
+    result = pswb_cli("--world", "-", stdin=bad, cwd=ROOT, timeout=60)
+    assert result.returncode == 2 and result.stdout == "" and "Traceback" not in result.stderr and "error" in result.stderr
 
 
 def test_world_from_stdin_is_bounded():
-    result = _cli("--world", "-", stdin=" " * (ui.PATTERN_MAX_INPUT + 10))
-    assert result.returncode == 2 and b"larger than" in result.stderr
+    result = pswb_cli("--world", "-", stdin=" " * (ui.PATTERN_MAX_INPUT + 10), cwd=ROOT, timeout=60)
+    assert result.returncode == 2 and "larger than" in result.stderr
 
 
 def test_node26_reaches_the_same_page_through_py_launch():
@@ -1286,9 +1282,12 @@ def test_the_front_page_and_the_cli_carry_the_cities():
     for text in ('id="cities"', "丸の内中央口", "リバースロンドン", "Fake Paris", "Parallel Tokyo", 'data-category="exit"', 'data-category="terminus"',
                  'data-flip="🐉"'):
         assert text in page
-    spec = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--example", "cities"], capture_output=True, text=True, check=True, encoding="utf-8").stdout
-    assert json.loads(spec)["floors"][0]["place"]["points"][0]["id"] == "marunouchi-c"
-    html = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--world", "-"], input=spec, capture_output=True, text=True, check=True, encoding="utf-8").stdout
+    spec = pswb_cli("--example", "cities", python_options=())
+    assert spec.returncode == 0, spec.stderr
+    assert spec.json()["floors"][0]["place"]["points"][0]["id"] == "marunouchi-c"
+    shown = pswb_cli("--world", "-", python_options=(), stdin=spec.stdout)
+    assert shown.returncode == 0, shown.stderr
+    html = shown.stdout
     assert "八重洲北口" in html and "ウォータールー" in html and "サン・ラザール駅" in html          # a spot of each city from the CLI
     assert "タワー・ブリッジ" not in html and "エッフェル塔" not in html                               # transport only
 
