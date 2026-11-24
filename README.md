@@ -628,7 +628,7 @@ Layout is a preset too: the core reads `--ui-text` / `--ui-space` / `--ui-max`, 
 make them switchable without a reload — people and Playwright try each, and the [sweep](docs/layout-presets.md) keeps every
 one that holds as a candidate.
 📄 A whole page from data: `page_document(spec)` renders a `web-ui-page/1` JSON — title, description, icon and blocks
-(`heading`, `text`, `output`, `table`, `card`, `section`, `links`, `image`, `kv`, `badges`) — as one self-contained page,
+(`heading`, `text`, `output`, `table`, `card`, `section`, `links`, `image`, `kv`, `badges`, and 🗂️ `tabs` — 2..8 `{label, blocks}` switched by radios with no script, e.g. 🎞 GIF demo / 🧩 features) — as one self-contained page,
 every string escaped and every link relative or HTTPS, with a brand theme (`theme_css`) and switchable layouts
 (`layouts=`). `python -S pysaiyanweboo.py --example page` prints a spec; `--page spec.json [--brand brand.json --layouts
 page-layouts.json]` renders it from the shell or Node, so a report script owns only its data. 🏠 `--repository OWNER/REPO`
