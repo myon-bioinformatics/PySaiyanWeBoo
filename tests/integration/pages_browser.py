@@ -451,6 +451,11 @@ class FrontPageBrowserTests(unittest.TestCase):
     def test_header_avatar_keeps_short_touch_until_idle(self):
         page = self.open(has_touch=True)
         face = page.get_by_role('button', name='Blink', exact=True)
+        # 🖱 Playwright's mouse starts at (0, 0) and Chromium may replay it as a pointermove after load, between the
+        # touch and its frame (gaze −4.96 = looking at the corner). Park it where the touch lands, then rest (blur).
+        page.mouse.move(page.viewport_size['width'] - 20, 24)
+        face.evaluate("() => window.dispatchEvent(new Event('blur'))")
+        expect(face).not_to_have_attribute('data-looking', '')
         # Deliver the whole non-hover touch sequence before requestAnimationFrame.
         face.evaluate("""face => {
           const root = document.documentElement;
