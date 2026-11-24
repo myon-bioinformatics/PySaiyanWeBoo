@@ -274,27 +274,21 @@ def test_repository_metadata_v1_roundtrip_and_cli(tmp_path):
     assert pretty == line == record
 
     cli_out = tmp_path / "cli"
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-S",
-            str(ROOT / "tools/repository_metadata.py"),
-            "repo-metadata",
-            "--format",
-            "v1",
-            "--repository",
-            "myon-bioinformatics/PySaiyanWeBoo",
-            "--root",
-            str(checkout),
-            "--output-dir",
-            str(cli_out),
-        ],
-        check=True,
+    result = cli_args.run_cli(
+        ROOT / "tools/repository_metadata.py",
+        "repo-metadata",
+        "--format",
+        "v1",
+        "--repository",
+        "myon-bioinformatics/PySaiyanWeBoo",
+        "--root",
+        checkout,
+        "--output-dir",
+        cli_out,
+        python_options=("-S",),
         env=env,
-        capture_output=True,
-        text=True,
     )
-    assert result.returncode == 0
+    assert result.returncode == 0, result.stderr
     assert json.loads((cli_out / "repository-metadata.json").read_text(encoding="utf-8"))["head"]["sha"] == sha
 
 
@@ -502,14 +496,12 @@ def test_module_main_entrypoint(tmp_path):
     )
     # -m tools.repository_metadata may fail if tools is not a package; allow script path
     if result.returncode != 0:
-        result = subprocess.run(
-            [sys.executable, str(ROOT / "tools/repository_metadata.py"), "repo-metadata",
-             "--repository", "myon-bioinformatics/PySaiyanWeBoo",
-             "--root", str(checkout)],
-            capture_output=True,
-            text=True,
-            check=True,
+        result = cli_args.run_cli(
+            ROOT / "tools/repository_metadata.py", "repo-metadata",
+            "--repository", "myon-bioinformatics/PySaiyanWeBoo",
+            "--root", checkout,
         )
+        assert result.returncode == 0, result.stderr
     assert "schema_version" in result.stdout
 
 
@@ -1659,6 +1651,26 @@ def test_core_prints_and_respects_reduced_motion_and_auto_scheme():
     light = tokens.split('@media(prefers-color-scheme:light){body[data-ui-theme="auto"]{', 1)[1].split("}", 1)[0]
     assert "--ui-bg:#ffffff" in light and "--ui-accent:#0969da" in light  # the github-like palette, not a copy
     assert "/* css/tokens.css */" in pysaiyanweboo.core_css("auto") and "themes/" not in pysaiyanweboo.core_css("auto")
+
+
+def test_page_document_tabs_switch_without_a_script():
+    import pytest
+    tabs = {"type": "tabs", "tabs": [{"label": "🎞 <GIF>", "blocks": [{"type": "image", "src": "demo.gif", "alt": "demo"}]},
+                                     {"label": "🧩 機能一覧", "blocks": [{"type": "table", "headers": ["機能"], "rows": [["検索"]]}]}]}
+    page = pysaiyanweboo.page_document({"schema": "web-ui-page/1", "title": "Guide", "blocks": [tabs]})
+    name = re.search(r'name="(ui-tabs-[0-9a-f]{8})"', page).group(1)
+    assert page.count(f'name="{name}"') == 2 and f'id="{name}-0" checked>' in page and f'id="{name}-1">' in page
+    assert f'<label class="ui-tab" for="{name}-0">🎞 &lt;GIF&gt;</label>' in page and page.count('<div class="ui-tab-panel">') == 2
+    assert "<script" not in page and ".ui-tabs>.ui-tab-input:nth-of-type(2):checked~.ui-tab-panel:nth-of-type(2){display:block}" in page
+    assert f'name="{name}"' in pysaiyanweboo.page_document({"schema": "web-ui-page/1", "title": "Guide", "blocks": [tabs]})   # stable
+    named = pysaiyanweboo.page_document({"schema": "web-ui-page/1", "title": "Guide", "blocks": [{**tabs, "id": "demo"}]})
+    assert 'name="ui-tabs-demo"' in named
+    plain = pysaiyanweboo.page_document({"schema": "web-ui-page/1", "title": "Guide", "blocks": [{"type": "text", "text": "x"}]})
+    assert ".ui-tab-panel" not in plain   # the rules come only with a tabs block
+    for bad in ({**tabs, "tabs": tabs["tabs"][:1]}, {**tabs, "tabs": tabs["tabs"] * 5}, {**tabs, "id": "Bad id"},
+                {**tabs, "tabs": [{"label": "x", "blocks": [], "extra": 1}, tabs["tabs"][1]]}, {**tabs, "extra": 1}):
+        with pytest.raises(ValueError):
+            pysaiyanweboo.page_document({"schema": "web-ui-page/1", "title": "Guide", "blocks": [bad]})
 
 
 def test_page_document_builds_a_page_from_a_spec(tmp_path):

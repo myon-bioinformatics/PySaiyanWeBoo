@@ -34,7 +34,7 @@ from pysaiyanweboo import (
     EMBEDDED_UI_JS, _njs_launch_module, bundled_css, filter_request, module_asset, module_csp_hash, module_script, plotly_figure, render_document,
     run_node, shared_scripts,
 )
-from support import flutter_case, node26, node_js, pswb_cli, pytest  # pytest: the real one, or a stand-in under python -S
+from support import cli_args, fleet, flutter_case, node26, node_js, pswb_cli, pytest  # pytest: the real one, or a stand-in under python -S
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -371,8 +371,8 @@ class FrontPageTests(unittest.TestCase):
         page = ui.front_document(main, rooms, title="Demo", gaze_label='まばたき "A"', tools="<i>tool</i>")
         for fragment in (parts["html"] + "<i>tool</i>", parts["css"], ui.module_script(parts["js"])):
             self.assertEqual(page.count(fragment), 1)
-        self.assertEqual(run_cli("--component", "gaze-avatar", "--set", "label=まばたき"),
-                         ui.component_document("gaze-avatar", label="まばたき"))
+        done = pswb_cli("--component", "gaze-avatar", "--set", "label=まばたき", timeout=120)
+        self.assertEqual((done.returncode, done.stdout), (0, ui.component_document("gaze-avatar", label="まばたき")), done.stderr)
 
     def test_front_page_is_what_the_generator_writes(self):
         page = (ROOT / "index.html").read_text(encoding="utf-8")
@@ -395,11 +395,10 @@ class FrontPageTests(unittest.TestCase):
         wall = pysaiyanweboo.theme_wall(range(12))
         self.assertEqual(wall.count('class="ui-wall-cell"'), 12)
         self.assertIn("--ui-radius:", wall)
-        run = lambda *args: pswb_cli(*args, cwd=ROOT, timeout=60)
-        self.assertEqual(json.loads(run("--example", "door").stdout), pysaiyanweboo.example_data("door"))
-        self.assertEqual(run("--example", "nope").returncode, 2)
-        self.assertEqual(run("--theme-wall", "3").stdout, pysaiyanweboo.theme_wall_document(3))
-        self.assertEqual(run("--world", "-").returncode, 2)                     # 🌍 moved to the portfolio: scripts/world.py page -
+        self.assertEqual(json.loads(pswb_cli("--example", "door", cwd=ROOT, timeout=60).stdout), pysaiyanweboo.example_data("door"))
+        self.assertEqual(pswb_cli("--example", "nope", cwd=ROOT, timeout=60).returncode, 2)
+        self.assertEqual(pswb_cli("--theme-wall", "3", cwd=ROOT, timeout=60).stdout, pysaiyanweboo.theme_wall_document(3))
+        self.assertEqual(pswb_cli("--world", "-", cwd=ROOT, timeout=60).returncode, 2)          # 🌍 moved to the portfolio: scripts/world.py page -
 
     def test_site_writes_pages_browser_modules_and_example_data_and_nothing_else(self):
         with tempfile.TemporaryDirectory() as out:
@@ -1768,13 +1767,11 @@ class BtkAdapterTests(unittest.TestCase):
                     self.assertEqual(module.load_adapter(target)["id"], adapter_id)
 
     def test_the_command_line_prints_them(self):
-        def run(*args):
-            return pswb_cli(*args, cwd=ROOT, timeout=30)
-        listed = run("--btk-adapter", "list")
+        listed = pswb_cli("--btk-adapter", "list", cwd=ROOT, timeout=30)
         self.assertEqual((listed.returncode, listed.stdout.split()), (0, sorted(pysaiyanweboo.BTK_ADAPTERS)))
-        one = run("--btk-adapter", "web-ui-photo-studio", "--url", "http://127.0.0.1:9/p.html")
+        one = pswb_cli("--btk-adapter", "web-ui-photo-studio", "--url", "http://127.0.0.1:9/p.html", cwd=ROOT, timeout=30)
         self.assertEqual((one.returncode, json.loads(one.stdout)), (0, pysaiyanweboo.btk_adapter("web-ui-photo-studio", "http://127.0.0.1:9/p.html")))
-        bad = run("--btk-adapter", "nope")
+        bad = pswb_cli("--btk-adapter", "nope", cwd=ROOT, timeout=30)
         self.assertEqual(bad.returncode, 2)
         self.assertIn("unknown adapter", bad.stderr)
 
@@ -2655,7 +2652,7 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(ledger.read_text(), "{broken")
             self.assertIn("⚠️ failure ledger update skipped", "".join(c.args[0] for c in err.write.call_args_list))
 
-    @unittest.skipUnless(shutil.which("node"), "Node unavailable")
+    @unittest.skipUnless(fleet.node(minimum=0), "Node unavailable")   # minimum=0: any Node, as before (node_test_run needs `node --test`, not Node 26)
     def test_real_node_success_failure_and_filters(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -2748,31 +2745,30 @@ class ReportTests(unittest.TestCase):
             good.write_text('<testsuite><testcase name="a"/></testsuite>')
             bad.write_text('<testsuite><testcase name="a"/><testcase name="b"><failure message="m"/></testcase></testsuite>')
             older.write_text('<testsuite><testcase name="a"/><testcase name="gone"><failure/></testcase></testsuite>')
-            run = lambda *args: pswb_cli(*args, timeout=60)
-            ok = run("--junit", str(good))
+            ok = pswb_cli("--junit", good, timeout=60)
             self.assertEqual((ok.returncode, json.loads(ok.stdout)["ok"]), (0, True))
-            failing = run("--junit", str(bad), "--previous", str(older))
+            failing = pswb_cli("--junit", bad, "--previous", older, timeout=60)
             self.assertEqual(failing.returncode, 1)
             self.assertEqual(json.loads(failing.stdout)["diff"]["summary"], {"new": 1, "recurring": 0, "resolved": 1})
-            both = run("--junit", str(good), str(bad))
+            both = pswb_cli("--junit", good, bad, timeout=60)
             self.assertEqual((both.returncode, len(both.stdout.strip().splitlines())), (1, 2))
-            invalid = run("--junit", str(tmp / "missing.xml"))
+            invalid = pswb_cli("--junit", tmp / "missing.xml", timeout=60)
             self.assertEqual(invalid.returncode, 2)
             self.assertNotIn(str(tmp), invalid.stderr.replace("missing.xml", ""))
             events = tmp / "events.jsonl"
             events.write_text(ndjson([*flutter_case(1, 0, "ok"), {"type": "done", "success": True}]))
-            counts = run("--flutter-events", str(events), "--to", str(tmp / "out.xml"))
+            counts = pswb_cli("--flutter-events", events, "--to", tmp / "out.xml", timeout=60)
             self.assertEqual(counts.returncode, 0, counts.stderr)
             self.assertIn("passed=1", counts.stdout)
             self.assertEqual(pysaiyanweboo.junit_inspect((tmp / "out.xml").read_text())["tests"], 1)
             events.write_text("{broken")
-            self.assertEqual(run("--flutter-events", str(events)).returncode, 1)
-            self.assertEqual(run("--flutter-events", str(events), "--to", str(tmp / "never.xml")).returncode, 2)
+            self.assertEqual(pswb_cli("--flutter-events", events, timeout=60).returncode, 1)
+            self.assertEqual(pswb_cli("--flutter-events", events, "--to", tmp / "never.xml", timeout=60).returncode, 2)
             self.assertFalse((tmp / "never.xml").exists())
-            expected = run("--expect-exit", "7", "--output-dir", str(tmp / "evidence"), "--", sys.executable, "-c", "raise SystemExit(7)")
+            expected = pswb_cli("--expect-exit", "7", "--output-dir", tmp / "evidence", "--", sys.executable, "-c", "raise SystemExit(7)", timeout=60)
             self.assertEqual(expected.returncode, 0, expected.stderr)
             self.assertEqual(json.loads((tmp / "evidence" / "receipt.json").read_text())["matched_expectation"], True)
-            self.assertEqual(run("--expect-exit", "0", "--output-dir", str(tmp / "e2"), "--", sys.executable, "-c", "pass").returncode, 2)
+            self.assertEqual(pswb_cli("--expect-exit", "0", "--output-dir", tmp / "e2", "--", sys.executable, "-c", "pass", timeout=60).returncode, 2)
 
 
 class McpTests(unittest.TestCase):
@@ -3843,18 +3839,17 @@ class PatternTests(unittest.TestCase):
                 parse(text)
 
     def test_the_command_line(self):
-        run = lambda *args, **kw: subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), *args], capture_output=True, timeout=60, **kw)
-        done = run("--pattern", "reduce", input=json.dumps({"mode": "redux", "initial": 1, "actions": [{"type": "increment", "value": 2}]}).encode())
+        done = pswb_cli("--pattern", "reduce", stdin=json.dumps({"mode": "redux", "initial": 1, "actions": [{"type": "increment", "value": 2}]}), timeout=60)
         self.assertEqual((done.returncode, json.loads(done.stdout)), (0, {"history": [1, 3], "mode": "redux", "schema": "state-reducer/1", "state": 3}))
         for stdin in (b'{"mode":"redux","initial":NaN,"actions":[]}', b"[1", b'{"mode":"x"}', "{\"a\":\"".encode() + b"\xff\"}", b" " * (pysaiyanweboo.PATTERN_MAX_INPUT + 1)):
-            done = run("--pattern", "reduce", input=stdin)
-            self.assertEqual((done.returncode, done.stdout), (2, b""), stdin[:20])
-            self.assertTrue(done.stderr.startswith("⛔ invalid pattern request: ".encode()))
-        self.assertEqual(run("--pattern", "list").stdout.decode().split(), sorted(pysaiyanweboo.PATTERN_RUNNERS))
-        done = run("--pattern", "nonsense", input=b"{}")
+            done = pswb_cli("--pattern", "reduce", stdin=stdin, timeout=60)   # bytes: one request is not valid UTF-8
+            self.assertEqual((done.returncode, done.stdout), (2, ""), stdin[:20])
+            self.assertTrue(done.stderr.startswith("⛔ invalid pattern request: "))
+        self.assertEqual(pswb_cli("--pattern", "list", timeout=60).stdout.split(), sorted(pysaiyanweboo.PATTERN_RUNNERS))
+        done = pswb_cli("--pattern", "nonsense", stdin="{}", timeout=60)
         self.assertEqual(done.returncode, 2)
-        self.assertIn(b"unknown pattern family", done.stderr)
-        rows = json.loads(run("--pattern", "catalogue").stdout)
+        self.assertIn("unknown pattern family", done.stderr)
+        rows = json.loads(pswb_cli("--pattern", "catalogue", timeout=60).stdout)
         self.assertEqual((len(rows), rows[0]["id"], rows[-1]["id"]), (792, "A001", "D198"))
 
     # --- the catalogue ---------------------------------------------------------------------------------------------------------------------------
@@ -4084,10 +4079,6 @@ class ImageStudioTests(unittest.TestCase):
         history.undo()
         return history
 
-    def run_cli(self, *argv, stdin=None):
-        done = subprocess.run([sys.executable, "-S", str(Path(pysaiyanweboo.__file__)), *map(str, argv)], input=stdin, capture_output=True, timeout=60, cwd=ROOT)
-        return done.returncode, done.stdout, done.stderr.decode("utf-8")
-
     def test_cli_ignores_site_customization_and_parent_working_directory(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as tmp:
             tmp = Path(tmp)
@@ -4109,11 +4100,11 @@ class ImageStudioTests(unittest.TestCase):
                 previous = Path.cwd()
                 try:
                     os.chdir(tmp)
-                    code, out, err = self.run_cli("--studio-render", relative_scene)
+                    done = pswb_cli("--studio-render", relative_scene, cwd=ROOT, timeout=60)
                 finally:
                     os.chdir(previous)
-                self.assertEqual((code, err), (0, ""))
-                self.assertEqual(out.decode("utf-8"), pysaiyanweboo.studio_render(self.blank()) + "\n")
+                self.assertEqual((done.returncode, done.stderr), (0, ""))
+                self.assertEqual(done.stdout, pysaiyanweboo.studio_render(self.blank()) + "\n")
                 self.assertFalse(marker.exists(), "CLI must skip site customization")
 
     # --- the originals' own outputs -------------------------------------------------------------------------------------------------------------
@@ -4363,8 +4354,8 @@ class ImageStudioTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             big = Path(tmp) / "big.json"
             big.write_text('[[1' + '0' * 400 + ']]', encoding="utf-8")
-            self.assertEqual(self.run_cli("--studio-heatmap", big)[0], 2)
-            self.assertEqual(self.run_cli("--studio-render", big)[0], 2)
+            self.assertEqual(pswb_cli("--studio-heatmap", big, cwd=ROOT, timeout=60).returncode, 2)
+            self.assertEqual(pswb_cli("--studio-render", big, cwd=ROOT, timeout=60).returncode, 2)
 
     def test_javascript_number_and_json_text(self):
         self.assertEqual([pysaiyanweboo.js_number(x) for x in (1.0, 0.1 + 0.2, 1e21, 1e-7, 123456789.123456789, -0.0, 100, 2 ** 53)], ["1", "0.30000000000000004", "1e+21", "1e-7", "123456789.12345679", "0", "100", "9007199254740992"])
@@ -4606,33 +4597,33 @@ class ImageStudioTests(unittest.TestCase):
             tmp = Path(tmp)
             scene = tmp / "scene.json"
             scene.write_text(pysaiyanweboo.js_json(pysaiyanweboo.studio_demo_scene(), 2), encoding="utf-8")
-            code, out, err = self.run_cli("--studio-render", scene)
-            self.assertEqual((code, err), (0, ""))
-            self.assertEqual(out.decode("utf-8"), pysaiyanweboo.studio_render(pysaiyanweboo.studio_demo_scene()) + "\n")
-            code, out, _ = self.run_cli("--studio-render", scene, "--scale", "2")
-            self.assertIn('width="2560" height="1440"', out.decode("utf-8"))
-            code, out, _ = self.run_cli("--studio-render", scene, "--format", "json")
-            self.assertEqual(json.loads(out), pysaiyanweboo.studio_validate(pysaiyanweboo.studio_demo_scene()))
+            done = pswb_cli("--studio-render", scene, cwd=ROOT, timeout=60)
+            self.assertEqual((done.returncode, done.stderr), (0, ""))
+            self.assertEqual(done.stdout, pysaiyanweboo.studio_render(pysaiyanweboo.studio_demo_scene()) + "\n")
+            done = pswb_cli("--studio-render", scene, "--scale", "2", cwd=ROOT, timeout=60)
+            self.assertIn('width="2560" height="1440"', done.stdout)
+            done = pswb_cli("--studio-render", scene, "--format", "json", cwd=ROOT, timeout=60)
+            self.assertEqual(json.loads(done.stdout), pysaiyanweboo.studio_validate(pysaiyanweboo.studio_demo_scene()))
             matrix = tmp / "matrix.json"
             matrix.write_text("[[1,null,3]]", encoding="utf-8")
             result = tmp / "scene-out.json"
-            code, out, err = self.run_cli("--studio-heatmap", matrix, "-o", result)
-            self.assertEqual((code, out), (0, b""))
+            done = pswb_cli("--studio-heatmap", matrix, "-o", result, cwd=ROOT, timeout=60)
+            self.assertEqual((done.returncode, done.stdout), (0, ""))
             self.assertEqual(json.loads(result.read_text(encoding="utf-8"))["layers"][0]["z"], [[1, None, 3]])
             old = result.read_bytes()
-            code, _, err = self.run_cli("--studio-heatmap", matrix, "-o", result)
-            self.assertEqual(code, 2)
-            self.assertIn("--force", err)
+            done = pswb_cli("--studio-heatmap", matrix, "-o", result, cwd=ROOT, timeout=60)
+            self.assertEqual(done.returncode, 2)
+            self.assertIn("--force", done.stderr)
             self.assertEqual(result.read_bytes(), old, "an existing file is never replaced without --force")
             matrix.write_text("[[2,3]]", encoding="utf-8")
-            self.assertEqual(self.run_cli("--studio-heatmap", matrix, "-o", result, "--force")[0], 0)
+            self.assertEqual(pswb_cli("--studio-heatmap", matrix, "-o", result, "--force", cwd=ROOT, timeout=60).returncode, 0)
             self.assertEqual(json.loads(result.read_text(encoding="utf-8"))["layers"][0]["z"], [[2, 3]])
             png = tmp / "a.png"
             png.write_bytes(pysaiyanweboo.studio_png_encode(1, 1, bytes([1, 2, 3, 4])))
-            code, out, _ = self.run_cli("--studio-base64", png)
-            self.assertEqual(base64.b64decode(out.strip()), png.read_bytes())
-            code, out, _ = self.run_cli("--studio-base64", png, "--data-uri")
-            self.assertTrue(out.startswith(b"data:image/png;base64,"))
+            done = pswb_cli("--studio-base64", png, cwd=ROOT, timeout=60)
+            self.assertEqual(base64.b64decode(done.stdout.strip()), png.read_bytes())
+            done = pswb_cli("--studio-base64", png, "--data-uri", cwd=ROOT, timeout=60)
+            self.assertTrue(done.stdout.startswith("data:image/png;base64,"))
 
     def test_cli_bad_input_is_exit_2_with_a_message(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -4642,17 +4633,16 @@ class ImageStudioTests(unittest.TestCase):
                 bad.write_text(text, encoding="utf-8")
                 for option in ("--studio-render", "--studio-heatmap"):
                     with self.subTest(text=text, option=option):
-                        code, out, err = self.run_cli(option, bad)
-                        self.assertEqual((code, out), (2, b""))
-                        self.assertTrue(err.startswith("⛔ invalid studio input: "))
-            self.assertEqual(self.run_cli("--studio-render", tmp / "missing.json")[0], 2)
+                        done = pswb_cli(option, bad, cwd=ROOT, timeout=60)
+                        self.assertEqual((done.returncode, done.stdout), (2, ""))
+                        self.assertTrue(done.stderr.startswith("⛔ invalid studio input: "))
+            self.assertEqual(pswb_cli("--studio-render", tmp / "missing.json", cwd=ROOT, timeout=60).returncode, 2)
             text = tmp / "t.png"
             text.write_bytes(b"not a png")
-            code, _, err = self.run_cli("--studio-base64", text)
-            self.assertEqual(code, 2)
+            self.assertEqual(pswb_cli("--studio-base64", text, cwd=ROOT, timeout=60).returncode, 2)
             big = tmp / "big.json"
             big.write_bytes(b" " * 20_000_001)
-            self.assertEqual(self.run_cli("--studio-render", big)[0], 2)
+            self.assertEqual(pswb_cli("--studio-render", big, cwd=ROOT, timeout=60).returncode, 2)
 
     # --- the page ------------------------------------------------------------------------------------------------------------------------------
     def test_the_page_is_one_self_contained_document_with_every_control_the_script_uses(self):
@@ -6249,22 +6239,21 @@ def test_an_unknown_component_names_the_known_ones():
         ui.component_parts("nope")
 
 
-def run_cli(*argv, stdin=None):
-    done = pswb_cli(*argv, stdin=stdin, timeout=120)
-    assert done.returncode == 0, done.stderr
-    return done.stdout
-
-
 def test_the_cli_prints_a_component_for_node_and_the_shell():
     """python -S pysaiyanweboo.py --component NAME: the same calls by name, with --spec FILE|- and --set KEY=VALUE (JSON values, else text)."""
-    listing = json.loads(run_cli("--component", "list"))
+    done = pswb_cli("--component", "list", timeout=120)
+    assert done.returncode == 0, done.stderr
+    listing = done.json()
     assert listing == ui.components() and listing["dial"] == {"html": "dial_html", "css": ["dial.css"], "js": ["dial.js"], "mount": "", "classic": False}
-    parts = json.loads(run_cli("--component", "dial", "--set", "name=volume", "--set", "maximum=11", "--set", "label=Volume", "--part", "json"))
-    assert parts == ui.component_parts("dial", name="volume", maximum=11, label="Volume")
-    assert run_cli("--component", "dial", "--set", "name=volume", "--part", "html") == ui.dial_html("volume")
-    spec = json.dumps(ui.example_data("showcase"))
-    assert run_cli("--component", "showcase", "--spec", "-", "--part", "css", stdin=spec) == ui.component_parts("showcase", ui.example_data("showcase"))["css"]
-    assert run_cli("--component", "door", "--spec", "-", stdin=json.dumps(ui.example_data("door"))) == ui.component_document("door", ui.example_data("door"))
+    done = pswb_cli("--component", "dial", "--set", "name=volume", "--set", "maximum=11", "--set", "label=Volume", "--part", "json", timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert done.json() == ui.component_parts("dial", name="volume", maximum=11, label="Volume")
+    done = pswb_cli("--component", "dial", "--set", "name=volume", "--part", "html", timeout=120)
+    assert (done.returncode, done.stdout) == (0, ui.dial_html("volume")), done.stderr
+    done = pswb_cli("--component", "showcase", "--spec", "-", "--part", "css", stdin=json.dumps(ui.example_data("showcase")), timeout=120)
+    assert (done.returncode, done.stdout) == (0, ui.component_parts("showcase", ui.example_data("showcase"))["css"]), done.stderr
+    done = pswb_cli("--component", "door", "--spec", "-", stdin=json.dumps(ui.example_data("door")), timeout=120)
+    assert (done.returncode, done.stdout) == (0, ui.component_document("door", ui.example_data("door"))), done.stderr
     bad = pswb_cli("--component", "nope", timeout=60)
     assert bad.returncode == 2 and "unknown component: nope" in bad.stderr
 
@@ -6316,8 +6305,8 @@ def test_the_showcase_section_tables_are_the_same_table():
 
 def test_the_table_from_the_shell_and_node():
     spec = {"columns": ["page", "ok"], "rows": [["index", None]]}
-    done = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--component", "table", "--spec", "-", "--part", "html"],
-                          input=json.dumps(spec), capture_output=True, text=True, check=True)
+    done = pswb_cli("--component", "table", "--spec", "-", "--part", "html", stdin=json.dumps(spec))
+    assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == ui.table_html(spec)
 
 
@@ -6726,16 +6715,14 @@ class CatalogTests(unittest.TestCase):
             root = Path(directory)
             (root / 'pysaiyanweboo.py').write_bytes(Path(ui.__file__).read_bytes())
             (root / 'input.json').write_text(json.dumps(self.spec(), ensure_ascii=False), encoding='utf-8')
-            done = subprocess.run([sys.executable, '-I', '-S', str(root / 'pysaiyanweboo.py'),
-                                   '--catalog', str(root / 'input.json')], capture_output=True, timeout=10)
+            done = cli_args.run_cli(root / 'pysaiyanweboo.py', '--catalog', root / 'input.json', python_options=('-I', '-S'), timeout=10)
             self.assertEqual(done.returncode, 0, done.stderr)
             # The copy outside the checkout cannot know its commit; only the generator meta differs.
-            self.assertEqual(ui.GENERATOR_META.sub('', done.stdout.decode('utf-8')), ui.GENERATOR_META.sub('', ui.catalog_document(self.spec())))
+            self.assertEqual(ui.GENERATOR_META.sub('', done.stdout), ui.GENERATOR_META.sub('', ui.catalog_document(self.spec())))
             (root / 'input.json').write_text('{"invalid": true}', encoding='utf-8')
-            bad = subprocess.run([sys.executable, '-I', '-S', str(root / 'pysaiyanweboo.py'),
-                                  '--catalog', str(root / 'input.json')], capture_output=True, timeout=10)
+            bad = cli_args.run_cli(root / 'pysaiyanweboo.py', '--catalog', root / 'input.json', python_options=('-I', '-S'), timeout=10)
             self.assertEqual(bad.returncode, 2)
-            self.assertEqual(bad.stdout, b'')
+            self.assertEqual(bad.stdout, '')
 
 
 # ═══ 🔎 collection filter ═════════════════════════════════════════════════════════════════════════════════

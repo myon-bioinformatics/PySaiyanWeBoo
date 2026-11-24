@@ -1935,7 +1935,15 @@ def _spec_href(value: Any) -> str:
 
 
 PAGE_SCHEMA = "web-ui-page/1"
-PAGE_BLOCKS = ("heading", "text", "output", "table", "card", "links", "image", "kv", "badges", "section")
+PAGE_BLOCKS = ("heading", "text", "output", "table", "card", "links", "image", "kv", "badges", "section", "tabs")
+# 🗂️ tabs: CSS-only radio tabs (no script), up to this many per block; page_document adds the rules below.
+_TABS_MAX = 8
+_TABS_CSS = (".ui-tabs{margin:var(--ui-space) 0}.ui-tab-input{position:absolute;opacity:0;pointer-events:none}"
+             ".ui-tab{display:inline-block;padding:.4rem .8rem;margin:0 .25rem .5rem 0;border:1px solid var(--ui-border);"
+             "border-radius:var(--ui-radius);cursor:pointer;color:var(--ui-muted)}.ui-tab-input:checked+.ui-tab{color:var(--ui-fg);"
+             "border-color:var(--ui-accent);background:var(--ui-panel)}.ui-tab-input:focus-visible+.ui-tab{outline:2px solid var(--ui-accent);"
+             "outline-offset:2px}.ui-tab-panel{display:none}.ui-tab-panel img{max-width:100%;height:auto}"
+             + "".join(f".ui-tabs>.ui-tab-input:nth-of-type({k}):checked~.ui-tab-panel:nth-of-type({k}){{display:block}}" for k in range(1, _TABS_MAX + 1)))
 
 
 def _page_block(block: Any, *, depth: int) -> str:
@@ -1945,7 +1953,7 @@ def _page_block(block: Any, *, depth: int) -> str:
     kind = block["type"]
     allowed = {"heading": {"text", "level"}, "text": {"text", "muted"}, "output": {"text"}, "table": {"headers", "rows", "caption"},
                "card": {"title", "text", "blocks"}, "links": {"items"}, "image": {"src", "alt", "width", "height"},
-               "kv": {"rows"}, "badges": {"items"}, "section": {"title", "blocks"}}[kind] | {"type"}
+               "kv": {"rows"}, "badges": {"items"}, "section": {"title", "blocks"}, "tabs": {"tabs", "id"}}[kind] | {"type"}
     if block.keys() - allowed:
         raise ValueError(f"{kind}: unknown field {sorted(block.keys() - allowed)}")
     if kind == "heading":
@@ -2016,6 +2024,23 @@ def _page_block(block: Any, *, depth: int) -> str:
                 item = item.get("text")
             parts.append(f'<span class="ui-tag{status}">{escape(_spec_text(item, "badge", limit=100, required=True))}</span>')
         return f'<p class="ui-badges">{" ".join(parts)}</p>'
+    if kind == "tabs":
+        tabs = block.get("tabs")
+        if not isinstance(tabs, list) or not 2 <= len(tabs) <= _TABS_MAX:
+            raise ValueError(f"tabs has 2..{_TABS_MAX} tabs")
+        key = block.get("id", hashlib.sha1(json.dumps(block, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:8])
+        if not isinstance(key, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", key):
+            raise ValueError("tabs id is 1..40 of a-z, 0-9 and -")
+        name, heads, panels = f"ui-tabs-{key}", [], []
+        for i, tab in enumerate(tabs):
+            if not isinstance(tab, dict) or tab.keys() - {"label", "blocks"}:
+                raise ValueError("a tab has label and blocks")
+            label = _spec_text(tab.get("label"), "tab label", limit=100, required=True)
+            checked = " checked" if i == 0 else ""
+            heads.append(f'<input type="radio" class="ui-tab-input" name="{name}" id="{name}-{i}"{checked}>'
+                         f'<label class="ui-tab" for="{name}-{i}">{escape(label)}</label>')
+            panels.append('<div class="ui-tab-panel">' + "".join(_page_block(b, depth=depth + 1) for b in _blocks(tab.get("blocks", []), depth)) + "</div>")
+        return f'<div class="ui-tabs" data-ui-tabs>{"".join(heads)}{"".join(panels)}</div>'
     # section
     title = _spec_text(block.get("title"), "section title", limit=300, required=True)
     inner = "".join(_page_block(b, depth=depth + 1) for b in _blocks(block.get("blocks", []), depth))
@@ -2066,8 +2091,9 @@ def page_document(spec: Any, *, layouts: Any = None) -> str:
 
     ``{"schema", "title", "theme"?, "description"?, "icon"?, "favicon"?, "blocks": [...]}``. Blocks are ``heading``,
     ``text`` (paragraphs; ``muted``), ``output`` (preformatted), ``table`` (headers, rows, caption), ``card`` /
-    ``section`` (title, text, nested blocks), ``links``, ``image``, ``kv`` (key–value rows) and ``badges``
-    (``{text, status: pass|fail}``). Text is never HTML; links and images are relative paths or HTTPS. The theme is one
+    ``section`` (title, text, nested blocks), ``links``, ``image``, ``kv`` (key–value rows), ``badges``
+    (``{text, status: pass|fail}``) and ``tabs`` (2..8 ``{label, blocks}`` switched by radios without a script — e.g.
+    🎞 GIF demo / 🧩 features; optional ``id`` when two tabs blocks on a page are identical). Text is never HTML; links and images are relative paths or HTTPS. The theme is one
     of ours, ``auto`` or a brand registered with ``theme_css`` (its CSS is appended when registered in this process);
     ``layouts`` adds switchable presets. The same from the shell or Node: ``python -S pysaiyanweboo.py --page spec.json``.
     """
@@ -2092,6 +2118,7 @@ def page_document(spec: Any, *, layouts: Any = None) -> str:
     css = core_css(theme if theme in THEMES or theme in CANDIDATE_THEMES or theme == AUTO_THEME else "modern")
     css += _REGISTERED_THEME_CSS.get(theme, "") + (layout_presets_css(layouts) if layouts is not None else "")
     css += ".ui-kv{display:grid;grid-template-columns:max-content 1fr;gap:.25rem var(--ui-space)}.ui-kv dt{color:var(--ui-muted)}.ui-kv dd{margin:0}.ui-badges .ui-tag{margin-right:.25rem}"
+    css += _TABS_CSS if 'data-ui-tabs' in "".join(body) else ""
     return render_document(trusted_html="".join(body), title=title, theme=theme, css=css,
                            favicon=_spec_href(spec["favicon"]) if "favicon" in spec else None,
                            touch_icon=_spec_href(spec["icon"]) if "icon" in spec else None)
@@ -17702,7 +17729,10 @@ EXAMPLES: dict[str, Any] = {'flutter-pages': {'schema': 'web-ui-flutter-pages/1'
                      {'type': 'section', 'title': 'Detail',
                       'blocks': [{'type': 'text', 'text': 'Two paragraphs,\n\nseparated by a blank line.', 'muted': True},
                                  {'type': 'output', 'text': '$ run\nok'},
-                                 {'type': 'links', 'items': [{'label': 'receipt', 'href': './receipt.json'}]}]}]},
+                                 {'type': 'links', 'items': [{'label': 'receipt', 'href': './receipt.json'}]}]},
+                     {'type': 'tabs', 'tabs': [{'label': '🎞 Demo', 'blocks': [{'type': 'text', 'text': 'A GIF or image goes here.'}]},
+                                               {'label': '🧩 Features', 'blocks': [{'type': 'table', 'headers': ['feature', 'how'],
+                                                                                    'rows': [['report', 'one page from JSON']]}]}]}]},
  'page-layouts': {'schema': 'web-ui-layout-presets/1',
                   'default': 'comfortable',
                   'presets': [{'id': 'comfortable', 'label': 'Comfortable', 'note': 'default: 16px text, 16px spacing, 960px page',
