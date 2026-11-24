@@ -27,6 +27,9 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   lane:
     name: ${{ matrix.name }}
@@ -148,6 +151,7 @@ jobs:
           retention-days: 30
 
   report:
+    timeout-minutes: 30
     needs: lane
     if: always()
     runs-on: ubuntu-24.04
