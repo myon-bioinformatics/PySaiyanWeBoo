@@ -782,10 +782,10 @@ data (`data_table` is `table()` with a required `id`; `row_ids=` puts `data-ui-r
 and no HTML from data: GitHub or other observations are gathered by the Python producer.
 
 ```bash
-python -S -c 'import pysaiyanweboo as ui
-rows=[("Aoi", "#1", ui.badge("失敗")), ("markdown", "#2", ui.badge("成功"))]
-body=ui.stat_tiles((("PR", len(rows)), ("CI失敗", 1)))+ui.filter_input("prs", count_id="n")+"<span id=n></span>"+ui.data_table(("repo","PR","CI"), rows, id="prs", trusted_cells=True, row_ids=("Aoi#1","markdown#2"))+ui.draft_textarea(key="Aoi#1:notes", id="notes", label="メモ")+ui.records_io()
-print(ui.render_document(trusted_html=ui.records_board(body), css=ui.bundled_css(), scripts=ui.shared_scripts(".", names=("records.js",))))' > board.html
+python -S -c 'import pysaiyanweboo as PSWB
+rows=[("Aoi", "#1", PSWB.badge("失敗")), ("markdown", "#2", PSWB.badge("成功"))]
+body=PSWB.stat_tiles((("PR", len(rows)), ("CI失敗", 1)))+PSWB.filter_input("prs", count_id="n")+"<span id=n></span>"+PSWB.data_table(("repo","PR","CI"), rows, id="prs", trusted_cells=True, row_ids=("Aoi#1","markdown#2"))+PSWB.draft_textarea(key="Aoi#1:notes", id="notes", label="メモ")+PSWB.records_io()
+print(PSWB.render_document(trusted_html=PSWB.records_board(body), css=PSWB.bundled_css(), scripts=PSWB.shared_scripts(".", names=("records.js",))))' > board.html
 python -S pysaiyanweboo.py --site .   # writes js/records.js next to it
 ```
 
