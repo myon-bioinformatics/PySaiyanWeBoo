@@ -63,8 +63,49 @@ from support import flutter_case, serve_directory
 # The ordinary dependency-light unit suite does not discover this module.
 
 def photo_engine(playwright):
-    """The browser the photo studio tests run in: ``PSWB_BROWSER`` = chromium (default), firefox or webkit. CI runs each engine; a laptop usually has only Chromium."""
-    return getattr(playwright, os.environ.get('PSWB_BROWSER', 'chromium'))
+    """The browser the photo studio tests run in: ``PSWB_BROWSER`` = chromium (default), firefox or webkit. CI runs each engine; a laptop usually has only Chromium.
+    ⚡ ``.launch()`` keeps one browser per engine for the run (Firefox and WebKit take seconds to start; ~130 tests started their own). Each test still gets new contexts,
+    and its ``close()`` closes only those."""
+    return _KeptEngine(getattr(playwright, os.environ.get('PSWB_BROWSER', 'chromium')))
+
+
+class _KeptEngine:
+    browsers = {}
+
+    def __init__(self, engine):
+        self.engine = engine
+
+    def launch(self, **options):
+        key = (self.engine.name, repr(sorted(options.items())))
+        browser = _KeptEngine.browsers.get(key)
+        if browser is None or not browser.is_connected():  # a crashed browser is started again
+            browser = _KeptEngine.browsers[key] = self.engine.launch(**options)
+        return _KeptBrowser(browser)
+
+    def __getattr__(self, name):
+        return getattr(self.engine, name)
+
+
+class _KeptBrowser:
+    def __init__(self, browser):
+        self._browser, self._contexts = browser, []
+
+    def new_context(self, **options):
+        context = self._browser.new_context(**options)
+        self._contexts.append(context)
+        return context
+
+    def new_page(self, **options):
+        page = self._browser.new_page(**options)
+        self._contexts.append(page.context)
+        return page
+
+    def close(self):
+        for context in self._contexts:
+            context.close()
+
+    def __getattr__(self, name):
+        return getattr(self._browser, name)
 
 
 def photo_device(playwright):
