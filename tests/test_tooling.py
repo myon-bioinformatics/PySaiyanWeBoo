@@ -1672,6 +1672,26 @@ def test_core_prints_and_respects_reduced_motion_and_auto_scheme():
     assert "/* css/tokens.css */" in pysaiyanweboo.core_css("auto") and "themes/" not in pysaiyanweboo.core_css("auto")
 
 
+def test_page_document_tabs_switch_without_a_script():
+    import pytest
+    tabs = {"type": "tabs", "tabs": [{"label": "🎞 <GIF>", "blocks": [{"type": "image", "src": "demo.gif", "alt": "demo"}]},
+                                     {"label": "🧩 機能一覧", "blocks": [{"type": "table", "headers": ["機能"], "rows": [["検索"]]}]}]}
+    page = pysaiyanweboo.page_document({"schema": "web-ui-page/1", "title": "Guide", "blocks": [tabs]})
+    name = re.search(r'name="(ui-tabs-[0-9a-f]{8})"', page).group(1)
+    assert page.count(f'name="{name}"') == 2 and f'id="{name}-0" checked>' in page and f'id="{name}-1">' in page
+    assert f'<label class="ui-tab" for="{name}-0">🎞 &lt;GIF&gt;</label>' in page and page.count('<div class="ui-tab-panel">') == 2
+    assert "<script" not in page and ".ui-tabs>.ui-tab-input:nth-of-type(2):checked~.ui-tab-panel:nth-of-type(2){display:block}" in page
+    assert f'name="{name}"' in pysaiyanweboo.page_document({"schema": "web-ui-page/1", "title": "Guide", "blocks": [tabs]})   # stable
+    named = pysaiyanweboo.page_document({"schema": "web-ui-page/1", "title": "Guide", "blocks": [{**tabs, "id": "demo"}]})
+    assert 'name="ui-tabs-demo"' in named
+    plain = pysaiyanweboo.page_document({"schema": "web-ui-page/1", "title": "Guide", "blocks": [{"type": "text", "text": "x"}]})
+    assert ".ui-tab-panel" not in plain   # the rules come only with a tabs block
+    for bad in ({**tabs, "tabs": tabs["tabs"][:1]}, {**tabs, "tabs": tabs["tabs"] * 5}, {**tabs, "id": "Bad id"},
+                {**tabs, "tabs": [{"label": "x", "blocks": [], "extra": 1}, tabs["tabs"][1]]}, {**tabs, "extra": 1}):
+        with pytest.raises(ValueError):
+            pysaiyanweboo.page_document({"schema": "web-ui-page/1", "title": "Guide", "blocks": [bad]})
+
+
 def test_page_document_builds_a_page_from_a_spec(tmp_path):
     import pytest
     import subprocess
