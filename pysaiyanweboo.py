@@ -2096,11 +2096,14 @@ def page_document(spec: Any, *, layouts: Any = None) -> str:
     🎞 GIF demo / 🧩 features; optional ``id`` when two tabs blocks on a page are identical). Text is never HTML; links and images are relative paths or HTTPS. The theme is one
     of ours, ``auto`` or a brand registered with ``theme_css`` (its CSS is appended when registered in this process);
     ``layouts`` adds switchable presets. The same from the shell or Node: ``python -S pysaiyanweboo.py --page spec.json``.
+    🏠 ``home`` (written by ``home_screen``) links the square icons and the manifest next to the page, so "Add to Home
+    Screen" and shortcuts show the repository's own icon and short name.
     """
     if not isinstance(spec, dict) or spec.get("schema") != PAGE_SCHEMA:
         raise ValueError(f"expected schema {PAGE_SCHEMA}")
-    if spec.keys() - {"schema", "title", "theme", "description", "icon", "favicon", "blocks"}:
-        raise ValueError("page has schema, title, blocks and optional theme, description, icon, favicon")
+    if spec.keys() - {"schema", "title", "theme", "description", "icon", "favicon", "home", "blocks"}:
+        raise ValueError("page has schema, title, blocks and optional theme, description, icon, favicon, home")
+    home = _home_spec(spec["home"]) if "home" in spec else None
     title = _spec_text(spec.get("title"), "title", limit=200, required=True)
     theme = spec.get("theme", "modern")
     if not _theme_name(theme):
@@ -2119,9 +2122,76 @@ def page_document(spec: Any, *, layouts: Any = None) -> str:
     css += _REGISTERED_THEME_CSS.get(theme, "") + (layout_presets_css(layouts) if layouts is not None else "")
     css += ".ui-kv{display:grid;grid-template-columns:max-content 1fr;gap:.25rem var(--ui-space)}.ui-kv dt{color:var(--ui-muted)}.ui-kv dd{margin:0}.ui-badges .ui-tag{margin-right:.25rem}"
     css += _TABS_CSS if 'data-ui-tabs' in "".join(body) else ""
-    return render_document(trusted_html="".join(body), title=title, theme=theme, css=css,
+    page = render_document(trusted_html="".join(body), title=title, theme=theme, css=css,
                            favicon=_spec_href(spec["favicon"]) if "favicon" in spec else None,
-                           touch_icon=_spec_href(spec["icon"]) if "icon" in spec else None)
+                           touch_icon=None if home or "icon" not in spec else _spec_href(spec["icon"]))
+    if home is None:
+        return page
+    head = (f'<link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">'
+            f'<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">'
+            f'<link rel="manifest" href="./{HOME_MANIFEST}">'
+            f'<meta name="apple-mobile-web-app-title" content="{escape(home["short_name"], quote=True)}">')
+    return page.replace("</head>", head + "</head>", 1)
+
+
+# 🏠 Home screen: what "Add to Home Screen" (iOS: apple-touch-icon 180) and Android / desktop shortcuts (manifest 192 · 512)
+# need, made from the page's own icon. Square and opaque, scaled by nearest neighbour without Pillow (pixel icons stay crisp).
+HOME_SIZES = (180, 192, 512)
+HOME_MANIFEST = "manifest.webmanifest"
+
+
+def _home_spec(home: Any) -> dict[str, Any]:
+    if not isinstance(home, dict) or home.keys() - {"short_name", "source_sha256", "icons"}:
+        raise ValueError("home has short_name, source_sha256 and icons")
+    short = _spec_text(home.get("short_name"), "home short_name", limit=32, required=True)
+    icons = home.get("icons")
+    if not isinstance(icons, dict) or set(icons) != {str(s) for s in HOME_SIZES} or not all(isinstance(v, str) for v in icons.values()):
+        raise ValueError(f"home icons are Base64 PNGs keyed {', '.join(map(str, HOME_SIZES))}")
+    return {"short_name": short, "source_sha256": str(home.get("source_sha256", "")), "icons": icons}
+
+
+def home_screen_icon(png: bytes, size: int) -> bytes:
+    """One square, opaque ``size`` px PNG from an 8-bit PNG: padded to a square and its transparency flattened onto its
+    top-left colour (white if that is see-through — iOS would paint it black), scaled by nearest neighbour."""
+    width, height, rgba = studio_png_decode(png)
+    bg = rgba[0:3] if rgba[3] == 255 else b"\xff\xff\xff"
+    side = max(width, height)
+    ox, oy = (side - width) // 2, (side - height) // 2
+    columns = [x * side // size - ox for x in range(size)]
+    out = bytearray()
+    for y in range(size):
+        sy = y * side // size - oy
+        for sx in columns:
+            if 0 <= sx < width and 0 <= sy < height:
+                i = (sy * width + sx) * 4
+                a = rgba[i + 3]
+                out += bytes((rgba[i + k] * a + bg[k] * (255 - a)) // 255 for k in range(3)) + b"\xff"
+            else:
+                out += bg + b"\xff"
+    return studio_png_encode(size, size, bytes(out))
+
+
+def home_screen(spec: Any, root: Path | str) -> tuple[dict[str, Any], dict[str, bytes]]:
+    """🏠 For a ``web-ui-page/1`` spec whose ``icon`` is a local PNG under ``root``: the spec with ``home`` filled in
+    (short name, the source's SHA-256 and each size as Base64 — a cache Python can read back without decoding again;
+    kept when the source is unchanged) and the files to write next to the page: ``icon-180/192/512.png`` and the manifest.
+    The short name is ``home.short_name`` when given, else the title without " 利用ガイド"."""
+    if not isinstance(spec, dict) or not isinstance(spec.get("icon"), str):
+        raise ValueError("home_screen needs a page spec with an icon")
+    source = (Path(root) / _spec_href(spec["icon"])).read_bytes()
+    digest = hashlib.sha256(source).hexdigest()
+    title = _spec_text(spec.get("title"), "title", limit=200, required=True)
+    given = spec.get("home") if isinstance(spec.get("home"), dict) else {}
+    short = given.get("short_name") or title.replace(" 利用ガイド", "").strip()[:32]
+    icons = given.get("icons") if given.get("source_sha256") == digest else None
+    if not (isinstance(icons, dict) and set(icons) == {str(s) for s in HOME_SIZES}):
+        icons = {str(s): base64.b64encode(home_screen_icon(source, s)).decode("ascii") for s in HOME_SIZES}
+    home = _home_spec({"short_name": short, "source_sha256": digest, "icons": icons})
+    manifest = {"name": title, "short_name": home["short_name"], "start_url": "./", "scope": "./", "display": "browser",
+                "icons": [{"src": f"icon-{s}.png", "sizes": f"{s}x{s}", "type": "image/png", "purpose": "any"} for s in HOME_SIZES]}
+    files = {f"icon-{s}.png": base64.b64decode(icons[str(s)]) for s in HOME_SIZES}
+    files[HOME_MANIFEST] = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    return {**spec, "home": home}, files
 
 
 PARTS_THEMES = (*THEMES, *CANDIDATE_THEMES, AUTO_THEME)
@@ -18220,6 +18290,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--page", type=Path, metavar="FILE",
                         help="print a self-contained page for a web-ui-page/1 JSON spec (see page_document; --brand registers its theme, --layouts adds presets) and exit")
     parser.add_argument("--repository", metavar="OWNER/REPO", help="with --page: put the way back first — 🏠 the owner's portfolio · 🐙 the repository (see back_nav_html)")
+    parser.add_argument("--home-screen", type=Path, metavar="DIR", help="with --page: 🏠 read the spec's icon under DIR and write icon-180/192/512.png, the manifest and the spec with home (Base64 cache) there (see home_screen)")
     parser.add_argument("--component", metavar="NAME", help="print one component of COMPONENTS (a page by default; --part html, css, js or json)."
                         " A spec comes from --spec FILE (- for stdin), keyword arguments from --set KEY=VALUE (JSON values, else text); --component list names them")
     parser.add_argument("--spec", type=Path, metavar="FILE", help="with --component: the spec, the builder's first argument (- reads stdin)")
@@ -18324,6 +18395,10 @@ def main(argv: list[str] | None = None) -> int:
                 brand = json.loads(args.brand.read_text(encoding="utf-8"))
                 theme_css(str(brand["name"]), dict(brand["tokens"]))
             layouts = json.loads(args.layouts.read_text(encoding="utf-8")) if args.layouts else None
+            if args.home_screen:
+                spec, files = home_screen(spec, args.home_screen)
+                for name, data in {**files, args.page.name: (json.dumps(spec, ensure_ascii=False, indent=2) + "\n").encode("utf-8")}.items():
+                    (args.home_screen / name).write_bytes(data)
             page = page_document(spec, layouts=layouts)
             sys.stdout.write(add_back_nav(page, args.repository) if args.repository else page)
         except (OSError, ValueError, KeyError, TypeError) as exc:
