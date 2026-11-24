@@ -22,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         # Pull requests run Chromium only; push runs all three browsers.
-        browser: ${{ github.event_name == 'pull_request' && fromJSON('["chromium"]') || fromJSON('["chromium", "firefox", "webkit"]') }}        
+        browser: ${{ github.event_name == 'pull_request' && fromJSON('["chromium"]') || fromJSON('["chromium", "firefox", "webkit"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
