@@ -95,7 +95,8 @@ jobs:
           sudo apt-config dump Acquire::Retries Acquire::http::Timeout Acquire::https::Timeout APT::Update::Error-Mode
       - name: System libraries and the browser (bounded; WebKit needs many packages)
         timeout-minutes: 20
-        run: uv run --locked --group gradio python -m playwright install --with-deps --only-shell "${{ matrix.browser }}"
+        # ⏱ Chromium's libraries are already on the runner image (it ships Chrome): apt only for Firefox / WebKit
+        run: uv run --locked --group gradio python -m playwright install ${{ matrix.browser != 'chromium' && '--with-deps' || '' }} --only-shell "${{ matrix.browser }}"
       - name: Photo studio in this engine (rules equal Python, upright pixels equal Pillow, drawing, history, export)
         # 🌱 the tests read these names: rename them together with the list in tests/support.py
         env:

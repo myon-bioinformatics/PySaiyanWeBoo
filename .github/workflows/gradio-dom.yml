@@ -38,7 +38,8 @@ jobs:
           # Pull requests restore the cache and never write it; only main saves it.
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
-      - run: uv run --locked --group gradio python -m playwright install --with-deps --only-shell chromium
+      # ⏱ Chromium's libraries are already on the runner image (it ships Chrome), so no apt (5 min on a slow mirror)
+      - run: uv run --locked --group gradio python -m playwright install --only-shell chromium
       - name: Pages in Chromium (controls, layout presets, route table and source panel offline and over HTTP, jsDelivr Plotly)
         run: uv run --locked --group gradio python tests/integration/pages_browser.py -v
       - name: Compare Gradio DOM with shared extraction (the test finds .browser-test-kit-dom and writes build/gradio-dom)

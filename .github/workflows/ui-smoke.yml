@@ -36,7 +36,8 @@ jobs:
       - name: Clear prior capture evidence
         run: rm -rf screenshot-evidence web-ui-desktop-1440x900.png web-ui-mobile-390x844.png web-ui-contract-v1-desktop-1440x900.png web-ui-contract-v1-mobile-390x844.png web-ui-github-like-desktop-1440x900.png web-ui-github-like-mobile-390x844.png
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: npx playwright install --with-deps --only-shell chromium
+      # ⏱ Chromium's libraries are already on the runner image (it ships Chrome), so no apt (5 min on a slow mirror)
+      - run: npx playwright install --only-shell chromium
       - name: Build example pages in memory and write them for capture
         run: python3 -S pysaiyanweboo.py --site build/site
       - name: Serve examples
