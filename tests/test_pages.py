@@ -7522,5 +7522,95 @@ class OperationsPageTests(unittest.TestCase):
             ui.showcase_validate({**spec, "sections": [{**spec["sections"][0], "links": [["x", "javascript:x"]]}, spec["sections"][1]]})
 
 
+class FeatureListTests(unittest.TestCase):
+    """🧩 add_features: the 機能一覧 tab lists every CLI command and public name, read from the code."""
+
+    MODULE = (
+        '"""Demo tool."""\n'
+        "import argparse, sys\n"
+        "from os.path import join\n"
+        '__all__ = ["shout", "Box", "LIMIT", "join"]\n'
+        "LIMIT = 3\n"
+        "def shout(text):\n"
+        '    """Return TEXT in capitals."""\n'
+        "    return text.upper()\n"
+        "class Box:\n"
+        '    """A box."""\n'
+        "def main(argv=None):\n"
+        '    parser = argparse.ArgumentParser(prog="demo.py")\n'
+        '    parser.add_argument("--quiet", action="store_true", help="say less")\n'
+        '    sub = parser.add_subparsers(dest="command")\n'
+        '    up = sub.add_parser("up", aliases=["u"], help="📣 shout")\n'
+        '    up.add_argument("text")\n'
+        '    up.add_argument("--style", choices=["a", "b"], default="a", help="style (default: %(default)s)")\n'
+        '    sub.add_parser("plain")\n'
+        "    args = parser.parse_args(argv)\n"
+        '    open("ran.txt", "w").close()\n'
+        "if __name__ == '__main__':\n"
+        "    main()\n"
+    )
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir)
+        self.spec = {"schema": "web-ui-page/1", "title": "Guide", "blocks": [{"type": "tabs", "tabs": [
+            {"label": "🎞 GIF デモ", "blocks": []}, {"label": "🧩 機能一覧", "blocks": [{"type": "text", "text": "hand-written"}]}]}]}
+
+    def module(self, text, name="demo.py"):
+        path = self.dir / name
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def feature_tab(self, spec):
+        return spec["blocks"][0]["tabs"][1]["blocks"]
+
+    def test_cli_and_api_are_added_after_the_hand_written_blocks(self):
+        out = ui.add_features(self.spec, self.module(self.MODULE))
+        hand, cli, api = self.feature_tab(out)
+        self.assertEqual(hand, {"type": "text", "text": "hand-written"})
+        self.assertEqual(cli["title"], "⌨️ demo.py · 全 2 コマンド")
+        self.assertEqual(cli["blocks"][0]["rows"], [["（共通）", "⚙️ --quiet"], ["up", "📣 shout ⚙️ text --style {a,b}"], ["plain", ""]])
+        self.assertEqual(api["title"], "🐍 Python · 全 4 個（__all__）")
+        self.assertEqual(api["blocks"][0]["rows"], [["🔧 shout()", "Return TEXT in capitals."], ["🧱 Box", "A box."], ["📦 LIMIT", ""], ["↪️ join", ""]])
+        self.assertFalse((self.dir / "ran.txt").exists(), "nothing after parse_args runs")
+        self.assertEqual(len(self.feature_tab(self.spec)), 1, "the given spec is not changed")
+        self.assertIn("全 2 コマンド", ui.page_document(out))
+
+    def test_without_all_public_functions_and_classes_are_listed(self):
+        out = ui.add_features(self.spec, self.module('def run():\n    """Go."""\ndef _hidden():\n    pass\nVALUE = 1\n'))
+        (api,) = self.feature_tab(out)[1:]
+        self.assertEqual((api["title"], api["blocks"][0]["rows"]), ("🐍 Python · 全 1 個（_ 以外の公開名）", [["🔧 run()", "Go."]]))
+
+    def test_a_cli_without_subcommands_lists_its_options(self):
+        text = 'import argparse\np = argparse.ArgumentParser(prog="one")\np.add_argument("--n", type=int, help="count")\np.parse_args()\n'
+        (cli,) = self.feature_tab(ui.add_features(self.spec, self.module(text)))[1:]
+        self.assertEqual((cli["title"], cli["blocks"][0]["rows"]), ("⌨️ one · 全 1 オプション", [["--n N", "count"]]))
+
+    def test_a_cli_that_cannot_start_or_hangs_still_gets_its_python_list(self):
+        for text, timeout in (('import not_installed_anywhere\ndef f():\n    """F."""\n', 30),
+                              ('import time\ndef f():\n    """F."""\ntime.sleep(60)\n', 1)):
+            with self.subTest(text=text.split("\n")[0]):
+                titles = [s["title"] for s in self.feature_tab(ui.add_features(self.spec, self.module(text), timeout=timeout))[1:]]
+                self.assertEqual(titles, ["🐍 Python · 全 1 個（_ 以外の公開名）"])
+
+    def test_the_tab_is_made_when_missing_and_a_page_without_tabs_gets_sections(self):
+        spec = {**self.spec, "blocks": [{"type": "tabs", "tabs": [{"label": "🎞 GIF デモ", "blocks": []}]}]}
+        tabs = ui.add_features(spec, self.module(self.MODULE))["blocks"][0]["tabs"]
+        self.assertEqual([t["label"] for t in tabs], ["🎞 GIF デモ", "🧩 機能一覧"])
+        flat = ui.add_features({"schema": "web-ui-page/1", "title": "t", "blocks": []}, self.module(self.MODULE))
+        self.assertEqual([b["type"] for b in flat["blocks"]], ["section", "section"])
+        with self.assertRaises(ValueError):
+            ui.add_features({"title": "no blocks"}, self.module(self.MODULE))
+
+    def test_cli_flag(self):
+        page = self.dir / "guide.page.json"
+        page.write_text(json.dumps(self.spec), encoding="utf-8")
+        done = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--page", str(page), "--features", str(self.module(self.MODULE))],
+                              capture_output=True, text=True, encoding="utf-8", check=False)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("⌨️ demo.py · 全 2 コマンド", done.stdout)
+        self.assertIn("🔧 shout()", done.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

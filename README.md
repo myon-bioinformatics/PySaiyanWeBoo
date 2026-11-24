@@ -592,6 +592,8 @@ page-layouts.json]` renders it from the shell or Node, so a report script owns o
 puts the way back first (🏠 portfolio · 🐙 GitHub); `add_back_nav(page, "OWNER/REPO")` gives a page built some other way the same nav.
 📲 `--home-screen DIR` (`home_screen(spec, DIR)`) makes the spec's icon into square, opaque `icon-180/192/512.png` and a `manifest.webmanifest` next to the page, and writes the spec back with `home` — the short name, the source's SHA-256 and each size as Base64 (a cache Python reads without decoding again) — so "Add to Home Screen" and shortcuts show the repository's own icon (iOS: `apple-touch-icon` 180 · Android / desktop: the manifest). No Pillow: nearest-neighbour scaling keeps pixel icons crisp.
 
+🧩 `--features FILE` (`add_features(spec, FILE)`, repeatable) adds the whole feature list of a Python file to the spec's 機能一覧 tab, after the hand-written cards: ⌨️ every argparse command with its help and options (the file runs only up to its first `parse_args`, nothing after it) and 🐍 every name in `__all__` — or, without it, each public function and class — with the first line of its docstring (read without importing). The list comes from the code at build time, so it never misses a command or a function; a file that cannot start keeps its 🐍 list.
+
 🎞️ `gif.js` (`UiGif`) turns canvas frames into one animated GIF89a with no dependency: the browser decodes, resizes, zooms and
 captions the images it is given (`Composer`), and the module adds only what browsers lack — a bucket histogram while frames arrive,
 one global palette (exact for at most 255 distinct RGB colours when the selected palette fits them, else bucket median cut + refinement), each frame as its tight changed rectangle (transparent where

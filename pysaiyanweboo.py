@@ -8,7 +8,7 @@ only as an explicit subprocess helper for pytest/CI one-liners.
 """
 from __future__ import annotations
 
-import argparse, base64, colorsys, errno, hashlib, heapq, hmac, http.client, http.server, importlib.util, io, json, math, os, random, re, shlex, shutil, struct, subprocess, sys, time, unicodedata, urllib.error, urllib.request, xml.etree.ElementTree as ET, zlib
+import argparse, ast, base64, colorsys, errno, hashlib, heapq, hmac, http.client, http.server, importlib.util, io, json, math, os, random, re, shlex, shutil, struct, subprocess, sys, time, unicodedata, urllib.error, urllib.request, xml.etree.ElementTree as ET, zlib
 from collections import Counter, defaultdict; from datetime import date, datetime, timezone; from decimal import Decimal; from html import escape; from pathlib import Path; from typing import Any, Sequence; from urllib.parse import parse_qsl, quote, urlsplit
 
 THEMES = ("modern", "github-like")
@@ -2198,6 +2198,149 @@ def home_screen(spec: Any, root: Path | str) -> tuple[dict[str, Any], dict[str, 
     files = {f"icon-{s}.png": base64.b64decode(icons[str(s)]) for s in HOME_SIZES}
     files[HOME_MANIFEST] = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     return {**spec, "home": home}, files
+
+
+_FEATURES_SHIM = r'''
+import argparse, json, runpy, sys
+from pathlib import Path
+
+class _Parsed(BaseException):
+    pass
+
+def _stop(self, args=None, namespace=None):
+    raise _Parsed(self)
+
+argparse.ArgumentParser.parse_known_args = _stop
+path = Path(sys.argv[1]).resolve()
+sys.argv = [str(path)]
+sys.path.insert(0, str(path.parent))
+parser = None
+try:
+    runpy.run_path(str(path), run_name="__main__")
+except _Parsed as stopped:
+    parser = stopped.args[0]
+except BaseException:
+    pass
+
+def options(p):
+    fmt, out = p._get_formatter(), []
+    for a in p._actions:
+        if isinstance(a, (argparse._HelpAction, argparse._SubParsersAction)) or a.help == argparse.SUPPRESS:
+            continue
+        try:
+            text = " ".join(fmt._expand_help(a).split()) if a.help else ""
+        except (KeyError, TypeError, ValueError):
+            text = " ".join(str(a.help).split())
+        if a.option_strings:   # 🏷 the longest flag, with its choices: --format {text,json}
+            short = max(a.option_strings, key=len) + (" {" + ",".join(map(str, a.choices)) + "}" if a.choices and a.nargs != 0 else "")
+        else:
+            short = fmt._format_action_invocation(a)
+        out.append([fmt._format_action_invocation(a), text, short])
+    return out
+
+def walk(p, prefix, out):
+    subs = [a for a in p._actions if isinstance(a, argparse._SubParsersAction)]
+    if not subs:
+        return
+    helps = {c.dest: " ".join((c.help or "").split()) for c in subs[0]._choices_actions}
+    seen = set()
+    for name, sub in subs[0].choices.items():
+        if id(sub) in seen:   # an alias of a command already listed
+            continue
+        seen.add(id(sub))
+        text = helps.get(name) or " ".join((sub.description or "").strip().split("\n")[0].split())
+        out.append([" ".join(prefix + [name]), text, options(sub)])
+        walk(sub, prefix + [name], out)
+
+result = None
+if parser is not None:
+    found = []
+    walk(parser, [], found)
+    result = {"prog": Path(parser.prog).name, "options": options(parser), "commands": found}
+print(json.dumps(result, ensure_ascii=False))
+'''
+
+
+def _features_api(source: str) -> tuple[str, list[list[str]]]:
+    tree = ast.parse(source)
+    defs: dict[str, tuple[str, str]] = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            kind = "🧱" if isinstance(node, ast.ClassDef) else "🔧"
+            defs[node.name] = (kind, (ast.get_docstring(node) or "").strip().split("\n", 1)[0])
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            for target in node.targets if isinstance(node, ast.Assign) else [node.target]:
+                if isinstance(target, ast.Name):
+                    defs.setdefault(target.id, ("📦", ""))
+    names: list[str] | None = None
+    for node in tree.body:
+        value = node.value if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)) else None
+        target = (node.targets[0] if isinstance(node, ast.Assign) else getattr(node, "target", None)) if value is not None else None
+        if isinstance(target, ast.Name) and target.id == "__all__" and isinstance(value, (ast.List, ast.Tuple)):
+            listed = [e.value for e in value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+            names = (names or []) + listed if isinstance(node, ast.AugAssign) else listed
+    if names is None:
+        label = "_ 以外の公開名"
+        names = [n for n, (kind, _) in defs.items() if not n.startswith("_") and kind != "📦"]
+    else:
+        label = "__all__"
+    rows = []
+    for name in dict.fromkeys(names):
+        kind, doc = defs.get(name, ("↪️", ""))
+        rows.append([f"{kind} {name}" + ("()" if kind == "🔧" else ""), doc])
+    return label, rows
+
+
+def add_features(spec: Any, module: str | os.PathLike[str], *, timeout: float = 30) -> dict:
+    """🧩 ``spec`` (web-ui-page/1) with every feature of the Python file ``module`` added to its 🧩 機能一覧 tab.
+
+    ⌨️ CLI: each argparse command with its help and options, read by running the file only up to its first
+    ``parse_args`` (nothing after it runs; no CLI → no section). 🐍 Python: every name in ``__all__`` (or, without it,
+    each public function and class) with the first line of its docstring, read without importing. The sections land
+    in the tab whose label has 機能 (a new 🧩 機能一覧 tab, or the page end, when there is none), so the list always
+    covers the code. Returns a new spec; ``spec`` is not changed."""
+    path = Path(module)
+    source = path.read_text(encoding="utf-8")
+    spec = json.loads(json.dumps(spec))
+    if not isinstance(spec, dict) or not isinstance(spec.get("blocks"), list):
+        raise ValueError("add_features: spec is a web-ui-page/1 object with blocks")
+    sections = []
+    try:
+        done = subprocess.run([sys.executable, "-c", _FEATURES_SHIM, str(path.resolve())], capture_output=True, text=True,
+                              encoding="utf-8", timeout=timeout, cwd=path.resolve().parent, check=False)
+        cli = json.loads(done.stdout.strip().splitlines()[-1]) if done.stdout.strip() else None
+    except (subprocess.TimeoutExpired, ValueError, IndexError):
+        cli = None
+    if cli and cli["commands"]:
+        def cell(text: str, opts: list) -> str:   # 📝 the help, then ⚙️ its options (two columns stay readable on a phone)
+            flags = " ".join(short for _, _, short in opts)
+            return " ".join(part for part in (text, f"⚙️ {flags}" if flags else "") if part)
+
+        rows = [[name, cell(text, opts)] for name, text, opts in cli["commands"]]
+        if cli["options"]:
+            rows.insert(0, ["（共通）", cell("", cli["options"])])
+        sections.append({"type": "section", "title": f"⌨️ {cli['prog']} · 全 {len(cli['commands'])} コマンド",
+                         "blocks": [{"type": "table", "headers": ["⌨️ コマンド", "📝 説明 · ⚙️ オプション"], "rows": rows}]})
+    elif cli and cli["options"]:
+        sections.append({"type": "section", "title": f"⌨️ {cli['prog']} · 全 {len(cli['options'])} オプション",
+                         "blocks": [{"type": "table", "headers": ["⚙️ オプション", "📝 説明"],
+                                     "rows": [[full, text] for full, text, _ in cli["options"]]}]})
+    label, rows = _features_api(source)
+    if rows:
+        sections.append({"type": "section", "title": f"🐍 Python · 全 {len(rows)} 個（{label}）",
+                         "blocks": [{"type": "table", "headers": ["🐍 名前（🔧 関数 · 🧱 クラス · 📦 値 · ↪️ 取り込み）", "📝 説明"], "rows": rows}]})
+    if not sections:
+        return spec
+    tabs = next((b for b in spec["blocks"] if isinstance(b, dict) and b.get("type") == "tabs"), None)
+    if tabs is None:
+        spec["blocks"].extend(sections)
+        return spec
+    tab = next((t for t in tabs.get("tabs", []) if isinstance(t, dict) and "機能" in str(t.get("label", ""))), None)
+    if tab is None:
+        tab = {"label": "🧩 機能一覧", "blocks": []}
+        tabs.setdefault("tabs", []).append(tab)
+    tab.setdefault("blocks", []).extend(sections)
+    return spec
 
 
 PARTS_THEMES = (*THEMES, *CANDIDATE_THEMES, AUTO_THEME)
@@ -18297,6 +18440,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="print a self-contained page for a web-ui-page/1 JSON spec (see page_document; --brand registers its theme, --layouts adds presets) and exit")
     parser.add_argument("--repository", metavar="OWNER/REPO", help="with --page: put the way back first — 🏠 the owner's portfolio · 🐙 the repository (see back_nav_html)")
     parser.add_argument("--home-screen", type=Path, metavar="DIR", help="with --page: 🏠 read the spec's icon under DIR and write icon-180/192/512.png, the manifest and the spec with home (Base64 cache) there (see home_screen)")
+    parser.add_argument("--features", type=Path, action="append", default=[], metavar="FILE", help="with --page: 🧩 add every CLI command and public name of this Python file to the 機能一覧 tab (repeatable; see add_features)")
     parser.add_argument("--component", metavar="NAME", help="print one component of COMPONENTS (a page by default; --part html, css, js or json)."
                         " A spec comes from --spec FILE (- for stdin), keyword arguments from --set KEY=VALUE (JSON values, else text); --component list names them")
     parser.add_argument("--spec", type=Path, metavar="FILE", help="with --component: the spec, the builder's first argument (- reads stdin)")
@@ -18401,6 +18545,8 @@ def main(argv: list[str] | None = None) -> int:
                 brand = json.loads(args.brand.read_text(encoding="utf-8"))
                 theme_css(str(brand["name"]), dict(brand["tokens"]))
             layouts = json.loads(args.layouts.read_text(encoding="utf-8")) if args.layouts else None
+            for module in args.features:
+                spec = add_features(spec, module)
             if args.home_screen:
                 spec, files = home_screen(spec, args.home_screen)
                 for name, data in {**files, args.page.name: (json.dumps(spec, ensure_ascii=False, indent=2) + "\n").encode("utf-8")}.items():
