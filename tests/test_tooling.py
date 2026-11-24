@@ -1883,7 +1883,7 @@ def test_vendor_lock_lists_expected_sources():
 
 
 @pytest.mark.parametrize("destination,commit", [("vendor/njs_launch.py", "0d20801e2e372a72426ce85cee7ac04d701e71b5"),   # the rename's merge (parent #266)
-                                                ("vendor/py_launch.cjs", "384f5dd532076062f7833038764e9a62322c387c")])
+                                                ("vendor/py_launch.cjs", "de63762d8485e4d398a651715d34ebf4a04c23f2")])
 def test_launchers_pin_the_accepted_parent_merge(destination, commit):
     entry = next(e for e in _lock_entries() if e["destination"] == destination)
     assert entry["repository"] == "myon-bioinformatics/myon-bioinformatics"
