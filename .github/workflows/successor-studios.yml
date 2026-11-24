@@ -21,7 +21,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        browser: [chromium, firefox, webkit]
+        # Pull requests run Chromium only; push runs all three browsers.
+        browser: ${{ github.event_name == 'pull_request' && fromJSON('["chromium"]') || fromJSON('["chromium", "firefox", "webkit"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -46,11 +47,16 @@ jobs:
           python -S tools/build/studio-audio/build.py build/repeat/vendor
           cmp build/site/vendor/tone-studio.min.js build/repeat/vendor/tone-studio.min.js
           cmp build/site/vendor/tone-studio.LICENSE.txt build/repeat/vendor/tone-studio.LICENSE.txt
-      - run: uv run --locked --only-group world-test python -m playwright install --with-deps ${{ matrix.browser }}
+      # ⏱ Chromium's libraries are already on the runner image (it ships Chrome); apt only for Firefox / WebKit (9 min on a slow mirror)
+      - run: uv run --locked --only-group world-test python -m playwright install ${{ matrix.browser != 'chromium' && '--with-deps' || '' }} ${{ matrix.browser }}
       - name: Start a virtual audio output for headless browser signal tests
+        env:
+          NEEDRESTART_SUSPEND: "1"
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends pulseaudio pulseaudio-utils
+          set -euo pipefail
+          # ⏱ the runner image's lists already name these; `apt-get update` (minutes on a slow mirror) only if that fails
+          install() { sudo --preserve-env=NEEDRESTART_SUSPEND apt-get install -y -q --no-install-recommends pulseaudio pulseaudio-utils; }
+          install || { sudo apt-get update -qq && install; }
           pulseaudio --start --exit-idle-time=-1
           pactl load-module module-null-sink sink_name=studio_test
           pactl set-default-sink studio_test

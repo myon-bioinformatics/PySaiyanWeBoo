@@ -592,6 +592,8 @@ page-layouts.json]` renders it from the shell or Node, so a report script owns o
 puts the way back first (🏠 portfolio · 🐙 GitHub); `add_back_nav(page, "OWNER/REPO")` gives a page built some other way the same nav.
 📲 `--home-screen DIR` (`home_screen(spec, DIR)`) makes the spec's icon into square, opaque `icon-180/192/512.png` and a `manifest.webmanifest` next to the page, and writes the spec back with `home` — the short name, the source's SHA-256 and each size as Base64 (a cache Python reads without decoding again) — so "Add to Home Screen" and shortcuts show the repository's own icon (iOS: `apple-touch-icon` 180 · Android / desktop: the manifest). No Pillow: nearest-neighbour scaling keeps pixel icons crisp.
 
+🧩 `--features FILE` (`add_features(spec, FILE)`, repeatable) adds the whole feature list of a Python file to the spec's 機能一覧 tab, after the hand-written cards: ⌨️ every argparse command with its help and options (the file runs only up to its first `parse_args`, nothing after it) and 🐍 every name in `__all__` — or, without it, each public function and class — with the first line of its docstring (read without importing). The list comes from the code at build time, so it never misses a command or a function; a file that cannot start keeps its 🐍 list.
+
 🎞️ `gif.js` (`UiGif`) turns canvas frames into one animated GIF89a with no dependency: the browser decodes, resizes, zooms and
 captions the images it is given (`Composer`), and the module adds only what browsers lack — a bucket histogram while frames arrive,
 one global palette (exact for at most 255 distinct RGB colours when the selected palette fits them, else bucket median cut + refinement), each frame as its tight changed rectangle (transparent where
@@ -782,10 +784,10 @@ data (`data_table` is `table()` with a required `id`; `row_ids=` puts `data-ui-r
 and no HTML from data: GitHub or other observations are gathered by the Python producer.
 
 ```bash
-python -S -c 'import pysaiyanweboo as ui
-rows=[("Aoi", "#1", ui.badge("失敗")), ("markdown", "#2", ui.badge("成功"))]
-body=ui.stat_tiles((("PR", len(rows)), ("CI失敗", 1)))+ui.filter_input("prs", count_id="n")+"<span id=n></span>"+ui.data_table(("repo","PR","CI"), rows, id="prs", trusted_cells=True, row_ids=("Aoi#1","markdown#2"))+ui.draft_textarea(key="Aoi#1:notes", id="notes", label="メモ")+ui.records_io()
-print(ui.render_document(trusted_html=ui.records_board(body), css=ui.bundled_css(), scripts=ui.shared_scripts(".", names=("records.js",))))' > board.html
+python -S -c 'import pysaiyanweboo as PSWB
+rows=[("Aoi", "#1", PSWB.badge("失敗")), ("markdown", "#2", PSWB.badge("成功"))]
+body=PSWB.stat_tiles((("PR", len(rows)), ("CI失敗", 1)))+PSWB.filter_input("prs", count_id="n")+"<span id=n></span>"+PSWB.data_table(("repo","PR","CI"), rows, id="prs", trusted_cells=True, row_ids=("Aoi#1","markdown#2"))+PSWB.draft_textarea(key="Aoi#1:notes", id="notes", label="メモ")+PSWB.records_io()
+print(PSWB.render_document(trusted_html=PSWB.records_board(body), css=PSWB.bundled_css(), scripts=PSWB.shared_scripts(".", names=("records.js",))))' > board.html
 python -S pysaiyanweboo.py --site .   # writes js/records.js next to it
 ```
 
