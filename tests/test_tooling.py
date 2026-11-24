@@ -1698,6 +1698,11 @@ def test_home_screen_icons_manifest_and_base64_cache(tmp_path):
     stale = {**cached, "home": {**cached["home"], "icons": {**cached["home"]["icons"], "180": "AAAA"}}}
     assert pysaiyanweboo.home_screen(stale, tmp_path)[0]["home"]["icons"]["180"] == "AAAA"           # same source: cache kept
     assert pysaiyanweboo.home_screen({**stale, "home": {**stale["home"], "source_sha256": "0"}}, tmp_path)[0] == cached
+    given = pysaiyanweboo.studio_png_encode(1, 1, b"\x00\x80\x00\xff")                     # 📐 a size made elsewhere is kept
+    (tmp_path / "icon-512.png").write_bytes(given)
+    kept, files = pysaiyanweboo.home_screen(spec, tmp_path)
+    assert files["icon-512.png"] == given and kept["home"]["icons"]["180"] == cached["home"]["icons"]["180"]
+    (tmp_path / "icon-512.png").unlink()
     with pytest.raises(ValueError):
         pysaiyanweboo.page_document({**cached, "home": {"short_name": "x", "icons": {}}})
     (tmp_path / "page.json").write_text(json.dumps(spec), encoding="utf-8")

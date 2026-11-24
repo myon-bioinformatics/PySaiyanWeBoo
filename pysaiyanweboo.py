@@ -2175,7 +2175,9 @@ def home_screen(spec: Any, root: Path | str) -> tuple[dict[str, Any], dict[str, 
     """🏠 For a ``web-ui-page/1`` spec whose ``icon`` is a local PNG under ``root``: the spec with ``home`` filled in
     (short name, the source's SHA-256 and each size as Base64 — a cache Python can read back without decoding again;
     kept when the source is unchanged) and the files to write next to the page: ``icon-180/192/512.png`` and the manifest.
-    The short name is ``home.short_name`` when given, else the title without " 利用ガイド"."""
+    An ``icon-<size>.png`` already under ``root`` (e.g. made by CaChereCyCle's ``sync``, which averages when shrinking)
+    is used as it is; only missing sizes are made here. The short name is ``home.short_name`` when given, else the
+    title without " 利用ガイド"."""
     if not isinstance(spec, dict) or not isinstance(spec.get("icon"), str):
         raise ValueError("home_screen needs a page spec with an icon")
     source = (Path(root) / _spec_href(spec["icon"])).read_bytes()
@@ -2183,9 +2185,13 @@ def home_screen(spec: Any, root: Path | str) -> tuple[dict[str, Any], dict[str, 
     title = _spec_text(spec.get("title"), "title", limit=200, required=True)
     given = spec.get("home") if isinstance(spec.get("home"), dict) else {}
     short = given.get("short_name") or title.replace(" 利用ガイド", "").strip()[:32]
-    icons = given.get("icons") if given.get("source_sha256") == digest else None
-    if not (isinstance(icons, dict) and set(icons) == {str(s) for s in HOME_SIZES}):
-        icons = {str(s): base64.b64encode(home_screen_icon(source, s)).decode("ascii") for s in HOME_SIZES}
+    cached = given.get("icons") if given.get("source_sha256") == digest else None
+    cached = cached if isinstance(cached, dict) and set(cached) == {str(s) for s in HOME_SIZES} else {}
+    icons = {}
+    for s in HOME_SIZES:
+        made = Path(root) / f"icon-{s}.png"
+        icons[str(s)] = (base64.b64encode(made.read_bytes()).decode("ascii") if made.is_file() else
+                         cached.get(str(s)) or base64.b64encode(home_screen_icon(source, s)).decode("ascii"))
     home = _home_spec({"short_name": short, "source_sha256": digest, "icons": icons})
     manifest = {"name": title, "short_name": home["short_name"], "start_url": "./", "scope": "./", "display": "browser",
                 "icons": [{"src": f"icon-{s}.png", "sizes": f"{s}x{s}", "type": "image/png", "purpose": "any"} for s in HOME_SIZES]}
