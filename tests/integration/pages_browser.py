@@ -2,6 +2,7 @@
 
 Controls, layout presets, the route table, the source panel and a jsDelivr Plotly smoke (the unit side: tests/test_pages.py, tests/test_media.py)."""
 
+import atexit
 import base64
 import json
 import os
@@ -15,7 +16,30 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from playwright.sync_api import expect, sync_playwright
+import playwright.sync_api as _sync_api
+from playwright.sync_api import expect
+
+_start_playwright = _sync_api.sync_playwright
+
+
+class sync_playwright:
+    """⚡ One Playwright driver for the whole run: starting it is 0.4 s and ~170 tests opened their own. Browsers are still launched and closed per test.
+    ``with sync_playwright() as p``, ``sync_playwright().start()`` and tools/layout_presets.py (which imports it at call time) all get the same driver."""
+    driver = None
+
+    def start(self):
+        if sync_playwright.driver is None:
+            sync_playwright.driver = _start_playwright().start()
+            atexit.register(sync_playwright.driver.stop)
+        return sync_playwright.driver
+
+    __enter__ = start
+
+    def __exit__(self, *exc):
+        return False
+
+
+_sync_api.sync_playwright = sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -5427,6 +5451,13 @@ class ImageStudioBrowserTests(PageCase):
         return page
 
     # --- helpers ------------------------------------------------------------------------------------------------------------------------------
+    def upload(self, page, selector, name, data):
+        """⚡ The file goes as a path on disk: Playwright hands a local browser the path instead of sending the bytes as base64 (~200 MB for the size limits)."""
+        folder = Path(tempfile.mkdtemp())  # one folder per file: the page may still hold the previous File of the same name
+        self.addCleanup(shutil.rmtree, folder, True)
+        (folder / name).write_bytes(data)
+        page.set_input_files(selector, files=[str(folder / name)])
+
     def scene(self, page):
         return page.evaluate('() => webUiImageStudio.app.scene')
 
@@ -6361,29 +6392,29 @@ class ImageStudioBrowserTests(PageCase):
         page = self.page()
         self.blank(page)
         png = bytes([137, 80, 78, 71, 13, 10, 26, 10])
-        page.set_input_files('[data-is="file"]', files=[{'name': 'big.png', 'mimeType': 'image/png', 'buffer': png + bytes(limit - 8)}])
+        self.upload(page, '[data-is="file"]', 'big.png', png + bytes(limit - 8))
         page.wait_for_function('() => document.querySelector("#imagestudio").dataset.error === "1"')
         self.assertEqual(self.status(page), '画像を読み込めません', 'exactly 32 MiB is read, and then cannot be decoded')
         page.evaluate('() => { document.querySelector("#imagestudio").dataset.error = "" }')
-        page.set_input_files('[data-is="file"]', files=[{'name': 'big.png', 'mimeType': 'image/png', 'buffer': png + bytes(limit - 7)}])
+        self.upload(page, '[data-is="file"]', 'big.png', png + bytes(limit - 7))
         page.wait_for_function('() => document.querySelector("[data-is=status]").textContent === "画像は32MiB以下にしてください"')
         page.evaluate('() => { document.querySelector("#imagestudio").dataset.error = "" }')
         page.evaluate('() => { document.querySelector("[data-is=status]").textContent = "" }')
-        page.set_input_files('[data-is="file"]', files=[{'name': 'empty.png', 'mimeType': 'image/png', 'buffer': b''}])
+        self.upload(page, '[data-is="file"]', 'empty.png', b'')
         page.wait_for_function('() => document.querySelector("#imagestudio").dataset.error === "1"')
         self.assertEqual(self.status(page), '画像は32MiB以下にしてください', 'an empty file is refused with the same words')
         scene_text = w.js_json(w.studio_demo_scene())
         padded = scene_text + ' ' * (20000000 - len(scene_text.encode('utf-8')))
-        self.paint(page, lambda: page.set_input_files('[data-is="jsonopen"]', files=[{'name': 's.json', 'mimeType': 'application/json', 'buffer': padded.encode('utf-8')}]))
+        self.paint(page, lambda: self.upload(page, '[data-is="jsonopen"]', 's.json', padded.encode('utf-8')))
         self.assertEqual(self.data(page, 'layers'), '8', 'a scene file of exactly 20,000,000 bytes is read')
-        page.set_input_files('[data-is="jsonopen"]', files=[{'name': 's.json', 'mimeType': 'application/json', 'buffer': (padded + ' ').encode('utf-8')}])
+        self.upload(page, '[data-is="jsonopen"]', 's.json', (padded + ' ').encode('utf-8'))
         page.wait_for_function('() => document.querySelector("[data-is=status]").textContent === "JSONは20MB以下にしてください"')
         history = w.StudioHistory(w.studio_blank())
         text = w.studio_workspace_text(history)
         fits = text + ' ' * (limit - len(text.encode('utf-8')))
-        self.paint(page, lambda: page.set_input_files('[data-is="wsopen"]', files=[{'name': 'w.json', 'mimeType': 'application/json', 'buffer': fits.encode('utf-8')}]))
+        self.paint(page, lambda: self.upload(page, '[data-is="wsopen"]', 'w.json', fits.encode('utf-8')))
         self.assertEqual(self.status(page), 'Restored the history')
-        page.set_input_files('[data-is="wsopen"]', files=[{'name': 'w.json', 'mimeType': 'application/json', 'buffer': (fits + ' ').encode('utf-8')}])
+        self.upload(page, '[data-is="wsopen"]', 'w.json', (fits + ' ').encode('utf-8'))
         page.wait_for_function('() => document.querySelector("[data-is=status]").textContent === "作業履歴は32MiB以下にしてください"')
 
     def test_trimming_the_history_asks_first_and_the_heading_names_the_layer(self):
@@ -6845,8 +6876,7 @@ class PlotlyBrowserTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls.browser.close()
-        cls.playwright.stop()
+        cls.browser.close()  # the shared driver stops at exit
 
     def page_for(self, raw, *, fail=False):
         page = self.browser.new_page()
