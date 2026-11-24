@@ -7523,7 +7523,7 @@ class OperationsPageTests(unittest.TestCase):
 
 
 class FeatureListTests(unittest.TestCase):
-    """🧩 add_features: the 機能一覧 tab lists every CLI command and public name, read from the code."""
+    """📚 add_features: a 📚 機能全一覧 tab lists every CLI command and public name, read from the code."""
 
     MODULE = (
         '"""Demo tool."""\n'
@@ -7561,46 +7561,64 @@ class FeatureListTests(unittest.TestCase):
         path.write_text(text, encoding="utf-8")
         return path
 
-    def feature_tab(self, spec):
-        return spec["blocks"][0]["tabs"][1]["blocks"]
+    def full_list(self, spec):
+        tabs = spec["blocks"][0]["tabs"]
+        self.assertEqual([t["label"] for t in tabs], ["🎞 GIF デモ", "🧩 機能一覧", "📚 機能全一覧"])
+        self.assertEqual(tabs[1]["blocks"], [{"type": "text", "text": "hand-written"}])   # the hand-written tab stays as it is
+        return tabs[2]["blocks"]
 
-    def test_cli_and_api_are_added_after_the_hand_written_blocks(self):
+    def test_the_full_list_is_its_own_tab_right_after_the_hand_written_one(self):
         out = ui.add_features(self.spec, self.module(self.MODULE))
-        hand, cli, api = self.feature_tab(out)
-        self.assertEqual(hand, {"type": "text", "text": "hand-written"})
+        cli, api = self.full_list(out)
         self.assertEqual(cli["title"], "⌨️ demo.py · 全 2 コマンド")
         self.assertEqual(cli["blocks"][0]["rows"], [["（共通）", "⚙️ --quiet"], ["up", "📣 shout ⚙️ text --style {a,b}"], ["plain", ""]])
         self.assertEqual(api["title"], "🐍 Python · 全 4 個（__all__）")
         self.assertEqual(api["blocks"][0]["rows"], [["🔧 shout()", "Return TEXT in capitals."], ["🧱 Box", "A box."], ["📦 LIMIT", ""], ["↪️ join", ""]])
         self.assertFalse((self.dir / "ran.txt").exists(), "nothing after parse_args runs")
-        self.assertEqual(len(self.feature_tab(self.spec)), 1, "the given spec is not changed")
+        self.assertEqual(len(self.spec["blocks"][0]["tabs"]), 2, "the given spec is not changed")
         self.assertIn("全 2 コマンド", ui.page_document(out))
 
     def test_without_all_public_functions_and_classes_are_listed(self):
         out = ui.add_features(self.spec, self.module('def run():\n    """Go."""\ndef _hidden():\n    pass\nVALUE = 1\n'))
-        (api,) = self.feature_tab(out)[1:]
+        (api,) = self.full_list(out)
         self.assertEqual((api["title"], api["blocks"][0]["rows"]), ("🐍 Python · 全 1 個（_ 以外の公開名）", [["🔧 run()", "Go."]]))
 
     def test_a_cli_without_subcommands_lists_its_options(self):
         text = 'import argparse\np = argparse.ArgumentParser(prog="one")\np.add_argument("--n", type=int, help="count")\np.parse_args()\n'
-        (cli,) = self.feature_tab(ui.add_features(self.spec, self.module(text)))[1:]
+        (cli,) = self.full_list(ui.add_features(self.spec, self.module(text)))
         self.assertEqual((cli["title"], cli["blocks"][0]["rows"]), ("⌨️ one · 全 1 オプション", [["--n N", "count"]]))
 
     def test_a_cli_that_cannot_start_or_hangs_still_gets_its_python_list(self):
         for text, timeout in (('import not_installed_anywhere\ndef f():\n    """F."""\n', 30),
                               ('import time\ndef f():\n    """F."""\ntime.sleep(60)\n', 1)):
             with self.subTest(text=text.split("\n")[0]):
-                titles = [s["title"] for s in self.feature_tab(ui.add_features(self.spec, self.module(text), timeout=timeout))[1:]]
+                titles = [s["title"] for s in self.full_list(ui.add_features(self.spec, self.module(text), timeout=timeout))]
                 self.assertEqual(titles, ["🐍 Python · 全 1 個（_ 以外の公開名）"])
 
-    def test_the_tab_is_made_when_missing_and_a_page_without_tabs_gets_sections(self):
+    def test_a_page_without_a_hand_written_list_or_without_tabs_still_gets_it(self):
         spec = {**self.spec, "blocks": [{"type": "tabs", "tabs": [{"label": "🎞 GIF デモ", "blocks": []}]}]}
         tabs = ui.add_features(spec, self.module(self.MODULE))["blocks"][0]["tabs"]
-        self.assertEqual([t["label"] for t in tabs], ["🎞 GIF デモ", "🧩 機能一覧"])
+        self.assertEqual([t["label"] for t in tabs], ["🎞 GIF デモ", "📚 機能全一覧"])
         flat = ui.add_features({"schema": "web-ui-page/1", "title": "t", "blocks": []}, self.module(self.MODULE))
-        self.assertEqual([b["type"] for b in flat["blocks"]], ["section", "section"])
+        self.assertEqual([b["title"] for b in flat["blocks"]],
+                         ["📚 機能全一覧 · ⌨️ demo.py · 全 2 コマンド", "📚 機能全一覧 · 🐍 Python · 全 4 個（__all__）"])
         with self.assertRaises(ValueError):
             ui.add_features({"title": "no blocks"}, self.module(self.MODULE))
+
+    def test_a_hand_written_list_that_names_everything_needs_no_full_list(self):
+        covered = json.loads(json.dumps(self.spec))
+        covered["blocks"][0]["tabs"][1]["blocks"].append(
+            {"type": "text", "text": "up · plain · shout() · Box · LIMIT · join"})
+        self.assertEqual(ui.add_features(covered, self.module(self.MODULE)), covered)
+        covered["blocks"][0]["tabs"][1]["blocks"][-1]["text"] = "up · shout() · Box · LIMIT · join"       # plain is missing
+        self.assertEqual(ui.add_features(covered, self.module(self.MODULE))["blocks"][0]["tabs"][-1]["label"], "📚 機能全一覧")
+
+    def test_a_second_run_replaces_the_full_list(self):
+        once = ui.add_features(self.spec, self.module(self.MODULE))
+        self.module(self.MODULE.replace('"LIMIT", ', ''))
+        twice = ui.add_features(once, self.dir / "demo.py")
+        self.assertEqual(len(twice["blocks"][0]["tabs"]), 3)
+        self.assertEqual(self.full_list(twice)[1]["title"], "🐍 Python · 全 3 個（__all__）")
 
     def test_cli_flag(self):
         page = self.dir / "guide.page.json"
