@@ -538,23 +538,12 @@ def test_parent_workflow_references_use_reviewed_rollout_commit():
     assert set(pins) == {parent_workflow_pin}, pins
 
 
-def test_cities_review_page_is_built_from_its_manifest_not_committed(tmp_path):
-    """HTML is 1 (index.html) or 0: pages.yml builds the cities review page from the committed manifest.json, byte for byte the page that was reviewed."""
-    from support import city_gallery, write_city_gallery_page
-    folder = "docs/evidence/cities-20261111"
-    manifest = json.loads((ROOT / folder / "manifest.json").read_text(encoding="utf-8"))
-    page = city_gallery(manifest)
-    assert hashlib.sha256(page.encode("utf-8")).hexdigest() == "7ad74c05750ec413431a8412bcbde5495d5ba67ca7af99c5416a3d3085f18aa5"   # the page committed until 2026-11-16
-    assert manifest["shots"] == len(manifest["records"]) == page.count("<figure ") == 468
-    assert all(f"href='shots/{r['file']}'" in page and (ROOT / folder / "shots" / r["file"]).is_file() for r in manifest["records"])
-    assert "<script" not in page
-    shutil.copy(ROOT / folder / "manifest.json", tmp_path)
-    assert write_city_gallery_page(tmp_path).read_bytes() == page.encode("utf-8")
-    build = yaml.safe_load((ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8"))["jobs"]["deploy"]["with"]["build"]
-    assert f"support.write_city_gallery_page('{folder}')" in build
+def test_the_only_committed_html_is_the_front_page():
+    """HTML is built from Python, not committed: index.html is the one page in git (the cities review page moved to the portfolio with the world)."""
     tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "*.html"], capture_output=True, text=True)
     if tracked.returncode == 0 and tracked.stdout:   # a checkout; an sdist has no index to ask
         assert tracked.stdout.split() == ["index.html"]
+    assert "build" not in yaml.safe_load((ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8"))["jobs"]["deploy"]["with"]
 
 
 # ═══ 🧪 junit evidence ════════════════════════════════════════════════════════════════════════════════════

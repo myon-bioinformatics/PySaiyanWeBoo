@@ -444,7 +444,7 @@
       "sha256": "a138bcfb1e014dfceb1adcf2f8748716bb4ba76f67bfb2e726b70aac84395931",
       "feature": "http_request_draft",
       "status": "partial",
-      "target": "parse_curl, stub_document",
+      "target": "parse_curl, the portfolio stub_document",
       "remaining": "External HTTP execution is not absorbed; local fixture authentication is available via MockAuthHandler (web-ui sends nothing)"
     },
     {
@@ -468,7 +468,7 @@
       "sha256": "b678bb26c4cca2ddc1b9931823c36a76f25dc13ed1454bcf34ea0297233a9753",
       "feature": "now_timeline",
       "status": "partial",
-      "target": "timeline_events, timeline_wall_to_utc, world_document",
+      "target": "timeline_events, timeline_wall_to_utc, the portfolio world_document",
       "remaining": "Recurrence, stored entries, notifications and booking are not migrated"
     },
     {
@@ -476,7 +476,7 @@
       "sha256": "9c14c408eb60b9ebced81fa15113ded0e0a0fa8edc747ebf5d0ee47781902145",
       "feature": "now_timeline",
       "status": "partial",
-      "target": "timeline_events, timeline_wall_to_utc, world_document",
+      "target": "timeline_events, timeline_wall_to_utc, the portfolio world_document",
       "remaining": "Recurrence, stored entries, notifications and booking are not migrated"
     },
     {
@@ -484,7 +484,7 @@
       "sha256": "2a92747206744f6bff3076c0c148f22312389c52ae679dcc3c9c5aecc71453a4",
       "feature": "now_timeline",
       "status": "partial",
-      "target": "timeline_events, timeline_wall_to_utc, world_document",
+      "target": "timeline_events, timeline_wall_to_utc, the portfolio world_document",
       "remaining": "Recurrence, stored entries, notifications and booking are not migrated"
     },
     {
@@ -492,7 +492,7 @@
       "sha256": "3cb1a85ddb5ef01e54caa51189e52be8dd90fd875a3b557ed5a8765ed6a0d7e2",
       "feature": "now_timeline",
       "status": "partial",
-      "target": "timeline_events, timeline_wall_to_utc, world_document",
+      "target": "timeline_events, timeline_wall_to_utc, the portfolio world_document",
       "remaining": "Recurrence, stored entries, notifications and booking are not migrated"
     },
     {
@@ -1052,7 +1052,7 @@
       "sha256": "d7e4d45bdf1641ef6e738087dd026449105be54e5de286662d1f977cdb1b6de2",
       "feature": null,
       "status": "partial",
-      "target": "parse_curl, mask_curl, stub_document",
+      "target": "parse_curl, mask_curl, the portfolio stub_document",
       "remaining": "The editor's subset of curl; nothing is executed"
     },
     {
@@ -1060,7 +1060,7 @@
       "sha256": "43161f23af0d3407e66a9b0278b6accd2e9c2dc1dd7c2b577c907d8b184ef5a3",
       "feature": null,
       "status": "partial",
-      "target": "parse_curl, mask_curl, stub_document",
+      "target": "parse_curl, mask_curl, the portfolio stub_document",
       "remaining": "The editor's subset of curl; nothing is executed"
     },
     {
@@ -1068,7 +1068,7 @@
       "sha256": "50bd5541cafdb838a1a96557092d85119b1447b09caf288387c53f7f06fd4854",
       "feature": null,
       "status": "partial",
-      "target": "parse_curl, mask_curl, stub_document",
+      "target": "parse_curl, mask_curl, the portfolio stub_document",
       "remaining": "The editor's subset of curl; nothing is executed"
     },
     {
@@ -1076,7 +1076,7 @@
       "sha256": "84e7bfbf4094211a165cc7263da75f7f25ce4c8dd06d8304929a4b8511f31b67",
       "feature": null,
       "status": "partial",
-      "target": "parse_curl, mask_curl, stub_document",
+      "target": "parse_curl, mask_curl, the portfolio stub_document",
       "remaining": "The editor's subset of curl; nothing is executed"
     },
     {
@@ -1100,7 +1100,7 @@
       "sha256": "0c030375b1b0a49a44a70df44347078f990a8555edf58d17fd1fe26d53e9da45",
       "feature": null,
       "status": "partial",
-      "target": "parse_curl, mask_curl, stub_document",
+      "target": "parse_curl, mask_curl, the portfolio stub_document",
       "remaining": "The editor's subset of curl; nothing is executed"
     },
     {
@@ -1156,7 +1156,7 @@
       "sha256": "c8d97287cb2dc5ff377be82d142166506dca349f64d313dc75430f8e84729a01",
       "feature": null,
       "status": "partial",
-      "target": "parse_curl, mask_curl, stub_document",
+      "target": "parse_curl, mask_curl, the portfolio stub_document",
       "remaining": "The editor's subset of curl; nothing is executed"
     },
     {
@@ -1164,7 +1164,7 @@
       "sha256": "b333290981373adcd34758bd7d77cb9b4d3d7141154893a444d5e828d780c74e",
       "feature": null,
       "status": "partial",
-      "target": "parse_curl, mask_curl, stub_document",
+      "target": "parse_curl, mask_curl, the portfolio stub_document",
       "remaining": "The editor's subset of curl; nothing is executed"
     },
     {
@@ -1180,7 +1180,7 @@
       "sha256": "40f21a5ae4af83c19ba1909532407f1dd0139867c3831371ea3079b22c8ff24e",
       "feature": null,
       "status": "partial",
-      "target": "parse_curl, mask_curl, stub_document",
+      "target": "parse_curl, mask_curl, the portfolio stub_document",
       "remaining": "The editor's subset of curl; nothing is executed"
     },
     {
@@ -1715,7 +1715,7 @@
         "path": "python/generate_zone_table.py",
         "sha256": "fa2041c7dc9aa3ea7f4c6e8d05a00aba648690d7638c974a8df171305bef80a2",
         "status": "successor",
-        "target": "zone_rows, zone_offset",
+        "target": "the portfolio zone_rows and zone_offset",
         "remaining": "The scan and bisection are followed"
       },
       {

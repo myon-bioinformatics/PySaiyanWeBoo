@@ -25,7 +25,7 @@ PySaiyanWeBoo combines Py (Python), Saiyan, Web, and Boo. Like Majin Buu in Drag
 ## v1 foundation
 
 ```text
-pysaiyanweboo.py the one Python module: CSS (in memory), pages, stubs, worlds, themes, and shared helpers beyond the web UI
+pysaiyanweboo.py the one Python module: CSS (in memory), pages, themes, and shared helpers beyond the web UI
 index.html       the front page: front_document() over the library's own builders, kept equal by a test (nothing is written for the page alone)
                  (example data is Python too: pysaiyanweboo.EXAMPLES, example_data(), --example NAME; no examples/ directory)
                  (the browser modules are Python data too: js_modules(), write_js(); there is no js/ directory)
@@ -63,11 +63,9 @@ stylesheet and theme, built in memory from the sources in `pysaiyanweboo.py`; no
 together, `bindTheme()` from `ui.js` switches `data-ui-theme` live, with no stylesheet swap and no reload.
 From Node, run `node vendor/py_launch.cjs -- pysaiyanweboo.py --css-bundle`.
 
-World pages (prototype): `world_document(spec)` or `python -S pysaiyanweboo.py --example world > world.json; python -S pysaiyanweboo.py --world world.json` builds one page that never
-changes page: scrolling "shots" and a pan/zoom map with floors, categories and an info sheet (data: `web-ui-world/1`).
-Python validates the data, does the camera arithmetic (`fit_zoom`, `clamp_focus`) and writes the HTML, the CSS and a
-small module; the script applies state and projects interactive player motion; static Pages does not execute Python. Without JavaScript the shots stack and spots open
-through `:target`. `random_theme(seed)` and `--theme-wall N` show seeded random themes side by side.
+🌍 The world (`web-ui-world/1`: 🌍 the travel world, 🏫 the school, 🗼 the parallel cities, 🎬 the camera page, the catalogue map) and 🤖🔁 the MCP / API stubs
+moved to the portfolio's [🧭 Tools & Demos](https://myon-bioinformatics.github.io/tools/demos/) (`scripts/world.py` and `scripts/project_pages.py` in myon-bioinformatics.github.io): they are
+built on these parts and themes, which stay here. `random_theme(seed)` and `--theme-wall N` show seeded random themes side by side.
 
 Seed dial: `theme.js` is Python's own generator written out for the page (CPython's Mersenne Twister seeded as `random.Random(int)` seeds it, the same steps), so
 `randomTheme(seed)` gives exactly the tokens `random_theme(seed)` gives (checked on thousands of seeds, negative and 2^53 ones included) and `bindSeed()` wears any seed
@@ -76,7 +74,7 @@ The seed is remembered in this browser. Python stays the reference; the page nev
 
 Front page layout: `front_document(main, rooms, title=...)` is one view that fills the viewport under a 48px bar, and a 🚪 menu of rooms that open over it through `:target`
 (no script; ✖️ closes). A room is `{"id", "emoji", "title", "text", "html"}`: add one to put something on the page, improve a builder to improve the page.
-`index.html` is exactly that call over the library's builders (`world_html`, `stub_html`, `curl_panel_html`, `theme_switch_html`, `seed_dial_html`, `theme_wall`; `dial_html` + `dial.js` is the rotary dial the map's 🔍 uses), and a test
+`index.html` is exactly that call over the library's builders (🎛️ `theme_switch_html`, `seed_dial_html` and 🎲 `theme_wall` as the main view; 🧩 the example cards, 📋 `curl_panel_html` and 🧭 the way to the portfolio's demos as rooms), and a test
 requires every one of their outputs to be in it. `render_document` takes optional `favicon` / `touch_icon` PNG links for such pages.
 Generate a browser-only HTML import tool with `html_import_files()`. Write its returned path-to-bytes mapping under a static site directory.
 The tool accepts pasted HTML and UTF-8 files, extracts text, headings and links, and downloads JSON. To reuse an existing PSWB asset directory,
@@ -89,47 +87,7 @@ The component defaults to the accessible name `Blink`. For a standalone HTML pag
 For a custom layout, `component_parts("gaze-avatar")` returns the button HTML, CSS and JavaScript as strings.
 Place the button wherever needed and include the CSS and module once per page.
 
-[Motion and clock ownership](docs/world-motion.md) explains Python-generated plans, the browser
-projection, keyboard/reduced-motion controls, and daily countdown/timezone semantics.
-[School world](docs/world-classroom.md) adds a floor `tile` grid with solid `props` (desks, board, shelves; `classroom_floor()` writes a classroom),
-world `avatars` (pick an emoji, a short text or both first) and walking by tap, arrow keys/WASD or an on-screen pad around the furniture (`EXAMPLES["school"]`). The page stays short and iconic: header 🏠 ⭐ ⚙️ plus emoji tools you add (`"tools": {"🗺️": ...}`), side ☰ ⋯ menus (places with direction arrows), a 🚪 floor pulldown in the footer; `shell: true` gives any world or `catalogue_world` the same layout.
-`land` floors (`land_floor()`, `EXAMPLES["overworld"]`; themes meadow, forest, mountain, desert, coast, castle) make a Dragon Quest-style map of several lands from the same grid by swapping prop kinds (`WORLD_PROPS`, `WORLD_GROUND`, `WORLD_LOOK`). `place` floors (`place_floor()`, `EXAMPLES["cities"]`: Parallel Tokyo, Reverse London, Fake Paris) lay latitude/longitude points on the same grid with roads, a river and its bridges, using the coordinates tool's projection; a spot can `flip` to a second face when pressed or be a `sign` (an electronic or wooden board: a bold dot at a tile corner until touched) ([Places](docs/world-classroom.md#places-real-space-in-miniature)). `"real": true` floors let a visitor put a photo or the camera behind the props (🖼️📷, shown in the page only: not stored, not sent), through the same `ask()` dialog the page exposes. 🌐 speaks the 11 languages of flutter_navigation_basic; the starred places and the language are a light `localStorage` cache (`ui-world:<id>`), nothing else is stored.
-From another repository: `echo '{"schema":"web-ui-world/1","floors":[{"classroom":{}}]}' | python -S pysaiyanweboo.py --world - > school.html` (`--world -` reads stdin; Node: `node vendor/py_launch.cjs -- pysaiyanweboo.py --world -`).
-
 `scroll_html(trusted_html, label=, kind="row"|"table")` marks a region that scrolls sideways; `scroll.js` (it binds itself, `bindScroll()`) adds ‹ › buttons, edge fades and, for tables, a second scrollbar on top, and `scroll.css` draws them from the tokens. It came from the parent repository's observatory, so pages do not keep their own copy: `component_parts("scroll", html, label=...)` gives the HTML, the stylesheet and the module from Python.
-
-Demos, recorded from real Chrome by `python tools/record_demo.py docs/demo --force` ([what each shows, and `--timestamp`/`--git-commit`/`--prefix`/`--suffix` for repeated runs](docs/world-classroom.md#demos)):
-
-| Pick a character | Type your own | Arrow keys / WASD |
-|---|---|---|
-| <img src="docs/demo/school-pick.gif" width="240" alt="The picker comes first; a fox walks into the room"> | <img src="docs/demo/school-avatar-text.gif" width="240" alt="Typing 先生 and an apple as the character"> | <img src="docs/demo/school-keys.gif" width="240" alt="A cat walks with the keys and is stopped by desks"> |
-| **Tap to walk** | **Phone** | **Side menu (☰ ⋯)** |
-| <img src="docs/demo/school-tap.gif" width="240" alt="Tapping a chair; the player walks around the desks"> | <img src="docs/demo/school-phone.gif" width="240" alt="On a phone: the pad, dragging the map, 自分の場所 in the ⋯ menu"> | <img src="docs/demo/school-menu.gif" width="240" alt="The ☰ list shows an arrow to each place; tapping 黒板 walks there and the arrow becomes 📍"> |
-| **Header (🏠 ⭐ ⚙️ 🗺️ 🌐)** | **Door to door (footer)** | **Lands (🌱 🌲 ⛰️ 🏜️ 🌊 🏰)** |
-| <img src="docs/demo/school-header.gif" width="240" alt="Star two places on two floors, open the star list, the map tool, the language, home"> | <img src="docs/demo/school-floors.gif" width="240" alt="The footer pulldown moves to the schoolyard and back"> | <img src="docs/demo/overworld-lands.gif" width="240" alt="The pulldown travels across forest, mountain, desert, coast and castle lands; the player walks to the castle town"> |
-| **Real × virtual (🖼️📷)** | **Parallel Tokyo (🗼 🚉)** | **Reverse London (🎡 🐉)** |
-| <img src="docs/demo/overworld-real.gif" width="240" alt="Choosing a photo in the ⋯ menu puts it behind the floor; the player walks over it; 🧹 takes it away"> | <img src="docs/demo/cities-tokyo.gif" width="240" alt="The 🚉 tool lists the six exits of Tokyo Station; the player walks from Marunouchi to Yaesu, touches the electronic board in the concourse, then walks to Kanda"> | <img src="docs/demo/cities-london.gif" width="240" alt="🎡 opens Reverse London; the player walks from King's Cross over the Thames bridge to Waterloo; the wooden nogard board shows a dot, its text, a dragon, the dot"> |
-| **Fake Paris (🥖 🔥)** | | |
-| <img src="docs/demo/cities-paris.gif" width="240" alt="🥖 opens Fake Paris with a fire in each block; the player walks west from Gare du Nord to Saint-Lazare"> | | |
-
-<img src="docs/demo/school-oneliner.gif" width="320" alt="One command writes the school page; the page opens with the picker">
-
-Map extras, all optional in the same spec: emoji `actors` (villagers that walk straight at constant speed and pause at random, seeded), a
-`player` that walks to the spot you tap, and an info `board`. The board has a clock (`"offset_label": true` adds the UTC offset such as
-`UTC+9`, never a place name), optional **zone clocks** (`"zones": [{"id": "tokyo", "label": "Tokyo", "tz": "Asia/Tokyo"}]`, up to 6;
-Python builds each zone's offset table from the system tz database with `zoneinfo`, so DST is never hand-written, and the page only looks it
-up; the table covers 2020-2040, `zone_rows` / `zone_offset`), items with `"at": "HH:MM"` ("in N min"), and **gauges**: `{"text": "Open", "gauge": {"from": "09:00", "to": "18:00",
-"cells": 10, "glyphs": "hourglass"}}` fills `cells` glyphs as the window passes (`from` after `to` runs past midnight). `glyphs` is a preset
-(`GAUGE_GLYPHS`: hourglass, moon, heart, square, dot, block, star) or any two short symbols `["🔥", "🪵"]` (elapsed, remaining); the
-hourglass is just one choice. An item with `"zone": "tokyo"` (an `at` or a `gauge`) counts in that zone's local time instead of the viewer's. `"post": true` adds a one-line form: what a visitor writes is cleaned (`clean_message`), stamped `HH:MM`
-and shown **on that page view only**: no storage, cookie, cache or request, and a reload clears it (Python and Chromium tests check
-this). It is not shared with other visitors. All rules (`gauge_state`, `clock_label`, `utc_offset_label`, `travel_seconds`, ...) live in Python and
-the page's script is tested to give identical results.
-
-Catalogue as a map: `catalogue_world(items)` turns a flat list `{id, label, group, emoji?, category?, body?}` into a world: one floor per group
-(more than 64 in a group continue on another floor, at most 8 floors), a spot per item on a grid of multiples of 8, filter chips from
-`category`, and an info sheet from `body`; 198 screens fit five floors. Map your own fields first (see its docstring for flutter_navigation_basic's
-`screens.json`); the data stays with its owner.
 
 App shell: `showcase_document(spec)` (`web-ui-showcase/1`, example in `EXAMPLES["showcase"]`, generated as `examples/showcase.html`) builds a header, a
 rail (256 px at 1200+, 80 px from 900) or bottom bar (narrower) and sections that switch through radio buttons: no reload, and no script for
@@ -382,8 +340,7 @@ A future theme should be able to replace the theme source and the `data-ui-theme
 
 ### Stub workspace pattern
 
-The MCP and API stub pages (`stub_document(EXAMPLE_STUBS[...])`) share the same
-responsive `stub-*` workspace. On wider viewports, the primary result pane
+The `stub-*` classes are a responsive tool workspace (the portfolio's MCP and API stub pages use them). On wider viewports, the primary result pane
 sits beside a secondary evidence/history sidebar. At `max-width: 720px`, the
 workspace reflows to one column and the supporting region follows the result.
 
@@ -466,7 +423,7 @@ The first phase intentionally treats screenshots as observable test evidence rat
 | BrowserTestKit `platform_probe` × 17 adapters | 34 | Chromium desktop + Pixel |
 | 🎞️ evidence GIF shots | 24 | |
 
-🗂️ Since 2026-11-13 these suites live in `tests/integration/pages_browser.py` (controls, layout presets, route table, source, plotly), `worlds_browser.py` (school) and `flutter_browser.py` (successor).
+🗂️ Since 2026-11-13 these suites live in `tests/integration/pages_browser.py` (controls, layout presets, route table, source, plotly) and `flutter_browser.py` (successor); the school suite moved to the portfolio with the world (`tests/world_browser.py`).
 
 🚫 Firefox / WebKit not installed here, so only the Chromium lanes ran.
 
@@ -598,7 +555,7 @@ assert run_node("-e", "console.log(1 + 1)").stdout == "2\n"   # Node 26+; a test
 # Caller-supplied CSS can also be passed directly: render_document("Hello", css="body {color:#000}")
 ```
 
-Existing `ui.js` text/clipboard helpers, `stub.js` form binding, and
+Existing `ui.js` text/clipboard helpers and
 `repository-diagnostics.js` rendering remain in use by examples or consumers.
 
 📋 `pysaiyanweboo.table(headers, rows, caption=…, row_classes=…)` renders a `.ui-table` (escaped cells; `trusted_html=True` for
@@ -747,8 +704,8 @@ boundary](docs/python-controls.md).
 ### Components from Python, in this repository or another
 
 `COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `coordinates`,
-`door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `stub`, `curl`, `showcase`,
-`front`, `world`, `repository-diagnostics`, `table`, `steps`, `scroll`, `stage`, `pager`; `components()` lists them as data), and two calls wrap them:
+`door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `curl`, `showcase`,
+`front`, `repository-diagnostics`, `table`, `steps`, `scroll`, `stage`, `pager`; `components()` lists them as data), and two calls wrap them:
 
 ```python
 import pysaiyanweboo                            # the vendored copy (vendor/pysaiyanweboo.py) in another repository
@@ -758,7 +715,7 @@ page = pysaiyanweboo.component_document("dial", "volume", maximum=11, document_t
 
 `parts["css"]` is what the component needs beyond `bundled_css()`; `parts["js"]` is the module source, which binds its own elements when the page loads it
 (`[data-ui-dial]`, `[data-ui-door]`, …), so a page lists it once with `module_script()` or `render_document(embedded_modules=...)`. A spec goes first for the
-components that take one (`door`, `source`, `stub`, `world`); keyword arguments reach the builder (`heading_level=`, a dial's `minimum=`/`maximum=`/`step=`).
+components that take one (`door`, `source`, `showcase`); keyword arguments reach the builder (`heading_level=`, a dial's `minimum=`/`maximum=`/`step=`).
 From Node or a shell, the same calls by name: `python -S pysaiyanweboo.py --component dial --set name=volume --set maximum=11 --part json` prints the three as
 JSON (`--part page|html|css|js|json`, `--spec FILE` or `--spec -` for a spec, `--set KEY=VALUE` with JSON values, `--component list` for the table);
 from Node, `require("./vendor/py_launch.cjs").run("vendor/pysaiyanweboo.py", ["--component", ...], {noSite: true}).stdout`.
