@@ -864,7 +864,9 @@ class RunbookBrowserTests(unittest.TestCase):
         step = lambda i, t, c, **k: {'id': i, 'title': t, 'command': c, **k}
         spec = {'schema': PAGE_SCHEMA, 'title': '🔬 検証ガイド', 'blocks': [{'type': 'tabs', 'tabs': [
             {'label': '🎞 GIF', 'blocks': [{'type': 'text', 'text': 'demo'}]},
-            {'label': '🔬 検証ガイド', 'blocks': [{'type': 'runbook', 'id': 'demo', 'books': [
+            {'label': '🔬 検証ガイド', 'blocks': [{'type': 'runbook', 'id': 'demo', 'layout': 'side', 'notice': 'ブラウザからは実行しません。',
+             'env': {'options': [{'label': '🐧 Linux（bash）', 'note': 'bash のターミナルで実行します。'}, {'label': '🪟 Windows', 'note': 'WSL の bash で実行します。'}]},
+             'books': [
                 {'label': '🐍 python', 'intro': 'python で直接', 'runbook': {'key': 'demo/python', 'steps': [
                     step('ver', '版を見る', 'python3 -c "import sys; print(sys.version_info[0])"', expect='3', run=True),
                     step('bad', '失敗を見る', 'echo nope >&2; exit 2', run=True),
@@ -881,7 +883,7 @@ class RunbookBrowserTests(unittest.TestCase):
                     page.goto(origin + '/guide.html')
                     cam = ui.GifCamera(page)
                     page.get_by_text('🔬 検証ガイド', exact=True).last.click()
-                    python, uv = page.locator('[data-ui-choice-value="0"]'), page.locator('[data-ui-choice-value="1"]')
+                    python, uv = (page.locator(f'section[data-ui-choice-panel="runbook-demo"][data-ui-choice-value="{i}"]') for i in (0, 1))
                     expect(python).to_be_visible()
                     expect(uv).to_be_hidden()
                     expect(python.locator('.ui-ran[data-ran="pass"] .ui-output')).to_have_text('3')
@@ -901,6 +903,26 @@ class RunbookBrowserTests(unittest.TestCase):
                     self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)
                     page.locator('#runbook-demo-choice').select_option('0')
                     expect(python).to_be_visible()
+                    # 🧭 環境: its note follows the pulldown and is kept over a reload
+                    note = page.locator('[data-ui-choice-panel="runbook-demo-env"]')
+                    expect(note.nth(0)).to_be_visible()
+                    expect(note.nth(1)).to_be_hidden()
+                    page.locator('#runbook-demo-env').select_option('1')
+                    expect(note.nth(1)).to_have_text('WSL の bash で実行します。')
+                    expect(note.nth(0)).to_be_hidden()
+                    cam.hold(500)
+                    # a phone: one column, the pulldowns above the steps; a wide screen: a sticky column beside them
+                    side, main = page.locator('.ui-runbook-side'), page.locator('.ui-runbook-main')
+                    self.assertLess(side.bounding_box()['y'] + side.bounding_box()['height'], main.bounding_box()['y'] + 1)
+                    page.set_viewport_size({'width': 1024, 'height': 760})
+                    self.assertLess(side.bounding_box()['x'] + side.bounding_box()['width'], main.bounding_box()['x'])
+                    self.assertEqual(side.evaluate('e => getComputedStyle(e).position'), 'sticky')
+                    page.mouse.wheel(0, 600)
+                    page.wait_for_timeout(200)
+                    self.assertGreaterEqual(side.bounding_box()['y'], 0)                          # still on screen after scrolling
+                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)
+                    page.set_viewport_size({'width': 392, 'height': 760})                         # the GIF keeps the phone's frame
+                    page.evaluate('scrollTo(0, 0)')
                     cam.hold(800)
                     self.assertEqual(errors, [])
                     gif = ui.encode_gif(cam.shots)

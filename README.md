@@ -767,11 +767,13 @@ method or tab, is one `showcase_document(spec)`.
 
 🔬 Any usage guide can have olnm's 検証ガイド: the `runbook` page block (`runbook_html`) is `{"type": "runbook", "books": [{label, intro, runbook}]}`
 — one runbook per environment or way to run it — and with two or more, a pulldown (`choice`, default 実行方法, kept in this browser) shows one
-at a time. 🤖 A step with `"run": true` is one that needs no network or input: `--page guide.page.json --run-steps` (`run_steps(spec, cwd=)`)
+at a time. 🧭 olnm's layout is an option: `env` (`{label?, options: [{label, note?}]}`) adds a 環境 pulldown whose note follows it,
+`notice` a note beside them, and `layout: "side"` keeps the pulldowns in a sticky column next to the steps (one column on a phone),
+coloured by the page's theme like every other guide. 🤖 A step with `"run": true` is one that needs no network or input: `--page guide.page.json --run-steps` (`run_steps(spec, cwd=)`)
 runs those with `bash -c` before rendering and shows ✅/❌, the exit code, the seconds, the commit, the date, the machine and the real output
 (its last 4000 characters) under the step; a failure is shown, not raised, and a step without `run` stays a command to copy.
 
-<img src="docs/demo/page-verify-guide.gif" width="240" alt="A 検証ガイド tab on a phone: steps that ran in CI show their real output, the pulldown switches to another way to run it and is kept over a reload">
+<img src="docs/demo/page-verify-guide.gif" width="240" alt="A 検証ガイド tab on a phone: steps that ran in CI show their real output, the 実行方法 and 環境 pulldowns switch the steps and the note and are kept over a reload">
 <img src="docs/demo/component-steps.gif" width="240" alt="A runbook on a phone: copy a command, record a step as verified, filter by state, switch view, reload, import a record from another version and see its state reset">
 
 The rest of an operations page is parts too: `page_heading(title, eyebrow=, lead=, chips=[label | (label, href)], stamp={label, value, note})`
