@@ -857,6 +857,62 @@ class RunbookBrowserTests(unittest.TestCase):
             server.shutdown()
 
 
+    def test_a_guide_tab_pulldown_and_steps_that_really_ran(self):
+        """🔬 The runbook page block in a 🔬 検証ガイド tab: the pulldown shows one way to run at a time and is kept over a reload, and the
+        steps run_steps executed show their real output (✅ and ❌). ``PSWB_GIFS`` keeps page-verify-guide.gif."""
+        from pysaiyanweboo import PAGE_SCHEMA, page_document, run_steps
+        step = lambda i, t, c, **k: {'id': i, 'title': t, 'command': c, **k}
+        spec = {'schema': PAGE_SCHEMA, 'title': '🔬 検証ガイド', 'blocks': [{'type': 'tabs', 'tabs': [
+            {'label': '🎞 GIF', 'blocks': [{'type': 'text', 'text': 'demo'}]},
+            {'label': '🔬 検証ガイド', 'blocks': [{'type': 'runbook', 'id': 'demo', 'books': [
+                {'label': '🐍 python', 'intro': 'python で直接', 'runbook': {'key': 'demo/python', 'steps': [
+                    step('ver', '版を見る', 'python3 -c "import sys; print(sys.version_info[0])"', expect='3', run=True),
+                    step('bad', '失敗を見る', 'echo nope >&2; exit 2', run=True),
+                    step('net', 'ネットが要る', 'curl -fsS https://example.invalid')]}},
+                {'label': '⚡ uv', 'runbook': {'key': 'demo/uv', 'steps': [step('uv', 'uv で動かす', 'uv run x.py', needs='uv')]}}]}]}]}]}
+        server, origin = serve_pages({'guide.html': page_document(run_steps(spec, cwd=ROOT))})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={'width': 392, 'height': 760})
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/guide.html')
+                    cam = ui.GifCamera(page)
+                    page.get_by_text('🔬 検証ガイド', exact=True).last.click()
+                    python, uv = page.locator('[data-ui-choice-value="0"]'), page.locator('[data-ui-choice-value="1"]')
+                    expect(python).to_be_visible()
+                    expect(uv).to_be_hidden()
+                    expect(python.locator('.ui-ran[data-ran="pass"] .ui-output')).to_have_text('3')
+                    expect(python.locator('.ui-ran[data-ran="fail"] summary')).to_contain_text('❌ exit 2')
+                    expect(python.locator('.ui-ran[data-ran="fail"] .ui-output')).to_have_text('nope')
+                    self.assertEqual(python.locator('#steps-demo-python-net .ui-ran').count(), 0)   # not marked: never run
+                    cam.hold(600)
+                    page.locator('#runbook-demo-choice').select_option('1')
+                    expect(uv).to_be_visible()
+                    expect(python).to_be_hidden()
+                    cam.hold(500)
+                    page.reload()
+                    page.get_by_text('🔬 検証ガイド', exact=True).last.click()
+                    expect(page.locator('#runbook-demo-choice')).to_have_value('1')
+                    expect(uv).to_be_visible()
+                    expect(python).to_be_hidden()
+                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)
+                    page.locator('#runbook-demo-choice').select_option('0')
+                    expect(python).to_be_visible()
+                    cam.hold(800)
+                    self.assertEqual(errors, [])
+                    gif = ui.encode_gif(cam.shots)
+                    self.assertTrue(gif.startswith(b'GIF89a'))
+                    if os.environ.get('PSWB_GIFS'):
+                        ui.gif_targets_from(os.environ['PSWB_GIFS'], ['page-verify-guide'])['page-verify-guide'].write_bytes(gif)
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
 AUDIT_ROWS = [('Aoi', '失敗', 'pins'), ('Ironmate', '成功', '—'), ('markdown', '実行中', 'pages'), ('olnm', '成功', 'guide'), ('xprobe', '失敗', 'lock')]
 AUDIT_STATES = (('fail', '失敗'), ('pass', '成功'), ('running', '実行中'))
 

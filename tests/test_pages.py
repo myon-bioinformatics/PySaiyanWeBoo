@@ -7520,6 +7520,67 @@ class RunbookTests(unittest.TestCase):
             ui.showcase_validate({**spec, "sections": [spec["sections"][0], {**spec["sections"][1], "steps": spec["sections"][0]["steps"]}]})
 
 
+class RunbookBlockTests(unittest.TestCase):
+    """🔬 The runbook page block: olnm's 環境 / 実行方法 pulldown made common, with 🤖 steps run for real by run_steps."""
+
+    def page(self, books=None, **block):
+        books = books or [{"label": "🐍 python", "intro": "直接", "runbook": {"key": "g/py", "steps": [
+                              {"id": "ver", "title": "版", "command": "echo 'v<1>'", "expect": "v", "run": True},
+                              {"id": "bad", "title": "失敗", "command": "echo oops; exit 3", "run": True},
+                              {"id": "net", "title": "ネット", "command": "curl https://example.com"}]}},
+                          {"label": "⚡ uv", "runbook": {"key": "g/uv", "steps": [{"id": "uv", "title": "uv", "command": "uv --version"}]}}]
+        return {"schema": ui.PAGE_SCHEMA, "title": "Guide", "blocks": [{"type": "tabs", "tabs": [
+            {"label": "🧩 機能", "blocks": [{"type": "text", "text": "x"}]},
+            {"label": "🔬 検証ガイド", "blocks": [{"type": "runbook", "id": "g", "books": books, **block}]}]}]}
+
+    def test_a_pulldown_shows_one_book_and_the_page_carries_its_scripts(self):
+        page = ui.page_document(self.page())
+        self.assertIn('<select data-ui-choice="runbook-g" data-ui-draft="runbook-g:choice"', page)
+        self.assertEqual(page.count('data-ui-choice-panel="runbook-g"'), 2)
+        self.assertEqual(page.count('class="ui-card ui-step"'), 4)
+        self.assertIn("🤖 CI で実行する手順", page)                                     # marked, not yet run
+        for name in ("bindChoice", "bindStatus", "bindCopy"):
+            self.assertIn(f"export function {name}", page)
+        self.assertNotIn("export function bindChoice", ui.page_document({**self.page(), "blocks": [{"type": "text", "text": "x"}]}))
+        single = ui.page_document(self.page(books=self.page()["blocks"][0]["tabs"][1]["blocks"][0]["books"][:1]))
+        self.assertNotIn("<select data-ui-choice", single)                             # one book needs no pulldown
+
+    def test_run_steps_records_real_output_and_failures_without_raising(self):
+        spec = self.page()
+        ran = ui.run_steps(spec, cwd=".")
+        self.assertNotIn("ran", json.dumps(spec))                                       # the input is not changed
+        steps = ran["blocks"][0]["tabs"][1]["blocks"][0]["books"][0]["runbook"]["steps"]
+        self.assertEqual((steps[0]["ran"]["exit"], steps[0]["ran"]["output"]), (0, "v<1>"))
+        self.assertEqual((steps[1]["ran"]["exit"], steps[1]["ran"]["output"]), (3, "oops"))
+        self.assertNotIn("ran", steps[2])                                               # not marked: never run (network)
+        self.assertRegex(steps[0]["ran"]["at"], r"^\d{4}-\d{2}-\d{2}$")
+        page = ui.page_document(ran)
+        self.assertIn("✅ exit 0", page)
+        self.assertIn("❌ exit 3", page)
+        self.assertIn("<pre class=\"ui-output\">v&lt;1&gt;</pre>", page)
+        slow = ui.run_steps({**spec, "blocks": [{"type": "runbook", "books": [{"label": "a", "runbook": {"key": "t", "steps": [
+            {"id": "s", "title": "s", "command": "sleep 5", "run": True}]}}]}]}, timeout=0.2)
+        self.assertEqual(slow["blocks"][0]["books"][0]["runbook"]["steps"][0]["ran"]["exit"], "timeout")
+
+    def test_bad_runbooks_are_refused(self):
+        book = self.page()["blocks"][0]["tabs"][1]["blocks"][0]["books"][0]
+        step = book["runbook"]["steps"][0]
+        for bad in ({"books": []}, {"books": [book] * 9}, {"books": [book, book]}, {"books": [{"label": "", "runbook": book["runbook"]}]},
+                    {"books": [book], "id": "Bad"}, {"books": [{**book, "extra": 1}]},
+                    {"books": [{**book, "runbook": {**book["runbook"], "steps": [{**step, "run": "yes"}]}}]},
+                    {"books": [{**book, "runbook": {**book["runbook"], "steps": [{**step, "ran": {"exit": "0"}}]}}]}):
+            with self.subTest(bad=list(bad)), self.assertRaises(ValueError):
+                ui.page_document({"schema": ui.PAGE_SCHEMA, "title": "G", "blocks": [{"type": "runbook", **bad}]})
+
+    def test_cli_runs_the_steps_before_rendering(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "guide.page.json")
+            path.write_text(json.dumps(self.page()), encoding="utf-8")
+            out = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--page", str(path), "--run-steps"], cwd=tmp,
+                                 capture_output=True, text=True, encoding="utf-8", check=True).stdout
+            self.assertIn("✅ exit 0", out)
+
+
 class OperationsPageTests(unittest.TestCase):
     """page_heading(), download_json() and rows with a state: the Observatory and Component Ops parts that were left."""
     hostile = '"><script>alert(1)</script>&'

@@ -589,7 +589,7 @@ Layout is a preset too: the core reads `--ui-text` / `--ui-space` / `--ui-max`, 
 make them switchable without a reload — people and Playwright try each, and the [sweep](docs/layout-presets.md) keeps every
 one that holds as a candidate.
 📄 A whole page from data: `page_document(spec)` renders a `web-ui-page/1` JSON — title, description, icon and blocks
-(`heading`, `text`, `output`, `table`, `card`, `section`, `links`, `image`, `kv`, `badges`, and 🗂️ `tabs` — 2..8 `{label, blocks}` switched by radios with no script, e.g. 🎞 GIF demo / 🧩 features) — as one self-contained page,
+(`heading`, `text`, `output`, `table`, `card`, `section`, `links`, `image`, `kv`, `badges`, 🗂️ `tabs` — 2..8 `{label, blocks}` switched by radios with no script, e.g. 🎞 GIF demo / 🧩 features — and 🔬 `runbook`, below) — as one self-contained page,
 every string escaped and every link relative or HTTPS, with a brand theme (`theme_css`) and switchable layouts
 (`layouts=`). `python -S pysaiyanweboo.py --example page` prints a spec; `--page spec.json [--brand brand.json --layouts
 page-layouts.json]` renders it from the shell or Node, so a report script owns only its data. 🏠 `--repository OWNER/REPO`
@@ -753,6 +753,13 @@ from another version comes back with its states reset. States are tokens (`todo`
 theme. A showcase section takes `steps`, `notice` (`notice(text, tone=)`) and `stats` (`stat_tiles`), so a whole operations page, one view per
 method or tab, is one `showcase_document(spec)`.
 
+🔬 Any usage guide can have olnm's 検証ガイド: the `runbook` page block (`runbook_html`) is `{"type": "runbook", "books": [{label, intro, runbook}]}`
+— one runbook per environment or way to run it — and with two or more, a pulldown (`choice`, default 実行方法, kept in this browser) shows one
+at a time. 🤖 A step with `"run": true` is one that needs no network or input: `--page guide.page.json --run-steps` (`run_steps(spec, cwd=)`)
+runs those with `bash -c` before rendering and shows ✅/❌, the exit code, the seconds, the commit, the date, the machine and the real output
+(its last 4000 characters) under the step; a failure is shown, not raised, and a step without `run` stays a command to copy.
+
+<img src="docs/demo/page-verify-guide.gif" width="240" alt="A 検証ガイド tab on a phone: steps that ran in CI show their real output, the pulldown switches to another way to run it and is kept over a reload">
 <img src="docs/demo/component-steps.gif" width="240" alt="A runbook on a phone: copy a command, record a step as verified, filter by state, switch view, reload, import a record from another version and see its state reset">
 
 The rest of an operations page is parts too: `page_heading(title, eyebrow=, lead=, chips=[label | (label, href)], stamp={label, value, note})`
