@@ -18311,6 +18311,10 @@ def _index_page() -> str:
                  '<p class="ui-links">' + " · ".join(f'<a href="{demos}{href}">{label}</a>' for label, href in (
                      ("🌍 World", "world.html"), ("🏫 School", "school.html"), ("🗼 Parallel cities", "cities.html"), ("🎬 Camera", "world-shots.html"),
                      ("🤖 MCP stub", "mcp-stub.html"), ("🔁 API stub", "api-stub.html"))) + "</p></section>"},
+        {"id": "guide", "emoji": "📚", "title": "機能一覧", "text": "Every CLI option and public name, read from the code (📚 機能全一覧).",
+         "link": "Open the guide", "html": '<section class="ui-panel" id="guide"><h2>📚 機能一覧</h2><p class="ui-muted">The usage guide lists '
+                                           'every option and every public name of pysaiyanweboo.py, read from the code at build time.</p>'
+                                           '<p class="ui-links"><a href="./guide/">📚 機能一覧・機能全一覧</a></p></section>'},
     ]
     css = layout_presets.css(presets) + _WALL_CSS
     scripts = (module_script(EMBEDDED_UI_JS + "bindTheme();\n") + module_script(_JS["theme.js"] + "bindSeed();\n") + module_script(_JS["curl.js"]))

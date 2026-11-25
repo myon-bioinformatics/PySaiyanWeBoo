@@ -3,6 +3,10 @@ name: Pages
 on:
   push:
     branches: [main]
+  pull_request:          # 📚 builds the usage guide (an invalid spec fails here); only main deploys
+    paths:
+      - "docs/guide.page.json"
+      - ".github/workflows/pages.yml"
 
 permissions:
   contents: read
@@ -11,6 +15,10 @@ permissions:
 
 jobs:
   deploy:
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@fbf433b296ec047f1c9acdf4d5d12c81ff7f59e8
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@fb4a58060e0f28e5336752d8e33d827545c1ce53
     with:
       artifact_path: .
+      # 📚 index.html stays the front page (the UI); the usage guide with 📚 機能全一覧 goes under guide/
+      guide_page: docs/guide.page.json
+      guide_dir: guide
+      guide_brand: PySaiyanWeBoo

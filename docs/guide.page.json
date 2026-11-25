@@ -1,0 +1,177 @@
+{
+ "schema": "web-ui-page/1",
+ "title": "PySaiyanWeBoo 機能一覧",
+ "theme": "auto",
+ "description": "HTML・CSS・JS を Python から組む共通の部品とテーマ。表紙（UI の見本）とは別に、機能をコードから全部並べる。",
+ "icon": "./icon.png",
+ "favicon": "./favicon.png",
+ "blocks": [
+  {
+   "type": "badges",
+   "items": [
+    "📄 単一ファイル（pysaiyanweboo.py）",
+    "🧰 標準ライブラリのみ",
+    "🐍 Python 3.10+",
+    "🟩 Node は py_launch.cjs 経由"
+   ]
+  },
+  {
+   "type": "tabs",
+   "id": "guide",
+   "tabs": [
+    {
+     "label": "🧩 機能一覧",
+     "blocks": [
+      {
+       "type": "section",
+       "title": "🎛️ 表紙",
+       "blocks": [
+        {
+         "type": "text",
+         "text": "テーマの切り替え・ランダムなテーマ・部品の見本は表紙にあります。"
+        },
+        {
+         "type": "links",
+         "items": [
+          {
+           "label": "🎛️ UI の見本（表紙）",
+           "href": "../"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "section",
+       "title": "▶️ 実行",
+       "blocks": [
+        {
+         "type": "card",
+         "title": "📄 ページを描く",
+         "text": "web-ui-page/1（データだけの JSON）から 1 枚の HTML。各リポジトリの利用ガイドもこれ。",
+         "blocks": [
+          {
+           "type": "output",
+           "text": "$ python -S pysaiyanweboo.py --page demo.page.json > demo.html\n$ wc -c < demo.html\n6273"
+          }
+         ]
+        },
+        {
+         "type": "card",
+         "title": "📚 機能全一覧を足す",
+         "text": "CLI の全コマンドと公開名をコードから読み、📚 機能全一覧 タブに（--features、繰り返し可）。",
+         "blocks": [
+          {
+           "type": "output",
+           "text": "$ python -S pysaiyanweboo.py --page docs/guide.page.json --features xprobe.py > index.html"
+          }
+         ]
+        },
+        {
+         "type": "card",
+         "title": "📲 ホーム画面のアイコン",
+         "text": "spec の icon から icon-180/192/512.png と manifest.webmanifest を書きます（--home-screen DIR）。",
+         "blocks": [
+          {
+           "type": "output",
+           "text": "$ python -S pysaiyanweboo.py --page guide.page.json --home-screen _site > _site/index.html"
+          }
+         ]
+        },
+        {
+         "type": "card",
+         "title": "🧩 部品を 1 つ",
+         "text": "部品ごとに HTML・CSS・JS・JSON を取り出せます（--part）。",
+         "blocks": [
+          {
+           "type": "output",
+           "text": "$ python -S pysaiyanweboo.py --component gaze-avatar --part json\n{\"html\": \"<button type=\\\"button\\\" class=\\\"ui-gaze\\\" aria-label=\\\"Blink\\\">…"
+          }
+         ]
+        },
+        {
+         "type": "card",
+         "title": "🗂 見本のデータ",
+         "text": "ツールやページが使う spec を JSON で（--example NAME）。",
+         "blocks": [
+          {
+           "type": "output",
+           "text": "$ python -S pysaiyanweboo.py --example layout-presets\n{\n  \"schema\": \"web-ui-layout-presets/1\",\n  \"default\": \"grid8\",\n  …"
+          }
+         ]
+        },
+        {
+         "type": "card",
+         "title": "🌐 サイト一式",
+         "text": "表紙・見本・ブラウザ用モジュール（js/ 28 本）を DIR に書きます。",
+         "blocks": [
+          {
+           "type": "output",
+           "text": "$ python -S pysaiyanweboo.py --site site\n$ ls site\ncontract  docs  examples  index.html  js"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "section",
+       "title": "🐍 Python・🟩 Node から呼ぶ",
+       "blocks": [
+        {
+         "type": "output",
+         "text": "import pysaiyanweboo as PSWB\nhtml = PSWB.page_document(spec)                  # 📄\nspec = PSWB.add_features(spec, \"xprobe.py\")      # 📚"
+        },
+        {
+         "type": "output",
+         "text": "const { call } = require(\"./vendor/py_launch.cjs\");\ncall(\"pysaiyanweboo.py\", \"page_document\", { args: [spec] });"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "label": "🎞 GIF デモ",
+     "blocks": [
+      {
+       "type": "text",
+       "text": "🎞 動く見本は表紙（テーマの切り替え・ランダムな壁）とポートフォリオの 🧭 Tools & Demos にあります。",
+       "muted": true
+      },
+      {
+       "type": "links",
+       "items": [
+        {
+         "label": "🧭 Tools & Demos",
+         "href": "https://myon-bioinformatics.github.io/tools/demos/"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "title": "🔗 リンク",
+   "blocks": [
+    {
+     "type": "links",
+     "items": [
+      {
+       "label": "🎛️ 表紙",
+       "href": "../"
+      },
+      {
+       "label": "📦 リポジトリ",
+       "href": "https://github.com/myon-bioinformatics/PySaiyanWeBoo"
+      },
+      {
+       "label": "📄 pysaiyanweboo.py",
+       "href": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/main/pysaiyanweboo.py"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

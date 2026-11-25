@@ -387,7 +387,8 @@ class FrontPageTests(unittest.TestCase):
                          pysaiyanweboo.module_script(pysaiyanweboo.js_source("theme.js") + "bindSeed();\n"), pysaiyanweboo.module_script(pysaiyanweboo.js_source("curl.js"))):
             self.assertIn(fragment, page)
         self.assertEqual(page.count('class="ui-front"'), 1)
-        self.assertEqual(page.count('class="ui-room"'), 4)                                                       # the menu and three rooms
+        self.assertEqual(page.count('class="ui-room"'), 5)                                                       # the menu and four rooms
+        self.assertIn('<a href="./guide/">📚 機能一覧・機能全一覧</a>', page)                                       # 📚 the usage guide under guide/
         for gone in ('class="ui-world', 'class="stub-shell', "bindStub", "bindWorlds"):                         # 🌍🤖 moved to the portfolio
             self.assertNotIn(gone, page)
 
