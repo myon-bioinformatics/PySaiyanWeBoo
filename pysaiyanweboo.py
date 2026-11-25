@@ -1955,7 +1955,8 @@ def _page_block(block: Any, *, depth: int) -> str:
     kind = block["type"]
     allowed = {"heading": {"text", "level"}, "text": {"text", "muted"}, "output": {"text"}, "table": {"headers", "rows", "caption"},
                "card": {"title", "text", "blocks"}, "links": {"items"}, "image": {"src", "alt", "width", "height"},
-               "kv": {"rows"}, "badges": {"items"}, "section": {"title", "blocks", "_feature_source"}, "tabs": {"tabs", "id"}, "runbook": {"books", "choice", "id"}}[kind] | {"type"}
+               "kv": {"rows"}, "badges": {"items"}, "section": {"title", "blocks", "_feature_source"}, "tabs": {"tabs", "id"},
+               "runbook": {"books", "choice", "id", "env", "notice", "layout"}}[kind] | {"type"}
     if block.keys() - allowed:
         raise ValueError(f"{kind}: unknown field {sorted(block.keys() - allowed)}")
     if kind == "heading":
@@ -2128,7 +2129,12 @@ def page_document(spec: Any, *, layouts: Any = None) -> str:
     css += ".ui-kv{display:grid;grid-template-columns:max-content 1fr;gap:.25rem var(--ui-space)}.ui-kv dt{color:var(--ui-muted)}.ui-kv dd{margin:0}.ui-badges .ui-tag{margin-right:.25rem}"
     css += _TABS_CSS if 'data-ui-tabs' in "".join(body) else ""
     if "data-ui-choices" in "".join(body):   # 🔬 a runbook: its CSS, the copy buttons and records.js (drafts, states, filters, the pulldown)
-        css += css_source("records.css") + ".ui-ran summary{cursor:pointer}.ui-ran pre{max-height:24rem;overflow:auto}"
+        css += (css_source("records.css") + ".ui-ran summary{cursor:pointer}.ui-ran pre{max-height:24rem;overflow:auto}"
+                # 🧭 layout side (olnm's guide): the pulldowns in a sticky column beside the steps; one column on a phone
+                ".ui-runbook[data-layout=side]{display:grid;grid-template-columns:272px minmax(0,1fr);gap:24px;align-items:start}"
+                ".ui-runbook-side{position:sticky;top:16px}.ui-runbook-side .ui-card{margin:0}.ui-runbook-side label{display:block;margin-top:8px}"
+                ".ui-runbook-side select{width:100%}.ui-runbook-main>.ui-choice-panel>h3:first-child{margin-top:0}"
+                "@media(max-width:704px){.ui-runbook[data-layout=side]{grid-template-columns:1fr}.ui-runbook-side{position:static}}")
         body.insert(-1, module_script(EMBEDDED_UI_JS + "\nbindCopy();\n") + module_script(js_source("records.js")))
     page = render_document(trusted_html="".join(body), title=title, theme=theme, css=css,
                            favicon=_spec_href(spec["favicon"]) if "favicon" in spec else None,
@@ -2764,7 +2770,7 @@ STEP_LABELS = {"expect": "期待される出力", "needs": "前提条件", "trou
                "copy": "コピー", "copied": "コピー済み", "copy_failed": "コピーできませんでした", "search": "検索", "filter": "状態", "all": "すべて",
                "export": "記録を JSON で保存", "import": "記録を読み込む", "loaded": "記録を読み込みました。", "stale": "別の版の記録を読み込み、状態を戻しました。",
                "bad": "記録を読み込めません。このページから保存した JSON を選んでください。", "empty": "該当する手順はありません。",
-               "choice": "実行方法", "run": "🤖 CI で実行する手順", "ran": "🤖 CI で実行した結果"}
+               "choice": "実行方法", "env": "環境", "run": "🤖 CI で実行する手順", "ran": "🤖 CI で実行した結果"}
 
 
 def notice(text: str, *, tone: str = "info", title: str | None = None) -> str:
@@ -2965,7 +2971,10 @@ def steps_html(spec: Any) -> str:
 def runbook_html(block: Any) -> str:
     """🔬 A verification guide: ``books`` is 1..8 ``{label, intro?, runbook}`` (``runbook`` a ``steps_validate`` spec, each with its own ``key``).
     With two or more a pulldown (``choice``, default 実行方法; kept as a draft) shows one book at a time — without JS they all show, one after another.
-    In a ``web-ui-page/1`` spec it is the ``runbook`` block (``page_document`` then carries ui.js's copy buttons and records.js)."""
+    ``env`` (``{label?, options: [{label, note?}]}``, 2..8; label default 環境) adds a second pulldown whose option shows its note, ``notice``
+    a note next to them, and ``layout: "side"`` puts the pulldowns in a sticky side column on a wide screen (olnm's guide; one column on a
+    phone). Colours come from the theme. In a ``web-ui-page/1`` spec it is the ``runbook`` block (``page_document`` then carries ui.js's copy
+    buttons and records.js)."""
     books = block.get("books") if isinstance(block, dict) else None
     if not isinstance(books, list) or not 1 <= len(books) <= 8:
         raise ValueError("runbook has 1..8 books")
@@ -2985,11 +2994,34 @@ def runbook_html(block: Any) -> str:
         options.append((str(i), label))
         panels.append(f'<section class="ui-choice-panel" data-ui-choice-panel="{name}" data-ui-choice-value="{i}"><h3>{escape(label)}</h3>{intro}'
                       f'{steps_html(book["runbook"])}</section>')
-    pick = ""
-    if len(books) > 1:
-        pick = ('<div class="ui-records-bar">' + draft_select(tuple(options), key=f"{name}:choice", id=f"{name}-choice", label=choice)
-                .replace("<select ", f'<select data-ui-choice="{name}" ', 1) + "</div>")
-    return f'<div class="ui-runbook" data-ui-choices>{pick}{"".join(panels)}</div>'
+    layout = block.get("layout", "stack")
+    if layout not in ("stack", "side"):
+        raise ValueError("runbook layout is stack or side")
+
+    def pulldown(field: str, opts: list[tuple[str, str]], label: str) -> str:
+        return draft_select(tuple(opts), key=f"{name}:{field}", id=f"{name}-{field}", label=label).replace(
+            "<select ", f'<select data-ui-choice="{name}{"" if field == "choice" else "-" + field}" ', 1)
+
+    controls = [pulldown("choice", options, choice)] if len(books) > 1 else []
+    if "env" in block:
+        env = block["env"]
+        if not isinstance(env, dict) or set(env) - {"label", "options"} or not isinstance(env.get("options"), list) or not 2 <= len(env["options"]) <= 8:
+            raise ValueError("runbook env is {label, options} with 2..8 options")
+        notes = []
+        for j, opt in enumerate(env["options"]):
+            if not isinstance(opt, dict) or set(opt) - {"label", "note"}:
+                raise ValueError("an env option is {label, note}")
+            notes.append((str(j), _spec_text(opt.get("label"), "env label", limit=100, required=True), _spec_text(opt["note"], "env note", limit=1000) if "note" in opt else ""))
+        controls.append(pulldown("env", [(v, label) for v, label, _ in notes], _spec_text(env.get("label", STEP_LABELS["env"]), "env label", limit=60, required=True))
+                        + "".join(f'<p class="ui-muted" data-ui-choice-panel="{name}-env" data-ui-choice-value="{v}">{escape(note)}</p>' for v, _, note in notes if note))
+    if "notice" in block:
+        controls.append(notice(_spec_text(block["notice"], "runbook notice", limit=2000, required=True)))
+    main = "".join(panels)
+    if layout == "side":
+        return (f'<div class="ui-runbook" data-ui-choices data-layout="side"><aside class="ui-runbook-side"><div class="ui-card">{"".join(controls)}</div></aside>'
+                f'<div class="ui-runbook-main">{main}</div></div>')
+    bar = f'<div class="ui-records-bar">{"".join(controls)}</div>' if controls else ""
+    return f'<div class="ui-runbook" data-ui-choices>{bar}{main}</div>'
 
 
 def _run_step(command: str, *, cwd: Any, timeout: float, shell: str) -> dict[str, Any]:

@@ -7553,6 +7553,25 @@ class RunbookBlockTests(unittest.TestCase):
         single = ui.page_document(self.page(books=self.page()["blocks"][0]["tabs"][1]["blocks"][0]["books"][:1]))
         self.assertNotIn("<select data-ui-choice", single)                             # one book needs no pulldown
 
+    def test_olnm_layout_a_side_column_with_an_env_pulldown_and_its_notes(self):
+        spec = self.page(layout="side", notice="ブラウザからは実行しません。",
+                         env={"options": [{"label": "Linux（bash）", "note": "bash で <実行>"}, {"label": "Windows", "note": "WSL で"}, {"label": "mac"}]})
+        page = ui.page_document(spec)
+        self.assertIn('<div class="ui-runbook" data-ui-choices data-layout="side"><aside class="ui-runbook-side"><div class="ui-card">', page)
+        self.assertIn('<select data-ui-choice="runbook-g-env" data-ui-draft="runbook-g:env"', page)
+        self.assertIn('<label for="runbook-g-env">環境</label>', page)
+        self.assertIn('<p class="ui-muted" data-ui-choice-panel="runbook-g-env" data-ui-choice-value="0">bash で &lt;実行&gt;</p>', page)
+        self.assertEqual(page.count('data-ui-choice-panel="runbook-g-env"'), 2)                 # an option without a note shows none
+        self.assertIn('ブラウザからは実行しません。</p></div></aside><div class="ui-runbook-main">', page)
+        self.assertIn("grid-template-columns:272px minmax(0,1fr)", page)
+        stacked = ui.page_document(self.page(env={"label": "OS", "options": [{"label": "a"}, {"label": "b"}]}))
+        self.assertIn('<div class="ui-runbook" data-ui-choices><div class="ui-records-bar">', stacked)
+        self.assertIn('<label for="runbook-g-env">OS</label>', stacked)
+        for bad in ({"layout": "grid"}, {"env": {"options": [{"label": "a"}]}}, {"env": {"options": [{"label": "a"}, {"name": "b"}]}},
+                    {"env": ["a", "b"]}, {"notice": ""}):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                ui.page_document(self.page(**bad))
+
     def test_run_steps_records_real_output_and_failures_without_raising(self):
         spec = self.page()
         ran = ui.run_steps(spec, cwd=".")
