@@ -62,8 +62,10 @@ export function bindRecordsIO(root=document,{filename="records.json"}={}){const 
 export function downloadText(filename,text,type="application/json"){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 /** [data-ui-download="name.json"] saves the text of its data-ui-download-source (a <script type="application/json">) as that file. Returns the buttons. */
 export function bindDownloads(root=document){const buttons=[...root.querySelectorAll("[data-ui-download]")];for(const button of buttons){const source=root.querySelector(button.dataset.uiDownloadSource||"#none");if(source)button.addEventListener("click",()=>downloadText(button.dataset.uiDownload,source.textContent))}return buttons}
+/** select[data-ui-choice="name"] shows the [data-ui-choice-panel="name"] whose data-ui-choice-value is its value and hides the others (without JS every panel shows). With data-ui-draft the choice is kept like any draft. Returns the bound selects. */
+export function bindChoice(root=document){const fields=[...root.querySelectorAll("select[data-ui-choice]")];for(const field of fields){const panels=[...root.querySelectorAll("[data-ui-choice-panel]")].filter(p=>p.dataset.uiChoicePanel===field.dataset.uiChoice);const sync=()=>{for(const p of panels)p.hidden=p.dataset.uiChoiceValue!==field.value};field.addEventListener("change",sync);field.addEventListener("input",sync);sync()}return fields}
 /** Bind everything inside root; pages mark the board with data-ui-records (or carry a data download) so loading the module is enough. */
-export function mount(root=document,options={}){bindDrafts(root,options);bindStatus(root);bindFilter(root);bindRecordsIO(root,options);bindDownloads(root);return root}
+export function mount(root=document,options={}){bindDrafts(root,options);bindChoice(root);bindStatus(root);bindFilter(root);bindRecordsIO(root,options);bindDownloads(root);return root}
 if(typeof document!=="undefined"&&(document.querySelector("[data-ui-records]")||document.querySelector("[data-ui-download]"))){const start=()=>mount(document);if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start,{once:true});else start()}
 """,
     "controls.js": r"""/* Provider-independent, text-only dropdown binding. No fetches or HTML input. */
@@ -1935,7 +1937,7 @@ def _spec_href(value: Any) -> str:
 
 
 PAGE_SCHEMA = "web-ui-page/1"
-PAGE_BLOCKS = ("heading", "text", "output", "table", "card", "links", "image", "kv", "badges", "section", "tabs")
+PAGE_BLOCKS = ("heading", "text", "output", "table", "card", "links", "image", "kv", "badges", "section", "tabs", "runbook")
 # 🗂️ tabs: CSS-only radio tabs (no script), up to this many per block; page_document adds the rules below.
 _TABS_MAX = 8
 _TABS_CSS = (".ui-tabs{margin:var(--ui-space) 0}.ui-tab-input{position:absolute;opacity:0;pointer-events:none}"
@@ -1953,7 +1955,7 @@ def _page_block(block: Any, *, depth: int) -> str:
     kind = block["type"]
     allowed = {"heading": {"text", "level"}, "text": {"text", "muted"}, "output": {"text"}, "table": {"headers", "rows", "caption"},
                "card": {"title", "text", "blocks"}, "links": {"items"}, "image": {"src", "alt", "width", "height"},
-               "kv": {"rows"}, "badges": {"items"}, "section": {"title", "blocks", "_feature_source"}, "tabs": {"tabs", "id"}}[kind] | {"type"}
+               "kv": {"rows"}, "badges": {"items"}, "section": {"title", "blocks", "_feature_source"}, "tabs": {"tabs", "id"}, "runbook": {"books", "choice", "id"}}[kind] | {"type"}
     if block.keys() - allowed:
         raise ValueError(f"{kind}: unknown field {sorted(block.keys() - allowed)}")
     if kind == "heading":
@@ -2024,6 +2026,8 @@ def _page_block(block: Any, *, depth: int) -> str:
                 item = item.get("text")
             parts.append(f'<span class="ui-tag{status}">{escape(_spec_text(item, "badge", limit=100, required=True))}</span>')
         return f'<p class="ui-badges">{" ".join(parts)}</p>'
+    if kind == "runbook":
+        return runbook_html(block)
     if kind == "tabs":
         tabs = block.get("tabs")
         if not isinstance(tabs, list) or not 2 <= len(tabs) <= _TABS_MAX:
@@ -2092,8 +2096,9 @@ def page_document(spec: Any, *, layouts: Any = None) -> str:
     ``{"schema", "title", "theme"?, "description"?, "icon"?, "favicon"?, "blocks": [...]}``. Blocks are ``heading``,
     ``text`` (paragraphs; ``muted``), ``output`` (preformatted), ``table`` (headers, rows, caption), ``card`` /
     ``section`` (title, text, nested blocks), ``links``, ``image``, ``kv`` (key–value rows), ``badges``
-    (``{text, status: pass|fail}``) and ``tabs`` (2..8 ``{label, blocks}`` switched by radios without a script — e.g.
-    🎞 GIF demo / 🧩 features; optional ``id`` when two tabs blocks on a page are identical). Text is never HTML; links and images are relative paths or HTTPS. The theme is one
+    (``{text, status: pass|fail}``), ``tabs`` (2..8 ``{label, blocks}`` switched by radios without a script — e.g.
+    🎞 GIF demo / 🧩 features; optional ``id`` when two tabs blocks on a page are identical) and ``runbook`` (🔬 a verification
+    guide, see ``runbook_html``: the only block that brings scripts, ui.js's copy buttons and records.js). Text is never HTML; links and images are relative paths or HTTPS. The theme is one
     of ours, ``auto`` or a brand registered with ``theme_css`` (its CSS is appended when registered in this process);
     ``layouts`` adds switchable presets. The same from the shell or Node: ``python -S pysaiyanweboo.py --page spec.json``.
     🏠 ``home`` (written by ``home_screen``) links the square icons and the manifest next to the page, so "Add to Home
@@ -2122,6 +2127,9 @@ def page_document(spec: Any, *, layouts: Any = None) -> str:
     css += _REGISTERED_THEME_CSS.get(theme, "") + (layout_presets_css(layouts) if layouts is not None else "")
     css += ".ui-kv{display:grid;grid-template-columns:max-content 1fr;gap:.25rem var(--ui-space)}.ui-kv dt{color:var(--ui-muted)}.ui-kv dd{margin:0}.ui-badges .ui-tag{margin-right:.25rem}"
     css += _TABS_CSS if 'data-ui-tabs' in "".join(body) else ""
+    if "data-ui-choices" in "".join(body):   # 🔬 a runbook: its CSS, the copy buttons and records.js (drafts, states, filters, the pulldown)
+        css += css_source("records.css") + ".ui-ran summary{cursor:pointer}.ui-ran pre{max-height:24rem;overflow:auto}"
+        body.insert(-1, module_script(EMBEDDED_UI_JS + "\nbindCopy();\n") + module_script(js_source("records.js")))
     page = render_document(trusted_html="".join(body), title=title, theme=theme, css=css,
                            favicon=_spec_href(spec["favicon"]) if "favicon" in spec else None,
                            touch_icon=None if home or "icon" not in spec else _spec_href(spec["icon"]))
@@ -2754,7 +2762,8 @@ STEP_LABELS = {"expect": "期待される出力", "needs": "前提条件", "trou
                "record": "再現記録", "status": "状態", "date": "検証日", "actual": "実際の出力・終了コード", "note": "環境・バージョン・備考",
                "copy": "コピー", "copied": "コピー済み", "copy_failed": "コピーできませんでした", "search": "検索", "filter": "状態", "all": "すべて",
                "export": "記録を JSON で保存", "import": "記録を読み込む", "loaded": "記録を読み込みました。", "stale": "別の版の記録を読み込み、状態を戻しました。",
-               "bad": "記録を読み込めません。このページから保存した JSON を選んでください。", "empty": "該当する手順はありません。"}
+               "bad": "記録を読み込めません。このページから保存した JSON を選んでください。", "empty": "該当する手順はありません。",
+               "choice": "実行方法", "run": "🤖 CI で実行する手順", "ran": "🤖 CI で実行した結果"}
 
 
 def notice(text: str, *, tone: str = "info", title: str | None = None) -> str:
@@ -2837,11 +2846,27 @@ def _step_text(value: Any, name: str, limit: int = 1000, required: bool = False)
     return value
 
 
+def _step_ran(value: Any) -> dict[str, Any]:
+    """🤖 What ``run_steps`` recorded for a step: ``exit`` (an int, or ``"timeout"``), ``output`` (its tail), ``seconds``, ``at`` (a UTC date),
+    ``commit`` and ``where`` (system and Python)."""
+    if not isinstance(value, dict) or set(value) - {"exit", "output", "seconds", "at", "commit", "where"}:
+        raise ValueError("ran is {exit, output, seconds, at, commit, where}")
+    code = value.get("exit")
+    if not (type(code) is int or code == "timeout"):
+        raise ValueError("ran.exit is an exit code or timeout")
+    seconds = value.get("seconds", 0)
+    if type(seconds) not in (int, float) or not 0 <= seconds < 86400:
+        raise ValueError("ran.seconds is a duration")
+    return {"exit": code, "output": _step_text(value.get("output", ""), "ran output", 8000), "seconds": round(float(seconds), 1),
+            **{k: _step_text(value.get(k, ""), f"ran {k}", 80) for k in ("at", "commit", "where")}}
+
+
 def steps_validate(spec: Any) -> dict[str, Any]:
     """Checked copy of a runbook: ``key`` (the drafts' prefix, such as ``olnm/uvfile``), ``steps`` (1..32 of ``id``, ``title``, ``command`` and
     optional ``expect``, ``needs`` and ``trouble: {seen, check, fix}``), optional ``statuses`` (``[[token, label], ...]`` over
     todo/doing/pass/hold/block, the first is the start), ``source`` (the version the records belong to), ``record`` (default true: a state, a date,
-    the actual output and a note per step), ``toolbar`` (default true: search, state filter, JSON save/load) and ``labels`` (STEP_LABELS keys)."""
+    the actual output and a note per step), ``toolbar`` (default true: search, state filter, JSON save/load) and ``labels`` (STEP_LABELS keys).
+    🤖 A step with ``run: true`` is one ``run_steps`` executes (in CI); it then carries ``ran`` (see ``_step_ran``)."""
     if not isinstance(spec, dict) or set(spec) - {"key", "steps", "statuses", "source", "record", "toolbar", "labels"}:
         raise ValueError("a runbook is {key, steps, statuses, source, record, toolbar, labels}")
     key = _draft_key(spec.get("key", ""))
@@ -2861,8 +2886,10 @@ def steps_validate(spec: Any) -> dict[str, Any]:
         raise ValueError("a runbook has 1..32 steps")
     steps, seen = [], set()
     for step in steps_in:
-        if not isinstance(step, dict) or set(step) - {"id", "title", "command", "expect", "needs", "trouble"}:
-            raise ValueError("a step is {id, title, command, expect, needs, trouble}")
+        if not isinstance(step, dict) or set(step) - {"id", "title", "command", "expect", "needs", "trouble", "run", "ran"}:
+            raise ValueError("a step is {id, title, command, expect, needs, trouble, run, ran}")
+        if type(step.get("run", False)) is not bool:
+            raise ValueError("run is true or false")
         sid = step.get("id")
         if not isinstance(sid, str) or not _STEP_ID.fullmatch(sid) or sid in seen:
             raise ValueError("a step id is a distinct lowercase token")
@@ -2872,11 +2899,24 @@ def steps_validate(spec: Any) -> dict[str, Any]:
             raise ValueError("trouble is {seen, check, fix}")
         steps.append({"id": sid, "title": _step_text(step.get("title"), "title", 120, True), "command": _step_text(step.get("command"), "command", 4000, True),
                       "expect": _step_text(step.get("expect"), "expect"), "needs": _step_text(step.get("needs"), "needs"),
-                      "trouble": {k: _step_text(trouble.get(k), k) for k in ("seen", "check", "fix") if trouble.get(k)}})
+                      "trouble": {k: _step_text(trouble.get(k), k) for k in ("seen", "check", "fix") if trouble.get(k)},
+                      "run": step.get("run", False), "ran": _step_ran(step["ran"]) if step.get("ran") is not None else None})
     source = spec.get("source")
     if source is not None and (not isinstance(source, str) or not re.fullmatch(r"[A-Za-z0-9_.:/+-]{1,80}", source)):
         raise ValueError("source is a commit or version of up to 80 plain characters")
     return {"key": key, "steps": steps, "statuses": statuses, "source": source, **flags, "labels": {**STEP_LABELS, **labels}}
+
+
+def _ran_html(step: dict[str, Any], text: dict[str, str]) -> str:
+    """🤖 A step's CI run: ✅/❌ with the exit code, the time, the commit, the date and the machine, then its output (open)."""
+    ran = step.get("ran")
+    if ran is None:
+        return f'<p class="ui-badges"><span class="ui-tag">{escape(text["run"])}</span></p>' if step.get("run") else ""
+    ok = ran["exit"] == 0
+    head = " · ".join(x for x in (f'{"✅" if ok else "❌"} {"exit " + str(ran["exit"]) if ran["exit"] != "timeout" else "⏱ timeout"}',
+                                  f'{ran["seconds"]:g} s', ran["commit"], ran["at"], ran["where"]) if x)
+    return (f'<details class="ui-ran" open data-ran="{"pass" if ok else "fail"}"><summary>{escape(text["ran"])} '
+            f'<span class="ui-tag ui-{"pass" if ok else "fail"}">{escape(head)}</span></summary><pre class="ui-output">{escape(ran["output"])}</pre></details>')
 
 
 def steps_html(spec: Any) -> str:
@@ -2907,7 +2947,7 @@ def steps_html(spec: Any) -> str:
         cards.append(f'<article class="ui-card ui-step" id="{base}" data-ui-item data-status="{first_token}">'
                      f'<header class="ui-step-head"><h3>{n}. {escape(step["title"])}</h3><span class="ui-tag" data-ui-status-tag>{escape(first_label)}</span></header>'
                      + code_block(step["command"], copy_label=text["copy"], copied_label=text["copied"], failed_label=text["copy_failed"])
-                     + facts([("expect", step["expect"]), ("needs", step["needs"])])
+                     + facts([("expect", step["expect"]), ("needs", step["needs"])]) + _ran_html(step, text)
                      + (details(text["trouble"], trusted_html=trouble) if trouble else "") + record + "</article>")
     toolbar = ""
     if book["toolbar"]:
@@ -2917,6 +2957,89 @@ def steps_html(spec: Any) -> str:
                    + '</div>' + (f'<p class="ui-muted" role="status" data-ui-records-message data-ui-msg-loaded="{escape(text["loaded"], quote=True)}" '
                                  f'data-ui-msg-stale="{escape(text["stale"], quote=True)}" data-ui-msg-bad="{escape(text["bad"], quote=True)}"></p>' if book["record"] else ""))
     return records_board(toolbar + f'<div class="ui-steps" id="{eid}-list">' + "".join(cards) + "</div>", id=eid, source=book["source"])
+
+
+def runbook_html(block: Any) -> str:
+    """🔬 A verification guide: ``books`` is 1..8 ``{label, intro?, runbook}`` (``runbook`` a ``steps_validate`` spec, each with its own ``key``).
+    With two or more a pulldown (``choice``, default 実行方法; kept as a draft) shows one book at a time — without JS they all show, one after another.
+    In a ``web-ui-page/1`` spec it is the ``runbook`` block (``page_document`` then carries ui.js's copy buttons and records.js)."""
+    books = block.get("books") if isinstance(block, dict) else None
+    if not isinstance(books, list) or not 1 <= len(books) <= 8:
+        raise ValueError("runbook has 1..8 books")
+    choice = _spec_text(block.get("choice", STEP_LABELS["choice"]), "runbook choice", limit=60, required=True)
+    key = block.get("id", hashlib.sha1(json.dumps(block, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:8])
+    if not isinstance(key, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", key):
+        raise ValueError("runbook id is 1..40 of a-z, 0-9 and -")
+    name, options, panels, keys = f"runbook-{key}", [], [], set()
+    for i, book in enumerate(books):
+        if not isinstance(book, dict) or set(book) - {"label", "intro", "runbook"} or not isinstance(book.get("runbook"), dict):
+            raise ValueError("a book is {label, intro, runbook}")
+        label = _spec_text(book.get("label"), "book label", limit=100, required=True)
+        if book["runbook"].get("key") in keys:
+            raise ValueError("every book's runbook has its own key")
+        keys.add(book["runbook"].get("key"))
+        intro = f'<p class="ui-muted">{escape(_spec_text(book["intro"], "book intro", limit=1000))}</p>' if "intro" in book else ""
+        options.append((str(i), label))
+        panels.append(f'<section class="ui-choice-panel" data-ui-choice-panel="{name}" data-ui-choice-value="{i}"><h3>{escape(label)}</h3>{intro}'
+                      f'{steps_html(book["runbook"])}</section>')
+    pick = ""
+    if len(books) > 1:
+        pick = ('<div class="ui-records-bar">' + draft_select(tuple(options), key=f"{name}:choice", id=f"{name}-choice", label=choice)
+                .replace("<select ", f'<select data-ui-choice="{name}" ', 1) + "</div>")
+    return f'<div class="ui-runbook" data-ui-choices>{pick}{"".join(panels)}</div>'
+
+
+def _run_step(command: str, *, cwd: Any, timeout: float, shell: str) -> dict[str, Any]:
+    start = time.monotonic()
+    try:
+        done = subprocess.run([shell, "-c", command], cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout,
+                              env={**os.environ, "PYTHONUTF8": "1", "NO_COLOR": "1"})
+        code, data = done.returncode, done.stdout or b""
+    except subprocess.TimeoutExpired as exc:
+        code, data = "timeout", exc.stdout or b""
+    text = data.decode("utf-8", "replace").rstrip()
+    return {"exit": code, "output": text if len(text) <= 4000 else "…" + text[-3999:], "seconds": round(time.monotonic() - start, 1)}
+
+
+def run_steps(spec: Any, *, cwd: Any = ".", timeout: float = 120) -> Any:
+    """🤖 Run the steps marked ``run: true`` in a page's runbooks — in ``cwd``, one ``bash -c`` each, in order, stdin empty — and return a copy of the spec
+    whose steps carry ``ran``: the exit code (or ``timeout``), the last 4000 characters of stdout and stderr together, the seconds, the UTC date,
+    the short commit and the machine. A step that fails is recorded, not raised. ``--page spec.json --run-steps`` does this before rendering;
+    the Pages workflow runs it in CI, so the guide shows what really came out."""
+    out = json.loads(json.dumps(spec))
+    shell = shutil.which("bash") or shutil.which("sh") or "sh"
+    try:
+        commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=cwd, capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        commit = ""
+    stamp = {"at": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "commit": commit[:40], "where": f"{platform_name()} · Python {sys.version.split()[0]}"}
+
+    def walk(blocks: Any) -> None:
+        for block in blocks if isinstance(blocks, list) else []:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "runbook":
+                for book in block.get("books", []) if isinstance(block.get("books"), list) else []:
+                    for step in (book.get("runbook") or {}).get("steps", []) if isinstance(book, dict) else []:
+                        if isinstance(step, dict) and step.get("run") is True and isinstance(step.get("command"), str):
+                            step["ran"] = {**_run_step(step["command"], cwd=cwd, timeout=timeout, shell=shell), **stamp}
+            walk(block.get("blocks"))
+            for tab in block.get("tabs", []) if isinstance(block.get("tabs"), list) else []:
+                walk(tab.get("blocks") if isinstance(tab, dict) else None)
+
+    walk(out.get("blocks") if isinstance(out, dict) else None)
+    return out
+
+
+def platform_name() -> str:
+    """The system the steps ran on, for ``run_steps``: an os-release ``PRETTY_NAME`` (Linux) or ``sys.platform``."""
+    try:
+        for line in Path("/etc/os-release").read_text(encoding="utf-8").splitlines():
+            if line.startswith("PRETTY_NAME="):
+                return line.split("=", 1)[1].strip().strip('"')[:40]
+    except OSError:
+        pass
+    return sys.platform
 
 
 def plotly_figure(
@@ -18580,6 +18703,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--features", type=Path, action="append", default=[], metavar="FILE", help="with --page: 🧩 add every CLI command and public name of this Python file to the 機能一覧 tab (repeatable; see add_features)")
     parser.add_argument("--features-config", type=Path, metavar="FILE",
                         help="with --page: JSON list of Python sources and required CLI invocations")
+    parser.add_argument("--run-steps", action="store_true", help="with --page: 🤖 run the runbook steps marked run: true here first and show what came out (see run_steps)")
     parser.add_argument("--component", metavar="NAME", help="print one component of COMPONENTS (a page by default; --part html, css, js or json)."
                         " A spec comes from --spec FILE (- for stdin), keyword arguments from --set KEY=VALUE (JSON values, else text); --component list names them")
     parser.add_argument("--spec", type=Path, metavar="FILE", help="with --component: the spec, the builder's first argument (- reads stdin)")
@@ -18691,6 +18815,8 @@ def main(argv: list[str] | None = None) -> int:
                 spec = _put_features(spec, _feature_config_sections(config))
             for module in args.features:
                 spec = add_features(spec, module)
+            if args.run_steps:
+                spec = run_steps(spec, cwd=Path.cwd())
             if args.home_screen:
                 spec, files = home_screen(spec, args.home_screen)
                 for name, data in {**files, args.page.name: (json.dumps(spec, ensure_ascii=False, indent=2) + "\n").encode("utf-8")}.items():
