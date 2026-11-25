@@ -126,7 +126,7 @@ jobs:
           mkdir -p ~/debs
           printf 'APT::Keep-Downloaded-Packages "true";\nBinary::apt-get::APT::Keep-Downloaded-Packages "true";\n' | sudo tee /etc/apt/apt.conf.d/zz-pswb-keep-debs >/dev/null
           find ~/debs -maxdepth 1 -name '*.deb' -exec sudo cp -t /var/cache/apt/archives/ {} +
-          (ls /var/cache/apt/archives | grep '\.deb$' || true) | sort > "$RUNNER_TEMP/debs-before.txt"
+          find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -printf '%f\n' | sort > "$RUNNER_TEMP/debs-before.txt"
           echo "📦 $(wc -l < "$RUNNER_TEMP/debs-before.txt") packages from the cache"
       - name: System libraries and the browser (bounded; WebKit needs many packages)
         timeout-minutes: 20
@@ -136,7 +136,7 @@ jobs:
         id: newdebs
         if: matrix.browser != 'chromium' && github.event_name != 'pull_request'
         run: |
-          fresh=$( (ls /var/cache/apt/archives | grep '\.deb$' || true) | sort | comm -13 "$RUNNER_TEMP/debs-before.txt" - | wc -l)
+          fresh=$(find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -printf '%f\n' | sort | comm -13 "$RUNNER_TEMP/debs-before.txt" - | wc -l)
           echo "📥 $fresh downloaded"
           if [ "$fresh" -gt 0 ]; then
             sudo apt-get autoclean -qq   # drop versions the mirror no longer has
