@@ -7578,9 +7578,11 @@ class RunbookBlockTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp, "guide.page.json")
             path.write_text(json.dumps(self.page()), encoding="utf-8")
-            out = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--page", str(path), "--run-steps"], cwd=tmp,
-                                 capture_output=True, text=True, encoding="utf-8", check=True).stdout
-            self.assertIn("✅ exit 0", out)
+            done = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--page", str(path), "--run-steps"], cwd=tmp,
+                                  capture_output=True, text=True, encoding="utf-8", check=True)
+            self.assertIn("✅ exit 0", done.stdout)
+            self.assertIn("🤖 ✅ 🐍 python · ver · exit 0", done.stderr)                 # 📜 the CI log says it too
+            self.assertIn("🤖 ❌ 🐍 python · bad · exit 3", done.stderr)
 
 
 class OperationsPageTests(unittest.TestCase):

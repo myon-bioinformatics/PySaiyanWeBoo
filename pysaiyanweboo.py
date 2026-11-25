@@ -3003,11 +3003,12 @@ def _run_step(command: str, *, cwd: Any, timeout: float, shell: str) -> dict[str
     return {"exit": code, "output": text if len(text) <= 4000 else "…" + text[-3999:], "seconds": round(time.monotonic() - start, 1)}
 
 
-def run_steps(spec: Any, *, cwd: Any = ".", timeout: float = 120) -> Any:
+def run_steps(spec: Any, *, cwd: Any = ".", timeout: float = 120, log: Any = None) -> Any:
     """🤖 Run the steps marked ``run: true`` in a page's runbooks — in ``cwd``, one ``bash -c`` each, in order, stdin empty — and return a copy of the spec
     whose steps carry ``ran``: the exit code (or ``timeout``), the last 4000 characters of stdout and stderr together, the seconds, the UTC date,
     the short commit and the machine. A step that fails is recorded, not raised. ``--page spec.json --run-steps`` does this before rendering;
-    the Pages workflow runs it in CI, so the guide shows what really came out."""
+    the Pages workflow runs it in CI, so the guide shows what really came out. ``log`` (a text stream; the CLI passes stderr) gets one
+    ✅/❌ line per step."""
     out = json.loads(json.dumps(spec))
     shell = shutil.which("bash") or shutil.which("sh") or "sh"
     try:
@@ -3025,6 +3026,9 @@ def run_steps(spec: Any, *, cwd: Any = ".", timeout: float = 120) -> Any:
                     for step in (book.get("runbook") or {}).get("steps", []) if isinstance(book, dict) else []:
                         if isinstance(step, dict) and step.get("run") is True and isinstance(step.get("command"), str):
                             step["ran"] = {**_run_step(step["command"], cwd=cwd, timeout=timeout, shell=shell), **stamp}
+                            if log:   # 📜 one line per step, so a CI log says what the guide will show
+                                code = step["ran"]["exit"]
+                                log.write(f'🤖 {"✅" if code == 0 else "❌"} {book.get("label", "")} · {step.get("id")} · exit {code} · {step["ran"]["seconds"]:g} s\n')
             walk(block.get("blocks"))
             for tab in block.get("tabs", []) if isinstance(block.get("tabs"), list) else []:
                 walk(tab.get("blocks") if isinstance(tab, dict) else None)
@@ -18818,7 +18822,7 @@ def main(argv: list[str] | None = None) -> int:
             for module in args.features:
                 spec = add_features(spec, module)
             if args.run_steps:
-                spec = run_steps(spec, cwd=Path.cwd())
+                spec = run_steps(spec, cwd=Path.cwd(), log=sys.stderr)
             if args.home_screen:
                 spec, files = home_screen(spec, args.home_screen)
                 for name, data in {**files, args.page.name: (json.dumps(spec, ensure_ascii=False, indent=2) + "\n").encode("utf-8")}.items():
