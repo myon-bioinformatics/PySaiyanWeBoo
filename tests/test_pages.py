@@ -3,6 +3,7 @@ source panel, theme seed, records board). Node runs the browser modules through 
 
 import base64
 import contextlib
+import contextlib
 import io
 import copy
 import hashlib
@@ -7771,6 +7772,67 @@ class FeatureListTests(unittest.TestCase):
         self.assertIn("⌨️ demo.py · 全 2 コマンド", done.stdout)
         self.assertIn("🔧 shout()", done.stdout)
 
+
+    def test_config_covers_cli_variants_flags_aliases_and_static_api(self):
+        main = self.module(
+            'import argparse, sys\nfrom types import SimpleNamespace\n'
+            'def exported(): pass\n'
+            'tools = SimpleNamespace(run=exported)\n'
+            'parser = argparse.ArgumentParser()\n'
+            'if sys.argv[1:] == ["extra"]:\n'
+            '    sub = parser.add_subparsers()\n'
+            '    child = sub.add_parser("extra", aliases=["ex"])\n'
+            '    child.add_argument("-n", "--number")\n'
+            'else:\n'
+            '    parser.add_argument("--base")\n'
+            'parser.parse_intermixed_args() if not sys.argv[1:] else parser.parse_args()\n'
+            'raise AssertionError("command body executed")\n'
+        )
+        library = self.module(
+            'import documented_dependency_not_installed\n'
+            '__all__ = ["public"]\n'
+            'def public(): pass\n', name="library.py",
+        )
+        with contextlib.chdir(self.dir):
+            sections = ui._feature_config_sections([
+                {"source": main.name, "cli": [[], ["extra"]], "namespaces": True},
+                {"source": library.name},
+            ])
+        self.assertEqual([s["title"] for s in sections], [
+            "⌨️ demo.py · 全 1 オプション",
+            "⌨️ demo.py extra · 全 1 コマンド",
+            "🐍 Python · demo.py · 全 3 個（_ 以外の公開名）",
+            "🐍 Python · library.py · 全 1 個（__all__）",
+        ])
+        self.assertEqual(sections[0]["blocks"][0]["rows"], [["--base BASE", ""]])
+        [[command, description]] = sections[1]["blocks"][0]["rows"]
+        self.assertEqual(command, "extra")
+        self.assertIn("別名: ex", description)
+        self.assertIn("-n", description)
+        self.assertIn("--number", description)
+        self.assertIn(["🔧 tools.run()", ""], sections[2]["blocks"][0]["rows"])
+        self.assertEqual(sections[3]["blocks"][0]["rows"], [["🔧 public()", ""]])
+
+    def test_configured_cli_failure_fails_rendering_even_with_a_public_api(self):
+        page = self.dir / "guide.page.json"
+        page.write_text(json.dumps(self.spec), encoding="utf-8")
+        for text, reason in (
+            ("import documented_dependency_not_installed\ndef still_public(): pass\n", "ModuleNotFoundError"),
+            ("def still_public(): pass\n", "no argparse parser captured"),
+        ):
+            with self.subTest(reason=reason):
+                module = self.module(text)
+                config = self.dir / "features.json"
+                config.write_text(json.dumps([{"source": module.name, "cli": [[]]}]), encoding="utf-8")
+                done = subprocess.run(
+                    [sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--page", str(page),
+                     "--features-config", str(config)],
+                    cwd=self.dir, capture_output=True, text=True, encoding="utf-8",
+                )
+                self.assertNotEqual(done.returncode, 0)
+                self.assertIn(f"feature CLI extraction failed for {module.name}", done.stderr)
+                self.assertIn(reason, done.stderr)
+                self.assertEqual(done.stdout, "")
 
 if __name__ == "__main__":
     unittest.main()

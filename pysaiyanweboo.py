@@ -2219,15 +2219,16 @@ def _stop(self, args=None, namespace=None):
     raise _Parsed(self)
 
 argparse.ArgumentParser.parse_known_args = _stop
+argparse.ArgumentParser.parse_known_intermixed_args = _stop
 path = Path(sys.argv[1]).resolve()
-sys.argv = [str(path)]
+sys.argv = [str(path), *sys.argv[2:]]
 sys.path.insert(0, str(path.parent))
 parser = None
 try:
     runpy.run_path(str(path), run_name="__main__")
 except _Parsed as stopped:
     parser = stopped.args[0]
-except BaseException:
+except SystemExit:
     pass
 
 def options(p):
@@ -2251,13 +2252,12 @@ def walk(p, prefix, out):
     if not subs:
         return
     helps = {c.dest: " ".join((c.help or "").split()) for c in subs[0]._choices_actions}
-    seen = set()
+    by_parser = {}
     for name, sub in subs[0].choices.items():
-        if id(sub) in seen:   # an alias of a command already listed
-            continue
-        seen.add(id(sub))
+        by_parser.setdefault(sub, []).append(name)
+    for sub, (name, *aliases) in by_parser.items():
         text = helps.get(name) or " ".join((sub.description or "").strip().split("\n")[0].split())
-        out.append([" ".join(prefix + [name]), text, options(sub)])
+        out.append([" ".join(prefix + [name]), text, options(sub), aliases])
         walk(sub, prefix + [name], out)
 
 result = None
@@ -2269,7 +2269,7 @@ print(json.dumps(result, ensure_ascii=False))
 '''
 
 
-def _features_api(source: str) -> tuple[str, list[list[str]]]:
+def _features_api(source: str, *, namespaces: bool = False) -> tuple[str, list[list[str]]]:
     tree = ast.parse(source)
     defs: dict[str, tuple[str, str]] = {}
     for node in tree.body:
@@ -2296,6 +2296,26 @@ def _features_api(source: str) -> tuple[str, list[list[str]]]:
     for name in dict.fromkeys(names):
         kind, doc = defs.get(name, ("↪️", ""))
         rows.append([f"{kind} {name}" + ("()" if kind == "🔧" else ""), doc])
+    if namespaces:
+        exported = set(names) if label == "__all__" else None
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+                continue
+            if not isinstance(node.value.func, ast.Name) or node.value.func.id != "SimpleNamespace":
+                continue
+            for target in node.targets:
+                if not isinstance(target, ast.Name) or target.id.startswith("_"):
+                    continue
+                if exported is not None and target.id not in exported:
+                    continue
+                if exported is None:
+                    rows.append([f"📦 {target.id}", ""])
+                for keyword in node.value.keywords:
+                    if keyword.arg and not keyword.arg.startswith("_"):
+                        value = keyword.value
+                        kind, doc = defs.get(value.id, ("↪️", "")) if isinstance(value, ast.Name) else ("📦", "")
+                        name = f"{target.id}.{keyword.arg}" + ("()" if kind == "🔧" else "")
+                        rows.append([f"{kind} {name}", doc])
     return label, rows
 
 
@@ -2306,78 +2326,152 @@ def add_features(spec: Any, module: str | os.PathLike[str], *, timeout: float = 
     ``parse_args`` (nothing after it runs; no CLI → no section). 🐍 Python: every name in ``__all__`` (or, without it,
     each public function and class) with the first line of its docstring, read without importing. The tab goes right
     after the hand-written 🧩 機能一覧 tab — unless that tab already names every command and name, which needs no full
-    list — and, run again or for several files, keeps one set of sections per file (each titled with the file's name, so
-    a second run replaces that file's sections and other files' stay); a page without tabs gets the sections at its end, titled
+    list — and replaces this file's sections in an existing 📚 機能全一覧 tab. A page without tabs gets the sections at its end, titled
     📚 機能全一覧. Returns a new spec; ``spec`` is not changed."""
     path = Path(module)
-    source = path.read_text(encoding="utf-8")
     resolved = path.resolve()
     try:
         display = resolved.relative_to(Path.cwd().resolve()).as_posix()
         source_key = display
     except ValueError:
         display = path.name
-        # Keep absolute paths outside the project out of published page specs.
         source_key = "sha256:" + hashlib.sha256(os.fsencode(resolved)).hexdigest()
+    sections, names = _feature_module(path, timeout=timeout, display=display)
+    return _put_features(spec, sections, names=names, source_key=source_key)
+
+
+def _feature_cli(path: Path, argv: list[str], *, timeout: float, required: bool) -> dict | None:
+    try:
+        done = subprocess.run(
+            [sys.executable, "-c", _FEATURES_SHIM, str(path.resolve()), *argv],
+            capture_output=True, text=True, encoding="utf-8", timeout=timeout,
+            stdin=subprocess.DEVNULL, cwd=None if required else path.resolve().parent, check=False,
+        )
+        if done.returncode:
+            raise ValueError(done.stderr.strip().splitlines()[-1] if done.stderr.strip() else f"exit {done.returncode}")
+        cli = json.loads(done.stdout.strip().splitlines()[-1]) if done.stdout.strip() else None
+        if not cli:
+            raise ValueError("no argparse parser captured")
+        return cli
+    except (subprocess.TimeoutExpired, OSError, ValueError, IndexError) as exc:
+        if required:
+            invocation = " ".join([str(path), *argv])
+            raise ValueError(f"feature CLI extraction failed for {invocation}: {exc}") from exc
+        return None
+
+
+def _feature_cli_section(cli: dict, prog: str, *, qualify: bool) -> dict:
+    if cli["commands"]:
+        def cell(text: str, opts: list, aliases: list[str]) -> str:
+            flags = " ".join(full if qualify else short for full, _, short in opts)
+            alias_text = "別名: " + ", ".join(aliases) if qualify and aliases else ""
+            return " ".join(part for part in (text, alias_text, f"⚙️ {flags}" if flags else "") if part)
+
+        rows = [[name, cell(text, opts, aliases)] for name, text, opts, aliases in cli["commands"]]
+        if cli["options"]:
+            rows.insert(0, ["（共通）", cell("", cli["options"], [])])
+        return {"type": "section", "title": f"⌨️ {prog} · 全 {len(cli['commands'])} コマンド",
+                "blocks": [{"type": "table", "headers": ["⌨️ コマンド", "📝 説明 · ⚙️ オプション"], "rows": rows}]}
+    if cli["options"]:
+        return {"type": "section", "title": f"⌨️ {prog} · 全 {len(cli['options'])} オプション",
+                "blocks": [{"type": "table", "headers": ["⚙️ オプション", "📝 説明"],
+                            "rows": [[full, text] for full, text, _ in cli["options"]]}]}
+    return {"type": "section", "title": f"⌨️ {prog} · 引数なし", "blocks": []}
+
+
+def _feature_module(path: Path, *, timeout: float, cli_argv: list[list[str]] | None = None,
+                    entry: Path | None = None, namespaces: bool = False,
+                    display: str, qualify: bool = False) -> tuple[list[dict], list[str]]:
+    label, rows = _features_api(path.read_text(encoding="utf-8"), namespaces=namespaces)
+    sections, names = [], []
+    for argv in ([[]] if cli_argv is None else cli_argv):
+        cli = _feature_cli(entry or path, argv, timeout=timeout, required=cli_argv is not None)
+        if cli is None:
+            continue
+        prog = " ".join([entry.as_posix() if entry else display, *argv])
+        if cli["commands"] or cli["options"] or qualify:
+            sections.append(_feature_cli_section(cli, prog, qualify=qualify))
+        names.extend([name for name, _, _, _ in cli["commands"]] or
+                     [short.split()[0] for _, _, short in cli["options"]])
+    if rows:
+        module = f"Python · {display}" if qualify else display
+        sections.append({"type": "section", "title": f"🐍 {module} · 全 {len(rows)} 個（{label}）",
+                         "blocks": [{"type": "table", "headers": ["🐍 名前（🔧 関数 · 🧱 クラス · 📦 値 · ↪️ 取り込み）", "📝 説明"], "rows": rows}]})
+        names.extend(row[0].split(" ", 1)[1].removesuffix("()") for row in rows)
+    return sections, names
+
+
+def _put_features(spec: Any, sections: list[dict], *, names: list[str] | None = None,
+                  source_key: str | None = None) -> dict:
     spec = json.loads(json.dumps(spec))
     if not isinstance(spec, dict) or not isinstance(spec.get("blocks"), list):
         raise ValueError("add_features: spec is a web-ui-page/1 object with blocks")
-    sections = []
-    try:
-        done = subprocess.run([sys.executable, "-c", _FEATURES_SHIM, str(path.resolve())], capture_output=True, text=True,
-                              encoding="utf-8", timeout=timeout, cwd=path.resolve().parent, check=False)
-        cli = json.loads(done.stdout.strip().splitlines()[-1]) if done.stdout.strip() else None
-    except (subprocess.TimeoutExpired, ValueError, IndexError):
-        cli = None
-    if cli and cli["commands"]:
-        def cell(text: str, opts: list) -> str:   # 📝 the help, then ⚙️ its options (two columns stay readable on a phone)
-            flags = " ".join(short for _, _, short in opts)
-            return " ".join(part for part in (text, f"⚙️ {flags}" if flags else "") if part)
-
-        rows = [[name, cell(text, opts)] for name, text, opts in cli["commands"]]
-        if cli["options"]:
-            rows.insert(0, ["（共通）", cell("", cli["options"])])
-        sections.append({"type": "section", "title": f"⌨️ {display} · 全 {len(cli['commands'])} コマンド",
-                         "blocks": [{"type": "table", "headers": ["⌨️ コマンド", "📝 説明 · ⚙️ オプション"], "rows": rows}]})
-    elif cli and cli["options"]:
-        sections.append({"type": "section", "title": f"⌨️ {display} · 全 {len(cli['options'])} オプション",
-                         "blocks": [{"type": "table", "headers": ["⚙️ オプション", "📝 説明"],
-                                     "rows": [[full, text] for full, text, _ in cli["options"]]}]})
-    label, rows = _features_api(source)
-    if rows:
-        sections.append({"type": "section", "title": f"🐍 {display} · 全 {len(rows)} 個（{label}）",
-                         "blocks": [{"type": "table", "headers": ["🐍 名前（🔧 関数 · 🧱 クラス · 📦 値 · ↪️ 取り込み）", "📝 説明"], "rows": rows}]})
     if not sections:
         return spec
-    for section in sections:
-        section["_feature_source"] = source_key
+    if source_key is not None:
+        for section in sections:
+            section["_feature_source"] = source_key
 
-    def mine(block: Any) -> bool:
-        return isinstance(block, dict) and block.get("type") == "section" and block.get("_feature_source") == source_key
+    def keep(block: Any) -> bool:
+        return not isinstance(block, dict) or (source_key is not None and block.get("_feature_source") != source_key)
 
     tabs = next((b for b in spec["blocks"] if isinstance(b, dict) and b.get("type") == "tabs"), None)
     if tabs is None:
         for section in sections:
             section["title"] = f"📚 機能全一覧 · {section['title']}"
-        spec["blocks"] = [b for b in spec["blocks"] if not (mine(b) and str(b["title"]).startswith("📚 機能全一覧 · "))] + sections
+        spec["blocks"] = [
+            b for b in spec["blocks"] if not (
+                isinstance(b, dict) and b.get("type") == "section"
+                and str(b.get("title", "")).startswith("📚 機能全一覧 · ") and not keep(b)
+            )
+        ] + sections
         return spec
     every = tabs.setdefault("tabs", [])
     labels = [str(t.get("label", "")) if isinstance(t, dict) else "" for t in every]
-    if "📚 機能全一覧" in labels:                   # 🔁 made before (or by another file): this file's sections replace its own
-        full = every[labels.index("📚 機能全一覧")]
-        full["blocks"] = [b for b in full.get("blocks", []) if not mine(b)] + sections
-        return spec
     full = {"label": "📚 機能全一覧", "blocks": sections}
+    if "📚 機能全一覧" in labels:
+        tab = every[labels.index("📚 機能全一覧")]
+        tab["blocks"] = [b for b in tab.get("blocks", []) if keep(b)] + sections
+        return spec
     hand = next((i for i, label in enumerate(labels) if "機能" in label), None)
-    if hand is not None:
-        names = [name for name, _, _ in cli["commands"]] if cli and cli["commands"] else \
-                [short.split()[0] for _, _, short in cli["options"]] if cli else []
-        names += [row[0].split(" ", 1)[1].removesuffix("()") for row in rows]
+    if hand is not None and names is not None:
         written = json.dumps(every[hand], ensure_ascii=False)
         if all(name in written for name in names):  # ✅ the hand-written 🧩 機能一覧 already names everything
             return spec
     every.insert(len(every) if hand is None else hand + 1, full)
     return spec
+
+
+def _feature_config_path(value: Any) -> Path:
+    if not isinstance(value, str) or not value:
+        raise ValueError("features config requires a repository-relative Python path")
+    path = Path(value)
+    if path.is_absolute() or path.suffix != ".py" or not path.resolve().is_relative_to(Path.cwd()):
+        raise ValueError(f"invalid features config path: {value}")
+    return path
+
+
+def _feature_config_sections(config: Any, *, timeout: float = 30) -> list[dict]:
+    if not isinstance(config, list) or not config:
+        raise ValueError("features config must be a non-empty list of sources")
+    sections = []
+    for item in config:
+        if not isinstance(item, dict) or set(item) - {"source", "cli", "entry", "namespaces"}:
+            raise ValueError("invalid features config source")
+        path = _feature_config_path(item.get("source"))
+        cli = item.get("cli", [])
+        namespaces = item.get("namespaces", False)
+        if (not isinstance(cli, list) or any(not isinstance(argv, list) or
+                any(not isinstance(arg, str) for arg in argv) for argv in cli)
+                or not isinstance(namespaces, bool) or ("entry" in item and not cli)):
+            raise ValueError(f"invalid features config options for {path}")
+        entry = _feature_config_path(item["entry"]) if "entry" in item else None
+        found, _ = _feature_module(path, timeout=timeout, cli_argv=cli, entry=entry,
+                                   namespaces=namespaces, display=path.as_posix(), qualify=True)
+        if not found:
+            raise ValueError(f"no public API or CLI extracted from {path}")
+        sections.extend(found)
+    return sections
 
 
 PARTS_THEMES = (*THEMES, *CANDIDATE_THEMES, AUTO_THEME)
@@ -18607,6 +18701,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repository", metavar="OWNER/REPO", help="with --page: put the way back first — 🏠 the owner's portfolio · 🐙 the repository (see back_nav_html)")
     parser.add_argument("--home-screen", type=Path, metavar="DIR", help="with --page: 🏠 read the spec's icon under DIR and write icon-180/192/512.png, the manifest and the spec with home (Base64 cache) there (see home_screen)")
     parser.add_argument("--features", type=Path, action="append", default=[], metavar="FILE", help="with --page: 🧩 add every CLI command and public name of this Python file to the 機能一覧 tab (repeatable; see add_features)")
+    parser.add_argument("--features-config", type=Path, metavar="FILE",
+                        help="with --page: JSON list of Python sources and required CLI invocations")
     parser.add_argument("--run-steps", action="store_true", help="with --page: 🤖 run the runbook steps marked run: true here first and show what came out (see run_steps)")
     parser.add_argument("--component", metavar="NAME", help="print one component of COMPONENTS (a page by default; --part html, css, js or json)."
                         " A spec comes from --spec FILE (- for stdin), keyword arguments from --set KEY=VALUE (JSON values, else text); --component list names them")
@@ -18712,6 +18808,11 @@ def main(argv: list[str] | None = None) -> int:
                 brand = json.loads(args.brand.read_text(encoding="utf-8"))
                 theme_css(str(brand["name"]), dict(brand["tokens"]))
             layouts = json.loads(args.layouts.read_text(encoding="utf-8")) if args.layouts else None
+            if args.features_config:
+                if args.features:
+                    parser.error("--features-config cannot be combined with --features")
+                config = json.loads(args.features_config.read_text(encoding="utf-8"))
+                spec = _put_features(spec, _feature_config_sections(config))
             for module in args.features:
                 spec = add_features(spec, module)
             if args.run_steps:
@@ -18722,7 +18823,7 @@ def main(argv: list[str] | None = None) -> int:
                     (args.home_screen / name).write_bytes(data)
             page = page_document(spec, layouts=layouts)
             sys.stdout.write(add_back_nav(page, args.repository) if args.repository else page)
-        except (OSError, ValueError, KeyError, TypeError) as exc:
+        except (OSError, ValueError, KeyError, TypeError, SyntaxError) as exc:
             parser.error(str(exc))
         return 0
     if args.check_theme:
