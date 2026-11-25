@@ -7633,6 +7633,22 @@ class FeatureListTests(unittest.TestCase):
         flat = ui.add_features(ui.add_features(ui.add_features(flat, self.dir / "demo.py"), other), self.dir / "demo.py")
         self.assertEqual(len(flat["blocks"]), 3)
 
+    def test_cli_keeps_modules_with_the_same_basename_separate(self):
+        page = self.dir / "guide.json"
+        page.write_text(json.dumps(self.spec), encoding="utf-8")
+        for folder, feature in (("first", "one_marker"), ("second", "two_marker")):
+            (self.dir / folder).mkdir()
+            self.module(f"def {feature}(): pass\n", f"{folder}/tool.py")
+        done = subprocess.run(
+            [sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--page", str(page),
+             "--features", "first/tool.py", "--features", "second/tool.py",
+             "--features", "./first/tool.py"],
+            cwd=self.dir, capture_output=True, text=True, encoding="utf-8", check=False,
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        for value in ("first/tool.py", "second/tool.py", "one_marker()", "two_marker()"):
+            self.assertEqual(done.stdout.count(value), 1, value)
+
     def test_cli_flag(self):
         page = self.dir / "guide.page.json"
         page.write_text(json.dumps(self.spec), encoding="utf-8")
