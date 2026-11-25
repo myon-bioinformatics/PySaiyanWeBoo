@@ -388,7 +388,8 @@ class FrontPageTests(unittest.TestCase):
                          pysaiyanweboo.module_script(pysaiyanweboo.js_source("theme.js") + "bindSeed();\n"), pysaiyanweboo.module_script(pysaiyanweboo.js_source("curl.js"))):
             self.assertIn(fragment, page)
         self.assertEqual(page.count('class="ui-front"'), 1)
-        self.assertEqual(page.count('class="ui-room"'), 4)                                                       # the menu and three rooms
+        self.assertEqual(page.count('class="ui-room"'), 5)                                                       # the menu and four rooms
+        self.assertIn('<a href="./guide/">🧩 機能一覧</a>', page)                                                     # 🧩 the usage guide under guide/
         for gone in ('class="ui-world', 'class="stub-shell', "bindStub", "bindWorlds"):                         # 🌍🤖 moved to the portfolio
             self.assertNotIn(gone, page)
 
@@ -5921,6 +5922,9 @@ class StaticContractTest(unittest.TestCase):
                 if parsed.scheme or parsed.netloc or href.startswith("#"):
                     continue
                 target = normpath(str(Path(name).parent / parsed.path).replace("\\", "/"))
+                if target == "guide":                       # 🧩 the usage guide: pages.yml builds it under guide/ (guide_dir)
+                    self.assertIn("guide_dir: guide", (ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8"))
+                    continue
                 self.assertIn(target, PAGES, f"{name}: broken href {href}")
 
     def test_ui_classes_follow_namespaces(self):
@@ -6056,6 +6060,8 @@ def test_generated_site_local_assets_and_links_exist(tmp_path):
         for link in parser.links:
             url = urlsplit(link)
             if url.scheme or url.netloc or not url.path:
+                continue
+            if name == 'index.html' and url.path == './guide/':    # 🧩 the usage guide: pages.yml builds it under guide/ (guide_dir)
                 continue
             assert (path.parent / url.path).is_file(), (name, link)
     for name in ('icon.png', 'favicon.png'):
@@ -7637,7 +7643,7 @@ class OperationsPageTests(unittest.TestCase):
 
 
 class FeatureListTests(unittest.TestCase):
-    """📚 add_features: a 📚 機能全一覧 tab lists every CLI command and public name, read from the code."""
+    """🧩 add_features: the 🧩 機能一覧 tab starts with every CLI command and public name, read from the code (one tab)."""
 
     MODULE = (
         '"""Demo tool."""\n'
@@ -7677,11 +7683,11 @@ class FeatureListTests(unittest.TestCase):
 
     def full_list(self, spec):
         tabs = spec["blocks"][0]["tabs"]
-        self.assertEqual([t["label"] for t in tabs], ["🎞 GIF デモ", "🧩 機能一覧", "📚 機能全一覧"])
-        self.assertEqual(tabs[1]["blocks"], [{"type": "text", "text": "hand-written"}])   # the hand-written tab stays as it is
-        return tabs[2]["blocks"]
+        self.assertEqual([t["label"] for t in tabs], ["🎞 GIF デモ", "🧩 機能一覧"])       # 🧩 one tab, no second list
+        self.assertEqual(tabs[1]["blocks"][-1], {"type": "text", "text": "hand-written"})   # the highlights stay, below
+        return tabs[1]["blocks"][:-1]
 
-    def test_the_full_list_is_its_own_tab_right_after_the_hand_written_one(self):
+    def test_the_full_list_tops_the_hand_written_tab(self):
         out = ui.add_features(self.spec, self.module(self.MODULE))
         cli, api = self.full_list(out)
         self.assertEqual(cli["title"], "⌨️ demo.py · 全 2 コマンド")
@@ -7689,7 +7695,7 @@ class FeatureListTests(unittest.TestCase):
         self.assertEqual(api["title"], "🐍 demo.py · 全 4 個（__all__）")
         self.assertEqual(api["blocks"][0]["rows"], [["🔧 shout()", "Return TEXT in capitals."], ["🧱 Box", "A box."], ["📦 LIMIT", ""], ["↪️ join", ""]])
         self.assertFalse((self.dir / "ran.txt").exists(), "nothing after parse_args runs")
-        self.assertEqual(len(self.spec["blocks"][0]["tabs"]), 2, "the given spec is not changed")
+        self.assertEqual(self.spec["blocks"][0]["tabs"][1]["blocks"], [{"type": "text", "text": "hand-written"}], "the given spec is not changed")
         self.assertIn("全 2 コマンド", ui.page_document(out))
 
     def test_without_all_public_functions_and_classes_are_listed(self):
@@ -7712,10 +7718,10 @@ class FeatureListTests(unittest.TestCase):
     def test_a_page_without_a_hand_written_list_or_without_tabs_still_gets_it(self):
         spec = {**self.spec, "blocks": [{"type": "tabs", "tabs": [{"label": "🎞 GIF デモ", "blocks": []}]}]}
         tabs = ui.add_features(spec, self.module(self.MODULE))["blocks"][0]["tabs"]
-        self.assertEqual([t["label"] for t in tabs], ["🎞 GIF デモ", "📚 機能全一覧"])
+        self.assertEqual([t["label"] for t in tabs], ["🎞 GIF デモ", "🧩 機能一覧"])
         flat = ui.add_features({"schema": "web-ui-page/1", "title": "t", "blocks": []}, self.module(self.MODULE))
         self.assertEqual([b["title"] for b in flat["blocks"]],
-                         ["📚 機能全一覧 · ⌨️ demo.py · 全 2 コマンド", "📚 機能全一覧 · 🐍 demo.py · 全 4 個（__all__）"])
+                         ["🧩 機能一覧 · ⌨️ demo.py · 全 2 コマンド", "🧩 機能一覧 · 🐍 demo.py · 全 4 個（__all__）"])
         with self.assertRaises(ValueError):
             ui.add_features({"title": "no blocks"}, self.module(self.MODULE))
 
@@ -7725,13 +7731,14 @@ class FeatureListTests(unittest.TestCase):
             {"type": "text", "text": "up · plain · shout() · Box · LIMIT · join"})
         self.assertEqual(ui.add_features(covered, self.module(self.MODULE)), covered)
         covered["blocks"][0]["tabs"][1]["blocks"][-1]["text"] = "up · shout() · Box · LIMIT · join"       # plain is missing
-        self.assertEqual(ui.add_features(covered, self.module(self.MODULE))["blocks"][0]["tabs"][-1]["label"], "📚 機能全一覧")
+        tabs = ui.add_features(covered, self.module(self.MODULE))["blocks"][0]["tabs"]
+        self.assertEqual((len(tabs), tabs[1]["blocks"][0]["title"]), (2, "⌨️ demo.py · 全 2 コマンド"))
 
     def test_a_second_run_replaces_the_full_list(self):
         once = ui.add_features(self.spec, self.module(self.MODULE))
         self.module(self.MODULE.replace('"LIMIT", ', ''))
         twice = ui.add_features(once, self.dir / "demo.py")
-        self.assertEqual(len(twice["blocks"][0]["tabs"]), 3)
+        self.assertEqual(len(self.full_list(twice)), 2)
         self.assertEqual(self.full_list(twice)[1]["title"], "🐍 demo.py · 全 3 個（__all__）")
 
     def test_several_files_each_keep_their_own_sections(self):
@@ -7740,9 +7747,9 @@ class FeatureListTests(unittest.TestCase):
         self.assertEqual([s["title"] for s in self.full_list(both)],
                          ["⌨️ demo.py · 全 2 コマンド", "🐍 demo.py · 全 4 個（__all__）", "🐍 tools.py · 全 1 個（_ 以外の公開名）"])
         self.module(self.MODULE.replace('"LIMIT", ', ''))
-        again = ui.add_features(both, self.dir / "demo.py")              # 🔁 demo.py's sections are replaced, tools.py's stay
+        again = ui.add_features(both, self.dir / "demo.py")              # 🔁 demo.py's sections are replaced in place, tools.py's stay
         self.assertEqual([s["title"] for s in self.full_list(again)],
-                         ["🐍 tools.py · 全 1 個（_ 以外の公開名）", "⌨️ demo.py · 全 2 コマンド", "🐍 demo.py · 全 3 個（__all__）"])
+                         ["⌨️ demo.py · 全 2 コマンド", "🐍 demo.py · 全 3 個（__all__）", "🐍 tools.py · 全 1 個（_ 以外の公開名）"])
         flat = {"schema": "web-ui-page/1", "title": "t", "blocks": []}
         flat = ui.add_features(ui.add_features(ui.add_features(flat, self.dir / "demo.py"), other), self.dir / "demo.py")
         self.assertEqual(len(flat["blocks"]), 3)

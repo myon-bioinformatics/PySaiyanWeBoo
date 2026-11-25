@@ -11,7 +11,7 @@ jobs:
   changes:
     permissions:
       contents: read
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-change-detection.yml@fbf433b296ec047f1c9acdf4d5d12c81ff7f59e8
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-change-detection.yml@5ed0ff929992d04c5d21c75f96466501b898f21e
 
   python311-page-contract:
     if: needs.changes.outputs.product_changed == 'true'
@@ -269,7 +269,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@fbf433b296ec047f1c9acdf4d5d12c81ff7f59e8
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@5ed0ff929992d04c5d21c75f96466501b898f21e
     with:
       commit-sha: ${{ github.event.pull_request.head.sha || github.sha }}
       expected-reports: '["junit-python-3.15/pytest-3.15.xml", "junit-controlled-python-3.15/junit.xml"]'

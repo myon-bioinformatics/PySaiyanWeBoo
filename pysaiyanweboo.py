@@ -2320,14 +2320,15 @@ def _features_api(source: str, *, namespaces: bool = False) -> tuple[str, list[l
 
 
 def add_features(spec: Any, module: str | os.PathLike[str], *, timeout: float = 30) -> dict:
-    """📚 ``spec`` (web-ui-page/1) with a 📚 機能全一覧 tab: every feature of the Python file ``module``.
+    """🧩 ``spec`` (web-ui-page/1) whose 🧩 機能一覧 tab starts with every feature of the Python file ``module``.
 
     ⌨️ CLI: each argparse command with its help and options, read by running the file only up to its first
     ``parse_args`` (nothing after it runs; no CLI → no section). 🐍 Python: every name in ``__all__`` (or, without it,
-    each public function and class) with the first line of its docstring, read without importing. The tab goes right
-    after the hand-written 🧩 機能一覧 tab — unless that tab already names every command and name, which needs no full
-    list — and replaces this file's sections in an existing 📚 機能全一覧 tab. A page without tabs gets the sections at its end, titled
-    📚 機能全一覧. Returns a new spec; ``spec`` is not changed."""
+    each public function and class) with the first line of its docstring, read without importing. One tab holds it all:
+    the sections (titled "全 N …") go at the top of the hand-written 🧩 機能一覧 tab (any tab whose label has 機能), above
+    its highlights, after the sections of files added before, and replace this file's own on a second call — unless the
+    tab already names every command and name, which needs no full list. Without such a tab they become a 🧩 機能一覧 tab;
+    a page without tabs gets them at its end, titled 🧩 機能一覧. Returns a new spec; ``spec`` is not changed."""
     path = Path(module)
     resolved = path.resolve()
     try:
@@ -2415,30 +2416,30 @@ def _put_features(spec: Any, sections: list[dict], *, names: list[str] | None = 
     def keep(block: Any) -> bool:
         return not isinstance(block, dict) or (source_key is not None and block.get("_feature_source") != source_key)
 
+    def put(blocks: list) -> list:
+        """This file's sections where its old ones were, else after the full lists already at the top."""
+        old = next((i for i, b in enumerate(blocks) if not keep(b)), None)
+        blocks = [b for b in blocks if keep(b)]
+        at = old if old is not None else next((i for i, b in enumerate(blocks) if not (isinstance(b, dict) and "_feature_source" in b)), len(blocks))
+        return blocks[:at] + sections + blocks[at:]
+
     tabs = next((b for b in spec["blocks"] if isinstance(b, dict) and b.get("type") == "tabs"), None)
     if tabs is None:
         for section in sections:
-            section["title"] = f"📚 機能全一覧 · {section['title']}"
-        spec["blocks"] = [
-            b for b in spec["blocks"] if not (
-                isinstance(b, dict) and b.get("type") == "section"
-                and str(b.get("title", "")).startswith("📚 機能全一覧 · ") and not keep(b)
-            )
-        ] + sections
+            section["title"] = f"🧩 機能一覧 · {section['title']}"
+        spec["blocks"] = [b for b in spec["blocks"] if keep(b)] + sections
         return spec
     every = tabs.setdefault("tabs", [])
     labels = [str(t.get("label", "")) if isinstance(t, dict) else "" for t in every]
-    full = {"label": "📚 機能全一覧", "blocks": sections}
-    if "📚 機能全一覧" in labels:
-        tab = every[labels.index("📚 機能全一覧")]
-        tab["blocks"] = [b for b in tab.get("blocks", []) if keep(b)] + sections
-        return spec
     hand = next((i for i, label in enumerate(labels) if "機能" in label), None)
-    if hand is not None and names is not None:
-        written = json.dumps(every[hand], ensure_ascii=False)
-        if all(name in written for name in names):  # ✅ the hand-written 🧩 機能一覧 already names everything
+    if hand is None:
+        every.append({"label": "🧩 機能一覧", "blocks": sections})
+        return spec
+    tab = every[hand]
+    if names is not None and not any("_feature_source" in b for b in tab.get("blocks", []) if isinstance(b, dict)):
+        if all(name in json.dumps(tab, ensure_ascii=False) for name in names):   # ✅ the hand-written list names everything
             return spec
-    every.insert(len(every) if hand is None else hand + 1, full)
+    tab["blocks"] = put(tab.get("blocks", []))
     return spec
 
 
@@ -18558,6 +18559,10 @@ def _index_page() -> str:
                  '<p class="ui-links">' + " · ".join(f'<a href="{demos}{href}">{label}</a>' for label, href in (
                      ("🌍 World", "world.html"), ("🏫 School", "school.html"), ("🗼 Parallel cities", "cities.html"), ("🎬 Camera", "world-shots.html"),
                      ("🤖 MCP stub", "mcp-stub.html"), ("🔁 API stub", "api-stub.html"))) + "</p></section>"},
+        {"id": "guide", "emoji": "🧩", "title": "機能一覧", "text": "Every CLI option and public name, read from the code.",
+         "link": "Open the guide", "html": '<section class="ui-panel" id="guide"><h2>🧩 機能一覧</h2><p class="ui-muted">The usage guide lists '
+                                           'every option and every public name of pysaiyanweboo.py, read from the code at build time.</p>'
+                                           '<p class="ui-links"><a href="./guide/">🧩 機能一覧</a></p></section>'},
     ]
     css = layout_presets.css(presets) + _WALL_CSS
     scripts = (module_script(EMBEDDED_UI_JS + "bindTheme();\n") + module_script(_JS["theme.js"] + "bindSeed();\n") + module_script(_JS["curl.js"]))
