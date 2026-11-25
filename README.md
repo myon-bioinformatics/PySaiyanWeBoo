@@ -258,6 +258,10 @@ triangle, text, image, heatmap, arrow and clock layers, at most 100 layers and 4
 heatmap trace into heatmap data: row 0 on top, `null` kept as a gap), the alpha-weighted mosaic (`studio_mosaic_rgba`, always recomputed from the kept original, never from a mosaic), arrow geometry, output size
 (0.25 to 8 times, at most 8192 px a side and 16 MP), the PNG payload for Base64 hand-off, and a small PNG reader and writer (`studio_png_decode`: 8 bits, not interlaced, every filter and colour type) so the command line
 can mosaic photo layers. `studio_place`, `studio_text_layer`, `studio_matrix_layer`, `studio_image_layer`, `studio_demo_scene` and `studio_stamp_demo_scene` are what a click or a button puts on the canvas. Command line:
+Heatmap layers may carry an optional `palette` array of 2–256 `#RRGGBB` stops in display order. Stops are evenly spaced; reverse the array to reverse the scale.
+Without `palette`, existing scenes use the original five-stop scale. Other browser tools can use `js/heatmap-color.js` (`heatmapColor(value, low, high, levels, palette)`)
+without loading the editor. Python callers can use `studio_heat_color` with the same arguments.
+
 `python3 pysaiyanweboo.py --studio-render FILE [--format svg|json] [--scale N]`, `--studio-heatmap FILE` (a matrix into an editable scene) and `--studio-base64 FILE [--data-uri]`, each with `-o FILE` (never replaces a file
 without `--force`); a bad input is exit 2 with a message. The golden values are Ironmate's own `core.js` run by Node, never this code: 1,859 results (`tests/fixtures/studio_golden.json`, taken at Ironmate 3b7c07d) cover every
 function on seeded scenes and on the cases of Ironmate's own tests (`test_image_studio.py`, `studio_workspace.test.cjs`), each limit at its edge, each rule of the text breaker, both of its demos (ids aside) and 471
