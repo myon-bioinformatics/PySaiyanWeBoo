@@ -1953,7 +1953,7 @@ def _page_block(block: Any, *, depth: int) -> str:
     kind = block["type"]
     allowed = {"heading": {"text", "level"}, "text": {"text", "muted"}, "output": {"text"}, "table": {"headers", "rows", "caption"},
                "card": {"title", "text", "blocks"}, "links": {"items"}, "image": {"src", "alt", "width", "height"},
-               "kv": {"rows"}, "badges": {"items"}, "section": {"title", "blocks"}, "tabs": {"tabs", "id"}}[kind] | {"type"}
+               "kv": {"rows"}, "badges": {"items"}, "section": {"title", "blocks", "_feature_source"}, "tabs": {"tabs", "id"}}[kind] | {"type"}
     if block.keys() - allowed:
         raise ValueError(f"{kind}: unknown field {sorted(block.keys() - allowed)}")
     if kind == "heading":
@@ -2211,15 +2211,16 @@ def _stop(self, args=None, namespace=None):
     raise _Parsed(self)
 
 argparse.ArgumentParser.parse_known_args = _stop
+argparse.ArgumentParser.parse_known_intermixed_args = _stop
 path = Path(sys.argv[1]).resolve()
-sys.argv = [str(path)]
+sys.argv = [str(path), *sys.argv[2:]]
 sys.path.insert(0, str(path.parent))
 parser = None
 try:
     runpy.run_path(str(path), run_name="__main__")
 except _Parsed as stopped:
     parser = stopped.args[0]
-except BaseException:
+except SystemExit:
     pass
 
 def options(p):
@@ -2243,13 +2244,12 @@ def walk(p, prefix, out):
     if not subs:
         return
     helps = {c.dest: " ".join((c.help or "").split()) for c in subs[0]._choices_actions}
-    seen = set()
+    by_parser = {}
     for name, sub in subs[0].choices.items():
-        if id(sub) in seen:   # an alias of a command already listed
-            continue
-        seen.add(id(sub))
+        by_parser.setdefault(sub, []).append(name)
+    for sub, (name, *aliases) in by_parser.items():
         text = helps.get(name) or " ".join((sub.description or "").strip().split("\n")[0].split())
-        out.append([" ".join(prefix + [name]), text, options(sub)])
+        out.append([" ".join(prefix + [name]), text, options(sub), aliases])
         walk(sub, prefix + [name], out)
 
 result = None
@@ -2261,7 +2261,7 @@ print(json.dumps(result, ensure_ascii=False))
 '''
 
 
-def _features_api(source: str) -> tuple[str, list[list[str]]]:
+def _features_api(source: str, *, namespaces: bool = False) -> tuple[str, list[list[str]]]:
     tree = ast.parse(source)
     defs: dict[str, tuple[str, str]] = {}
     for node in tree.body:
@@ -2288,6 +2288,26 @@ def _features_api(source: str) -> tuple[str, list[list[str]]]:
     for name in dict.fromkeys(names):
         kind, doc = defs.get(name, ("↪️", ""))
         rows.append([f"{kind} {name}" + ("()" if kind == "🔧" else ""), doc])
+    if namespaces:
+        exported = set(names) if label == "__all__" else None
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+                continue
+            if not isinstance(node.value.func, ast.Name) or node.value.func.id != "SimpleNamespace":
+                continue
+            for target in node.targets:
+                if not isinstance(target, ast.Name) or target.id.startswith("_"):
+                    continue
+                if exported is not None and target.id not in exported:
+                    continue
+                if exported is None:
+                    rows.append([f"📦 {target.id}", ""])
+                for keyword in node.value.keywords:
+                    if keyword.arg and not keyword.arg.startswith("_"):
+                        value = keyword.value
+                        kind, doc = defs.get(value.id, ("↪️", "")) if isinstance(value, ast.Name) else ("📦", "")
+                        name = f"{target.id}.{keyword.arg}" + ("()" if kind == "🔧" else "")
+                        rows.append([f"{kind} {name}", doc])
     return label, rows
 
 
@@ -2298,62 +2318,152 @@ def add_features(spec: Any, module: str | os.PathLike[str], *, timeout: float = 
     ``parse_args`` (nothing after it runs; no CLI → no section). 🐍 Python: every name in ``__all__`` (or, without it,
     each public function and class) with the first line of its docstring, read without importing. The tab goes right
     after the hand-written 🧩 機能一覧 tab — unless that tab already names every command and name, which needs no full
-    list — and replaces an earlier 📚 機能全一覧 tab; a page without tabs gets the sections at its end, titled
+    list — and replaces this file's sections in an existing 📚 機能全一覧 tab. A page without tabs gets the sections at its end, titled
     📚 機能全一覧. Returns a new spec; ``spec`` is not changed."""
     path = Path(module)
-    source = path.read_text(encoding="utf-8")
+    resolved = path.resolve()
+    try:
+        display = resolved.relative_to(Path.cwd().resolve()).as_posix()
+        source_key = display
+    except ValueError:
+        display = path.name
+        source_key = "sha256:" + hashlib.sha256(os.fsencode(resolved)).hexdigest()
+    sections, names = _feature_module(path, timeout=timeout, display=display)
+    return _put_features(spec, sections, names=names, source_key=source_key)
+
+
+def _feature_cli(path: Path, argv: list[str], *, timeout: float, required: bool) -> dict | None:
+    try:
+        done = subprocess.run(
+            [sys.executable, "-c", _FEATURES_SHIM, str(path.resolve()), *argv],
+            capture_output=True, text=True, encoding="utf-8", timeout=timeout,
+            stdin=subprocess.DEVNULL, cwd=None if required else path.resolve().parent, check=False,
+        )
+        if done.returncode:
+            raise ValueError(done.stderr.strip().splitlines()[-1] if done.stderr.strip() else f"exit {done.returncode}")
+        cli = json.loads(done.stdout.strip().splitlines()[-1]) if done.stdout.strip() else None
+        if not cli:
+            raise ValueError("no argparse parser captured")
+        return cli
+    except (subprocess.TimeoutExpired, OSError, ValueError, IndexError) as exc:
+        if required:
+            invocation = " ".join([str(path), *argv])
+            raise ValueError(f"feature CLI extraction failed for {invocation}: {exc}") from exc
+        return None
+
+
+def _feature_cli_section(cli: dict, prog: str, *, qualify: bool) -> dict:
+    if cli["commands"]:
+        def cell(text: str, opts: list, aliases: list[str]) -> str:
+            flags = " ".join(full if qualify else short for full, _, short in opts)
+            alias_text = "別名: " + ", ".join(aliases) if qualify and aliases else ""
+            return " ".join(part for part in (text, alias_text, f"⚙️ {flags}" if flags else "") if part)
+
+        rows = [[name, cell(text, opts, aliases)] for name, text, opts, aliases in cli["commands"]]
+        if cli["options"]:
+            rows.insert(0, ["（共通）", cell("", cli["options"], [])])
+        return {"type": "section", "title": f"⌨️ {prog} · 全 {len(cli['commands'])} コマンド",
+                "blocks": [{"type": "table", "headers": ["⌨️ コマンド", "📝 説明 · ⚙️ オプション"], "rows": rows}]}
+    if cli["options"]:
+        return {"type": "section", "title": f"⌨️ {prog} · 全 {len(cli['options'])} オプション",
+                "blocks": [{"type": "table", "headers": ["⚙️ オプション", "📝 説明"],
+                            "rows": [[full, text] for full, text, _ in cli["options"]]}]}
+    return {"type": "section", "title": f"⌨️ {prog} · 引数なし", "blocks": []}
+
+
+def _feature_module(path: Path, *, timeout: float, cli_argv: list[list[str]] | None = None,
+                    entry: Path | None = None, namespaces: bool = False,
+                    display: str, qualify: bool = False) -> tuple[list[dict], list[str]]:
+    label, rows = _features_api(path.read_text(encoding="utf-8"), namespaces=namespaces)
+    sections, names = [], []
+    for argv in ([[]] if cli_argv is None else cli_argv):
+        cli = _feature_cli(entry or path, argv, timeout=timeout, required=cli_argv is not None)
+        if cli is None:
+            continue
+        prog = " ".join([entry.as_posix() if entry else display, *argv])
+        if cli["commands"] or cli["options"] or qualify:
+            sections.append(_feature_cli_section(cli, prog, qualify=qualify))
+        names.extend([name for name, _, _, _ in cli["commands"]] or
+                     [short.split()[0] for _, _, short in cli["options"]])
+    if rows:
+        module = f"Python · {display}" if qualify else display
+        sections.append({"type": "section", "title": f"🐍 {module} · 全 {len(rows)} 個（{label}）",
+                         "blocks": [{"type": "table", "headers": ["🐍 名前（🔧 関数 · 🧱 クラス · 📦 値 · ↪️ 取り込み）", "📝 説明"], "rows": rows}]})
+        names.extend(row[0].split(" ", 1)[1].removesuffix("()") for row in rows)
+    return sections, names
+
+
+def _put_features(spec: Any, sections: list[dict], *, names: list[str] | None = None,
+                  source_key: str | None = None) -> dict:
     spec = json.loads(json.dumps(spec))
     if not isinstance(spec, dict) or not isinstance(spec.get("blocks"), list):
         raise ValueError("add_features: spec is a web-ui-page/1 object with blocks")
-    sections = []
-    try:
-        done = subprocess.run([sys.executable, "-c", _FEATURES_SHIM, str(path.resolve())], capture_output=True, text=True,
-                              encoding="utf-8", timeout=timeout, cwd=path.resolve().parent, check=False)
-        cli = json.loads(done.stdout.strip().splitlines()[-1]) if done.stdout.strip() else None
-    except (subprocess.TimeoutExpired, ValueError, IndexError):
-        cli = None
-    if cli and cli["commands"]:
-        def cell(text: str, opts: list) -> str:   # 📝 the help, then ⚙️ its options (two columns stay readable on a phone)
-            flags = " ".join(short for _, _, short in opts)
-            return " ".join(part for part in (text, f"⚙️ {flags}" if flags else "") if part)
-
-        rows = [[name, cell(text, opts)] for name, text, opts in cli["commands"]]
-        if cli["options"]:
-            rows.insert(0, ["（共通）", cell("", cli["options"])])
-        sections.append({"type": "section", "title": f"⌨️ {cli['prog']} · 全 {len(cli['commands'])} コマンド",
-                         "blocks": [{"type": "table", "headers": ["⌨️ コマンド", "📝 説明 · ⚙️ オプション"], "rows": rows}]})
-    elif cli and cli["options"]:
-        sections.append({"type": "section", "title": f"⌨️ {cli['prog']} · 全 {len(cli['options'])} オプション",
-                         "blocks": [{"type": "table", "headers": ["⚙️ オプション", "📝 説明"],
-                                     "rows": [[full, text] for full, text, _ in cli["options"]]}]})
-    label, rows = _features_api(source)
-    if rows:
-        sections.append({"type": "section", "title": f"🐍 Python · 全 {len(rows)} 個（{label}）",
-                         "blocks": [{"type": "table", "headers": ["🐍 名前（🔧 関数 · 🧱 クラス · 📦 値 · ↪️ 取り込み）", "📝 説明"], "rows": rows}]})
     if not sections:
         return spec
+    if source_key is not None:
+        for section in sections:
+            section["_feature_source"] = source_key
+
+    def keep(block: Any) -> bool:
+        return not isinstance(block, dict) or (source_key is not None and block.get("_feature_source") != source_key)
+
     tabs = next((b for b in spec["blocks"] if isinstance(b, dict) and b.get("type") == "tabs"), None)
     if tabs is None:
         for section in sections:
             section["title"] = f"📚 機能全一覧 · {section['title']}"
-        spec["blocks"].extend(sections)
+        spec["blocks"] = [
+            b for b in spec["blocks"] if not (
+                isinstance(b, dict) and b.get("type") == "section"
+                and str(b.get("title", "")).startswith("📚 機能全一覧 · ") and not keep(b)
+            )
+        ] + sections
         return spec
     every = tabs.setdefault("tabs", [])
     labels = [str(t.get("label", "")) if isinstance(t, dict) else "" for t in every]
     full = {"label": "📚 機能全一覧", "blocks": sections}
-    if "📚 機能全一覧" in labels:                   # 🔁 made before: this run's list replaces it
-        every[labels.index("📚 機能全一覧")] = full
+    if "📚 機能全一覧" in labels:
+        tab = every[labels.index("📚 機能全一覧")]
+        tab["blocks"] = [b for b in tab.get("blocks", []) if keep(b)] + sections
         return spec
     hand = next((i for i, label in enumerate(labels) if "機能" in label), None)
-    if hand is not None:
-        names = [name for name, _, _ in cli["commands"]] if cli and cli["commands"] else \
-                [short.split()[0] for _, _, short in cli["options"]] if cli else []
-        names += [row[0].split(" ", 1)[1].removesuffix("()") for row in rows]
+    if hand is not None and names is not None:
         written = json.dumps(every[hand], ensure_ascii=False)
         if all(name in written for name in names):  # ✅ the hand-written 🧩 機能一覧 already names everything
             return spec
     every.insert(len(every) if hand is None else hand + 1, full)
     return spec
+
+
+def _feature_config_path(value: Any) -> Path:
+    if not isinstance(value, str) or not value:
+        raise ValueError("features config requires a repository-relative Python path")
+    path = Path(value)
+    if path.is_absolute() or path.suffix != ".py" or not path.resolve().is_relative_to(Path.cwd()):
+        raise ValueError(f"invalid features config path: {value}")
+    return path
+
+
+def _feature_config_sections(config: Any, *, timeout: float = 30) -> list[dict]:
+    if not isinstance(config, list) or not config:
+        raise ValueError("features config must be a non-empty list of sources")
+    sections = []
+    for item in config:
+        if not isinstance(item, dict) or set(item) - {"source", "cli", "entry", "namespaces"}:
+            raise ValueError("invalid features config source")
+        path = _feature_config_path(item.get("source"))
+        cli = item.get("cli", [])
+        namespaces = item.get("namespaces", False)
+        if (not isinstance(cli, list) or any(not isinstance(argv, list) or
+                any(not isinstance(arg, str) for arg in argv) for argv in cli)
+                or not isinstance(namespaces, bool) or ("entry" in item and not cli)):
+            raise ValueError(f"invalid features config options for {path}")
+        entry = _feature_config_path(item["entry"]) if "entry" in item else None
+        found, _ = _feature_module(path, timeout=timeout, cli_argv=cli, entry=entry,
+                                   namespaces=namespaces, display=path.as_posix(), qualify=True)
+        if not found:
+            raise ValueError(f"no public API or CLI extracted from {path}")
+        sections.extend(found)
+    return sections
 
 
 PARTS_THEMES = (*THEMES, *CANDIDATE_THEMES, AUTO_THEME)
@@ -13401,8 +13511,14 @@ def studio_cos(x: float) -> float:
     return _stu_kcos(y0, y1) if k == 0 else -_stu_ksin(y0, y1, 1) if k == 1 else -_stu_kcos(y0, y1) if k == 2 else _stu_ksin(y0, y1, 1)
 
 
-def studio_heat_color(value: Any, low: Any, high: Any, levels: Any = 0) -> str:
-    """A five-stop scale from violet to yellow; ``None`` (missing) is ``"none"``. The value is never changed, only shown."""
+def studio_heat_color(value: Any, low: Any, high: Any, levels: Any = 0, palette: Any = _STU_UNDEFINED) -> str:
+    """Map a value to evenly spaced RGB stops, defaulting to the original violet-to-yellow scale."""
+    if palette is _STU_UNDEFINED:
+        palette = STUDIO_PALETTE
+    else:
+        _stu_need(isinstance(palette, list) and 2 <= len(palette) <= 256 and all(
+            isinstance(stop, str) and re.fullmatch(r"#[0-9A-Fa-f]{6}", stop) for stop in palette
+        ), "配色には2〜256個の #RRGGBB が必要です")
     if value is None:
         return "none"
     finite = lambda v: type(v) in (int, float) and math.isfinite(v)
@@ -13411,9 +13527,9 @@ def studio_heat_color(value: Any, low: Any, high: Any, levels: Any = 0) -> str:
     t = 0.5 if high == low else max(0, min(1, (value - low) / (high - low)))
     if levels:
         t = _math_round(t * (levels - 1)) / (levels - 1)
-    p = t * 4
-    i = min(3, math.floor(p))
-    a, b = (bytes.fromhex(c[1:]) for c in STUDIO_PALETTE[i:i + 2])
+    p = t * (len(palette) - 1)
+    i = min(len(palette) - 2, math.floor(p))
+    a, b = (bytes.fromhex(c[1:]) for c in palette[i:i + 2])
     return "#" + "".join(f"{_math_round(x + (y - x) * (p - i)):02X}" for x, y in zip(a, b))
 
 
@@ -13508,7 +13624,7 @@ def studio_validate(scene: Any) -> dict[str, Any]:
             _stu_need(not _stu_defined(layer, "sampling") or layer["sampling"] in ("pixelated", "smooth"), "補間方式が不正です")
         elif kind == "heatmap":
             studio_matrix({"z": layer.get("z"), "x": layer.get("xlabels"), "y": layer.get("ylabels"), "zmin": layer.get("low"), "zmax": layer.get("high")})
-            studio_heat_color(layer.get("low", _STU_UNDEFINED), layer.get("low", _STU_UNDEFINED), layer.get("high", _STU_UNDEFINED), layer.get("levels", 0))
+            studio_heat_color(layer.get("low", _STU_UNDEFINED), layer.get("low", _STU_UNDEFINED), layer.get("high", _STU_UNDEFINED), layer.get("levels", 0), layer.get("palette", _STU_UNDEFINED))
         else:
             _stu_need(_stu_color(layer.get("fill")) and _stu_color(layer.get("stroke")) and _stu_num(layer.get("strokeWidth"), 0, 64), "図形の色または線幅が不正です")
         if kind == "arrow":
@@ -13912,7 +14028,7 @@ def studio_layer_svg(layer: dict[str, Any], image_source: Any = None) -> str:
         for y, row in enumerate(layer["z"]):
             for x, v in enumerate(row):
                 title = f'{js_string(layer["ylabels"][y])} / {js_string(layer["xlabels"][x])}: {"欠測" if v is None else js_string(v)}'
-                body += (f'<rect x="{n(left + x * cw)}" y="{n(top + y * ch)}" width="{n(cw)}" height="{n(ch)}" fill="{studio_heat_color(v, layer["low"], layer["high"], layer.get("levels", 0))}">'
+                body += (f'<rect x="{n(left + x * cw)}" y="{n(top + y * ch)}" width="{n(cw)}" height="{n(ch)}" fill="{studio_heat_color(v, layer["low"], layer["high"], layer.get("levels", 0), layer.get("palette", _STU_UNDEFINED))}">'
                          f'<title>{studio_escape(title)}</title></rect>')
                 if _stu_truthy(layer.get("labels")) and cw >= 35 and ch >= 24 and v is not None:
                     body += (f'<text x="{n(left + (x + 0.5) * cw)}" y="{n(top + (y + 0.5) * ch)}" text-anchor="middle" dominant-baseline="central" font-family="Meiryo,sans-serif" font-size="12" '
@@ -17096,17 +17212,25 @@ def _studio_js_constants() -> str:
 
 
 
-_JS["imagestudio.js"] = "/* web-ui imagestudio: the Ironmate image studio in the page (memory only). Scene checks, SVG, history, workspace files and the layers a click places are the functions of pysaiyanweboo.py (studio_*) and give the same text; the editor on top is the page's. Python is the reference; this must agree. Differences: text is measured with the installed fonts here (a fixed 0.65 em / 1 em estimate in Python), words and graphemes follow the same rules as Python (Latin, Hangul, kana and Han; the Japanese dictionary of Intl.Segmenter is not used, so every engine gives the same lines), and the clock hands use fdlibm's sin and cos written out here and in Python (V8's of Node 22), not the engine's Math.sin and Math.cos, which differ in the last bit between engines and versions. */\n" + _CLIPBOARD_JS + _studio_js_constants() + r"""export class StudioError extends Error{}
+# A small standalone browser module for heatmap consumers that do not need the editor.
+_JS["heatmap-color.js"] = f"const heatmapDefaultPalette={json.dumps(STUDIO_PALETTE)};\n" + r"""export function heatmapColor(v,lo,hi,levels=0,palette=heatmapDefaultPalette){
+ if(!Array.isArray(palette)||palette.length<2||palette.length>256||
+    [...palette].some(stop=>typeof stop!=="string"||stop.length!==7||!/^#[0-9a-f]{6}$/i.test(stop)))throw new TypeError("配色には2〜256個の #RRGGBB が必要です");
+ if(v===null)return"none";
+ if(![v,lo,hi].every(Number.isFinite)||lo>hi||!Number.isInteger(levels)||(levels!==0&&(levels<2||levels>256)))throw new TypeError("色の範囲または段階数が不正です");
+ let t=hi===lo?0.5:Math.max(0,Math.min(1,(v-lo)/(hi-lo)));if(levels)t=Math.round(t*(levels-1))/(levels-1);
+ const p=t*(palette.length-1),i=Math.min(palette.length-2,Math.floor(p)),a=palette[i].match(/\w\w/g).map(x=>parseInt(x,16)),b=palette[i+1].match(/\w\w/g).map(x=>parseInt(x,16));
+ return"#"+a.map((x,j)=>Math.round(x+(b[j]-x)*(p-i)).toString(16).padStart(2,"0")).join("").toUpperCase()}
+"""
+
+
+_JS["imagestudio.js"] = "/* web-ui imagestudio: the Ironmate image studio in the page (memory only). Scene checks, SVG, history, workspace files and the layers a click places are the functions of pysaiyanweboo.py (studio_*) and give the same text; the editor on top is the page's. Python is the reference; this must agree. Differences: text is measured with the installed fonts here (a fixed 0.65 em / 1 em estimate in Python), words and graphemes follow the same rules as Python (Latin, Hangul, kana and Han; the Japanese dictionary of Intl.Segmenter is not used, so every engine gives the same lines), and the clock hands use fdlibm's sin and cos written out here and in Python (V8's of Node 22), not the engine's Math.sin and Math.cos, which differ in the last bit between engines and versions. */\n" + _CLIPBOARD_JS + _studio_js_constants() + _JS["heatmap-color.js"] + r"""export class StudioError extends Error{}
 const fail=message=>{throw new StudioError(message)};
 export const clone=x=>JSON.parse(JSON.stringify(x));
 export const escape=x=>String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"})[c]);
 const num=(v,lo,hi)=>typeof v==="number"&&Number.isFinite(v)&&v>=lo&&v<=hi,color=c=>typeof c==="string"&&/^(#[0-9a-f]{6}|none)$/i.test(c);
-export function heatColor(v,lo,hi,levels=0){
- if(v===null)return"none";
- if(![v,lo,hi].every(Number.isFinite)||lo>hi||!Number.isInteger(levels)||(levels!==0&&(levels<2||levels>256)))fail("色の範囲または段階数が不正です");
- let t=hi===lo?0.5:Math.max(0,Math.min(1,(v-lo)/(hi-lo)));if(levels)t=Math.round(t*(levels-1))/(levels-1);
- const p=t*4,i=Math.min(3,Math.floor(p)),a=PALETTE[i].match(/\w\w/g).map(x=>parseInt(x,16)),b=PALETTE[i+1].match(/\w\w/g).map(x=>parseInt(x,16));
- return"#"+a.map((x,j)=>Math.round(x+(b[j]-x)*(p-i)).toString(16).padStart(2,"0")).join("").toUpperCase()}
+export function heatColor(v,lo,hi,levels=0,palette){
+ try{return heatmapColor(v,lo,hi,levels,palette)}catch(error){fail(error.message)}}
 const safe=v=>Number.isFinite(v)&&!(Number.isInteger(v)&&!Number.isSafeInteger(v));
 export function matrix(source){
  let t;
@@ -17146,7 +17270,7 @@ export function validate(scene){
    imageBytes+=l.src.length;if(imageBytes>20000000)fail("シーンの画像合計は20MB以下にしてください");
    if(!Number.isInteger(l.cell)||!num(l.cell,1,512)||!Number.isInteger(l.levels)||!num(l.levels,2,256))fail("モザイク設定が不正です");
    if(l.sampling!==undefined&&!["pixelated","smooth"].includes(l.sampling))fail("補間方式が不正です")}
-  else if(l.kind==="heatmap"){matrix({z:l.z,x:l.xlabels,y:l.ylabels,zmin:l.low,zmax:l.high});heatColor(l.low,l.low,l.high,l.levels)}
+  else if(l.kind==="heatmap"){matrix({z:l.z,x:l.xlabels,y:l.ylabels,zmin:l.low,zmax:l.high});heatColor(l.low,l.low,l.high,l.levels,l.palette)}
   else if(!color(l.fill)||!color(l.stroke)||!num(l.strokeWidth,0,64))fail("図形の色または線幅が不正です");
   if(l.kind==="arrow"){arrowGeometry(l.w,l.h,l.headSize,l.headPlacement);if(l.headStyle!==undefined&&!["triangle","beginner"].includes(l.headStyle))fail("矢羽根の形が不正です")}
   if(l.kind==="clock"&&(!Number.isInteger(l.hour)||!num(l.hour,0,23)||!Number.isInteger(l.minute)||!num(l.minute,0,59)))fail("時計の時刻が不正です")}
@@ -17335,7 +17459,7 @@ export function layerSVG(l,imageSource=x=>x.src){
   for(let y=0;y<l.z.length;y++){
    for(let x=0;x<l.z[y].length;x++){
     const v=l.z[y][x],title=`${l.ylabels[y]} / ${l.xlabels[x]}: ${v===null?"欠測":v}`;
-    body+=`<rect x="${left+x*cw}" y="${top+y*ch}" width="${cw}" height="${ch}" fill="${heatColor(v,l.low,l.high,l.levels)}"><title>${escape(title)}</title></rect>`;
+    body+=`<rect x="${left+x*cw}" y="${top+y*ch}" width="${cw}" height="${ch}" fill="${heatColor(v,l.low,l.high,l.levels,l.palette)}"><title>${escape(title)}</title></rect>`;
     if(l.labels&&cw>=35&&ch>=24&&v!==null)body+=`<text x="${left+(x+0.5)*cw}" y="${top+(y+0.5)*ch}" text-anchor="middle" dominant-baseline="central" font-family="Meiryo,sans-serif" font-size="12" fill="#111827" stroke="#FFFFFF" stroke-width="2" paint-order="stroke">${escape(v)}</text>`}
    body+=`<text x="${left-10}" y="${top+(y+0.5)*ch}" text-anchor="end" dominant-baseline="central" font-family="Meiryo,sans-serif" font-size="12">${escape(l.ylabels[y])}</text>`}
   for(let x=0;x<l.z[0].length;x++)body+=`<text x="${left+(x+0.5)*cw}" y="${l.h-bottom+20}" text-anchor="middle" font-family="Meiryo,sans-serif" font-size="12">${escape(l.xlabels[x])}</text>`;
@@ -18458,6 +18582,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repository", metavar="OWNER/REPO", help="with --page: put the way back first — 🏠 the owner's portfolio · 🐙 the repository (see back_nav_html)")
     parser.add_argument("--home-screen", type=Path, metavar="DIR", help="with --page: 🏠 read the spec's icon under DIR and write icon-180/192/512.png, the manifest and the spec with home (Base64 cache) there (see home_screen)")
     parser.add_argument("--features", type=Path, action="append", default=[], metavar="FILE", help="with --page: 🧩 add every CLI command and public name of this Python file to the 機能一覧 tab (repeatable; see add_features)")
+    parser.add_argument("--features-config", type=Path, metavar="FILE",
+                        help="with --page: JSON list of Python sources and required CLI invocations")
     parser.add_argument("--component", metavar="NAME", help="print one component of COMPONENTS (a page by default; --part html, css, js or json)."
                         " A spec comes from --spec FILE (- for stdin), keyword arguments from --set KEY=VALUE (JSON values, else text); --component list names them")
     parser.add_argument("--spec", type=Path, metavar="FILE", help="with --component: the spec, the builder's first argument (- reads stdin)")
@@ -18562,6 +18688,11 @@ def main(argv: list[str] | None = None) -> int:
                 brand = json.loads(args.brand.read_text(encoding="utf-8"))
                 theme_css(str(brand["name"]), dict(brand["tokens"]))
             layouts = json.loads(args.layouts.read_text(encoding="utf-8")) if args.layouts else None
+            if args.features_config:
+                if args.features:
+                    parser.error("--features-config cannot be combined with --features")
+                config = json.loads(args.features_config.read_text(encoding="utf-8"))
+                spec = _put_features(spec, _feature_config_sections(config))
             for module in args.features:
                 spec = add_features(spec, module)
             if args.home_screen:
@@ -18570,7 +18701,7 @@ def main(argv: list[str] | None = None) -> int:
                     (args.home_screen / name).write_bytes(data)
             page = page_document(spec, layouts=layouts)
             sys.stdout.write(add_back_nav(page, args.repository) if args.repository else page)
-        except (OSError, ValueError, KeyError, TypeError) as exc:
+        except (OSError, ValueError, KeyError, TypeError, SyntaxError) as exc:
             parser.error(str(exc))
         return 0
     if args.check_theme:

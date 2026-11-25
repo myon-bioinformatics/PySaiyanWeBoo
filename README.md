@@ -258,6 +258,10 @@ triangle, text, image, heatmap, arrow and clock layers, at most 100 layers and 4
 heatmap trace into heatmap data: row 0 on top, `null` kept as a gap), the alpha-weighted mosaic (`studio_mosaic_rgba`, always recomputed from the kept original, never from a mosaic), arrow geometry, output size
 (0.25 to 8 times, at most 8192 px a side and 16 MP), the PNG payload for Base64 hand-off, and a small PNG reader and writer (`studio_png_decode`: 8 bits, not interlaced, every filter and colour type) so the command line
 can mosaic photo layers. `studio_place`, `studio_text_layer`, `studio_matrix_layer`, `studio_image_layer`, `studio_demo_scene` and `studio_stamp_demo_scene` are what a click or a button puts on the canvas. Command line:
+Heatmap layers may carry an optional `palette` array of 2–256 `#RRGGBB` stops in display order. Stops are evenly spaced; reverse the array to reverse the scale.
+Without `palette`, existing scenes use the original five-stop scale. Other browser tools can use `js/heatmap-color.js` (`heatmapColor(value, low, high, levels, palette)`)
+without loading the editor. Python callers can use `studio_heat_color` with the same arguments.
+
 `python3 pysaiyanweboo.py --studio-render FILE [--format svg|json] [--scale N]`, `--studio-heatmap FILE` (a matrix into an editable scene) and `--studio-base64 FILE [--data-uri]`, each with `-o FILE` (never replaces a file
 without `--force`); a bad input is exit 2 with a message. The golden values are Ironmate's own `core.js` run by Node, never this code: 1,859 results (`tests/fixtures/studio_golden.json`, taken at Ironmate 3b7c07d) cover every
 function on seeded scenes and on the cases of Ironmate's own tests (`test_image_studio.py`, `studio_workspace.test.cjs`), each limit at its edge, each rule of the text breaker, both of its demos (ids aside) and 471
@@ -592,7 +596,19 @@ page-layouts.json]` renders it from the shell or Node, so a report script owns o
 puts the way back first (🏠 portfolio · 🐙 GitHub); `add_back_nav(page, "OWNER/REPO")` gives a page built some other way the same nav.
 📲 `--home-screen DIR` (`home_screen(spec, DIR)`) makes the spec's icon into square, opaque `icon-180/192/512.png` and a `manifest.webmanifest` next to the page, and writes the spec back with `home` — the short name, the source's SHA-256 and each size as Base64 (a cache Python reads without decoding again) — so "Add to Home Screen" and shortcuts show the repository's own icon (iOS: `apple-touch-icon` 180 · Android / desktop: the manifest). No Pillow: nearest-neighbour scaling keeps pixel icons crisp.
 
-📚 `--features FILE` (`add_features(spec, FILE)`, repeatable) adds a 📚 機能全一覧 tab right after the hand-written 🧩 機能一覧: ⌨️ every argparse command with its help and options (the file runs only up to its first `parse_args`, nothing after it) and 🐍 every name in `__all__` — or, without it, each public function and class — with the first line of its docstring (read without importing). The list comes from the code at build time, so it never misses a command or a function; a hand-written 🧩 機能一覧 that already names everything gets no full list, a second run replaces the tab, and a file that cannot start keeps its 🐍 list.
+📚 `--features FILE` (`add_features(spec, FILE)`, repeatable) adds a 📚 機能全一覧 tab right after the hand-written 🧩 機能一覧: ⌨️ every argparse command with its help and options (the file runs only up to its first `parse_args`, nothing after it) and 🐍 every name in `__all__` — or, without it, each public function and class — with the first line of its docstring (read without importing). The list comes from the code at build time, so it never misses a command or a function; a hand-written 🧩 機能一覧 that already names everything gets no full list, each file keeps its own sections (titled with its name: several `--features` add up, a second run replaces only that file's), and a file that cannot start keeps its 🐍 list.
+
+For an explicit inventory, run `--page docs/guide.page.json --features-config docs/guide.features.json` from the checkout root. Give the config a JSON array of source objects. This example includes the root parser, a dispatched command, a wrapper backed by a separate API source, and an API-only source.
+
+```json
+[
+  {"source": "example.py", "cli": [[], ["share"]], "namespaces": true},
+  {"source": "pkg/graphs.py", "entry": "tools/graphs.py", "cli": [[]]},
+  {"source": "pkg/readers.py"}
+]
+```
+
+Omit `cli` for an API-only source. `namespaces` includes public members declared as keyword arguments to `SimpleNamespace`. CLI probes stop before argparse consumes arguments. Keep parser setup independent of command execution, and make any dependencies needed to reach the parser available in the renderer's environment. A missing parser, startup failure, or timeout fails an explicitly configured build. The single-file `--features` mode can still show the API when its CLI cannot start.
 
 🎞️ `gif.js` (`UiGif`) turns canvas frames into one animated GIF89a with no dependency: the browser decodes, resizes, zooms and
 captions the images it is given (`Composer`), and the module adds only what browsers lack — a bucket histogram while frames arrive,

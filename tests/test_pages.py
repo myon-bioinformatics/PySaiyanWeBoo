@@ -3,6 +3,7 @@ source panel, theme seed, records board). Node runs the browser modules through 
 
 import base64
 import contextlib
+import contextlib
 import io
 import copy
 import hashlib
@@ -4135,6 +4136,58 @@ class ImageStudioTests(unittest.TestCase):
         self.assertIsNone(layer["z"][0][1])
         self.assertEqual(pysaiyanweboo.studio_validate(scene), scene, "a scene made from a matrix is already valid")
 
+    def test_optional_heatmap_palette_round_trips_and_renders_through_cli(self):
+        old = ui.studio_heatmap_scene([[0, 0.5, None, 1]])
+        expected = ["#0000FF", "#800080", "none", "#FF0000"]
+        # Reversed colors in the order DRAgoWing would put them into the scene.
+        scene = copy.deepcopy(old)
+        scene["layers"][0]["palette"] = ["#0000ff", "#ff0000"]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "scene.json"
+            path.write_text(json.dumps(scene), encoding="utf-8")
+            result = pswb_cli("--studio-render", path, "--format", "json", cwd=ROOT)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), scene)
+            result = pswb_cli("--studio-render", path, cwd=ROOT)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(re.findall(r'fill="([^"]+)"><title>', result.stdout), expected)
+        self.assertNotIn("palette", ui.studio_validate(old)["layers"][0])
+        self.assertEqual(re.findall(r'fill="([^"]+)"><title>', ui.studio_svg(old)),
+                         ["#440154", "#21918C", "none", "#FDE725"])
+
+    def test_bad_heatmap_palettes_are_rejected(self):
+        for palette in (None, "#112233", [], ["#112233"], ["#112233"] * 257,
+                        ["#112233", "none"], ["#112233", "#445566\n"], ["#112233", 0]):
+            with self.subTest(palette=repr(palette)[:60]):
+                scene = ui.studio_heatmap_scene([[0]])
+                scene["layers"][0]["palette"] = palette
+                with self.assertRaisesRegex(ui.StudioError, "配色"):
+                    ui.studio_validate(scene)
+
+    @unittest.skipUnless(node26(), "Node 26+ is required")
+    def test_image_studio_and_standalone_browser_color_match(self):
+        scene = ui.studio_heatmap_scene([[0, 0.25, 0.5, None, 1]])
+        scene["layers"][0].update(palette=["#FFFFFF", "#ab2345", "#000000"], levels=3)
+        script = """
+import assert from "node:assert/strict";
+import { heatmapColor } from "./js/heatmap-color.js";
+globalThis.document={ querySelector:()=>null };
+const { heatColor, svg, validate, StudioError }=await import("./js/imagestudio.js");
+const scene=JSON.parse(process.argv[2]);
+const l=scene.layers[0];
+const expected=["#FFFFFF","#AB2345","#AB2345","none","#000000"];
+const points=l.z[0];
+assert.deepEqual(points.map(v=>heatmapColor(v,l.low,l.high,l.levels,l.palette)),expected);
+assert.deepEqual(points.map(v=>heatColor(v,l.low,l.high,l.levels,l.palette)),expected);
+assert.deepEqual(validate(scene),scene);
+assert.equal(svg(scene),JSON.parse(process.argv[3]));
+assert.equal(heatmapColor(0.5,0,1),"#21918C");
+for(const palette of [null,[],["#112233",null],["#112233","#445566\\n"]]){
+  assert.throws(()=>validate({...scene,layers:[{...l,palette}]}),StudioError);
+}
+"""
+        node_js(script, json.dumps(scene), json.dumps(ui.studio_svg(scene)))
+
     def test_unsafe_or_empty_matrices_are_refused(self):
         for source in ([[True]], [[float("inf")]], [[2 ** 53]], [[1e100]], [[2 ** 1024]], [[1], [1, 2]], [], {"data": []}):
             with self.subTest(source=repr(source)[:30]), self.assertRaises(pysaiyanweboo.StudioError):
@@ -7573,7 +7626,7 @@ class FeatureListTests(unittest.TestCase):
         cli, api = self.full_list(out)
         self.assertEqual(cli["title"], "⌨️ demo.py · 全 2 コマンド")
         self.assertEqual(cli["blocks"][0]["rows"], [["（共通）", "⚙️ --quiet"], ["up", "📣 shout ⚙️ text --style {a,b}"], ["plain", ""]])
-        self.assertEqual(api["title"], "🐍 Python · 全 4 個（__all__）")
+        self.assertEqual(api["title"], "🐍 demo.py · 全 4 個（__all__）")
         self.assertEqual(api["blocks"][0]["rows"], [["🔧 shout()", "Return TEXT in capitals."], ["🧱 Box", "A box."], ["📦 LIMIT", ""], ["↪️ join", ""]])
         self.assertFalse((self.dir / "ran.txt").exists(), "nothing after parse_args runs")
         self.assertEqual(len(self.spec["blocks"][0]["tabs"]), 2, "the given spec is not changed")
@@ -7582,19 +7635,19 @@ class FeatureListTests(unittest.TestCase):
     def test_without_all_public_functions_and_classes_are_listed(self):
         out = ui.add_features(self.spec, self.module('def run():\n    """Go."""\ndef _hidden():\n    pass\nVALUE = 1\n'))
         (api,) = self.full_list(out)
-        self.assertEqual((api["title"], api["blocks"][0]["rows"]), ("🐍 Python · 全 1 個（_ 以外の公開名）", [["🔧 run()", "Go."]]))
+        self.assertEqual((api["title"], api["blocks"][0]["rows"]), ("🐍 demo.py · 全 1 個（_ 以外の公開名）", [["🔧 run()", "Go."]]))
 
     def test_a_cli_without_subcommands_lists_its_options(self):
         text = 'import argparse\np = argparse.ArgumentParser(prog="one")\np.add_argument("--n", type=int, help="count")\np.parse_args()\n'
         (cli,) = self.full_list(ui.add_features(self.spec, self.module(text)))
-        self.assertEqual((cli["title"], cli["blocks"][0]["rows"]), ("⌨️ one · 全 1 オプション", [["--n N", "count"]]))
+        self.assertEqual((cli["title"], cli["blocks"][0]["rows"]), ("⌨️ demo.py · 全 1 オプション", [["--n N", "count"]]))
 
     def test_a_cli_that_cannot_start_or_hangs_still_gets_its_python_list(self):
         for text, timeout in (('import not_installed_anywhere\ndef f():\n    """F."""\n', 30),
                               ('import time\ndef f():\n    """F."""\ntime.sleep(60)\n', 1)):
             with self.subTest(text=text.split("\n")[0]):
                 titles = [s["title"] for s in self.full_list(ui.add_features(self.spec, self.module(text), timeout=timeout))]
-                self.assertEqual(titles, ["🐍 Python · 全 1 個（_ 以外の公開名）"])
+                self.assertEqual(titles, ["🐍 demo.py · 全 1 個（_ 以外の公開名）"])
 
     def test_a_page_without_a_hand_written_list_or_without_tabs_still_gets_it(self):
         spec = {**self.spec, "blocks": [{"type": "tabs", "tabs": [{"label": "🎞 GIF デモ", "blocks": []}]}]}
@@ -7602,7 +7655,7 @@ class FeatureListTests(unittest.TestCase):
         self.assertEqual([t["label"] for t in tabs], ["🎞 GIF デモ", "📚 機能全一覧"])
         flat = ui.add_features({"schema": "web-ui-page/1", "title": "t", "blocks": []}, self.module(self.MODULE))
         self.assertEqual([b["title"] for b in flat["blocks"]],
-                         ["📚 機能全一覧 · ⌨️ demo.py · 全 2 コマンド", "📚 機能全一覧 · 🐍 Python · 全 4 個（__all__）"])
+                         ["📚 機能全一覧 · ⌨️ demo.py · 全 2 コマンド", "📚 機能全一覧 · 🐍 demo.py · 全 4 個（__all__）"])
         with self.assertRaises(ValueError):
             ui.add_features({"title": "no blocks"}, self.module(self.MODULE))
 
@@ -7619,7 +7672,36 @@ class FeatureListTests(unittest.TestCase):
         self.module(self.MODULE.replace('"LIMIT", ', ''))
         twice = ui.add_features(once, self.dir / "demo.py")
         self.assertEqual(len(twice["blocks"][0]["tabs"]), 3)
-        self.assertEqual(self.full_list(twice)[1]["title"], "🐍 Python · 全 3 個（__all__）")
+        self.assertEqual(self.full_list(twice)[1]["title"], "🐍 demo.py · 全 3 個（__all__）")
+
+    def test_several_files_each_keep_their_own_sections(self):
+        other = self.module('def helper():\n    """Help."""\n', name="tools.py")
+        both = ui.add_features(ui.add_features(self.spec, self.module(self.MODULE)), other)
+        self.assertEqual([s["title"] for s in self.full_list(both)],
+                         ["⌨️ demo.py · 全 2 コマンド", "🐍 demo.py · 全 4 個（__all__）", "🐍 tools.py · 全 1 個（_ 以外の公開名）"])
+        self.module(self.MODULE.replace('"LIMIT", ', ''))
+        again = ui.add_features(both, self.dir / "demo.py")              # 🔁 demo.py's sections are replaced, tools.py's stay
+        self.assertEqual([s["title"] for s in self.full_list(again)],
+                         ["🐍 tools.py · 全 1 個（_ 以外の公開名）", "⌨️ demo.py · 全 2 コマンド", "🐍 demo.py · 全 3 個（__all__）"])
+        flat = {"schema": "web-ui-page/1", "title": "t", "blocks": []}
+        flat = ui.add_features(ui.add_features(ui.add_features(flat, self.dir / "demo.py"), other), self.dir / "demo.py")
+        self.assertEqual(len(flat["blocks"]), 3)
+
+    def test_cli_keeps_modules_with_the_same_basename_separate(self):
+        page = self.dir / "guide.json"
+        page.write_text(json.dumps(self.spec), encoding="utf-8")
+        for folder, feature in (("first", "one_marker"), ("second", "two_marker")):
+            (self.dir / folder).mkdir()
+            self.module(f"def {feature}(): pass\n", f"{folder}/tool.py")
+        done = subprocess.run(
+            [sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--page", str(page),
+             "--features", "first/tool.py", "--features", "second/tool.py",
+             "--features", "./first/tool.py"],
+            cwd=self.dir, capture_output=True, text=True, encoding="utf-8", check=False,
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        for value in ("first/tool.py", "second/tool.py", "one_marker()", "two_marker()"):
+            self.assertEqual(done.stdout.count(value), 1, value)
 
     def test_cli_flag(self):
         page = self.dir / "guide.page.json"
@@ -7630,6 +7712,67 @@ class FeatureListTests(unittest.TestCase):
         self.assertIn("⌨️ demo.py · 全 2 コマンド", done.stdout)
         self.assertIn("🔧 shout()", done.stdout)
 
+
+    def test_config_covers_cli_variants_flags_aliases_and_static_api(self):
+        main = self.module(
+            'import argparse, sys\nfrom types import SimpleNamespace\n'
+            'def exported(): pass\n'
+            'tools = SimpleNamespace(run=exported)\n'
+            'parser = argparse.ArgumentParser()\n'
+            'if sys.argv[1:] == ["extra"]:\n'
+            '    sub = parser.add_subparsers()\n'
+            '    child = sub.add_parser("extra", aliases=["ex"])\n'
+            '    child.add_argument("-n", "--number")\n'
+            'else:\n'
+            '    parser.add_argument("--base")\n'
+            'parser.parse_intermixed_args() if not sys.argv[1:] else parser.parse_args()\n'
+            'raise AssertionError("command body executed")\n'
+        )
+        library = self.module(
+            'import documented_dependency_not_installed\n'
+            '__all__ = ["public"]\n'
+            'def public(): pass\n', name="library.py",
+        )
+        with contextlib.chdir(self.dir):
+            sections = ui._feature_config_sections([
+                {"source": main.name, "cli": [[], ["extra"]], "namespaces": True},
+                {"source": library.name},
+            ])
+        self.assertEqual([s["title"] for s in sections], [
+            "⌨️ demo.py · 全 1 オプション",
+            "⌨️ demo.py extra · 全 1 コマンド",
+            "🐍 Python · demo.py · 全 3 個（_ 以外の公開名）",
+            "🐍 Python · library.py · 全 1 個（__all__）",
+        ])
+        self.assertEqual(sections[0]["blocks"][0]["rows"], [["--base BASE", ""]])
+        [[command, description]] = sections[1]["blocks"][0]["rows"]
+        self.assertEqual(command, "extra")
+        self.assertIn("別名: ex", description)
+        self.assertIn("-n", description)
+        self.assertIn("--number", description)
+        self.assertIn(["🔧 tools.run()", ""], sections[2]["blocks"][0]["rows"])
+        self.assertEqual(sections[3]["blocks"][0]["rows"], [["🔧 public()", ""]])
+
+    def test_configured_cli_failure_fails_rendering_even_with_a_public_api(self):
+        page = self.dir / "guide.page.json"
+        page.write_text(json.dumps(self.spec), encoding="utf-8")
+        for text, reason in (
+            ("import documented_dependency_not_installed\ndef still_public(): pass\n", "ModuleNotFoundError"),
+            ("def still_public(): pass\n", "no argparse parser captured"),
+        ):
+            with self.subTest(reason=reason):
+                module = self.module(text)
+                config = self.dir / "features.json"
+                config.write_text(json.dumps([{"source": module.name, "cli": [[]]}]), encoding="utf-8")
+                done = subprocess.run(
+                    [sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--page", str(page),
+                     "--features-config", str(config)],
+                    cwd=self.dir, capture_output=True, text=True, encoding="utf-8",
+                )
+                self.assertNotEqual(done.returncode, 0)
+                self.assertIn(f"feature CLI extraction failed for {module.name}", done.stderr)
+                self.assertIn(reason, done.stderr)
+                self.assertEqual(done.stdout, "")
 
 if __name__ == "__main__":
     unittest.main()
