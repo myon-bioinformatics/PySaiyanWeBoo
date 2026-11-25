@@ -145,14 +145,16 @@
            {
             "id": "presets",
             "title": "📐 レイアウトの候補",
-            "command": "python3 -S pysaiyanweboo.py --example layout-presets | head -12",
+            "command": "python3 -S pysaiyanweboo.py --example layout-presets | sed -n '1,12p'",
             "expect": "{\n  \"schema\": \"web-ui-layout-presets/1\",\n  \"default\": \"grid8\",\n…",
+            "expect_stdout_contains": "{\n  \"schema\": \"web-ui-layout-presets/1\",\n  \"default\": \"grid8\",",
             "run": true
            },
            {
             "id": "component",
             "title": "🧩 部品をひとつ",
-            "command": "python3 -S pysaiyanweboo.py --component gaze-avatar --part json | head -c 200",
+            "command": "python3 -S pysaiyanweboo.py --component gaze-avatar --part json | { head -c 200 && cat >/dev/null; }",
+            "expect_stdout_contains": "{\"html\":",
             "run": true
            }
           ]
