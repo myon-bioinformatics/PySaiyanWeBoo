@@ -12,7 +12,7 @@ jobs:
   changes:
     permissions:
       contents: read
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-change-detection.yml@fbf433b296ec047f1c9acdf4d5d12c81ff7f59e8
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-change-detection.yml@5ed0ff929992d04c5d21c75f96466501b898f21e
 
   gradio-dom:
     if: needs.changes.outputs.product_changed == 'true'

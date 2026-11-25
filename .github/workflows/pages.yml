@@ -15,10 +15,10 @@ permissions:
 
 jobs:
   deploy:
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@fb4a58060e0f28e5336752d8e33d827545c1ce53
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@5ed0ff929992d04c5d21c75f96466501b898f21e
     with:
       artifact_path: .
-      # 📚 index.html stays the front page (the UI); the usage guide with 📚 機能全一覧 goes under guide/
+      # 📚 index.html stays the front page (the UI); the usage guide with the full 🧩 機能一覧 goes under guide/
       guide_page: docs/guide.page.json
       guide_dir: guide
       guide_brand: PySaiyanWeBoo
