@@ -18340,8 +18340,8 @@ def _example_cards(base: str = "./") -> str:
     """The example pages as cards; ``base`` is the way to examples/ (``./examples/`` from the front page)."""
     return ('<section class="ui-grid"><article class="ui-card"><h2>Components</h2><p>Tokens, panels, cards, tags, controls and output surfaces.</p>'
             '<span class="ui-tag">modern</span> <span class="ui-tag">static</span></article>'
-            '<article class="ui-card"><h2>🌍 World · 🤖🔁 Stubs</h2><p>Moved to the portfolio: <a href="https://myon-bioinformatics.github.io/tools/demos/">'
-            '🧭 Tools &amp; Demos</a> (the world, the school, the parallel cities, the MCP and API stubs).</p></article>'
+            '<article class="ui-card"><h2>🌍 World</h2><p>Built in the portfolio on these parts: <a href="https://myon-bioinformatics.github.io/tools/demos/world.html">'
+            '🌍 the world</a>, the school, the parallel cities and the camera (the 🤖🔁 stubs are in its <a href="https://myon-bioinformatics.github.io/#tools">🧰 Tools</a>).</p></article>'
             '<article class="ui-card"><h2>Themes</h2><p><a href=\"' + base + 'github-like.html\">GitHub-like theme</a> · <a href=\"' + base + 'parts.html\">Parts × themes × layouts</a>: every block under every theme, the regression baseline.</p></article>'
             '<article class="ui-card"><h2>App shell</h2><p><a href=\"' + base + 'showcase.html\">Showcase</a>: header, rail or bottom bar, sections.</p></article>'
             '<article class="ui-card"><h2>Clipboard shelf</h2><p><a href=\"' + base + 'clipboard-shelf.html\">Shelf and prompt workbench</a>: paste, filter, copy a bundle.</p></article>'
@@ -18806,12 +18806,12 @@ def _index_page() -> str:
          "link": "Open the parts", "html": f'<section class="ui-panel" id="parts"><h2>🧩 Parts</h2>{_example_cards("./examples/")}</section>'},
         {"id": "curl", "emoji": "📋", "title": "Request draft", "text": "Paste a curl command: it is read in the page and never run.",
          "link": "Open the draft", "html": curl_panel_html()},
-        {"id": "demos", "emoji": "🧭", "title": "Tools & Demos", "text": "🌍 The world, 🏫 the school, 🗼 the parallel cities and 🤖🔁 the stubs: built on these parts, "
-         "they live in the portfolio.", "link": "Open the demos",
-         "html": '<section class="ui-panel" id="demos"><h2>🧭 Tools &amp; Demos</h2><p class="ui-muted">Built on these parts and themes, they live in the portfolio now.</p>'
+        {"id": "demos", "emoji": "🌍", "title": "World", "text": "🌍 The world, 🏫 the school, 🗼 the parallel cities and 🎬 the camera: built on these parts "
+         "and themes, in the portfolio.", "link": "Open the world",
+         "html": '<section class="ui-panel" id="demos"><h2>🌍 World</h2><p class="ui-muted">Built on these parts and themes, in the portfolio '
+                 '(its 🧰 Tools has the 🤖🔁 stubs).</p>'
                  '<p class="ui-links">' + " · ".join(f'<a href="{demos}{href}">{label}</a>' for label, href in (
-                     ("🌍 World", "world.html"), ("🏫 School", "school.html"), ("🗼 Parallel cities", "cities.html"), ("🎬 Camera", "world-shots.html"),
-                     ("🤖 MCP stub", "mcp-stub.html"), ("🔁 API stub", "api-stub.html"))) + "</p></section>"},
+                     ("🌍 World", "world.html"), ("🏫 School", "school.html"), ("🗼 Parallel cities", "cities.html"), ("🎬 Camera", "world-shots.html"))) + "</p></section>"},
         {"id": "guide", "emoji": "🧩", "title": "機能一覧", "text": "Every CLI option and public name, read from the code.",
          "link": "Open the guide", "html": '<section class="ui-panel" id="guide"><h2>🧩 機能一覧</h2><p class="ui-muted">The usage guide lists '
                                            'every option and every public name of pysaiyanweboo.py, read from the code at build time.</p>'

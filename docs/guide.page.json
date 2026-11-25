@@ -130,19 +130,64 @@
      ]
     },
     {
+     "label": "🔬 検証ガイド",
+     "blocks": [
+      {
+       "type": "runbook",
+       "id": "verify",
+       "books": [
+        {
+         "label": "⚡ そのまま",
+         "intro": "📋 コピーして手元で試し、結果を記録できます。🤖 の手順は、Pages の公開で実際に動かした結果も載ります。",
+         "runbook": {
+          "key": "pysaiyanweboo/verify",
+          "steps": [
+           {
+            "id": "presets",
+            "title": "📐 レイアウトの候補",
+            "command": "python3 -S pysaiyanweboo.py --example layout-presets | head -12",
+            "expect": "{\n  \"schema\": \"web-ui-layout-presets/1\",\n  \"default\": \"grid8\",\n…",
+            "run": true
+           },
+           {
+            "id": "component",
+            "title": "🧩 部品をひとつ",
+            "command": "python3 -S pysaiyanweboo.py --component gaze-avatar --part json | head -c 200",
+            "run": true
+           }
+          ]
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
      "label": "🎞 GIF デモ",
      "blocks": [
       {
        "type": "text",
-       "text": "🎞 動く見本は表紙（テーマの切り替え・ランダムな壁）とポートフォリオの 🧭 Tools & Demos にあります。",
+       "text": "🎞 動く見本は表紙（テーマの切り替え・ランダムな壁）と、この部品とテーマで組んだ 🌍 ワールド（ポートフォリオで作る）にあります。",
        "muted": true
       },
       {
        "type": "links",
        "items": [
         {
-         "label": "🧭 Tools & Demos",
-         "href": "https://myon-bioinformatics.github.io/tools/demos/"
+         "label": "🌍 旅",
+         "href": "https://myon-bioinformatics.github.io/tools/demos/world.html"
+        },
+        {
+         "label": "🏫 スクール",
+         "href": "https://myon-bioinformatics.github.io/tools/demos/school.html"
+        },
+        {
+         "label": "🗼 パラレルシティ",
+         "href": "https://myon-bioinformatics.github.io/tools/demos/cities.html"
+        },
+        {
+         "label": "🎬 カメラ",
+         "href": "https://myon-bioinformatics.github.io/tools/demos/world-shots.html"
         }
        ]
       }
