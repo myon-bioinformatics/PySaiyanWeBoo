@@ -1483,6 +1483,100 @@ class ShelfBrowserTests(unittest.TestCase):
             server.server_close()
 
 
+class ChatBrowserTests(unittest.TestCase):
+    """💬 chat_html() + chat.js in Chromium on a phone: Enter sends (Shift+Enter and an IME's Enter do not), chips send, the page's responder
+    answers (streamed, then HTML; an error becomes ⚠️), and 😀＋ reactions toggle like Python's chat_react with a ui-chat-react event for each
+    change. ``PSWB_GIFS`` keeps component-chat.gif."""
+
+    def test_send_answer_stream_and_react_on_a_phone(self):
+        from pysaiyanweboo import chat_react, component_document
+        page_html = component_document('chat', chips=('/help', ('🎨 ascii', '/ascii HI')), placeholder='💬 /help', ready=False,
+                                       status='⏳ bot', document_title='💬 chat')
+        server, origin = serve_pages({'chat.html': page_html})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={'width': 392, 'height': 760})
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/chat.html')
+                    cam = ui.GifCamera(page)
+                    send, box = page.locator('[data-chat-send]'), page.locator('[data-chat-input]')
+                    expect(send).to_be_disabled()
+                    expect(send).to_have_text('⏳')
+                    cam.hold(400)
+                    # the page connects its bot: echo as HTML, /stream writes through reply first, /boom throws
+                    page.evaluate("""() => {
+                      window.reacted = [];
+                      document.addEventListener('ui-chat-react', e => window.reacted.push([e.detail.id, e.detail.emoji, e.detail.who, e.detail.on]));
+                      const [chat] = webUiChat.bindChat(document, {respond: async (text, reply) => {
+                        if (text === '/boom') throw new Error('boom');
+                        if (text === '/stream') { reply.text('…1'); await new Promise(r => setTimeout(r, 50)); reply.text('…12'); return '<b>done</b>'; }
+                        return '<b>' + text.replace(/[<&]/g, '') + '</b>';
+                      }});
+                      chat.status('✅ bot'); chat.ready();
+                    }""")
+                    self.assertEqual(page.evaluate('webUiChat.bindChat(document).length'), 1)    # bound once, the same controller back
+                    expect(send).to_have_text('➤')
+                    box.fill('hello')
+                    box.press('Enter')
+                    expect(page.locator('.ui-chat-you .ui-chat-body')).to_have_text(['hello'])
+                    expect(page.locator('.ui-chat-bot .ui-chat-body b')).to_have_text(['hello'])
+                    cam.hold(400)
+                    box.fill('one')
+                    box.press('Shift+Enter')
+                    box.press_sequentially('two')
+                    expect(box).to_have_value('one\ntwo')
+                    page.evaluate("""() => { const b = document.querySelector('[data-chat-input]');
+                      b.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', isComposing: true, bubbles: true, cancelable: true})); }""")
+                    expect(page.locator('.ui-chat-you')).to_have_count(1)                     # composing: not sent
+                    box.press('Enter')
+                    expect(page.locator('.ui-chat-you .ui-chat-body').last).to_have_text('one\ntwo')
+                    page.locator('[data-chat-say="/ascii HI"]').click()
+                    expect(page.locator('.ui-chat-you .ui-chat-body').last).to_have_text('/ascii HI')
+                    box.fill('/stream')
+                    box.press('Enter')
+                    expect(page.locator('.ui-chat-bot .ui-chat-body').last.locator('b')).to_have_text('done')
+                    box.fill('/boom')
+                    box.press('Enter')
+                    expect(page.locator('.ui-chat-bot .ui-chat-body').last).to_have_text('⚠️ boom')
+                    cam.hold(400)
+                    # 😀＋ on the first answer: 👍 then 🎉, 👍 again takes it back; a relay's 👍 from someone else counts too
+                    first = page.locator('.ui-chat-bot').first
+                    first.locator('[data-chat-react]').click()
+                    expect(first.locator('[data-chat-pick]')).to_have_text(['👍', '❤️', '😂', '🎉', '🤔', '👀'])
+                    cam.hold(300)
+                    first.locator('[data-chat-pick="👍"]').click()
+                    expect(first.locator('[data-chat-picker]')).to_be_hidden()
+                    first.locator('[data-chat-react]').click()
+                    first.locator('[data-chat-pick="🎉"]').click()
+                    expect(first.locator('[data-chat-reaction]')).to_have_text(['👍 1', '🎉 1'])
+                    expect(first.locator('[data-chat-reaction="👍"]')).to_have_attribute('aria-pressed', 'true')
+                    cam.hold(400)
+                    page.evaluate("() => { const node = document.querySelector('.ui-chat-bot'); document.querySelector('[data-ui-chat]').webUiChat.react(node, '👍', 'alice'); }")
+                    expect(first.locator('[data-chat-reaction="👍"]')).to_have_text('👍 2')
+                    first.locator('[data-chat-reaction="👍"]').click()
+                    expect(first.locator('[data-chat-reaction]')).to_have_text(['👍 1', '🎉 1'])
+                    expect(first.locator('[data-chat-reaction="👍"]')).to_have_attribute('aria-pressed', 'false')
+                    cam.hold(500)
+                    bot_id = first.get_attribute('data-chat-id')
+                    self.assertEqual(page.evaluate('window.reacted'), [[bot_id, '👍', 'me', True], [bot_id, '🎉', 'me', True],
+                                                                      [bot_id, '👍', 'alice', True], [bot_id, '👍', 'me', False]])
+                    state = chat_react(chat_react(chat_react(chat_react({}, '👍'), '🎉'), '👍', 'alice'), '👍')
+                    self.assertEqual(page.evaluate("document.querySelector('.ui-chat-bot').chatReactions"), state)
+                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)
+                    self.assertEqual(errors, [])
+                    gif = ui.encode_gif(cam.shots)
+                    self.assertTrue(gif.startswith(b'GIF89a'))
+                    if os.environ.get('PSWB_GIFS'):
+                        ui.gif_targets_from(os.environ['PSWB_GIFS'], ['component-chat'])['component-chat'].write_bytes(gif)
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
 class DoorBrowserTests(unittest.TestCase):
     """Door-to-Door in Chromium: the page's seeded draw, notation and pull-down equal Python's, and the pull-down really goes there."""
 

@@ -5251,6 +5251,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "photo": {"html": "photo_html", "css": ("photo.css",), "js": ("photo.js",)},
     "studio": {"html": "studio_html", "css": ("studio.css",), "js": ("composition.js", "studio-audio.js")},
     "source": {"html": "source_panel_html", "css": ("source.css",), "js": ("source.js",)},
+    "chat": {"html": "chat_html", "css": ("chat.css",), "js": ("chat.js",)},
     "showcase": {"html": "showcase_html", "css": ("showcase_css",), "js": ("ui.js", "records.js"), "mount": "bindTheme();bindToggles();bindCopy();", "spec": "showcase_validate"},
     "tempclip": {"html": "tempclip_html", "css": ("shelf.css",), "js": ("shelf.js",)},
     "curl": {"html": "curl_panel_html", "css": (), "js": ("curl.js",)},
@@ -7085,6 +7086,133 @@ def door_document(spec: Any, *, theme: str = "modern") -> str:
     """A single-file page for a door."""
     return render_document(trusted_html='<main class="ui-page">' + door_html(spec) + "</main>" + module_script(_JS["door.js"]), title="Door-to-Door",
                            theme=theme, css=bundled_css())
+
+
+# --- 💬 Chat: bubbles in a log, a box that sends on Enter, chips that send their text, and emoji reactions on every bubble ----------------------
+# The answer is the page's own (a bot, a relay, a model): ``webUiChat.bindChat(document, {respond})``. Reactions stay in the page (a reload clears
+# them, nothing is sent); each change is a ``ui-chat-react`` event, so a relay can share it and call ``chatReact`` back with another ``who``.
+# ``chat_react`` is the reference; chat.js's ``chatReact`` must agree.
+def chat_react(state: dict[str, list[str]] | None, emoji: str, who: str = "me", on: bool | None = None) -> dict[str, list[str]]:
+    """😀 One reaction on one chat message: ``state`` maps an emoji to who reacted with it (one person may use several emojis).
+    ``on=None`` toggles ``who`` on ``emoji``; ``True`` / ``False`` set it. Returns a new state in first-use order, with no emoji left empty."""
+    if type(emoji) is not str or not emoji.strip() or len(emoji) > 16:
+        raise ValueError("a reaction is one emoji (1 to 16 characters)")
+    if type(who) is not str or not who or len(who) > 64:
+        raise ValueError("who is 1 to 64 characters")
+    state = state or {}
+    if not isinstance(state, dict) or not all(isinstance(k, str) and isinstance(v, list) for k, v in state.items()):
+        raise ValueError("state maps an emoji to a list of people")
+    next_state: dict[str, list[str]] = {}
+    for key, people in [*state.items(), *([] if emoji in state else [(emoji, [])])]:
+        people = list(dict.fromkeys(people))
+        if key == emoji:
+            want = (who not in people) if on is None else bool(on)
+            people = people if (who in people) == want else ([*people, who] if want else [p for p in people if p != who])
+        if people:
+            next_state[key] = people
+    return next_state
+
+
+def chat_html(*, chat_id: str = "chat", placeholder: str = "", chips: Sequence[str | tuple[str, str]] = (),
+              reactions: Sequence[str] = ("👍", "❤️", "😂", "🎉", "🤔", "👀"), ready: bool = True, status: str = "") -> str:
+    """💬 A chat as semantic HTML for chat.js: a log (``role=log``), chips that send their text (``"text"`` or ``("label", "text")``),
+    a box that sends on Enter (Shift+Enter: a new line; never while an IME composes) and a status line. ``reactions`` are the emojis
+    😀＋ offers on each bubble. ``ready=False`` keeps ➤ off (⏳) until the page calls ``ready()`` (a bot still loading). Everything is escaped."""
+    if not re.fullmatch(r"[A-Za-z][\w-]{0,63}", chat_id):
+        raise ValueError("chat_id is a letter, then up to 63 letters, digits, _ or -")
+    picks = [chat_react({}, e) and e for e in reactions]      # each one a valid reaction
+    if not picks or len(picks) != len(set(picks)):
+        raise ValueError("reactions are one or more distinct emojis")
+    pairs = [(c, c) if isinstance(c, str) else tuple(c) for c in chips]
+    if not all(len(pair) == 2 and all(isinstance(x, str) and x for x in pair) for pair in pairs):
+        raise ValueError("a chip is a text, or a (label, text) pair")
+    chip_html = "".join(f'<button class="ui-button" type="button" data-chat-say="{escape(text, quote=True)}">{escape(label)}</button>' for label, text in pairs)
+    data = escape(json.dumps(picks, ensure_ascii=False), quote=True)
+    off = "" if ready else " disabled"
+    return (f'<section class="ui-chat" id="{chat_id}" data-ui-chat data-chat-reactions="{data}">'
+            f'<div class="ui-chat-log" id="{chat_id}-log" role="log" aria-live="polite" data-chat-log></div>'
+            f'<p class="ui-chat-chips" data-chat-chips>{chip_html}</p>'
+            f'<form class="ui-chat-form" data-chat-form><textarea class="ui-input" id="{chat_id}-input" rows="2" aria-label="💬 message"'
+            f' placeholder="{escape(placeholder, quote=True)}" data-chat-input></textarea>'
+            f'<button class="ui-button" type="submit" aria-label="send" data-chat-send{off}>{"➤" if ready else "⏳"}</button></form>'
+            f'<p class="ui-muted" role="status" data-chat-status>{escape(status)}</p></section>')
+
+
+_CSS["chat.css"] = ("@layer components{.ui-chat{display:flex;flex-direction:column;gap:8px}"
+                    ".ui-chat-log{display:flex;flex-direction:column;gap:8px;height:48vh;min-height:240px;overflow:auto;padding:8px;"
+                    "border:1px solid var(--ui-border);border-radius:var(--ui-radius)}"
+                    ".ui-chat-msg{max-width:min(100%,720px);padding:8px 16px;border-radius:var(--ui-radius);overflow-wrap:anywhere}"
+                    ".ui-chat-msg pre{overflow:auto;max-width:100%;padding:8px;border-radius:var(--ui-radius);background:var(--ui-panel)}"
+                    ".ui-chat-msg table{display:block;overflow:auto;max-width:100%}.ui-chat-msg :is(td,th){white-space:nowrap}"
+                    ".ui-chat-you{align-self:flex-end;background:var(--ui-panel)}.ui-chat-you .ui-chat-body{white-space:pre-wrap}"
+                    ".ui-chat-bot{align-self:flex-start;border:1px solid var(--ui-border)}"
+                    ".ui-chat-reactions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}"
+                    ".ui-chat-reactions button{font:inherit;min-height:32px;padding:0 8px;border:1px solid var(--ui-border);border-radius:16px;"
+                    "background:transparent;color:inherit;cursor:pointer}"
+                    ".ui-chat-reaction[aria-pressed=true]{border-color:var(--ui-accent);background:var(--ui-panel)}"
+                    ".ui-chat-react{opacity:.64}.ui-chat-msg:hover .ui-chat-react,.ui-chat-react:focus-visible,.ui-chat-react[aria-expanded=true]{opacity:1}"
+                    ".ui-chat-picker{display:inline-flex;flex-wrap:wrap;gap:8px}.ui-chat-picker[hidden]{display:none}"
+                    ".ui-chat-form{display:flex;gap:8px;position:sticky;bottom:0;padding:8px 0;background:var(--ui-bg)}"
+                    ".ui-chat-form textarea{flex:1;min-height:48px;font:inherit}"
+                    ".ui-chat-chips{display:flex;flex-wrap:wrap;gap:8px;margin:0}.ui-chat-chips:empty{display:none}}")
+
+
+_JS["chat.js"] = r"""/* 💬 web-ui chat: bubbles in a log, a box that sends on Enter (Shift+Enter: a new line; never while an IME composes), chips that send
+   their text, emoji reactions on every bubble (memory only; each change is a ui-chat-react event). The answer is the page's:
+   bindChat(root, {respond}) where respond(text, reply) returns trusted HTML (or a Promise of it), or writes through reply.text / reply.html.
+   chatReact is pysaiyanweboo.chat_react's twin. */
+export function chatReact(state,emoji,who="me",on=null){
+ if(typeof emoji!=="string"||!emoji.trim()||[...emoji].length>16)throw new Error("a reaction is one emoji (1 to 16 characters)");
+ if(typeof who!=="string"||!who||[...who].length>64)throw new Error("who is 1 to 64 characters");
+ const next={},entries=Object.entries(state||{});if(!entries.some(([k])=>k===emoji))entries.push([emoji,[]]);
+ for(let [key,people] of entries){people=[...new Set(people)];
+  if(key===emoji){const has=people.includes(who),want=on===null?!has:!!on;if(has!==want)people=want?[...people,who]:people.filter(p=>p!==who)}
+  if(people.length)next[key]=people}
+ return next}
+const make=(tag,props={},data={})=>{const node=Object.assign(document.createElement(tag),props);Object.assign(node.dataset,data);return node};
+function paint(chat,node){const bar=node.querySelector("[data-chat-reactions]"),picker=bar.querySelector("[data-chat-picker]"),plus=bar.querySelector("[data-chat-react]");
+ bar.querySelectorAll("[data-chat-reaction]").forEach(b=>b.remove());
+ for(const [emoji,people] of Object.entries(node.chatReactions||{})){
+  const b=make("button",{type:"button",className:"ui-chat-reaction",textContent:emoji+" "+people.length,title:people.join(", ")},{chatReaction:emoji});
+  b.setAttribute("aria-pressed",String(people.includes("me")));bar.insertBefore(b,plus)}
+ picker.replaceChildren(...chat.reactions.map(e=>make("button",{type:"button",textContent:e},{chatPick:e})))}
+function react(chat,node,emoji,who="me",on=null){const before=node.chatReactions||{},after=chatReact(before,emoji,who,on);node.chatReactions=after;paint(chat,node);
+ const on_=(after[emoji]||[]).includes(who);if(on_!==(before[emoji]||[]).includes(who))
+  chat.box.dispatchEvent(new CustomEvent("ui-chat-react",{bubbles:true,detail:{id:node.dataset.chatId,emoji,who,on:on_,state:after,text:node.querySelector(".ui-chat-body").textContent}}));
+ return after}
+function makeChat(box){const $=s=>box.querySelector(s),log=$("[data-chat-log]"),form=$("[data-chat-form]"),input=$("[data-chat-input]"),send=$("[data-chat-send]"),line=$("[data-chat-status]");
+ const chat={box,respond:null,reactions:JSON.parse(box.dataset.chatReactions||"[]"),count:0,busy:false};
+ const scroll=()=>{log.scrollTop=log.scrollHeight};
+ chat.bubble=(who,{html,text}={})=>{const node=make("div",{className:"ui-chat-msg ui-chat-"+who},{chatWho:who,chatId:String(++chat.count)}),body=make("div",{className:"ui-chat-body"});
+  if(text!==undefined)body.textContent=text;else body.innerHTML=html??"";
+  const bar=make("div",{className:"ui-chat-reactions"},{chatReactions:""}),plus=make("button",{type:"button",className:"ui-chat-react",textContent:"😀＋"},{chatReact:""});
+  plus.setAttribute("aria-label","react");plus.setAttribute("aria-expanded","false");
+  const picker=make("span",{className:"ui-chat-picker",hidden:true},{chatPicker:""});bar.append(plus,picker);node.append(body,bar);node.chatReactions={};
+  paint(chat,node);log.append(node);scroll();return node};
+ chat.react=(node,emoji,who="me",on=null)=>react(chat,node,emoji,who,on);
+ chat.status=text=>{line.textContent=text};
+ chat.ready=(on=true)=>{send.disabled=!on;send.textContent=on?"➤":"⏳";box.dataset.chatReady=String(!!on)};
+ chat.say=async text=>{text=String(text??"");if(!text.trim()||send.disabled||chat.busy)return null;chat.bubble("you",{text});
+  box.dispatchEvent(new CustomEvent("ui-chat-say",{bubbles:true,detail:{text}}));if(!chat.respond)return null;
+  chat.busy=true;send.disabled=true;const node=chat.bubble("bot",{text:"⏳"}),body=node.querySelector(".ui-chat-body");
+  const reply={node,text:t=>{body.textContent=t;scroll()},html:h=>{body.innerHTML=h;scroll()}};
+  await new Promise(done=>setTimeout(done,0));   // paint the question before a slow answer blocks
+  try{const out=await chat.respond(text,reply);if(out!==undefined&&out!==null)reply.html(String(out))}catch(error){reply.text("⚠️ "+(error?.message??error))}
+  chat.busy=false;send.disabled=false;input.focus();return node};
+ form.addEventListener("submit",e=>{e.preventDefault();const text=input.value;if(!text.trim()||send.disabled||chat.busy)return;input.value="";chat.say(text)});
+ input.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){e.preventDefault();form.requestSubmit()}});
+ box.addEventListener("click",e=>{const chip=e.target.closest("[data-chat-say]");if(chip&&box.contains(chip)){chat.say(chip.dataset.chatSay);return}
+  const node=e.target.closest(".ui-chat-msg");if(!node)return;const plus=e.target.closest("[data-chat-react]"),pick=e.target.closest("[data-chat-pick]"),has=e.target.closest("[data-chat-reaction]");
+  const picker=node.querySelector("[data-chat-picker]"),toggle=node.querySelector("[data-chat-react]");
+  if(plus){const open=picker.hidden;picker.hidden=!open;toggle.setAttribute("aria-expanded",String(open));return}
+  if(pick){react(chat,node,pick.dataset.chatPick);picker.hidden=true;toggle.setAttribute("aria-expanded","false");return}
+  if(has)react(chat,node,has.dataset.chatReaction)});
+ box.dataset.chatBound="";if(!send.disabled)box.dataset.chatReady="true";return chat}
+export function bindChat(root=document,{respond,reactions}={}){return[...root.querySelectorAll("[data-ui-chat]")].map(box=>{
+ const chat=box.webUiChat||(box.webUiChat=makeChat(box));if(respond)chat.respond=respond;if(reactions)chat.reactions=[...reactions];return chat})}
+globalThis.webUiChat={chatReact,bindChat};
+if(typeof document!=="undefined")bindChat();
+"""
 
 
 # --- Playground: the Counter Playground, the hold-to-repeat button and the Irony generator --------------------------------------------

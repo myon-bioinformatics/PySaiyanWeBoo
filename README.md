@@ -723,11 +723,11 @@ boundary](docs/python-controls.md).
 ### Components from Python, in this repository or another
 
 `COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `coordinates`,
-`door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `curl`, `showcase`,
+`door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `chat`, `curl`, `showcase`,
 `front`, `repository-diagnostics`, `table`, `steps`, `scroll`, `stage`, `pager`; `components()` lists them as data), and two calls wrap them:
 
 ```python
-import pysaiyanweboo                            # the vendored copy (vendor/pysaiyanweboo.py) in another repository
+import pysaiyanweboo                            # in another repository: pinned by commit in pyproject.toml (uv)
 parts = pysaiyanweboo.component_parts("dial", "volume", maximum=11, label="Volume")   # {"html", "css", "js"}: place them where your page wants them
 page = pysaiyanweboo.component_document("dial", "volume", maximum=11, document_title="Volume")  # or one single-file page: bundled_css() + the stylesheet, the HTML, the module inline
 ```
@@ -738,6 +738,13 @@ components that take one (`door`, `source`, `showcase`); keyword arguments reach
 From Node or a shell, the same calls by name: `python -S pysaiyanweboo.py --component dial --set name=volume --set maximum=11 --part json` prints the three as
 JSON (`--part page|html|css|js|json`, `--spec FILE` or `--spec -` for a spec, `--set KEY=VALUE` with JSON values, `--component list` for the table);
 from Node, `require("./vendor/py_launch.cjs").run("vendor/pysaiyanweboo.py", ["--component", ...], {noSite: true}).stdout`.
+
+💬 `chat` is a log of bubbles, a box that sends on Enter (Shift+Enter: a new line; never while an IME composes), chips that send their text and 😀＋ emoji
+reactions on every bubble. The answer is the page's own: `webUiChat.bindChat(document, {respond})[0]` gives the controller (`say`, `bubble`, `ready`,
+`status`, `react`), and `respond(text, reply)` returns trusted HTML or writes through `reply.text()` / `reply.html()` while it streams. Reactions stay in
+the page (`chat_react` in Python is the rule, `chatReact` in chat.js its twin) and every change is a `ui-chat-react` event, for a relay to share.
+
+![💬 chat: Enter sends, the answer streams, 😀＋ reactions toggle](docs/evidence/component-chat.gif)
 `css_source(name)` and `js_source(name)` stay the raw sources by file name; `write_js()` still writes the modules out for pages that link files (`python -S pysaiyanweboo.py --css-bundle` the stylesheets).
 mcp-toolcall-lab is the model consumer: it vendors `pysaiyanweboo.py` through the parent repository's `vendor_sync.py` (`vendor-consumers.json`, `vendor.lock.json`)
 and builds its Pokémon panel from `source_panel_html(spec)` + `css_source("source.css")` + `js_source("source.js")`; `component_parts("source", spec)` is the

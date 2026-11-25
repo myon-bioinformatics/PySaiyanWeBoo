@@ -658,6 +658,59 @@ class CompositionTests(unittest.TestCase):
 DOOR = pysaiyanweboo.example_data("door")
 
 
+class ChatTests(unittest.TestCase):
+    """💬 chat_html() and chat_react(): the markup chat.js binds, escaped and checked, and the reaction rule chat.js's chatReact repeats."""
+
+    def test_reactions_toggle_set_and_keep_first_use_order(self):
+        react = pysaiyanweboo.chat_react
+        self.assertEqual(react({}, "👍"), {"👍": ["me"]})
+        self.assertEqual(react({"👍": ["me"]}, "👍"), {})                                     # toggled off: no empty emoji left
+        self.assertEqual(react({"👍": ["a"], "🎉": ["me"]}, "👍"), {"👍": ["a", "me"], "🎉": ["me"]})   # one person, several emojis
+        self.assertEqual(react({"👍": ["me"]}, "👍", on=True), {"👍": ["me"]})                 # set, not toggled
+        self.assertEqual(react({"👍": ["a"]}, "👍", on=False), {"👍": ["a"]})
+        self.assertEqual(react({"👍": ["a", "a"]}, "🎉", "b"), {"👍": ["a"], "🎉": ["b"]})       # duplicates fold
+        state = {"👍": ["a"]}
+        react(state, "👍")
+        self.assertEqual(state, {"👍": ["a"]}, "the state passed in is not changed")
+        for bad in (("", "me"), (" ", "me"), ("x" * 17, "me"), ("👍", ""), ("👍", "x" * 65), (1, "me"), ("👍", None)):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                react({}, *bad)
+        with self.assertRaises(ValueError):
+            react({"👍": "me"}, "👍")
+
+    def test_chat_js_reacts_exactly_like_python(self):
+        rng = random.Random(20261125)
+        emojis, people = ("👍", "❤️", "😂", "🎉", "🤔", "👀"), ("me", "alice", "bob")
+        cases, state = [], {}
+        for _ in range(240):
+            emoji, who, on = rng.choice(emojis), rng.choice(people), rng.choice((None, True, False))
+            after = pysaiyanweboo.chat_react(state, emoji, who, on)
+            cases.append([state, emoji, who, on, after])
+            state = after if rng.random() < 0.9 else {}
+        script = ('import {chatReact} from "./js/chat.js";const cases=JSON.parse(process.argv[2]);'
+                  'console.log(JSON.stringify(cases.map(([s,e,w,o])=>chatReact(s,e,w,o))))')
+        got = json.loads(node_js(script, json.dumps(cases, ensure_ascii=False)).stdout)
+        self.assertEqual(got, [c[4] for c in cases])
+
+    def test_markup_is_escaped_checked_and_a_component(self):
+        html = pysaiyanweboo.chat_html(chat_id="talk", placeholder='<b>"x"</b>', chips=("/help", ("🎨 <ascii>", '/ascii "HI"')),
+                                       ready=False, status="<⏳>")
+        for hook in ('data-ui-chat', 'data-chat-log', 'role="log"', 'data-chat-form', 'data-chat-input', 'data-chat-send disabled>⏳',
+                     'data-chat-status>&lt;⏳&gt;', 'placeholder="&lt;b&gt;&quot;x&quot;&lt;/b&gt;"', 'data-chat-say="/ascii &quot;HI&quot;">🎨 &lt;ascii&gt;',
+                     'id="talk-input"', 'data-chat-reactions="[&quot;👍&quot;'):
+            self.assertIn(hook, html)
+        self.assertIn("data-chat-send>➤", pysaiyanweboo.chat_html())
+        for bad in ({"chat_id": "1x"}, {"chat_id": "a b"}, {"chips": ("",)}, {"chips": (("a",),)}, {"chips": ((1, "x"),)},
+                    {"reactions": ()}, {"reactions": ("👍", "👍")}, {"reactions": ("",)}):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                pysaiyanweboo.chat_html(**bad)
+        self.assertEqual(pysaiyanweboo.components()["chat"], {"html": "chat_html", "css": ["chat.css"], "js": ["chat.js"], "mount": "", "classic": False})
+        page = pysaiyanweboo.component_document("chat", chips=("/help",))
+        self.assertIn("globalThis.webUiChat", page)
+        self.assertIn(".ui-chat-reaction[aria-pressed=true]", page)
+        self.assertIn("chat.js", pysaiyanweboo.js_modules())
+
+
 class DoorTests(unittest.TestCase):
     """Page emoji, the go/return notation, the seeded draw and the pull-down."""
 
