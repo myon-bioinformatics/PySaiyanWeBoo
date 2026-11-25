@@ -4134,6 +4134,58 @@ class ImageStudioTests(unittest.TestCase):
         self.assertIsNone(layer["z"][0][1])
         self.assertEqual(pysaiyanweboo.studio_validate(scene), scene, "a scene made from a matrix is already valid")
 
+    def test_optional_heatmap_palette_round_trips_and_renders_through_cli(self):
+        old = ui.studio_heatmap_scene([[0, 0.5, None, 1]])
+        expected = ["#0000FF", "#800080", "none", "#FF0000"]
+        # Reversed colors in the order DRAgoWing would put them into the scene.
+        scene = copy.deepcopy(old)
+        scene["layers"][0]["palette"] = ["#0000ff", "#ff0000"]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "scene.json"
+            path.write_text(json.dumps(scene), encoding="utf-8")
+            result = pswb_cli("--studio-render", path, "--format", "json", cwd=ROOT)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), scene)
+            result = pswb_cli("--studio-render", path, cwd=ROOT)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(re.findall(r'fill="([^"]+)"><title>', result.stdout), expected)
+        self.assertNotIn("palette", ui.studio_validate(old)["layers"][0])
+        self.assertEqual(re.findall(r'fill="([^"]+)"><title>', ui.studio_svg(old)),
+                         ["#440154", "#21918C", "none", "#FDE725"])
+
+    def test_bad_heatmap_palettes_are_rejected(self):
+        for palette in (None, "#112233", [], ["#112233"], ["#112233"] * 257,
+                        ["#112233", "none"], ["#112233", "#445566\n"], ["#112233", 0]):
+            with self.subTest(palette=repr(palette)[:60]):
+                scene = ui.studio_heatmap_scene([[0]])
+                scene["layers"][0]["palette"] = palette
+                with self.assertRaisesRegex(ui.StudioError, "配色"):
+                    ui.studio_validate(scene)
+
+    @unittest.skipUnless(node26(), "Node 26+ is required")
+    def test_image_studio_and_standalone_browser_color_match(self):
+        scene = ui.studio_heatmap_scene([[0, 0.25, 0.5, None, 1]])
+        scene["layers"][0].update(palette=["#FFFFFF", "#ab2345", "#000000"], levels=3)
+        script = """
+import assert from "node:assert/strict";
+import { heatmapColor } from "./js/heatmap-color.js";
+globalThis.document={ querySelector:()=>null };
+const { heatColor, svg, validate, StudioError }=await import("./js/imagestudio.js");
+const scene=JSON.parse(process.argv[2]);
+const l=scene.layers[0];
+const expected=["#FFFFFF","#AB2345","#AB2345","none","#000000"];
+const points=l.z[0];
+assert.deepEqual(points.map(v=>heatmapColor(v,l.low,l.high,l.levels,l.palette)),expected);
+assert.deepEqual(points.map(v=>heatColor(v,l.low,l.high,l.levels,l.palette)),expected);
+assert.deepEqual(validate(scene),scene);
+assert.equal(svg(scene),JSON.parse(process.argv[3]));
+assert.equal(heatmapColor(0.5,0,1),"#21918C");
+for(const palette of [null,[],["#112233",null],["#112233","#445566\\n"]]){
+  assert.throws(()=>validate({...scene,layers:[{...l,palette}]}),StudioError);
+}
+"""
+        node_js(script, json.dumps(scene), json.dumps(ui.studio_svg(scene)))
+
     def test_unsafe_or_empty_matrices_are_refused(self):
         for source in ([[True]], [[float("inf")]], [[2 ** 53]], [[1e100]], [[2 ** 1024]], [[1], [1, 2]], [], {"data": []}):
             with self.subTest(source=repr(source)[:30]), self.assertRaises(pysaiyanweboo.StudioError):
