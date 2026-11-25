@@ -110,10 +110,44 @@ jobs:
                   print("Preferred existing official HTTPS Ubuntu archive.")
           PYTHON
           sudo apt-config dump Acquire::Retries Acquire::http::Timeout Acquire::https::Timeout APT::Update::Error-Mode
+      # 📦 Firefox / WebKit need ~180 apt packages; a slow mirror timed the lane out (20 min). Their .deb files are kept
+      # in the Actions cache, so apt installs from disk and downloads only what changed. Only main writes the cache.
+      - name: Restore the browser's system packages
+        id: debs
+        if: matrix.browser != 'chromium'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/debs
+          key: debs-${{ runner.os }}-${{ matrix.browser }}-${{ github.run_id }}
+          restore-keys: debs-${{ runner.os }}-${{ matrix.browser }}-
+      - name: Hand them to apt, and keep what apt downloads
+        if: matrix.browser != 'chromium'
+        run: |
+          mkdir -p ~/debs
+          printf 'APT::Keep-Downloaded-Packages "true";\nBinary::apt-get::APT::Keep-Downloaded-Packages "true";\n' | sudo tee /etc/apt/apt.conf.d/zz-pswb-keep-debs >/dev/null
+          find ~/debs -maxdepth 1 -name '*.deb' -exec sudo cp -t /var/cache/apt/archives/ {} +
+          (ls /var/cache/apt/archives | grep '\.deb$' || true) | sort > "$RUNNER_TEMP/debs-before.txt"
+          echo "📦 $(wc -l < "$RUNNER_TEMP/debs-before.txt") packages from the cache"
       - name: System libraries and the browser (bounded; WebKit needs many packages)
         timeout-minutes: 20
         # ⏱ Chromium's libraries are already on the runner image (it ships Chrome): apt only for Firefox / WebKit
         run: uv run --locked --group gradio python -m playwright install ${{ matrix.browser != 'chromium' && '--with-deps' || '' }} --only-shell "${{ matrix.browser }}"
+      - name: Keep the packages for the next run (only when apt downloaded something new)
+        id: newdebs
+        if: matrix.browser != 'chromium' && github.event_name != 'pull_request'
+        run: |
+          fresh=$( (ls /var/cache/apt/archives | grep '\.deb$' || true) | sort | comm -13 "$RUNNER_TEMP/debs-before.txt" - | wc -l)
+          echo "📥 $fresh downloaded"
+          if [ "$fresh" -gt 0 ]; then
+            sudo apt-get autoclean -qq   # drop versions the mirror no longer has
+            rm -rf ~/debs && mkdir ~/debs && cp /var/cache/apt/archives/*.deb ~/debs/
+            echo "save=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.newdebs.outputs.save == 'true'
+        with:
+          path: ~/debs
+          key: ${{ steps.debs.outputs.cache-primary-key }}
       - name: Photo studio in this engine (rules equal Python, upright pixels equal Pillow, drawing, history, export)
         # 🌱 the tests read these names: rename them together with the list in tests/support.py
         env:
