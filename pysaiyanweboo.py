@@ -2943,8 +2943,11 @@ def _step_text(value: Any, name: str, limit: int = 1000, required: bool = False)
 def _step_ran(value: Any) -> dict[str, Any]:
     """🤖 What ``run_steps`` recorded for a step: ``exit`` (an int, or ``"timeout"``), ``output`` (its tail), ``seconds``, ``at`` (a UTC date),
     ``commit`` and ``where`` (system and Python)."""
-    if not isinstance(value, dict) or set(value) - {"exit", "output", "seconds", "at", "commit", "where"}:
-        raise ValueError("ran is {exit, output, seconds, at, commit, where}")
+    if not isinstance(value, dict) or set(value) - {"exit", "output", "seconds", "at", "commit", "where", "stdout_matches"}:
+        raise ValueError("ran is {exit, output, seconds, at, commit, where, stdout_matches}")
+    match = value.get("stdout_matches")
+    if "stdout_matches" in value and type(match) is not bool:
+        raise ValueError("ran.stdout_matches is true or false")
     code = value.get("exit")
     if not (type(code) is int or code == "timeout"):
         raise ValueError("ran.exit is an exit code or timeout")
@@ -2952,7 +2955,8 @@ def _step_ran(value: Any) -> dict[str, Any]:
     if type(seconds) not in (int, float) or not 0 <= seconds < 86400:
         raise ValueError("ran.seconds is a duration")
     return {"exit": code, "output": _step_text(value.get("output", ""), "ran output", 8000), "seconds": round(float(seconds), 1),
-            **{k: _step_text(value.get(k, ""), f"ran {k}", 80) for k in ("at", "commit", "where")}}
+            **{k: _step_text(value.get(k, ""), f"ran {k}", 80) for k in ("at", "commit", "where")},
+            **({"stdout_matches": match} if match is not None else {})}
 
 
 def steps_validate(spec: Any) -> dict[str, Any]:
@@ -2960,6 +2964,7 @@ def steps_validate(spec: Any) -> dict[str, Any]:
     optional ``expect``, ``needs`` and ``trouble: {seen, check, fix}``), optional ``statuses`` (``[[token, label], ...]`` over
     todo/doing/pass/hold/block, the first is the start), ``source`` (the version the records belong to), ``record`` (default true: a state, a date,
     the actual output and a note per step), ``toolbar`` (default true: search, state filter, JSON save/load) and ``labels`` (STEP_LABELS keys).
+    ``expect_stdout_contains`` optionally checks for a literal fragment in stdout.
     🤖 A step with ``run: true`` is one ``run_steps`` executes (in CI); it then carries ``ran`` (see ``_step_ran``)."""
     if not isinstance(spec, dict) or set(spec) - {"key", "steps", "statuses", "source", "record", "toolbar", "labels"}:
         raise ValueError("a runbook is {key, steps, statuses, source, record, toolbar, labels}")
@@ -2980,10 +2985,13 @@ def steps_validate(spec: Any) -> dict[str, Any]:
         raise ValueError("a runbook has 1..32 steps")
     steps, seen = [], set()
     for step in steps_in:
-        if not isinstance(step, dict) or set(step) - {"id", "title", "command", "expect", "needs", "trouble", "run", "ran"}:
-            raise ValueError("a step is {id, title, command, expect, needs, trouble, run, ran}")
+        if not isinstance(step, dict) or set(step) - {"id", "title", "command", "expect", "needs", "trouble", "run", "ran", "expect_stdout_contains"}:
+            raise ValueError("a step is {id, title, command, expect, needs, trouble, run, ran, expect_stdout_contains}")
         if type(step.get("run", False)) is not bool:
             raise ValueError("run is true or false")
+        expected = step.get("expect_stdout_contains")
+        if "expect_stdout_contains" in step:
+            expected = _step_text(expected, "expect_stdout_contains", required=True)
         sid = step.get("id")
         if not isinstance(sid, str) or not _STEP_ID.fullmatch(sid) or sid in seen:
             raise ValueError("a step id is a distinct lowercase token")
@@ -2996,7 +3004,8 @@ def steps_validate(spec: Any) -> dict[str, Any]:
         steps.append({"id": sid, "title": _step_text(step.get("title"), "title", 120, True), "command": _step_text(step.get("command"), "command", 4000, True),
                       "expect": _step_text(step.get("expect"), "expect"), "needs": _step_text(step.get("needs"), "needs"),
                       "trouble": {k: _step_text(trouble.get(k), k) for k in ("seen", "check", "fix") if trouble.get(k)},
-                      "run": step.get("run", False), "ran": _step_ran(step["ran"]) if step.get("ran") is not None else None})
+                      "run": step.get("run", False), "ran": _step_ran(step["ran"]) if step.get("ran") is not None else None,
+                      **({"expect_stdout_contains": expected} if expected is not None else {})})
     source = spec.get("source")
     if source is not None and (not isinstance(source, str) or not re.fullmatch(r"[A-Za-z0-9_.:/+-]{1,80}", source)):
         raise ValueError("source is a commit or version of up to 80 plain characters")
@@ -3008,8 +3017,9 @@ def _ran_html(step: dict[str, Any], text: dict[str, str]) -> str:
     ran = step.get("ran")
     if ran is None:
         return f'<p class="ui-badges"><span class="ui-tag">{escape(text["run"])}</span></p>' if step.get("run") else ""
-    ok = ran["exit"] == 0
+    ok = ran["exit"] == 0 and ran.get("stdout_matches") is not False
     head = " · ".join(x for x in (f'{"✅" if ok else "❌"} {"exit " + str(ran["exit"]) if ran["exit"] != "timeout" else "⏱ timeout"}',
+                                  "標準出力が期待値と不一致" if ran.get("stdout_matches") is False else "",
                                   f'{ran["seconds"]:g} s', ran["commit"], ran["at"], ran["where"]) if x)
     return (f'<details class="ui-ran" open data-ran="{"pass" if ok else "fail"}"><summary>{escape(text["ran"])} '
             f'<span class="ui-tag ui-{"pass" if ok else "fail"}">{escape(head)}</span></summary><pre class="ui-output">{escape(ran["output"])}</pre></details>')
@@ -3111,26 +3121,35 @@ def runbook_html(block: Any) -> str:
     return f'<div class="ui-runbook" data-ui-choices>{bar}{main}</div>'
 
 
-def _run_step(command: str, *, cwd: Any, timeout: float, shell: str) -> dict[str, Any]:
+def _run_step(command: str, *, cwd: Any, timeout: float, shell: str, expected_stdout: str | None) -> dict[str, Any]:
     start = time.monotonic()
+    result: dict[str, Any] = {}
+    # Keep the combined transcript for legacy steps. Assertions need a separate stdout stream.
+    stderr = subprocess.STDOUT if expected_stdout is None else subprocess.PIPE
     try:
-        done = subprocess.run([shell, "-c", command], cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout,
+        done = subprocess.run([shell, "-e", "-o", "pipefail", "-c", command], cwd=cwd, stdin=subprocess.DEVNULL,
+                              stdout=subprocess.PIPE, stderr=stderr, timeout=timeout,
                               env={**os.environ, "PYTHONUTF8": "1", "NO_COLOR": "1"})
-        code, data = done.returncode, done.stdout or b""
+        code, data, errors = done.returncode, done.stdout, done.stderr
+        if code == 0 and expected_stdout is not None:
+            result["stdout_matches"] = expected_stdout in data.decode("utf-8", "replace")
     except subprocess.TimeoutExpired as exc:
-        code, data = "timeout", exc.stdout or b""
-    text = data.decode("utf-8", "replace").rstrip()
-    return {"exit": code, "output": text if len(text) <= 4000 else "…" + text[-3999:], "seconds": round(time.monotonic() - start, 1)}
+        code, data, errors = "timeout", exc.stdout, exc.stderr
+    except OSError as exc:
+        code, data, errors = 127, None, str(exc).encode("utf-8", "replace")
+    text = "\n".join(stream.decode("utf-8", "replace").rstrip() for stream in (data, errors) if stream)
+    return {**result, "exit": code, "output": text if len(text) <= 4000 else "…" + text[-3999:],
+            "seconds": round(time.monotonic() - start, 1)}
 
 
 def run_steps(spec: Any, *, cwd: Any = ".", timeout: float = 120, log: Any = None) -> Any:
-    """🤖 Run the steps marked ``run: true`` in a page's runbooks — in ``cwd``, one ``bash -c`` each, in order, stdin empty — and return a copy of the spec
+    """🤖 Run the steps marked ``run: true`` in a page's runbooks — in ``cwd``, one ``bash -e -o pipefail -c`` each, in order, stdin empty — and return a copy of the spec
     whose steps carry ``ran``: the exit code (or ``timeout``), the last 4000 characters of stdout and stderr together, the seconds, the UTC date,
     the short commit and the machine. A step that fails is recorded, not raised. ``--page spec.json --run-steps`` does this before rendering;
     the Pages workflow runs it in CI, so the guide shows what really came out. ``log`` (a text stream; the CLI passes stderr) gets one
     ✅/❌ line per step."""
     out = json.loads(json.dumps(spec))
-    shell = shutil.which("bash") or shutil.which("sh") or "sh"
+    shell = shutil.which("bash") or "bash"
     try:
         commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=cwd, capture_output=True, text=True, timeout=10).stdout.strip()
     except (OSError, subprocess.SubprocessError):
@@ -3145,10 +3164,17 @@ def run_steps(spec: Any, *, cwd: Any = ".", timeout: float = 120, log: Any = Non
                 for book in block.get("books", []) if isinstance(block.get("books"), list) else []:
                     for step in (book.get("runbook") or {}).get("steps", []) if isinstance(book, dict) else []:
                         if isinstance(step, dict) and step.get("run") is True and isinstance(step.get("command"), str):
-                            step["ran"] = {**_run_step(step["command"], cwd=cwd, timeout=timeout, shell=shell), **stamp}
+                            expected = step.get("expect_stdout_contains")
+                            if "expect_stdout_contains" in step:
+                                _step_text(expected, "expect_stdout_contains", required=True)
+                            step["ran"] = ran = {**_run_step(step["command"], cwd=cwd, timeout=timeout, shell=shell,
+                                                           expected_stdout=expected), **stamp}
                             if log:   # 📜 one line per step, so a CI log says what the guide will show
-                                code = step["ran"]["exit"]
-                                log.write(f'🤖 {"✅" if code == 0 else "❌"} {book.get("label", "")} · {step.get("id")} · exit {code} · {step["ran"]["seconds"]:g} s\n')
+                                code = ran["exit"]
+                                mismatch = ran.get("stdout_matches") is False
+                                status = "✅" if code == 0 and not mismatch else "❌"
+                                detail = " · stdout mismatch" if mismatch else ""
+                                log.write(f'🤖 {status} {book.get("label", "")} · {step.get("id")} · exit {code}{detail} · {ran["seconds"]:g} s\n')
             walk(block.get("blocks"))
             for tab in block.get("tabs", []) if isinstance(block.get("tabs"), list) else []:
                 walk(tab.get("blocks") if isinstance(tab, dict) else None)

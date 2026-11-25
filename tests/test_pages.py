@@ -7642,12 +7642,37 @@ class RunbookBlockTests(unittest.TestCase):
             {"id": "s", "title": "s", "command": "sleep 5", "run": True}]}}]}]}, timeout=0.2)
         self.assertEqual(slow["blocks"][0]["books"][0]["runbook"]["steps"][0]["ran"]["exit"], "timeout")
 
+    def test_run_steps_checks_pipeline_status_and_complete_stdout(self):
+        commands = [
+            ("ok", "printf 'start'; printf '%05000d' 0", "start", 0, True),
+            ("upstream", "printf 'expected'; (exit 7) | cat", "expected", 7, None),
+            ("mismatch", "printf 'expected' >&2; printf 'actual'", "expected", 0, False),
+            ("preview", "seq 1 100000 | sed -n '1,2p'", "1\n2", 0, True),
+            ("byte-preview", "seq 1 100000 | { head -c 2 && cat >/dev/null; }", "1\n", 0, True),
+            ("broken-pipe", "yes | head -n 1", "y", 141, None),
+            ("earlier-command", "false\nprintf 'expected'", "expected", 1, None),
+        ]
+        steps = [{"id": key, "title": key, "command": command, "run": True, "expect_stdout_contains": expected}
+                 for key, command, expected, _, _ in commands]
+        spec = self.page(books=[{"label": "Shell", "runbook": {"key": "shell", "steps": steps}}])
+        log = io.StringIO()
+        ran = ui.run_steps(spec, log=log, timeout=10)
+        results = ran["blocks"][0]["tabs"][1]["blocks"][0]["books"][0]["runbook"]["steps"]
+        for step, (key, _, _, exit_code, matches) in zip(results, commands):
+            with self.subTest(step=key):
+                self.assertEqual(step["ran"]["exit"], exit_code)
+                self.assertIs(step["ran"].get("stdout_matches"), matches)
+        self.assertTrue(results[0]["ran"]["output"].startswith("…"))
+        self.assertIn("❌ Shell · mismatch · exit 0 · stdout mismatch", log.getvalue())
+        self.assertIn("❌ exit 0 · 標準出力が期待値と不一致", ui.page_document(ran))
+
     def test_bad_runbooks_are_refused(self):
         book = self.page()["blocks"][0]["tabs"][1]["blocks"][0]["books"][0]
         step = book["runbook"]["steps"][0]
         for bad in ({"books": []}, {"books": [book] * 9}, {"books": [book, book]}, {"books": [{"label": "", "runbook": book["runbook"]}]},
                     {"books": [book], "id": "Bad"}, {"books": [{**book, "extra": 1}]},
                     {"books": [{**book, "runbook": {**book["runbook"], "steps": [{**step, "run": "yes"}]}}]},
+                    {"books": [{**book, "runbook": {**book["runbook"], "steps": [{**step, "expect_stdout_contains": ""}]}}]},
                     {"books": [{**book, "runbook": {**book["runbook"], "steps": [{**step, "ran": {"exit": "0"}}]}}]}):
             with self.subTest(bad=list(bad)), self.assertRaises(ValueError):
                 ui.page_document({"schema": ui.PAGE_SCHEMA, "title": "G", "blocks": [{"type": "runbook", **bad}]})
