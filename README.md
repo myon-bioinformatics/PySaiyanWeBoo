@@ -784,8 +784,12 @@ method or tab, is one `showcase_document(spec)`.
 at a time. 🧭 olnm's layout is an option: `env` (`{label?, options: [{label, note?}]}`) adds a 環境 pulldown whose note follows it,
 `notice` a note beside them, and `layout: "side"` keeps the pulldowns in a sticky column next to the steps (one column on a phone),
 coloured by the page's theme like every other guide. 🤖 A step with `"run": true` is one that needs no network or input: `--page guide.page.json --run-steps` (`run_steps(spec, cwd=)`)
-runs those with `bash -c` before rendering and shows ✅/❌, the exit code, the seconds, the commit, the date, the machine and the real output
+runs those with `bash -e -o pipefail -c` before rendering and shows ✅/❌, the exit code, the seconds, the commit, the date, the machine and the real output
 (its last 4000 characters) under the step; a failure is shown, not raised, and a step without `run` stays a command to copy.
+Use `sed -n '1,8p'` instead of `head -8` to preview lines while consuming the producer's complete output.
+Set `expect_stdout_contains` to a nonblank literal fragment to require it in the full UTF-8 stdout of a command that exits 0.
+The check is case-sensitive and runs before truncation. For these steps the transcript shows stdout followed by stderr.
+The existing `expect` field supplies the displayed example.
 
 <img src="docs/demo/page-verify-guide.gif" width="240" alt="A 検証ガイド tab on a phone: steps that ran in CI show their real output, the 実行方法 and 環境 pulldowns switch the steps and the note and are kept over a reload">
 <img src="docs/demo/component-steps.gif" width="240" alt="A runbook on a phone: copy a command, record a step as verified, filter by state, switch view, reload, import a record from another version and see its state reset">
