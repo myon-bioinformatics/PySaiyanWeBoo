@@ -63,8 +63,8 @@ stylesheet and theme, built in memory from the sources in `pysaiyanweboo.py`; no
 together, `bindTheme()` from `ui.js` switches `data-ui-theme` live, with no stylesheet swap and no reload.
 From Node, run `node vendor/py_launch.cjs -- pysaiyanweboo.py --css-bundle`.
 
-🌍 The world (`web-ui-world/1`: 🌍 the travel world, 🏫 the school, 🗼 the parallel cities, 🎬 the camera page, the catalogue map) and 🤖🔁 the MCP / API stubs
-moved to the portfolio's [🧭 Tools & Demos](https://myon-bioinformatics.github.io/tools/demos/) (`scripts/world.py` and `scripts/project_pages.py` in myon-bioinformatics.github.io): they are
+🌍 The world (`web-ui-world/1`: [🌍 the travel world](https://myon-bioinformatics.github.io/tools/demos/world.html), 🏫 the school, 🗼 the parallel cities, 🎬 the camera page, the catalogue map) and 🤖🔁 the MCP / API stubs
+moved to the portfolio (`scripts/world.py` and `scripts/project_pages.py` in myon-bioinformatics.github.io; the stubs are in its [🧰 Tools](https://myon-bioinformatics.github.io/#tools)): they are
 built on these parts and themes, which stay here. `random_theme(seed)` and `--theme-wall N` show seeded random themes side by side.
 
 Seed dial: `theme.js` is Python's own generator written out for the page (CPython's Mersenne Twister seeded as `random.Random(int)` seeds it, the same steps), so
