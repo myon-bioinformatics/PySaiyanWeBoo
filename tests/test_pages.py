@@ -7485,7 +7485,8 @@ class RunbookTests(unittest.TestCase):
         for bad in ({**good, "steps": []}, {**good, "steps": good["steps"] * 2}, {**good, "statuses": [["todo", "a"], ["done", "b"]]},
                     {**good, "statuses": [["todo", "a"]]}, {**good, "key": "<bad>"}, {**good, "source": "a b"}, {**good, "extra": 1},
                     {**good, "labels": {"nope": "x"}}, {**good, "steps": [{"id": "Bad", "title": "t", "command": "c"}]},
-                    {**good, "steps": [{"id": "x", "title": "t", "command": ""}]}, {**good, "record": "yes"}):
+                    {**good, "steps": [{"id": "x", "title": "t", "command": ""}]}, {**good, "record": "yes"},
+                    {**good, "steps": [{"id": "search", "title": "t", "command": "c"}]}):   # the toolbar's id
             with self.assertRaises(ValueError):
                 ui.steps_html(bad)
 

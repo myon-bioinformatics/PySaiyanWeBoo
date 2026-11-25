@@ -2893,6 +2893,8 @@ def steps_validate(spec: Any) -> dict[str, Any]:
         sid = step.get("id")
         if not isinstance(sid, str) or not _STEP_ID.fullmatch(sid) or sid in seen:
             raise ValueError("a step id is a distinct lowercase token")
+        if sid in ("search", "state", "list"):   # the toolbar's ids are steps-<key>-search / -state / -list
+            raise ValueError(f"step id {sid!r} is the toolbar's; name the step otherwise")
         seen.add(sid)
         trouble = step.get("trouble", {})
         if not isinstance(trouble, dict) or set(trouble) - {"seen", "check", "fix"}:
