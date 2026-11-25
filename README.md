@@ -627,6 +627,13 @@ very long finite recordings can still require substantial memory and output.
 comes out once; BrowserTestKit's `evidence_gif.py` is that driver. The encoder (`UiGif.Encoder`) also runs in Node from the file
 `--site` writes; `tests/test_media.py` runs it in Node and reads every GIF back in Python (its own block walk, Pillow's LZW), `GifBrowserTests` in each engine with Pillow.
 
+🎞 `gif_maker_html()` is the same encoder for people: 📂 pick images → 📐 size / ⏱ delay / 🏷 file-name captions → ▶ one looping GIF
+in the page → ⬇ save; nothing leaves the browser (gif.js's `UiGif.bindMaker` binds it). `gif_maker_document()` is a page of one
+(the portfolio's 🎞 GIF工房). 📱 `home_label(page, label, icon=, touch_icon=)` names any page's home-screen shortcut (a long title
+is cut off under the icon) and swaps its icons, for pages other generators made.
+
+<img src="docs/demo/page-gif-maker.gif" width="240" alt="GIF工房 on a phone: two images picked, a size, a delay and file-name captions, then one looping GIF to save">
+
 🧩 `parts_document()` (`examples/parts.html`, `--parts`) is the regression baseline: every block of the `page` example under every
 theme (`PARTS_THEMES`, plus a `--brand`), each in its own sandboxed frame with the layout radios inside. BrowserTestKit
 records it in this repository's GIF evidence; a consumer compares its own page against the frame that uses its theme.

@@ -6773,6 +6773,57 @@ class GifBrowserTests(unittest.TestCase):
     """gif.js in this engine (PSWB_BROWSER): the browser decodes, fits, captions, patches and zooms screenshots on a canvas,
     the encoder writes one GIF89a, and both this browser and Pillow (an independent decoder) read it back."""
 
+    def test_the_gif_maker_turns_picked_images_into_one_looping_gif(self):
+        """🎞 gif_maker_document: two picked PNGs (one size, one delay, file names as captions) → one GIF89a in the page, ⬇ saved.
+        ``PSWB_GIFS`` keeps page-gif-maker.gif of it."""
+        import io
+        import tempfile
+        from PIL import Image, ImageSequence
+        from pysaiyanweboo import gif_maker_document
+        with tempfile.TemporaryDirectory() as tmp, sync_playwright() as playwright:
+            pngs = []
+            for name, colour in (("red", (198, 40, 40)), ("blue", (21, 101, 192))):
+                path = Path(tmp, f"{name}.png")
+                Image.new("RGB", (64, 48), colour).save(path)
+                pngs.append(str(path))
+            server, origin = serve_pages({'gif.html': gif_maker_document()})
+            browser = photo_engine(playwright).launch()
+            try:
+                page = browser.new_page(viewport={'width': 392, 'height': 760})
+                errors = []
+                page.on('pageerror', lambda error: errors.append(str(error)))
+                page.goto(origin + '/gif.html')
+                cam = ui.GifCamera(page)
+                page.locator('#gif-make').click()
+                expect(page.locator('#gif-status')).to_have_text('📂 画像を選んでください')
+                page.set_input_files('#gif-files', pngs)
+                expect(page.locator('#gif-status')).to_have_text('🖼 2枚')
+                page.select_option('#gif-size', '320x240')
+                page.select_option('#gif-delay', '400')
+                page.check('#gif-names')
+                cam.hold(400)
+                page.locator('#gif-make').click()
+                expect(page.locator('#gif-status')).to_contain_text('✅ 2枚')
+                expect(page.locator('#gif-preview')).to_be_visible()
+                expect(page.locator('#gif-save')).to_be_visible()
+                cam.hold(800)
+                with page.expect_download() as download:
+                    page.locator('#gif-save').click()
+                data = Path(download.value.path()).read_bytes()
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 0)
+                if os.environ.get('PSWB_GIFS'):
+                    ui.gif_targets_from(os.environ['PSWB_GIFS'], ['page-gif-maker'])['page-gif-maker'].write_bytes(ui.encode_gif(cam.shots))
+            finally:
+                browser.close()
+                server.shutdown()
+        self.assertEqual(errors, [])
+        self.assertEqual(download.value.suggested_filename, 'gif.gif')
+        image = Image.open(io.BytesIO(data))
+        self.assertTrue(data.startswith(b'GIF89a'))
+        self.assertEqual((image.size, image.info.get('loop')), ((320, 272), 0))              # 240 + the 32 px caption
+        frames = list(ImageSequence.Iterator(image))
+        self.assertEqual((len(frames), frames[0].info.get('duration')), (2, 400))
+
     def test_recorder_builds_a_gif_every_decoder_opens(self):
         import io
         from PIL import Image, ImageSequence
