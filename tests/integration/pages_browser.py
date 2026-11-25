@@ -1512,6 +1512,7 @@ class ChatBrowserTests(unittest.TestCase):
                       document.addEventListener('ui-chat-react', e => window.reacted.push([e.detail.id, e.detail.emoji, e.detail.who, e.detail.on]));
                       const [chat] = webUiChat.bindChat(document, {respond: async (text, reply) => {
                         if (text === '/boom') throw new Error('boom');
+                        if (text === '/hold') { reply.text('…'); await new Promise(r => { window.release = r; }); return '<b>released</b>'; }
                         if (text === '/stream') { reply.text('…1'); await new Promise(r => setTimeout(r, 50)); reply.text('…12'); return '<b>done</b>'; }
                         return '<b>' + text.replace(/[<&]/g, '') + '</b>';
                       }});
@@ -1523,6 +1524,7 @@ class ChatBrowserTests(unittest.TestCase):
                     box.press('Enter')
                     expect(page.locator('.ui-chat-you .ui-chat-body')).to_have_text(['hello'])
                     expect(page.locator('.ui-chat-bot .ui-chat-body b')).to_have_text(['hello'])
+                    expect(send).to_be_enabled()
                     cam.hold(400)
                     box.fill('one')
                     box.press('Shift+Enter')
@@ -1533,14 +1535,36 @@ class ChatBrowserTests(unittest.TestCase):
                     expect(page.locator('.ui-chat-you')).to_have_count(1)                     # composing: not sent
                     box.press('Enter')
                     expect(page.locator('.ui-chat-you .ui-chat-body').last).to_have_text('one\ntwo')
+                    expect(page.locator('.ui-chat-bot .ui-chat-body').last.locator('b')).to_have_text('one\ntwo')
+                    expect(send).to_be_enabled()
                     page.locator('[data-chat-say="/ascii HI"]').click()
                     expect(page.locator('.ui-chat-you .ui-chat-body').last).to_have_text('/ascii HI')
+                    expect(page.locator('.ui-chat-bot .ui-chat-body').last.locator('b')).to_have_text('/ascii HI')
+                    expect(send).to_be_enabled()                  # one answer at a time: a message sent while busy stays in the box
                     box.fill('/stream')
                     box.press('Enter')
                     expect(page.locator('.ui-chat-bot .ui-chat-body').last.locator('b')).to_have_text('done')
+                    expect(send).to_be_enabled()
                     box.fill('/boom')
                     box.press('Enter')
                     expect(page.locator('.ui-chat-bot .ui-chat-body').last).to_have_text('⚠️ boom')
+                    # while an answer is still coming, Enter keeps the next message in the box; it goes once the answer is in
+                    expect(send).to_be_enabled()
+                    box.fill('/hold')
+                    box.press('Enter')
+                    expect(page.locator('.ui-chat-bot .ui-chat-body').last).to_have_text('…')
+                    sent = page.locator('.ui-chat-you').count()
+                    box.fill('queued')
+                    box.press('Enter')
+                    expect(box).to_have_value('queued')
+                    expect(send).to_be_disabled()
+                    self.assertEqual(page.locator('.ui-chat-you').count(), sent)
+                    page.evaluate('window.release()')
+                    expect(page.locator('.ui-chat-bot .ui-chat-body').last.locator('b')).to_have_text('released')
+                    expect(send).to_be_enabled()
+                    box.press('Enter')
+                    expect(page.locator('.ui-chat-you .ui-chat-body').last).to_have_text('queued')
+                    expect(page.locator('.ui-chat-bot .ui-chat-body').last.locator('b')).to_have_text('queued')
                     cam.hold(400)
                     # 😀＋ on the first answer: 👍 then 🎉, 👍 again takes it back; a relay's 👍 from someone else counts too
                     first = page.locator('.ui-chat-bot').first
