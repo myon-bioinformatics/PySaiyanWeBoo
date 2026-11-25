@@ -821,9 +821,46 @@ if(typeof document!=="undefined"&&(document.querySelector("[data-ui-records]")||
     encodeBase64(opts) { const r = this.encode(opts); return {gif: toBase64(r.bytes), report: {...r.report, ...this.stats}}; }
   }
 
-  const api = {MIN_DELAY_CS, FONT, Encoder, Composer, Recorder, palette, lzw, assemble, bitsFor, fromBase64, toBase64};
+  /** 🎞 gif_maker_html's [data-ui-gif-maker]: the images the visitor picks become one looping GIF, made and kept in the page
+   *  (nothing is sent or stored); the size, the delay and an optional file-name caption come from its controls. */
+  function bindMaker(scope) {
+    const doc = scope || (typeof document === "object" ? document : null);
+    if (!doc) return [];
+    return [...doc.querySelectorAll("[data-ui-gif-maker]")].map(box => {
+      const $ = role => box.querySelector(`[data-ui-gif="${role}"]`), files = $("files"), status = $("status"), say = text => { status.textContent = text; };
+      let url = null;
+      const png = async file => {   // 🖼 any image the browser opens → PNG, so the encoder sees one format
+        const bitmap = await createImageBitmap(file), c = document.createElement("canvas");
+        c.width = bitmap.width; c.height = bitmap.height; c.getContext("2d").drawImage(bitmap, 0, 0);
+        return c.toDataURL("image/png").split(",")[1];
+      };
+      files.addEventListener("change", () => say(`🖼 ${files.files.length}${box.dataset.uiGifUnit || ""}`));
+      $("make").addEventListener("click", async () => {
+        const picked = [...files.files], unit = box.dataset.uiGifUnit || "";
+        if (!picked.length) { say(box.dataset.uiGifEmpty || "📂"); return; }
+        const [width, height] = $("size").value.split("x").map(Number), delay = Number($("delay").value), named = $("names").checked;
+        say(`⏳ ${picked.length}${unit}…`);
+        try {
+          const recorder = new Recorder({width, height, caption: named ? 32 : 0}), frames = [];
+          for (const file of picked) frames.push({png: await png(file), caption: named ? file.name : "", ok: true, delay});
+          await recorder.add(frames);
+          const bytes = fromBase64(recorder.encodeBase64({}).gif);
+          if (url) URL.revokeObjectURL(url);
+          url = URL.createObjectURL(new Blob([bytes], {type: "image/gif"}));
+          $("preview").src = url; $("preview").hidden = false; $("save").href = url; $("save").hidden = false;
+          say(`✅ ${picked.length}${unit} · ${Math.max(1, Math.round(bytes.length / 1024))} KiB`);
+        } catch (error) { say("⛔ " + error.message); }
+      });
+      return box;
+    });
+  }
+
+  const api = {MIN_DELAY_CS, FONT, Encoder, Composer, Recorder, palette, lzw, assemble, bitsFor, fromBase64, toBase64, bindMaker};
   if (typeof module === "object" && module.exports) module.exports = api;
   root.UiGif = api;
+  if (typeof document === "object" && document.querySelector) {   // a page with a maker binds it once the markup is there
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => bindMaker()); else bindMaker();
+  }
 })(typeof globalThis === "object" ? globalThis : this);
 """,
 }
@@ -1345,6 +1382,56 @@ def gif_recorder_document(*, title: str = "web_ui GIF recorder") -> str:
     them on a canvas — and reads the GIF back once with ``encodeBase64({colors, maxBytes, comment})``. Screenshots go
     in once each; pixels never come back. BrowserTestKit's ``evidence_gif.py`` is the reference driver."""
     return render_document(trusted_html="<main></main>" + classic_script(js_source("gif.js")), title=title, css="")
+
+
+def gif_maker_html(*, id: str = "gif", sizes: Sequence[str] = ("240x432", "320x240", "480x360", "640x480", "392x704"),
+                   size: str = "480x360", delays: Sequence[int] = (200, 400, 600, 1000, 1500), delay: int = 600,
+                   filename: str = "gif.gif") -> str:
+    """🎞 Images → one looping GIF in the page: 📂 pick images, 📐 a canvas size (``WxH``, the default ones multiples of 8),
+    ⏱ a delay in ms, 🏷 the file name as a caption, ▶ make, ⬇ save (``filename``). gif.js's ``UiGif.bindMaker`` binds it (on
+    load, when the page carries gif.js — ``gif_maker_document`` does); nothing leaves the browser. Ids are ``{id}-files``,
+    ``{id}-size``, ``{id}-delay``, ``{id}-names``, ``{id}-make``, ``{id}-save``, ``{id}-status`` and ``{id}-preview``."""
+    key = _element_id(id)
+    if size not in sizes or delay not in delays or not all(re.fullmatch(r"[1-9]\d{1,3}x[1-9]\d{1,3}", s) for s in sizes):
+        raise ValueError("sizes are WxH, delays ms, and the defaults are among them")
+    if not all(type(d) is int and 20 <= d <= 60000 for d in delays):
+        raise ValueError("a delay is 20..60000 ms")
+    option = lambda value, label, chosen: f'<option value="{value}"{" selected" if chosen else ""}>{escape(label)}</option>'
+    return (f'<div class="ui-gif-maker" data-ui-gif-maker data-ui-gif-unit="枚" data-ui-gif-empty="📂 画像を選んでください">'
+            f'<p><label>📂 <input id="{key}-files" data-ui-gif="files" type="file" accept="image/*" multiple></label></p>'
+            f'<p><label>📐 <select id="{key}-size" data-ui-gif="size">' + "".join(option(s, s.replace("x", "×"), s == size) for s in sizes)
+            + f'</select></label> <label>⏱ <select id="{key}-delay" data-ui-gif="delay">' + "".join(option(d, f"{d} ms", d == delay) for d in delays)
+            + f'</select></label> <label>🏷 <input id="{key}-names" data-ui-gif="names" type="checkbox"> ファイル名</label></p>'
+            f'<p><button id="{key}-make" data-ui-gif="make" type="button" class="ui-button">▶ つくる</button> '
+            f'<a id="{key}-save" data-ui-gif="save" class="ui-button" download="{escape(filename, quote=True)}" hidden>⬇ 保存</a> '
+            f'<span id="{key}-status" data-ui-gif="status" role="status"></span></p>'
+            f'<p><img id="{key}-preview" data-ui-gif="preview" alt="🎞 できた GIF" hidden style="max-width:100%;height:auto"></p></div>')
+
+
+def gif_maker_document(*, title: str = "🎞 GIF工房", intro: str = "🖼 画像を選ぶ → ▶ つくる → ⬇ 保存。端末の中だけで作り、画像はどこにも送らず、残しもしない。",
+                       css: str | None = None, **maker: Any) -> str:
+    """🎞 A page of one ``gif_maker_html`` (``maker`` are its options) with gif.js; ``css`` defaults to ``bundled_css()``."""
+    body = (f'<main class="ui-page"><h1 class="ui-title">{escape(title)}</h1><p class="ui-muted">{escape(intro)}</p>'
+            + gif_maker_html(**maker) + "</main>" + classic_script(js_source("gif.js")))
+    return render_document(trusted_html=body, title=title, css=bundled_css() if css is None else css)
+
+
+def home_label(page: str, label: str, *, icon: str | None = None, touch_icon: str | None = None) -> str:
+    """📱 Name a page's home-screen shortcut ``label`` (iOS reads apple-mobile-web-app-title, Chrome application-name): a long
+    <title> is cut off under the icon. ``icon`` / ``touch_icon`` (hrefs) replace the page's tab icon / home-screen icon.
+    Replaces any earlier label, so it is idempotent; the tags go right after </title> (else before </head>)."""
+    page = re.sub(r'<meta\b[^>]*\bname=["\'](?:apple-mobile-web-app-title|application-name)["\'][^>]*>', "", page, flags=re.I)
+    value = escape(_spec_text(label, "home label", limit=60, required=True), quote=True)
+    tags = f'<meta name="apple-mobile-web-app-title" content="{value}"><meta name="application-name" content="{value}">'
+    for rel, href in (("icon", icon), ("apple-touch-icon", touch_icon)):
+        if href is not None:
+            page = re.sub(rf'<link\b[^>]*\brel=["\']{rel}["\'][^>]*>', "", page, flags=re.I)
+            kind = ' type="image/png"' if href.lower().endswith(".png") else ""
+            tags += f'<link rel="{rel}"{kind} href="{escape(href, quote=True)}">'
+    for anchor in ("</title>", "</head>"):
+        if anchor in page:
+            return page.replace(anchor, anchor + tags if anchor == "</title>" else tags + anchor, 1)
+    raise ValueError("page has no </title> or </head>")
 
 
 def classic_script(source: str, *, nonce: str | None = None) -> str:

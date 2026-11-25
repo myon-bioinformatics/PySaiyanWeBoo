@@ -845,6 +845,30 @@ def test_recorder_page_is_one_blank_self_contained_page():
     assert "MIN_DELAY_CS = 2" in source and "createImageBitmap" in source and "NETSCAPE2.0" in source
 
 
+def test_gif_maker_is_markup_gif_js_binds_and_its_options_are_checked():
+    html = pysaiyanweboo.gif_maker_html(id="k", sizes=("320x240", "480x360"), delays=(400, 600), filename="a.gif")
+    for role in ("files", "size", "delay", "names", "make", "save", "status", "preview"):
+        assert f'id="k-{role}" data-ui-gif="{role}"' in html
+    assert '<option value="480x360" selected>480×360</option>' in html and 'download="a.gif"' in html
+    assert "<script" not in html                                                        # the page brings gif.js once
+    page = pysaiyanweboo.gif_maker_document(title="🎞 T")
+    assert "function bindMaker" in page and page.count("<div class=\"ui-gif-maker\" data-ui-gif-maker") == 1 and "<h1 class=\"ui-title\">🎞 T</h1>" in page
+    for bad in ({"size": "100x100"}, {"sizes": ("4x4x4",), "size": "4x4x4"}, {"delay": 5}, {"delays": (5,), "delay": 5}):
+        with pytest.raises(ValueError):
+            pysaiyanweboo.gif_maker_html(**bad)
+
+
+def test_home_label_names_the_shortcut_and_replaces_icons_once():
+    page = '<head><title>A very long title</title><meta name="application-name" content="old"><link rel="icon" href="a.ico"></head>'
+    once = pysaiyanweboo.home_label(page, "🎞 GIF", icon="../f.png", touch_icon="../t.png")
+    assert pysaiyanweboo.home_label(once, "🎞 GIF", icon="../f.png", touch_icon="../t.png") == once     # idempotent
+    assert once.count("application-name") == 1 and "old" not in once and "a.ico" not in once
+    assert '</title><meta name="apple-mobile-web-app-title" content="🎞 GIF">' in once
+    assert '<link rel="apple-touch-icon" type="image/png" href="../t.png">' in once
+    with pytest.raises(ValueError):
+        pysaiyanweboo.home_label("<p>no head</p>", "x")
+
+
 # ═══ 🖼️ png writer ═══════════════════════════════════════════════════════════════════════════════════════
 # Independent decode checks for the stdlib PNG fixture writer.
 
