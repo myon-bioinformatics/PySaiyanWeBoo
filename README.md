@@ -598,6 +598,18 @@ puts the way back first (🏠 portfolio · 🐙 GitHub); `add_back_nav(page, "OW
 
 📚 `--features FILE` (`add_features(spec, FILE)`, repeatable) adds a 📚 機能全一覧 tab right after the hand-written 🧩 機能一覧: ⌨️ every argparse command with its help and options (the file runs only up to its first `parse_args`, nothing after it) and 🐍 every name in `__all__` — or, without it, each public function and class — with the first line of its docstring (read without importing). The list comes from the code at build time, so it never misses a command or a function; a hand-written 🧩 機能一覧 that already names everything gets no full list, each file keeps its own sections (titled with its name: several `--features` add up, a second run replaces only that file's), and a file that cannot start keeps its 🐍 list.
 
+For an explicit inventory, run `--page docs/guide.page.json --features-config docs/guide.features.json` from the checkout root. Give the config a JSON array of source objects. This example includes the root parser, a dispatched command, a wrapper backed by a separate API source, and an API-only source.
+
+```json
+[
+  {"source": "example.py", "cli": [[], ["share"]], "namespaces": true},
+  {"source": "pkg/graphs.py", "entry": "tools/graphs.py", "cli": [[]]},
+  {"source": "pkg/readers.py"}
+]
+```
+
+Omit `cli` for an API-only source. `namespaces` includes public members declared as keyword arguments to `SimpleNamespace`. CLI probes stop before argparse consumes arguments. Keep parser setup independent of command execution, and make any dependencies needed to reach the parser available in the renderer's environment. A missing parser, startup failure, or timeout fails an explicitly configured build. The single-file `--features` mode can still show the API when its CLI cannot start.
+
 🎞️ `gif.js` (`UiGif`) turns canvas frames into one animated GIF89a with no dependency: the browser decodes, resizes, zooms and
 captions the images it is given (`Composer`), and the module adds only what browsers lack — a bucket histogram while frames arrive,
 one global palette (exact for at most 255 distinct RGB colours when the selected palette fits them, else bucket median cut + refinement), each frame as its tight changed rectangle (transparent where
