@@ -2882,7 +2882,7 @@ def runbook_html(block: Any) -> str:
 def _run_step(command: str, *, cwd: Any, timeout: float, shell: str) -> dict[str, Any]:
     start = time.monotonic()
     try:
-        done = subprocess.run([shell, "-c", command], cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout,
+        done = subprocess.run([shell, "-c", command], cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout,
                               env={**os.environ, "PYTHONUTF8": "1", "NO_COLOR": "1"})
         code, data = done.returncode, done.stdout or b""
     except subprocess.TimeoutExpired as exc:
@@ -2892,7 +2892,7 @@ def _run_step(command: str, *, cwd: Any, timeout: float, shell: str) -> dict[str
 
 
 def run_steps(spec: Any, *, cwd: Any = ".", timeout: float = 120) -> Any:
-    """🤖 Run the steps marked ``run: true`` in a page's runbooks — in ``cwd``, one ``bash -c`` each, in order — and return a copy of the spec
+    """🤖 Run the steps marked ``run: true`` in a page's runbooks — in ``cwd``, one ``bash -c`` each, in order, stdin empty — and return a copy of the spec
     whose steps carry ``ran``: the exit code (or ``timeout``), the last 4000 characters of stdout and stderr together, the seconds, the UTC date,
     the short commit and the machine. A step that fails is recorded, not raised. ``--page spec.json --run-steps`` does this before rendering;
     the Pages workflow runs it in CI, so the guide shows what really came out."""
