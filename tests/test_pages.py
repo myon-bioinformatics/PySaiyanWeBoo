@@ -7572,7 +7572,7 @@ class FeatureListTests(unittest.TestCase):
         cli, api = self.full_list(out)
         self.assertEqual(cli["title"], "⌨️ demo.py · 全 2 コマンド")
         self.assertEqual(cli["blocks"][0]["rows"], [["（共通）", "⚙️ --quiet"], ["up", "📣 shout ⚙️ text --style {a,b}"], ["plain", ""]])
-        self.assertEqual(api["title"], "🐍 Python · 全 4 個（__all__）")
+        self.assertEqual(api["title"], "🐍 demo.py · 全 4 個（__all__）")
         self.assertEqual(api["blocks"][0]["rows"], [["🔧 shout()", "Return TEXT in capitals."], ["🧱 Box", "A box."], ["📦 LIMIT", ""], ["↪️ join", ""]])
         self.assertFalse((self.dir / "ran.txt").exists(), "nothing after parse_args runs")
         self.assertEqual(len(self.spec["blocks"][0]["tabs"]), 2, "the given spec is not changed")
@@ -7581,19 +7581,19 @@ class FeatureListTests(unittest.TestCase):
     def test_without_all_public_functions_and_classes_are_listed(self):
         out = ui.add_features(self.spec, self.module('def run():\n    """Go."""\ndef _hidden():\n    pass\nVALUE = 1\n'))
         (api,) = self.full_list(out)
-        self.assertEqual((api["title"], api["blocks"][0]["rows"]), ("🐍 Python · 全 1 個（_ 以外の公開名）", [["🔧 run()", "Go."]]))
+        self.assertEqual((api["title"], api["blocks"][0]["rows"]), ("🐍 demo.py · 全 1 個（_ 以外の公開名）", [["🔧 run()", "Go."]]))
 
     def test_a_cli_without_subcommands_lists_its_options(self):
         text = 'import argparse\np = argparse.ArgumentParser(prog="one")\np.add_argument("--n", type=int, help="count")\np.parse_args()\n'
         (cli,) = self.full_list(ui.add_features(self.spec, self.module(text)))
-        self.assertEqual((cli["title"], cli["blocks"][0]["rows"]), ("⌨️ one · 全 1 オプション", [["--n N", "count"]]))
+        self.assertEqual((cli["title"], cli["blocks"][0]["rows"]), ("⌨️ demo.py · 全 1 オプション", [["--n N", "count"]]))
 
     def test_a_cli_that_cannot_start_or_hangs_still_gets_its_python_list(self):
         for text, timeout in (('import not_installed_anywhere\ndef f():\n    """F."""\n', 30),
                               ('import time\ndef f():\n    """F."""\ntime.sleep(60)\n', 1)):
             with self.subTest(text=text.split("\n")[0]):
                 titles = [s["title"] for s in self.full_list(ui.add_features(self.spec, self.module(text), timeout=timeout))]
-                self.assertEqual(titles, ["🐍 Python · 全 1 個（_ 以外の公開名）"])
+                self.assertEqual(titles, ["🐍 demo.py · 全 1 個（_ 以外の公開名）"])
 
     def test_a_page_without_a_hand_written_list_or_without_tabs_still_gets_it(self):
         spec = {**self.spec, "blocks": [{"type": "tabs", "tabs": [{"label": "🎞 GIF デモ", "blocks": []}]}]}
@@ -7601,7 +7601,7 @@ class FeatureListTests(unittest.TestCase):
         self.assertEqual([t["label"] for t in tabs], ["🎞 GIF デモ", "📚 機能全一覧"])
         flat = ui.add_features({"schema": "web-ui-page/1", "title": "t", "blocks": []}, self.module(self.MODULE))
         self.assertEqual([b["title"] for b in flat["blocks"]],
-                         ["📚 機能全一覧 · ⌨️ demo.py · 全 2 コマンド", "📚 機能全一覧 · 🐍 Python · 全 4 個（__all__）"])
+                         ["📚 機能全一覧 · ⌨️ demo.py · 全 2 コマンド", "📚 機能全一覧 · 🐍 demo.py · 全 4 個（__all__）"])
         with self.assertRaises(ValueError):
             ui.add_features({"title": "no blocks"}, self.module(self.MODULE))
 
@@ -7618,7 +7618,20 @@ class FeatureListTests(unittest.TestCase):
         self.module(self.MODULE.replace('"LIMIT", ', ''))
         twice = ui.add_features(once, self.dir / "demo.py")
         self.assertEqual(len(twice["blocks"][0]["tabs"]), 3)
-        self.assertEqual(self.full_list(twice)[1]["title"], "🐍 Python · 全 3 個（__all__）")
+        self.assertEqual(self.full_list(twice)[1]["title"], "🐍 demo.py · 全 3 個（__all__）")
+
+    def test_several_files_each_keep_their_own_sections(self):
+        other = self.module('def helper():\n    """Help."""\n', name="tools.py")
+        both = ui.add_features(ui.add_features(self.spec, self.module(self.MODULE)), other)
+        self.assertEqual([s["title"] for s in self.full_list(both)],
+                         ["⌨️ demo.py · 全 2 コマンド", "🐍 demo.py · 全 4 個（__all__）", "🐍 tools.py · 全 1 個（_ 以外の公開名）"])
+        self.module(self.MODULE.replace('"LIMIT", ', ''))
+        again = ui.add_features(both, self.dir / "demo.py")              # 🔁 demo.py's sections are replaced, tools.py's stay
+        self.assertEqual([s["title"] for s in self.full_list(again)],
+                         ["🐍 tools.py · 全 1 個（_ 以外の公開名）", "⌨️ demo.py · 全 2 コマンド", "🐍 demo.py · 全 3 個（__all__）"])
+        flat = {"schema": "web-ui-page/1", "title": "t", "blocks": []}
+        flat = ui.add_features(ui.add_features(ui.add_features(flat, self.dir / "demo.py"), other), self.dir / "demo.py")
+        self.assertEqual(len(flat["blocks"]), 3)
 
     def test_cli_flag(self):
         page = self.dir / "guide.page.json"

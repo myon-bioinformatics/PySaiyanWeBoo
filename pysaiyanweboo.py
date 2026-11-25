@@ -2298,7 +2298,8 @@ def add_features(spec: Any, module: str | os.PathLike[str], *, timeout: float = 
     ``parse_args`` (nothing after it runs; no CLI → no section). 🐍 Python: every name in ``__all__`` (or, without it,
     each public function and class) with the first line of its docstring, read without importing. The tab goes right
     after the hand-written 🧩 機能一覧 tab — unless that tab already names every command and name, which needs no full
-    list — and replaces an earlier 📚 機能全一覧 tab; a page without tabs gets the sections at its end, titled
+    list — and, run again or for several files, keeps one set of sections per file (each titled with the file's name, so
+    a second run replaces that file's sections and other files' stay); a page without tabs gets the sections at its end, titled
     📚 機能全一覧. Returns a new spec; ``spec`` is not changed."""
     path = Path(module)
     source = path.read_text(encoding="utf-8")
@@ -2320,30 +2321,32 @@ def add_features(spec: Any, module: str | os.PathLike[str], *, timeout: float = 
         rows = [[name, cell(text, opts)] for name, text, opts in cli["commands"]]
         if cli["options"]:
             rows.insert(0, ["（共通）", cell("", cli["options"])])
-        sections.append({"type": "section", "title": f"⌨️ {cli['prog']} · 全 {len(cli['commands'])} コマンド",
+        sections.append({"type": "section", "title": f"⌨️ {path.name} · 全 {len(cli['commands'])} コマンド",
                          "blocks": [{"type": "table", "headers": ["⌨️ コマンド", "📝 説明 · ⚙️ オプション"], "rows": rows}]})
     elif cli and cli["options"]:
-        sections.append({"type": "section", "title": f"⌨️ {cli['prog']} · 全 {len(cli['options'])} オプション",
+        sections.append({"type": "section", "title": f"⌨️ {path.name} · 全 {len(cli['options'])} オプション",
                          "blocks": [{"type": "table", "headers": ["⚙️ オプション", "📝 説明"],
                                      "rows": [[full, text] for full, text, _ in cli["options"]]}]})
     label, rows = _features_api(source)
     if rows:
-        sections.append({"type": "section", "title": f"🐍 Python · 全 {len(rows)} 個（{label}）",
+        sections.append({"type": "section", "title": f"🐍 {path.name} · 全 {len(rows)} 個（{label}）",
                          "blocks": [{"type": "table", "headers": ["🐍 名前（🔧 関数 · 🧱 クラス · 📦 値 · ↪️ 取り込み）", "📝 説明"], "rows": rows}]})
     if not sections:
         return spec
+    mine = lambda block: isinstance(block, dict) and block.get("type") == "section" and f" {path.name} · " in str(block.get("title", ""))
     tabs = next((b for b in spec["blocks"] if isinstance(b, dict) and b.get("type") == "tabs"), None)
     if tabs is None:
         for section in sections:
             section["title"] = f"📚 機能全一覧 · {section['title']}"
-        spec["blocks"].extend(sections)
+        spec["blocks"] = [b for b in spec["blocks"] if not (mine(b) and str(b["title"]).startswith("📚 機能全一覧 · "))] + sections
         return spec
     every = tabs.setdefault("tabs", [])
     labels = [str(t.get("label", "")) if isinstance(t, dict) else "" for t in every]
-    full = {"label": "📚 機能全一覧", "blocks": sections}
-    if "📚 機能全一覧" in labels:                   # 🔁 made before: this run's list replaces it
-        every[labels.index("📚 機能全一覧")] = full
+    if "📚 機能全一覧" in labels:                   # 🔁 made before (or by another file): this file's sections replace its own
+        full = every[labels.index("📚 機能全一覧")]
+        full["blocks"] = [b for b in full.get("blocks", []) if not mine(b)] + sections
         return spec
+    full = {"label": "📚 機能全一覧", "blocks": sections}
     hand = next((i for i, label in enumerate(labels) if "機能" in label), None)
     if hand is not None:
         names = [name for name, _, _ in cli["commands"]] if cli and cli["commands"] else \
