@@ -6429,6 +6429,10 @@ def test_the_chrome_refuses(spec, word):
 def test_the_chrome_sheet_is_plain_and_its_module_asks_the_network_for_nothing():
     css, js = ui.css_source("chrome.css"), ui.js_source("chrome.js")
     assert "@layer" not in css and ".ui-chrome .ui-world-side{" in css and "@keyframes ui-board-scroll{" in css
+    selectors = [part for head in re.findall(r"(?:^|(?<=[{}]))([^{}@]+)(?=\{)", css) if head not in ("from", "to")
+                 for part in re.sub(r"\((?:[^()]|\([^()]*\))*\)", "()", head.replace(":where(.ui-chrome)", "§")).split(",")]   # commas inside :has(…) stay
+    assert selectors and all(s.startswith(("§", ".ui-chrome")) for s in selectors), [s for s in selectors if not s.startswith(("§", ".ui-chrome"))]
+    assert ":where(.ui-chrome).ui-world-head{" in css                         # the root is .ui-chrome.ui-world-head: no space there
     for map_only in (".ui-floor", ".ui-spot", ".ui-player", ".ui-sheet{", ".ui-world-view", ".ui-world-dpad", ".ui-prop"):
         assert map_only not in css, map_only
     for word in ("fetch(", "XMLHttpRequest", "sendBeacon", "WebSocket", "sessionStorage", "indexedDB", "cookie", "import("):
