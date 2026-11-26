@@ -1601,6 +1601,57 @@ class ChatBrowserTests(unittest.TestCase):
             server.shutdown()
 
 
+class ChatShareBrowserTests(unittest.TestCase):
+    """🔗 chat_html(share=True): a page opened with #message sends it once the bot is in (not before), and 🔗 on your bubble copies
+    the link (clipboard and address bar) with a ui-chat-link event. ``PSWB_GIFS`` keeps component-chat-share.gif."""
+
+    def test_open_with_a_link_and_copy_one(self):
+        from pysaiyanweboo import chat_link, component_document
+        server, origin = serve_pages({'chat.html': component_document('chat', share=True, ready=False, document_title='🔗 chat')})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    context = browser.new_context(viewport={'width': 392, 'height': 760})
+                    context.grant_permissions(['clipboard-read', 'clipboard-write'], origin=origin)
+                    page = context.new_page()
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(chat_link(origin + '/chat.html', '/onto ギター'))
+                    cam = ui.GifCamera(page)
+                    expect(page.locator('[data-chat-send]')).to_be_disabled()
+                    page.evaluate("() => webUiChat.bindChat(document, {respond: t => '<b>' + t.replace(/[<&]/g, '') + '</b>'})")
+                    expect(page.locator('.ui-chat-you')).to_have_count(0)            # not before the bot is in
+                    cam.hold(300)
+                    page.evaluate("() => { window.links = []; document.addEventListener('ui-chat-link', e => window.links.push(e.detail.url));"
+                                  " document.querySelector('[data-ui-chat]').webUiChat.ready(); }")
+                    expect(page.locator('.ui-chat-you .ui-chat-body')).to_have_text(['/onto ギター'])
+                    expect(page.locator('.ui-chat-bot .ui-chat-body b')).to_have_text(['/onto ギター'])
+                    page.evaluate("() => document.querySelector('[data-ui-chat]').webUiChat.ready()")   # once, not again
+                    expect(page.locator('.ui-chat-you')).to_have_count(1)
+                    expect(page.locator('.ui-chat-bot [data-chat-link]')).to_have_count(0)           # 🔗 only on yours
+                    cam.hold(300)
+                    page.locator('[data-chat-input]').fill('/guess')
+                    page.locator('[data-chat-input]').press('Enter')
+                    expect(page.locator('.ui-chat-bot .ui-chat-body b').last).to_have_text('/guess')
+                    page.locator('.ui-chat-you').last.locator('[data-chat-link]').click()
+                    expect(page.locator('.ui-chat-you').last.locator('[data-chat-link]')).to_have_text('✅')
+                    cam.hold(400)
+                    url = chat_link(origin + '/chat.html', '/guess')
+                    self.assertEqual(page.evaluate('navigator.clipboard.readText()'), url)
+                    self.assertEqual(page.evaluate('location.href'), url)
+                    self.assertEqual(page.evaluate('window.links'), [url])
+                    self.assertEqual(errors, [])
+                    gif = ui.encode_gif(cam.shots)
+                    self.assertTrue(gif.startswith(b'GIF89a'))
+                    if os.environ.get('PSWB_GIFS'):
+                        ui.gif_targets_from(os.environ['PSWB_GIFS'], ['component-chat-share'])['component-chat-share'].write_bytes(gif)
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
 class DoorBrowserTests(unittest.TestCase):
     """Door-to-Door in Chromium: the page's seeded draw, notation and pull-down equal Python's, and the pull-down really goes there."""
 
