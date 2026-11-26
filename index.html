@@ -76,6 +76,174 @@ body[data-ui-theme="terminal"]{--ui-bg:#0a0e10;--ui-panel:#11171a;--ui-fg:#d5dee
 .stub-endpoint{overflow-wrap:anywhere}
 @media(max-width:720px){.stub-workspace{grid-template-columns:1fr}.stub-header{display:block}}
 }
+/* css/studio-pages.css */
+/* studio layout */
+body:where([data-page~="studio"]){font-size:13px;line-height:1.5;margin:0}
+:where([data-page~="studio"]) header{min-height:76px;background:var(--ui-panel);color:var(--ui-fg);box-shadow:inset 0 -1px var(--ui-border);padding:18px 26px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+:where([data-page~="studio"]) .brand{display:flex;align-items:center;gap:12px;font-weight:800;letter-spacing:2px;font-size:19px;white-space:nowrap}
+:where([data-page~="studio"]) .brand span{font-weight:400;font-size:10px;display:block;letter-spacing:3px;margin:5px 0 0;color:var(--ui-muted)}
+:where([data-page~="studio"]) .brand img{flex:none;image-rendering:pixelated}
+:where([data-page~="studio"]) .top-actions{display:flex;flex-wrap:wrap;gap:7px}
+:where([data-page~="studio"]) .top-actions>a{color:var(--ui-accent);align-self:center;padding:7px 3px;text-underline-offset:3px}
+:where([data-page~="studio"]) button,:where([data-page~="studio"]) .button{display:inline-flex;align-items:center;justify-content:center;gap:5px;text-decoration:none;min-height:38px;padding:10px 12px}
+:where([data-page~="studio"]) .button{font:inherit;cursor:pointer;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);border-radius:var(--ui-radius)}
+:where([data-page~="studio"]) button:hover,:where([data-page~="studio"]) .button:hover{border-color:var(--ui-accent);background:color-mix(in srgb,var(--ui-accent) 12%,var(--ui-panel))}
+:where([data-page~="studio"]) .primary{background:var(--ui-accent);border-color:var(--ui-accent);color:var(--ui-bg);font-weight:700}
+:where([data-page~="studio"]) header button,:where([data-page~="studio"]) header .button,:where([data-page~="studio"]) header select{border-color:var(--ui-border);background:var(--ui-bg);color:var(--ui-fg)}
+:where([data-page~="studio"]) header .primary{background:var(--ui-accent);color:var(--ui-bg);border-color:var(--ui-accent)}
+:where([data-page~="studio"]) input[type=file]{display:none}
+:where([data-page~="studio"]) main{display:grid;grid-template-columns:250px minmax(0,1fr) 238px;min-height:calc(100vh - 76px)}
+:where([data-page~="studio"]) aside{padding:24px 20px;background:var(--ui-panel)}
+:where([data-page~="studio"]) aside.tools{border-right:1px solid var(--ui-border)}
+:where([data-page~="studio"]) aside.inspector{border-left:1px solid var(--ui-border)}
+:where([data-page~="studio"]) h1{font-size:25px;line-height:1.55;letter-spacing:-1px;margin:12px 0}
+:where([data-page~="studio"]) h2{font-size:15px;line-height:1.6;margin:8px 0}
+:where([data-page~="studio"]) .eyebrow{font-size:10px;letter-spacing:2px;font-weight:800;color:var(--ui-muted);margin:0 0 12px}
+:where([data-page~="studio"]) .hint,:where([data-page~="studio"]) .note{font-size:11px;color:var(--ui-muted);line-height:1.85}
+:where([data-page~="studio"]) .note{margin-top:18px}
+:where([data-page~="studio"]) .tool-grid,:where([data-page~="studio"]) .two{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+:where([data-page~="studio"]) .tool-grid{margin:24px 0 18px}
+:where([data-page~="studio"]) .active{background:color-mix(in srgb,var(--ui-accent) 22%,var(--ui-panel))!important;border-color:var(--ui-accent)!important;color:var(--ui-fg)!important;font-weight:700}
+:where([data-page~="studio"]) label{display:block;font-size:11px;margin:12px 0 7px}
+:where([data-page~="studio"]) input,:where([data-page~="studio"]) textarea,:where([data-page~="studio"]) select{display:block;width:100%;font-size:13px;padding:9px;margin-top:5px}
+:where([data-page~="studio"]) select{width:auto;max-width:100%;padding:8px}
+:where([data-page~="studio"]) input[type=color]{height:35px;padding:3px}
+:where([data-page~="studio"]) input[type=range]{padding:0}
+:where([data-page~="studio"]) input[type=checkbox]{display:inline;width:auto;margin:0 7px 0 0}
+:where([data-page~="studio"]) .check{display:flex;align-items:center}
+:where([data-page~="studio"]) .wide{width:100%;margin:6px 0}
+:where([data-page~="studio"]) .emojis{display:flex;flex-wrap:wrap;gap:4px}
+:where([data-page~="studio"]) .emojis button{font-size:21px;padding:5px 7px;border:none;background:transparent}
+:where([data-page~="studio"]) .kaomojis button{font-size:13px;padding:7px 4px}
+:where([data-page~="studio"]) .section{border-top:1px solid var(--ui-border);padding-top:20px;margin-top:22px}
+:where([data-page~="studio"]) .workspace{padding:30px;min-width:0}
+:where([data-page~="studio"]) .canvas-heading{display:flex;justify-content:space-between;align-items:end;gap:12px;margin:5px 0 24px}
+:where([data-page~="studio"]) .canvas-heading h2{font-size:22px;font-weight:500;letter-spacing:-.5px}
+:where([data-page~="studio"]) .canvas-heading span{font-size:11px;white-space:nowrap;color:var(--ui-muted)}
+:where([data-page~="studio"]) .board{position:relative;aspect-ratio:16/9;background:repeating-conic-gradient(#e4e9e2 0 25%,#f7f9f4 0 50%) 0/20px 20px;box-shadow:0 12px 45px color-mix(in srgb,var(--ui-fg) 8%,transparent);outline:none;touch-action:none}
+:where([data-page~="studio"]) .board svg{width:100%;height:100%;display:block;user-select:none}
+:where([data-page~="studio"]) .board g[data-layer]{cursor:move}
+:where([data-page~="studio"]) .board .selection{pointer-events:none}
+:where([data-page~="studio"]) .board .handle{pointer-events:all;cursor:nwse-resize}
+:where([data-page~="studio"]) .canvas-footer{display:flex;justify-content:space-between;gap:10px;font-size:10px;line-height:1.5;color:var(--ui-muted);margin:16px 0}
+:where([data-page~="studio"]) .canvas-settings{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid var(--ui-border);padding-top:24px;margin-top:30px}
+:where([data-page~="studio"]) .canvas-settings label{margin:0;max-width:76px}
+:where([data-page~="studio"]) .canvas-settings input[type=color]{width:45px}
+:where([data-page~="studio"]) .canvas-settings input[type=number]{width:68px}
+:where([data-page~="studio"]) .canvas-settings .check{max-width:none}
+:where([data-page~="studio"]) .layers{max-height:240px;overflow:auto;margin-bottom:12px}
+:where([data-page~="studio"]) .layers button{width:100%;justify-content:space-between;margin-bottom:5px;text-align:left}
+:where([data-page~="studio"]) .layers small{color:var(--ui-muted);font-size:9px}
+:where([data-page~="studio"]) output{float:right;color:var(--ui-accent)}
+:where([data-page~="studio"]) .inspector h2{font-size:14px;margin-bottom:20px}
+:where([data-page~="studio"]) dialog{border:1px solid var(--ui-border);border-radius:14px;max-width:480px;padding:30px;color:var(--ui-fg)}
+:where([data-page~="studio"]) dialog::backdrop{background:color-mix(in srgb,var(--ui-bg) 60%,transparent)}
+:where([data-page~="studio"]) dialog textarea{max-width:100%;word-break:break-all}
+:where([data-page~="studio"]) #error-text{white-space:pre-wrap;line-height:1.8}
+:where([data-page~="studio"]) #shelf-dialog,:where([data-page~="studio"]) #base64-dialog{width:min(600px,92vw);max-width:600px}
+:where([data-page~="studio"]) .shelf-actions{display:flex;gap:10px;margin:12px 0}
+:where([data-page~="studio"]) .shelf-list{max-height:320px;overflow-y:auto;margin:15px 0;display:flex;flex-direction:column;gap:10px}
+:where([data-page~="studio"]) .shelf-card{display:flex;align-items:center;justify-content:space-between;background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:8px;padding:10px 14px;gap:12px}
+:where([data-page~="studio"]) .shelf-card-info{display:flex;align-items:center;gap:12px;overflow:hidden}
+:where([data-page~="studio"]) .shelf-thumb{width:48px;height:48px;object-fit:contain;background:repeating-conic-gradient(#e4e9e2 0 25%,#f7f9f4 0 50%) 0/10px 10px;border:1px solid var(--ui-border);border-radius:4px;flex-shrink:0}
+:where([data-page~="studio"]) .shelf-details{font-size:11px;overflow:hidden}
+:where([data-page~="studio"]) .shelf-details strong{display:block;font-size:12px;color:var(--ui-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+:where([data-page~="studio"]) .shelf-details span{color:var(--ui-muted)}
+:where([data-page~="studio"]) .shelf-card-actions{display:flex;gap:6px;flex-shrink:0}
+:where([data-page~="studio"]) #base64-text{font:11px var(--ui-font-mono);resize:vertical}
+:where([data-page~="studio"]) #base64-dialog form{display:inline}
+:where([data-page~="studio"]) #base64-dialog p{font-size:12px;line-height:1.8}
+@media(min-width:1600px){:where([data-page~="studio"]) .workspace{padding:44px}}
+@media(max-width:1150px){:where([data-page~="studio"]) main{grid-template-columns:210px minmax(0,1fr)}:where([data-page~="studio"]) .inspector{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}:where([data-page~="studio"]) .inspector>.eyebrow{display:none}:where([data-page~="studio"]) .inspector>.section{margin:0;border:0;padding:0}:where([data-page~="studio"]) .workspace{padding:22px}}
+@media(max-width:680px){:where([data-page~="studio"]) header{padding:14px;display:block}:where([data-page~="studio"]) .top-actions{margin-top:15px}:where([data-page~="studio"]) .top-actions button,:where([data-page~="studio"]) .top-actions .button{padding:7px;font-size:11px}:where([data-page~="studio"]) main{display:flex;flex-direction:column}:where([data-page~="studio"]) .workspace{order:-1;padding:18px}:where([data-page~="studio"]) .canvas-heading h2{font-size:17px}:where([data-page~="studio"]) .canvas-heading{margin-bottom:16px}:where([data-page~="studio"]) .canvas-footer{display:block}:where([data-page~="studio"]) .canvas-footer span{display:block;margin:5px 0}:where([data-page~="studio"]) .tools{display:block}:where([data-page~="studio"]) .tools h1,:where([data-page~="studio"]) .tools>.hint{display:none}:where([data-page~="studio"]) .tool-grid{margin:8px 0;grid-template-columns:repeat(3,1fr)}:where([data-page~="studio"]) .inspector{display:block}:where([data-page~="studio"]) .inspector>.section{margin-top:20px}:where([data-page~="studio"]) .canvas-settings{margin-top:20px;padding-top:15px}:where([data-page~="studio"]) .board{width:100%}:where([data-page~="studio"]) aside{padding:18px}:where([data-page~="studio"]) .tools>.section{margin-top:15px}}
+
+/* tools page layout */
+body:where([data-page~="tools"]){font-size:15px;line-height:1.65;margin:0}
+:where([data-page~="tools"]) a{color:var(--ui-accent);text-underline-offset:4px}
+:where([data-page~="tools"]) header{padding:24px 4vw;border-bottom:1px solid var(--ui-border);display:flex;justify-content:space-between;gap:24px;align-items:center;flex-wrap:wrap}
+:where([data-page~="tools"]) .brand{display:flex;align-items:center;gap:12px;font-weight:900;letter-spacing:.1em;text-decoration:none;color:inherit}
+:where([data-page~="tools"]) .brand img{flex:none;image-rendering:pixelated}
+:where([data-page~="tools"]) .brand-hero{display:block;max-width:100%;height:auto;image-rendering:pixelated}
+:where([data-page~="tools"]) nav,:where([data-page~="tools"]) .jump,:where([data-page~="tools"]) .exports,:where([data-page~="tools"]) .digest-options{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
+:where([data-page~="tools"]) nav{font-size:13px}
+:where([data-page~="tools"]) main{max-width:1240px;margin:auto;padding:48px 28px}
+:where([data-page~="tools"]) .eyebrow,:where([data-page~="tools"]) .section-heading span{font-size:12px;letter-spacing:.15em;font-weight:800;color:var(--ui-muted)}
+:where([data-page~="tools"]) h1{font-size:clamp(38px,7vw,76px);letter-spacing:-.04em;line-height:1.12;margin:20px 0 28px}
+:where([data-page~="tools"]) h2{font-size:30px;letter-spacing:-.03em;margin:10px 0 25px}
+:where([data-page~="tools"]) .lead{font-size:18px;color:var(--ui-muted)}
+:where([data-page~="tools"]) .jump{margin:30px 0}
+:where([data-page~="tools"]) .jump a{background:var(--ui-panel);border:1px solid var(--ui-border);padding:10px 16px;border-radius:30px;text-decoration:none}
+:where([data-page~="tools"]) section{scroll-margin-top:20px;border-top:1px solid var(--ui-border);margin-top:52px;padding-top:28px}
+:where([data-page~="tools"]) .workspace{display:grid;grid-template-columns:310px minmax(0,1fr);gap:28px}
+:where([data-page~="tools"]) .controls,:where([data-page~="tools"]) .preview{background:var(--ui-panel);padding:24px;border:1px solid var(--ui-border);border-radius:18px}
+:where([data-page~="tools"]) .controls{display:flex;flex-direction:column;gap:14px}
+:where([data-page~="tools"]) label{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:650}
+:where([data-page~="tools"]) .pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+:where([data-page~="tools"]) button,:where([data-page~="tools"]) select,:where([data-page~="tools"]) input,:where([data-page~="tools"]) textarea{max-width:100%;min-width:0}
+:where([data-page~="tools"]) button,:where([data-page~="tools"]) select,:where([data-page~="tools"]) input[type=number],:where([data-page~="tools"]) textarea{padding:10px 12px}
+:where([data-page~="tools"]) button{font-weight:650}
+:where([data-page~="tools"]) button:hover{background:color-mix(in srgb,var(--ui-accent) 12%,var(--ui-panel))}
+:where([data-page~="tools"]) .primary{background:var(--ui-accent);border-color:var(--ui-accent);color:var(--ui-bg)}
+:where([data-page~="tools"]) .primary:hover{background:color-mix(in srgb,var(--ui-accent) 80%,var(--ui-fg))}
+:where([data-page~="tools"]) .hint{color:var(--ui-muted);font-size:12px;font-weight:400;margin:0}
+:where([data-page~="tools"]) .preview{display:flex;flex-direction:column;gap:16px;justify-content:center;align-items:stretch}
+:where([data-page~="tools"]) .preview canvas{display:block;width:min(100%,480px);height:auto;image-rendering:pixelated;margin:auto;border:1px solid var(--ui-border);background:repeating-conic-gradient(#e1e8e3 0% 25%,#fff 0% 50%) 0 0/20px 20px;cursor:crosshair;touch-action:manipulation}
+:where([data-page~="tools"]) textarea{width:100%;font-size:11px;overflow-wrap:anywhere}
+:where([data-page~="tools"]) #grid-info{font-size:13px;color:var(--ui-muted)}
+:where([data-page~="tools"]) #message{border-left:3px solid var(--ui-accent);padding:8px 16px;min-height:42px;background:color-mix(in srgb,var(--ui-accent) 12%,var(--ui-panel))}
+:where([data-page~="tools"]) #message[data-error=true]{border-color:var(--ui-danger);color:var(--ui-danger)}
+:where([data-page~="tools"]) .image-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-top:24px}
+:where([data-page~="tools"]) .image-list figure{margin:0;padding:14px;background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:10px;overflow:hidden}
+:where([data-page~="tools"]) .image-list img{width:100%;height:160px;object-fit:contain}
+:where([data-page~="tools"]) .image-list figcaption{font-size:12px;overflow-wrap:anywhere}
+:where([data-page~="tools"]) .digest-options{margin:25px 0}
+@media print{body:where([data-page~="tools"]):has(#brand:target) header,body:where([data-page~="tools"]):has(#brand:target) footer,:where([data-page~="tools"]) main:has(#brand:target)>:not(#brand),:where([data-page~="tools"]) #brand:target p,:where([data-page~="tools"]) #brand:target h2,:where([data-page~="tools"]) #brand:target a:not(:first-child){display:none}}
+:where([data-page~="tools"]) .table-wrap{overflow-x:auto}
+:where([data-page~="tools"]) table{background:var(--ui-panel);font-size:13px}
+:where([data-page~="tools"]) th,:where([data-page~="tools"]) td{padding:16px;min-width:180px}
+:where([data-page~="tools"]) th{background:color-mix(in srgb,var(--ui-accent) 10%,var(--ui-panel))}
+:where([data-page~="tools"]) footer{padding:30px;text-align:center;color:var(--ui-muted);font-size:12px;border-top:1px solid var(--ui-border)}
+@media(max-width:760px){:where([data-page~="tools"]) main{padding:30px 16px}:where([data-page~="tools"]) .workspace{grid-template-columns:1fr}:where([data-page~="tools"]) .controls,:where([data-page~="tools"]) .preview{padding:18px}:where([data-page~="tools"]) header{padding:18px}:where([data-page~="tools"]) h2{font-size:25px}:where([data-page~="tools"]) .exports{gap:8px}}
+
+/* slide studio panel (loaded after style.css) */
+:where([data-page~="slides"]) .slide-grid:not([hidden]){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:12px}
+:where([data-page~="slides"]) .slide-grid>div{min-width:0}
+:where([data-page~="slides"]) .slide-grid .board{outline:2px solid var(--ui-accent)}
+:where([data-page~="slides"]) .slide-grid .slide-preview{display:block;width:100%;padding:0;overflow:hidden}
+:where([data-page~="slides"]) .slide-grid .slide-number{display:block;font-size:12px;margin-bottom:4px}
+:where([data-page~="slides"]) .slide-controls{padding:14px 24px;background:var(--ui-panel);border-bottom:1px solid var(--ui-border)}
+:where([data-page~="slides"]) .slide-toolbar,:where([data-page~="slides"]) .slide-template{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+:where([data-page~="slides"]) .slide-toolbar select{width:auto;min-width:180px}
+:where([data-page~="slides"]) .slide-controls details{margin:14px 0}
+:where([data-page~="slides"]) .slide-controls summary{cursor:pointer;font-weight:650}
+:where([data-page~="slides"]) .slide-template{align-items:flex-end;margin-top:10px}
+:where([data-page~="slides"]) .slide-template label{min-width:180px;max-width:420px;flex:1}
+:where([data-page~="slides"]) .slide-template input,:where([data-page~="slides"]) .slide-template textarea,:where([data-page~="slides"]) .slide-template select{width:100%}
+:where([data-page~="slides"]) .slide-hint{font-size:12px;color:var(--ui-muted);margin:6px 0}
+:where([data-page~="slides"]) #deck-status{font-size:13px;margin:8px 0}
+:where([data-page~="slides"]) #deck-status[data-error=true]{color:var(--ui-danger)}
+:where([data-page~="slides"]) .slide-controls button{min-height:38px}
+@media(max-width:700px){:where([data-page~="slides"]) .slide-controls{padding:14px}:where([data-page~="slides"]) .slide-toolbar{gap:8px}:where([data-page~="slides"]) .slide-template{display:grid;grid-template-columns:1fr}:where([data-page~="slides"]) .slide-template label{max-width:none}:where([data-page~="slides"]) .slide-toolbar label{max-width:100%}:where([data-page~="slides"]) .slide-toolbar select{max-width:100%}}
+
+/* 📱 phone slides: the slide is pinned on top (PySaiyanWeBoo's .ui-stage) and the emoji controls scroll under it (landscape: beside it) */
+body:where([data-page~="phone"]){margin:0;background:var(--ui-bg)}
+:where([data-page~="phone"]) input[type=file]{display:none}
+:where([data-page~="phone"]) .button{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;cursor:pointer;text-decoration:none;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);border-radius:var(--ui-radius)}
+:where([data-page~="phone"]) .phone{display:flex;flex-direction:column;height:100dvh;max-width:960px;margin:0 auto}
+:where([data-page~="phone"]) .ui-stage{background:#fff;border:0;box-shadow:0 8px 24px rgba(0,0,0,.16);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+:where([data-page~="phone"]) .phone-svg svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+:where([data-page~="phone"]) .phone-pick{position:absolute;box-sizing:border-box;border:2px dashed var(--ui-accent);pointer-events:none}
+:where([data-page~="phone"]) .phone-pick[hidden],:where([data-page~="phone"]) .phone-edit[hidden]{display:none}
+:where([data-page~="phone"]) .phone-grip{position:absolute;right:-16px;bottom:-16px;width:32px;height:32px;display:grid;place-items:center;border-radius:50%;background:var(--ui-accent);color:var(--ui-bg);font-size:16px;pointer-events:auto;touch-action:none}
+:where([data-page~="phone"]) .phone-edit{flex:1 1 100%;box-sizing:border-box;margin:0;min-height:88px;padding:8px;font-size:16px;line-height:1.5;border:2px solid var(--ui-accent);resize:vertical}
+:where([data-page~="phone"]) .phone-deck{flex:1;min-height:0;overflow:auto;display:flex;flex-wrap:wrap;align-items:flex-start;align-content:flex-start;gap:16px;padding:16px}
+:where([data-page~="phone"]) .phone-tools{flex:1 1 328px;min-width:0;display:flex;flex-direction:column;gap:8px}
+:where([data-page~="phone"]) .phone-row{display:flex;flex-wrap:wrap;gap:8px}
+:where([data-page~="phone"]) .phone-tools button,:where([data-page~="phone"]) .phone-tools .button{min-width:48px;min-height:48px;padding:0 8px;font-size:24px;line-height:1;touch-action:manipulation}
+:where([data-page~="phone"]) .phone-tools button:disabled{opacity:.32}
+:where([data-page~="phone"]) .phone-status{flex:1 1 128px;margin:0;align-self:center;min-height:24px;font-size:16px;overflow-wrap:anywhere}
+:where([data-page~="phone"]) .phone-status[data-error=true]{color:var(--ui-danger)}
+@media(orientation:landscape) and (max-height:560px){:where([data-page~="phone"]) .phone{flex-direction:row;max-width:none}:where([data-page~="phone"]) .ui-stage{max-width:72vw}:where([data-page~="phone"]) .phone-deck{flex-direction:column;flex-wrap:nowrap}:where([data-page~="phone"]) .phone-tools,:where([data-page~="phone"]) .phone-status{flex:none}}
 /* css/studio.css */
 @layer components{.ui-studio h3{margin:24px 0 8px}.ui-studio label{display:inline-block;margin:8px 8px 4px 0}.ui-studio-bar{display:flex;flex-wrap:wrap;gap:8px 16px;margin:8px 0;padding:0;border:0}.ui-studio-bar legend{padding:0 0 4px}.ui-studio-bar label{margin:0}.ui-studio-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0}.ui-studio-row .ui-input{flex:1 1 192px;min-width:0}.ui-studio textarea.ui-input{width:100%;box-sizing:border-box}.ui-beats{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.ui-beat{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border:1px solid var(--ui-border);border-radius:50%}.ui-beat[data-on]{background:var(--ui-accent);color:var(--ui-bg)}.ui-studio-bars{margin:8px 0;padding-left:24px}.ui-studio-bars li[data-error]{color:var(--ui-danger)}.ui-studio-chords{margin:8px 0;overflow-wrap:anywhere}.ui-studio-degrees{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}}
 /* css/themes/github-like.css */
