@@ -136,6 +136,8 @@ The draw is seeded (`mulberry32`, `door_draw`): the same seed draws the same pag
 A listener on `ui-door-leave` can cancel a trip (a "really leave?" guard) without a dialog.
 `door_html(spec, compact=True)` is the pull-down alone, as one 56px row (🚪 and the select) for a page's header or footer; the same `door.js` binds
 it. After the browser's own way back the pull-down shows the current page again, so the same door opens twice.
+`door_html(spec, foot=True, links=[{"emoji", "label", "href"}], size=True)` is that row as the page's foot (`.ui-door-foot`, it stays at the window's
+foot): 🚪 and the pull-down, the links as icons (another site's opens apart) and 📦 the page's HTML size, which `stamp_page_size(page)` writes.
 
 Clipboard shelf (`examples/clipboard-shelf.html`): paste text, a URL, Markdown or a Base64 image into a shelf that lives in the page only (no storage, no
 requests; a reload empties it). Python is the reference: `shelf_classify`, `markdown_plain`, `looks_like_image`, `decode_image_text` (strict: PNG, JPEG,
@@ -733,7 +735,7 @@ boundary](docs/python-controls.md).
 
 `COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `coordinates`,
 `door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `chat`, `curl`, `showcase`,
-`front`, `repository-diagnostics`, `table`, `steps`, `scroll`, `stage`, `status`, `pager`; `components()` lists them as data), and two calls wrap them:
+`front`, `repository-diagnostics`, `table`, `steps`, `scroll`, `stage`, `status`, `pager`, `chrome`, `tabs`; `components()` lists them as data), and two calls wrap them:
 
 ```python
 import pysaiyanweboo                            # in another repository: pinned by commit in pyproject.toml (uv)
@@ -755,6 +757,24 @@ the page (`chat_react` in Python is the rule, `chatReact` in chat.js its twin) a
 🔗 `chat_html(share=True)`: your bubbles get 🔗, which puts the link to that message in the address bar and on the clipboard (✅, or 📋 where copying is
 refused) with a `ui-chat-link` event, and a page opened as `chat_link("chat.html", "/onto ギター")` (`chat.html#%2Fonto%20…`, `chatLink` in chat.js) sends
 the message once, when the bot is in (`ready()` with a `respond`).
+
+🧩 `add_part(page, parts, at="top" | "bottom", scope=".root")` puts a component on a page that is already built: the HTML after `<body>` or at its end,
+the stylesheet in `<head>`, the module last, once (run it twice, it is added once). A page that does not carry this module's tokens (another repository's
+own sheet) gets them under `scope`, with the rules out of `@layer` so its own plain rules do not outrank them; a page whose Content-Security-Policy lists
+its scripts or styles without `'unsafe-inline'` gets the two hashes added to that list, nothing wider.
+
+| | |
+|---|---|
+| 🧰 `chrome` | `chrome_html({"id", "board", "home", "places", "tools"})`: the header and side of a page that is not a world. 📟 a board (title, a scrolling line, the clock `hh:mm:ss`, "in N min"), 🏠, ⭐ starred places of every page that shares the id, ⚙️ (⏯️ stops the board, 🌐 the icons' words in 11 languages), ☰ this page (itself 📍, its `h2`, the rows it gives), ⋯ (⬆️ ⬇️) and up to 8 emoji of the page's own (`href`, `links`, `body`, in the head or the side). ⭐ and 🌐 are kept in this browser; nothing is sent |
+| 🗂️ `tabs` | `tabs_html([(label, html), …], id="profile")`: 2..8 tabs with no script (radio inputs and labels). A panel's animations start each time it is shown, so a bar can grow on its own when its tab opens. The page spec's `tabs` block is the same markup |
+
+```python
+page = pysaiyanweboo.add_part(page, pysaiyanweboo.component_parts("chrome", {"home": "../../index.html#tools", "board": {"title": "TOOLS", "items": [{"text": "🎞 GIF"}]}}), at="top", scope=".ui-chrome")
+page = pysaiyanweboo.add_part(page, pysaiyanweboo.component_parts("door", door, foot=True, links=[{"emoji": "🐦", "label": "X", "href": "https://x.com/me"}], size=True), scope=".ui-door-foot")
+page = pysaiyanweboo.stamp_page_size(page)
+```
+
+![🧰 chrome and 🚪 the door's foot: ☆ a section, 🌐 English, the door to the next page keeps both, ⭐ leads back, ⋯ ⬇️](docs/evidence/component-chrome.gif)
 
 ![💬 chat: Enter sends, the answer streams, 😀＋ reactions toggle](docs/evidence/component-chat.gif)
 ![🔗 chat share: #message waits for the bot, then 🔗 copies a link](docs/evidence/component-chat-share.gif)

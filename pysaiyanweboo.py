@@ -2035,6 +2035,21 @@ _TABS_CSS = (".ui-tabs{margin:var(--ui-space) 0}.ui-tab-input{position:absolute;
              + "".join(f".ui-tabs>.ui-tab-input:nth-of-type({k}):checked~.ui-tab-panel:nth-of-type({k}){{display:block}}" for k in range(1, _TABS_MAX + 1)))
 
 
+def tabs_html(tabs: Any, *, id: str) -> str:
+    """🗂️ Tabs with no script: ``tabs`` lists 2..8 ``(label, trusted_html)``, the first shown; ``id`` (1..40 of a-z, 0-9, -) names the group.
+    Radio inputs and labels, so the keyboard and a page without JavaScript both work; the rules are ``_TABS_CSS`` (``component_parts("tabs", …)``).
+    A panel's animations start each time it is shown (``display`` turns it on), so a bar can grow on its own when its tab opens."""
+    if not isinstance(tabs, (list, tuple)) or not 2 <= len(tabs) <= _TABS_MAX or any(not isinstance(t, (list, tuple)) or len(t) != 2 for t in tabs):
+        raise ValueError(f"tabs lists 2..{_TABS_MAX} (label, html)")
+    if not isinstance(id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", id):
+        raise ValueError("tabs id is 1..40 of a-z, 0-9 and -")
+    name = f"ui-tabs-{id}"
+    heads = "".join(f'<input type="radio" class="ui-tab-input" name="{name}" id="{name}-{i}"{" checked" if i == 0 else ""}>'
+                    f'<label class="ui-tab" for="{name}-{i}">{escape(_spec_text(label, "tab label", limit=100, required=True))}</label>' for i, (label, _) in enumerate(tabs))
+    panels = "".join(f'<div class="ui-tab-panel">{body}</div>' for _, body in tabs)
+    return f'<div class="ui-tabs" data-ui-tabs>{heads}{panels}</div>'
+
+
 def _page_block(block: Any, *, depth: int) -> str:
     """One block of a ``web-ui-page/1`` spec as HTML; every string is escaped, links go through ``_spec_href``."""
     if not isinstance(block, dict) or block.get("type") not in PAGE_BLOCKS:
@@ -2123,16 +2138,10 @@ def _page_block(block: Any, *, depth: int) -> str:
         key = block.get("id", hashlib.sha1(json.dumps(block, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:8])
         if not isinstance(key, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", key):
             raise ValueError("tabs id is 1..40 of a-z, 0-9 and -")
-        name, heads, panels = f"ui-tabs-{key}", [], []
-        for i, tab in enumerate(tabs):
-            if not isinstance(tab, dict) or tab.keys() - {"label", "blocks"}:
-                raise ValueError("a tab has label and blocks")
-            label = _spec_text(tab.get("label"), "tab label", limit=100, required=True)
-            checked = " checked" if i == 0 else ""
-            heads.append(f'<input type="radio" class="ui-tab-input" name="{name}" id="{name}-{i}"{checked}>'
-                         f'<label class="ui-tab" for="{name}-{i}">{escape(label)}</label>')
-            panels.append('<div class="ui-tab-panel">' + "".join(_page_block(b, depth=depth + 1) for b in _blocks(tab.get("blocks", []), depth)) + "</div>")
-        return f'<div class="ui-tabs" data-ui-tabs>{"".join(heads)}{"".join(panels)}</div>'
+        if any(not isinstance(tab, dict) or tab.keys() - {"label", "blocks"} for tab in tabs):
+            raise ValueError("a tab has label and blocks")
+        return tabs_html([(_spec_text(tab.get("label"), "tab label", limit=100, required=True),
+                           "".join(_page_block(b, depth=depth + 1) for b in _blocks(tab.get("blocks", []), depth))) for tab in tabs], id=key)
     # section
     title = _spec_text(block.get("title"), "section title", limit=300, required=True)
     inner = "".join(_page_block(b, depth=depth + 1) for b in _blocks(block.get("blocks", []), depth))
@@ -2176,6 +2185,57 @@ def add_back_nav(page: str, back: Any, *, test_id: str | None = None) -> str:
         if end >= 0:
             return page[:end + 1] + back_nav_html(back, test_id=test_id) + page[end + 1:]
     raise ValueError("page has no <main> or <body> to put the way back in")
+
+
+def _unlayer(css: str) -> str:
+    """The rules of ``css`` without their ``@layer NAME{…}`` wrappers (a plain sheet: a page's own plain rules no longer outrank them)."""
+    out, i = [], 0
+    for m in re.finditer(r"@layer\s+[\w.-]+\s*\{", css):
+        if m.start() < i:
+            continue
+        depth, j = 1, m.end()
+        while j < len(css) and depth:
+            depth += (css[j] == "{") - (css[j] == "}")
+            j += 1
+        out += [css[i:m.start()], css[m.end():j - 1]]
+        i = j
+    return "".join(out) + css[i:]
+
+
+def add_part(page: str, part: dict[str, str], *, at: str = "bottom", scope: str | None = None) -> str:
+    """🧩 A built page with one more component (``component_parts(...)``, or any ``{"html", "css", "js"}``): its HTML right after
+    ``<body>`` (``at="top"``) or at the end of ``<body>`` (``at="bottom"``), its CSS in ``<head>``, its module last in ``<body>``.
+    A page that already holds the part (its HTML's first tag) keeps it, so running it twice adds the part once.
+
+    🎨 A page that does not carry this module's tokens (no tokens.css, no ``:root{--ui-bg…}``: another repository's own sheet) gets
+    them under ``scope`` (the part's root, such as ``.ui-door-foot``), and the part's rules out of ``@layer``, so the page's own
+    plain rules neither recolour nor outrank it.
+    🔒 A page whose Content-Security-Policy lists its scripts or styles without ``'unsafe-inline'`` gets the hashes of the part's
+    module and sheet added to that list, and nothing wider."""
+    if at not in ("top", "bottom"):
+        raise ValueError("at is top or bottom")
+    html, css, js = part.get("html", ""), part.get("css", ""), part.get("js", "")
+    opening = re.match(r"<[^>]+>", html)
+    if opening and opening[0] in page:                      # the part's first tag: still found after its text changed (📦)
+        return page
+    body = re.search(r"<body[^>]*>", page)
+    if not body or page.count("</head>") != 1 or "</body>" not in page:
+        raise ValueError("page has no single <head> and <body> to put the part in")
+    head = page[:page.index("</head>")]
+    if scope and css and "tokens.css" not in head and not re.search(r":root\s*\{[^}]*--ui-bg\s*:", head):
+        tokens = re.search(r":root\s*\{([^}]*)\}", css_source("tokens.css"))[1]
+        css = f"{scope}{{{tokens}}}" + _unlayer(css)
+    if at == "top":
+        page = page[:body.end()] + html + page[body.end():]
+    end = page.rindex("</body>")
+    page = page[:end] + (html if at == "bottom" else "") + (module_script(js) if js else "") + page[end:]
+    if css:
+        page = page.replace("</head>", f"<style>{css}</style></head>", 1)
+    for directive, block in (("script-src", js), ("style-src", css)):
+        listed = re.search(r'Content-Security-Policy"\s+content="[^"]*?\b' + directive + r'([^;"]*)', page.partition("</head>")[0])
+        if block and listed and "'unsafe-inline'" not in listed[1]:
+            page = page[:listed.end()] + " " + module_csp_hash(block) + page[listed.end():]
+    return page
 
 
 def page_document(spec: Any, *, layouts: Any = None) -> str:
@@ -5379,6 +5439,8 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "theme-switch": {"html": "theme_switch_html", "css": (), "js": ("theme.js",), "mount": "bindTheme();"},
     "coordinates": {"html": "coordinates_html", "css": ("coordinates.css",), "js": ("coordinates.js",)},
     "door": {"html": "door_html", "css": ("door.css",), "js": ("door.js",)},
+    "tabs": {"html": "tabs_html", "css": ("tabs_css",), "js": ()},
+    "chrome": {"html": "chrome_html", "css": ("chrome.css",), "js": ("chrome.js",), "mount": "bindChrome();"},
     "playground": {"html": "playground_html", "css": ("playground.css",), "js": ("playground.js",)},
     "report": {"html": "report_html", "css": ("report.css",), "js": ("report.js",)},
     "mcp": {"html": "mcp_html", "css": ("mcp.css",), "js": ("mcp.js",)},
@@ -5402,7 +5464,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
 }
 # Stylesheets that are built rather than stored: the spec (the first argument) decides them.
 _COMPONENT_CSS = {"showcase_css": lambda *a: showcase_css(showcase_validate(a[0])),
-                  "front_css": lambda *a: front_css(), "gaze_avatar_css": lambda: GAZE_AVATAR_CSS}
+                  "front_css": lambda *a: front_css(), "gaze_avatar_css": lambda: GAZE_AVATAR_CSS, "tabs_css": lambda *a, **k: _TABS_CSS}
 
 
 def component_parts(name: str, /, *args: Any, **kwargs: Any) -> dict[str, str]:
@@ -7204,11 +7266,26 @@ def door_options(spec: Any, seed: int | None = None) -> list[dict[str, Any]]:
     return [{**p, "current": p["href"] == door["current"], "drawn": p in drawn} for p in [stable[0], *drawn, *stable[1:]]]
 
 
-def door_html(spec: Any, *, compact: bool = False) -> str:
+def door_html(spec: Any, *, compact: bool = False, foot: bool = False, links: Any = (), size: bool = False) -> str:
     """The Door-to-Door pull-down, a way to try the transition notation, and the data the page script needs (escaped).
 
     ``compact=True`` is the pull-down alone, as one 56px row (🚪 and the select): for a page's header or footer, where the panel's
-    words, the draw button and the notation have no room. The same ``door.js`` binds both; ``k`` pages are still drawn."""
+    words, the draw button and the notation have no room. The same ``door.js`` binds both; ``k`` pages are still drawn.
+
+    ``foot=True`` is that row as the page's foot (``.ui-door-foot``: it stays at the window's foot), followed by ``links``
+    (``[{"emoji", "label", "href"}]``, up to 8: an icon each, ``label`` read and shown on hover; an address of another site opens
+    apart) and, with ``size=True``, 📦 this page's HTML size, which ``stamp_page_size`` writes once the page is whole."""
+    if (links or size) and not foot:
+        raise ValueError("links and size belong to the door's foot (foot=True)")
+    if not isinstance(links, (list, tuple)) or len(links) > 8 or any(not isinstance(l, dict) or set(l) != {"emoji", "label", "href"} for l in links):
+        raise ValueError("links lists up to 8 {emoji, label, href}")
+    if foot:
+        apart = ' target="_blank" rel="noopener noreferrer"'                     # an address of another site opens apart
+        extra = "".join(f'<a href="{escape(_door_href(l["href"]), quote=True)}" title="{escape(str(l["label"])[:80], quote=True)}" '
+                        f'aria-label="{escape(str(l["label"])[:80], quote=True)}"{apart if urlsplit(l["href"]).scheme else ""}>'
+                        f'{escape(str(l["emoji"])[:16])}</a>' for l in links)
+        extra += '<span class="ui-door-size" data-page-size title="HTML">📦</span>' if size else ""
+        return ('<div class="ui-door-foot">' + door_html(spec, compact=True) + (f'<p class="ui-door-extras">{extra}</p>' if extra else "") + '</div>')
     door = door_validate(spec)
     options = "".join(f'<option value="{escape(o["href"], quote=True)}"{" selected disabled" if o["current"] else ""}>{escape(o["emoji"])} {escape(o["label"])}'
                       f'{" (current)" if o["current"] else ""}</option>' for o in door_options(door))
@@ -7225,6 +7302,180 @@ def door_html(spec: Any, *, compact: bool = False) -> str:
             '<h3>Transitions by emoji</h3><p class="ui-muted"><code>A → B</code> goes, <code>A ↔ B</code> goes and comes back. Spaces and variation selectors are ignored.</p>'
             '<label for="door-notation">Notation</label><input class="ui-input" id="door-notation" data-door-notation value="🏠 ↔ 🧭" autocomplete="off">'
             '<ol class="ui-door-path" data-door-path></ol><p class="ui-muted" role="status" data-door-note></p></section>')
+
+
+def stamp_page_size(page: str) -> str:
+    """📦 The page with its own HTML size (KB, what the browser downloads first) written into the door's foot
+    (``door_html(..., foot=True, size=True)``). Call it once more after a step that changes the page: it rewrites the number."""
+    return re.sub(r'(<span class="ui-door-size"[^>]*>)[^<]*(</span>)', lambda m: f'{m[1]}📦 {len(page.encode("utf-8")) / 1024:.0f} KB{m[2]}', page)
+
+
+# ── 🧰 The chrome: the header and side of a page that is not a world ───────────────────────────────────────────────────────────────
+# 📟 a board (a title, a scrolling line, the clock HH:MM:SS, "in N min"), 🏠 back, ⭐ starred places of every page that shares the
+# chrome's id, ⚙️ (⏯️ stop the board, 🌐 the icons' words in eleven languages), ☰ this page (itself, its sections, the rows it gives),
+# ⋯ this screen (⬆️ ⬇️) and the emoji a page adds, key → feature. The classes are those of the portfolio world's shell
+# (ui-world-*), so a world and a tool page look alike. Nothing is sent; ⭐ and 🌐 are kept in this browser, under the chrome's id.
+CHROME_LANGS = (('ja', '日本語'), ('en', 'English'), ('fr', 'Français'), ('es', 'Español'), ('pt', 'Português'), ('ar', 'العربية'), ('zh', '中文'), ('ru', 'Русский'), ('id', 'Bahasa Indonesia'), ('de', 'Deutsch'), ('sw', 'Kiswahili'))
+_CHROME_WORDS = {
+    "home": ("ホーム", "Home", "Accueil", "Inicio", "Início", "الرئيسية", "首页", "Главная", "Beranda", "Startseite", "Mwanzo"),
+    "favorites": ("お気に入り", "Favorites", "Favoris", "Favoritos", "Favoritos", "المفضلة", "收藏", "Избранное", "Favorit", "Favoriten", "Vipendwa"),
+    "settings": ("全体設定", "Settings", "Réglages", "Ajustes", "Configurações", "الإعدادات", "设置", "Настройки", "Pengaturan", "Einstellungen", "Mipangilio"),
+    "places": ("行き先の一覧", "Places", "Lieux", "Lugares", "Lugares", "الأماكن", "地点", "Места", "Tempat", "Orte", "Maeneo"),
+    "screen": ("この画面の操作", "This screen", "Cet écran", "Esta pantalla", "Esta tela", "هذه الشاشة", "本屏幕", "Этот экран", "Layar ini", "Dieser Bildschirm", "Skrini hii"),
+    "pause": ("動きを止める", "Pause motion", "Arrêter le mouvement", "Pausar el movimiento", "Pausar o movimento", "إيقاف الحركة", "暂停动态", "Остановить движение", "Jeda gerakan", "Bewegung anhalten", "Simamisha mwendo"),
+    "language": ("言語", "Language", "Langue", "Idioma", "Idioma", "اللغة", "语言", "Язык", "Bahasa", "Sprache", "Lugha"),
+    "star": ("お気に入り", "Favorite", "Favori", "Favorito", "Favorito", "مفضلة", "收藏", "В избранное", "Favorit", "Favorit", "Pendwa"),
+    "up": ("上へ", "Up", "Haut", "Arriba", "Cima", "أعلى", "上", "Вверх", "Atas", "Hoch", "Juu"),
+    "down": ("下へ", "Down", "Bas", "Abajo", "Baixo", "أسفل", "下", "Вниз", "Bawah", "Runter", "Chini"),
+}
+_CHROME_TAKEN = ('🏠', '⭐', '🎒', '⚙', '🌐', '☰', '⋯', '🚪', '🖼', '📷', '🧹')   # emoji the chrome or a world uses itself; a tool of your own takes another
+_CHROME_TOKEN = re.compile(r"[a-z0-9][a-z0-9-]{0,47}")
+
+
+def _chrome_text(value: Any, label: str, limit: int) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value) > limit:
+        raise ValueError(f"{label} must be 1..{limit} characters")
+    return value
+
+
+def _chrome_href(value: Any) -> str:
+    """Where a tool or a row leads: a path of this site (``./``, ``../``, ``/``; never ``//host``), a fragment or an ``https://`` address."""
+    if not isinstance(value, str) or not 1 <= len(value) <= 200 or not re.fullmatch(r"(?:https://|\.{1,2}/|/(?!/)|#)[^\s\"'<>\\]*", value):
+        raise ValueError("href is a ./ ../ / path, a # fragment or an https:// address, up to 200 characters")
+    return value
+
+
+def _chrome_said(key: str, labels: dict[str, str] | None = None) -> str:
+    """aria-label and title of one word (ja, the page's own); ``data-t`` names the word 🌐 swaps in, or ``labels`` carries a tool's own words."""
+    ja = labels["ja"] if labels else _CHROME_WORDS[key][0]
+    swap = f'data-labels="{escape(json.dumps(labels, ensure_ascii=False, separators=(",", ":")), quote=True)}"' if labels else f'data-t="{key}"'
+    return f'aria-label="{escape(ja, quote=True)}" title="{escape(ja, quote=True)}" {swap}'
+
+
+def _chrome_menu(kind: str, glyph: str, attrs: str, panel: str, hidden: bool = False) -> str:
+    return (f'<details class="ui-world-menu" data-menu="{kind}"{" hidden" if hidden else ""}><summary {attrs}>{glyph}</summary>'
+            f'<div class="ui-world-panel">{panel}</div></details>')
+
+
+def _chrome_tools(tools_in: Any) -> dict[str, dict[str, Any]]:
+    """Up to 8 emoji of a page's own, key → one feature: ``href`` (the button is a link), ``links`` (a panel of up to 16
+    ``{label, href}``) or ``body`` (a panel of words); ``label``, ``label_en``, ``labels`` (other languages) and ``slot`` (head | side)."""
+    if not isinstance(tools_in, dict) or len(tools_in) > 8:
+        raise ValueError("tools maps up to 8 emoji to a feature")
+    tools: dict[str, dict[str, Any]] = {}
+    plain = [t.replace("\ufe0e", "").replace("\ufe0f", "") for t in _CHROME_TAKEN]
+    for emoji, tool in tools_in.items():
+        if not isinstance(emoji, str) or not 1 <= len(emoji) <= 16 or any(c.isascii() for c in emoji):
+            raise ValueError("emoji must be 1..16 non-ASCII characters")
+        if emoji.replace("\ufe0e", "").replace("\ufe0f", "") in plain or emoji in tools:
+            raise ValueError(f"{emoji} is already used by the page itself; tools take other emoji")
+        kinds = ("href", "links", "body")
+        if not isinstance(tool, dict) or set(tool) - {"label", "label_en", "labels", "slot", *kinds} or sum(k in tool for k in kinds) != 1:
+            raise ValueError("a tool has label, label_en, labels, slot and exactly one of href, links, body")
+        slot = tool.get("slot", "head")
+        if slot not in ("head", "side"):
+            raise ValueError("slot is head or side")
+        label = _chrome_text(tool.get("label", emoji), "label", 24)
+        built = {"label": label, "label_en": _chrome_text(tool.get("label_en", label), "label_en", 24), "slot": slot}
+        more = tool.get("labels", {})
+        codes = [code for code, _ in CHROME_LANGS][2:]
+        if not isinstance(more, dict) or set(more) - set(codes):
+            raise ValueError(f"labels maps language codes ({', '.join(codes)}) to words; ja and en are label and label_en")
+        if more:
+            built["labels"] = {code: _chrome_text(text, "labels", 24) for code, text in more.items()}
+        if "href" in tool:
+            built["href"] = _chrome_href(tool["href"])
+        elif "links" in tool:
+            links = tool["links"]
+            if not isinstance(links, list) or not 1 <= len(links) <= 16 or any(not isinstance(l, dict) or set(l) != {"label", "href"} for l in links):
+                raise ValueError("tool links lists 1..16 {label, href}")
+            built["links"] = [{"label": _chrome_text(l["label"], "label", 40), "href": _chrome_href(l["href"])} for l in links]
+        else:
+            built["body"] = _chrome_text(tool["body"], "body", 400)
+        tools[emoji] = built
+    return tools
+
+
+def _chrome_tool(emoji: str, tool: dict[str, Any]) -> str:
+    attrs = _chrome_said("", {"ja": tool["label"], "en": tool["label_en"], **tool.get("labels", {})})
+    if "href" in tool:
+        return f'<a class="ui-world-tool" href="{escape(tool["href"], quote=True)}" {attrs}>{escape(emoji)}</a>'
+    if "links" in tool:
+        panel = '<ul class="ui-world-rows">' + "".join(f'<li><a href="{escape(l["href"], quote=True)}">{escape(l["label"])}</a></li>' for l in tool["links"]) + '</ul>'
+    else:
+        panel = f'<p>{escape(tool["body"])}</p>'
+    return _chrome_menu("tool", escape(emoji), attrs, panel)
+
+
+def chrome_validate(spec: Any = None) -> dict[str, Any]:
+    """``{"id", "board", "home", "places", "tools"}``, all optional.
+
+    ``id``      names the chrome; ⭐ and 🌐 are kept under it in this browser, so pages sharing an id share them (default ``tools``)
+    ``board``   ``{"title", "items": [{"text", "at"?}]}``: a title (up to 24), 1..12 items (up to 120; ``at`` HH:MM gives "in N min")
+    ``home``    where 🏠 leads (left out: no 🏠)
+    ``places``  rows this page adds to its ☰, each ``{"label", "href"}`` with a ☆ (up to 32); the script lists the page itself (📍)
+                and its sections ahead of them. ☰ is this page's own: moving between pages is the door's (``door_html``)
+    ``tools``   emoji of the page's own (``_chrome_tools``)
+    """
+    spec = {} if spec is None else spec
+    if not isinstance(spec, dict) or set(spec) - {"id", "board", "home", "places", "tools"}:
+        raise ValueError("a chrome has id, board, home, places and tools")
+    board = spec.get("board")
+    if board is not None:
+        if not isinstance(board, dict) or set(board) - {"title", "items"} or not isinstance(board.get("items"), list) or not 1 <= len(board["items"]) <= 12:
+            raise ValueError("a chrome's board has a title and 1..12 items")
+        items = []
+        for item in board["items"]:
+            if not isinstance(item, dict) or set(item) - {"text", "at"} or (item.get("at") is not None and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", str(item["at"]))):
+                raise ValueError("a board item has text and an optional at (HH:MM)")
+            items.append({"text": _chrome_text(item.get("text"), "text", 120), "at": item.get("at")})
+        board = {"title": _chrome_text(board.get("title", "INFO"), "title", 24), "items": items}
+    places = spec.get("places", [])
+    if not isinstance(places, list) or len(places) > 32 or any(not isinstance(p, dict) or set(p) != {"label", "href"} for p in places):
+        raise ValueError("places lists up to 32 {label, href}")
+    chrome_id = spec.get("id", "tools")
+    if not isinstance(chrome_id, str) or not _CHROME_TOKEN.fullmatch(chrome_id):
+        raise ValueError(f"chrome id must be a lowercase token: {chrome_id!r}")
+    return {"id": chrome_id, "board": board, "home": None if spec.get("home") is None else _chrome_href(spec["home"]),
+            "places": [{"label": _chrome_text(p["label"], "label", 40), "href": _chrome_href(p["href"])} for p in places],
+            "tools": _chrome_tools(spec.get("tools", {}))}
+
+
+def chrome_html(spec: Any = None) -> str:
+    """🧰 The chrome as one ``<div>`` (the page's own ``<header>`` stays the page's): the board, then 🏠, the page's header emoji, ⭐
+    and ⚙️; the side holds ☰, the page's side emoji and ⋯. ``component_parts("chrome", spec)`` gives it with chrome.css and
+    chrome.js (``bindChrome()``); ``add_part(page, parts, at="top", scope=".ui-chrome")`` puts it on a built page.
+
+    Without JavaScript the board scrolls (one lap in 24 s; the script sets the lap by its length), 🏠 and the link emoji lead, and a ☰
+    that has rows of its own opens (a ``<details>``); ⭐ ⚙️ ⋯, the ☆ and the listed sections wait for the script."""
+    chrome = chrome_validate(spec)
+    board, tools = chrome["board"], chrome["tools"]
+    rows = "".join(f'<li><a href="{escape(p["href"], quote=True)}"><span class="ui-world-arrow" aria-hidden="true"></span>{escape(p["label"])}</a>'
+                   f'<button type="button" class="ui-world-star" aria-pressed="false" {_chrome_said("star")}>☆</button></li>' for p in chrome["places"])
+    move = "".join(f'<button type="button" data-scroll="{to}" {_chrome_said(word)}>{glyph}</button>' for to, word, glyph in (("top", "up", "⬆️"), ("bottom", "down", "⬇️")))
+    settings = ((f'<button type="button" class="ui-world-pause" aria-pressed="false" data-pause="⏯️" data-resume="▶️" {_chrome_said("pause")}>⏯️</button>' if board else "") +
+                f'<label class="ui-world-lang">🌐 <select data-lang {_chrome_said("language")}>' +
+                "".join(f'<option value="{code}" lang="{code}"{" selected" if i == 0 else ""}>{name}</option>' for i, (code, name) in enumerate(CHROME_LANGS)) +
+                '</select></label>')
+    head = ((f'<a class="ui-world-home" href="{escape(chrome["home"], quote=True)}" {_chrome_said("home")}>🏠</a>' if chrome["home"] else "") +
+            "".join(_chrome_tool(e, t) for e, t in tools.items() if t["slot"] == "head") +
+            _chrome_menu("favorites", "⭐", _chrome_said("favorites"), '<p class="ui-world-empty" aria-hidden="true">☆</p><ul class="ui-world-rows ui-world-favs"></ul>', hidden=True) +
+            _chrome_menu("settings", "⚙️", _chrome_said("settings"), settings, hidden=True))
+    side = (_chrome_menu("spots", "☰", _chrome_said("places"), f'<ul class="ui-world-rows ui-world-spots">{rows}</ul>', hidden=not rows) +
+            "".join(_chrome_tool(e, t) for e, t in tools.items() if t["slot"] == "side") +
+            _chrome_menu("more", "⋯", _chrome_said("screen"), move, hidden=True))
+    shown = ""
+    if board:
+        def item(e: dict[str, Any], hidden: bool) -> str:           # the line twice, the second copy hidden: the loop has no seam
+            mark = ' aria-hidden="true"' if hidden else ""
+            minutes = f' <span class="ui-board-min" data-at="{e["at"]}"></span>' if e["at"] else ""
+            return f'<span class="ui-board-item"{mark}>{escape(e["text"])}{minutes}</span>'
+        run = "".join(item(e, hidden) for hidden in (False, True) for e in board["items"])
+        chars = sum(len(e["text"]) + (10 if e["at"] else 0) for e in board["items"])
+        shown = (f'<div class="ui-board" aria-live="off" data-offset="" data-chars="{chars}"><strong>{escape(board["title"])}</strong>'
+                 f'<span class="ui-board-clock" data-clock>--:--:--</span><div class="ui-board-track"><div class="ui-board-run">{run}</div></div></div>')
+    return (f'<div class="ui-chrome ui-world-head" id="{chrome["id"]}-chrome" data-ui-chrome lang="ja">{shown}'
+            f'<nav class="ui-world-tools">{head}</nav><div class="ui-world-side">{side}</div></div>')
 
 
 def door_document(spec: Any, *, theme: str = "modern") -> str:
@@ -15239,7 +15490,122 @@ _CSS["door.css"] = ("@layer components{.ui-door label{display:block;margin:8px 0
                     ".ui-door-compact{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-height:56px;padding:8px}"
                     ".ui-door.ui-door-compact label{display:inline-flex;margin:0;font-size:1.25rem;line-height:1}"
                     ".ui-door-compact .ui-input{flex:1 1 auto;min-width:0;max-width:384px;min-height:40px;box-sizing:border-box}"
-                    ".ui-door-name{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}}")
+                    ".ui-door-name{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}"
+                    # door_html(foot=True): that row as the page's foot, then its links and 📦 the page's size
+                    ".ui-door-foot{position:sticky;bottom:0;z-index:32;display:flex;align-items:center;margin:0;padding:0;border-top:1px solid var(--ui-border);"
+                    "background:var(--ui-panel);color:var(--ui-fg);font-family:var(--ui-font);font-size:1rem;line-height:1.5}.ui-door-foot *{box-sizing:border-box}"
+                    ".ui-door-foot .ui-door{flex:1;min-width:0;margin:0;border:0;background:none}"
+                    ".ui-door-foot select{margin:0;padding:0 8px;font:inherit;color:var(--ui-fg);background:var(--ui-bg);border:1px solid var(--ui-border);"
+                    "border-radius:var(--ui-radius)}"
+                    ".ui-door-extras{display:flex;align-items:center;gap:8px;margin:0;padding:0 8px;font-size:.75rem;white-space:nowrap}"
+                    ".ui-door-extras a{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;font-size:1.25rem;"
+                    "text-decoration:none}}")
+
+# 🧰 chrome_html(): the sheet (plain rules: a page's own label{…} or details{…} must not reshape the chrome) and the module
+_CSS["chrome.css"] = (
+    ".ui-world[data-motion-paused] .ui-actor,.ui-world[data-motion-paused] .ui-board-run{animation-play-state:paused!important}"
+    ".ui-board{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:4px 8px;border-bottom:1px solid var(--ui-border);background:var(--ui-panel);font-family:var(--ui-font-mono);font-size:.85rem;overflow:hidden}"
+    ".ui-board:has(.ui-board-shared){flex-wrap:wrap}.ui-board-shared{flex-basis:100%;white-space:normal;font-family:var(--ui-font);overflow-wrap:anywhere}"
+    ".ui-board-shared ul{max-height:14rem;overflow:auto}"
+    ".ui-board-clock{flex:none;white-space:nowrap;border:1px solid var(--ui-accent);padding:0 .5rem;border-radius:var(--ui-radius);font-variant-numeric:tabular-nums}"
+    ".ui-board-track{flex:4 1 14rem;min-width:0;overflow:hidden;white-space:nowrap}"
+    ".ui-board-run{display:inline-flex;animation:ui-board-scroll 24s linear infinite}.ui-board-item{padding-right:3rem}"
+    ".ui-board-zones{display:flex;flex-wrap:wrap;gap:0 12px}.ui-board-zone{flex:none;white-space:nowrap;color:var(--ui-muted)}"
+    ".ui-board-zone b{color:var(--ui-fg);font-weight:400;font-variant-numeric:tabular-nums}"
+    ".ui-board-stamp{margin-right:.25rem;color:var(--ui-muted);font-variant-numeric:tabular-nums}.ui-board-gauge{white-space:nowrap}"
+    ".ui-board-cells{letter-spacing:.05em}.ui-board-pct{font-variant-numeric:tabular-nums}.ui-board-post{display:flex;gap:4px;flex:1 1 13rem}"
+    ".ui-board-post .ui-input{flex:1;min-width:0;width:auto;padding:.2rem .5rem}.ui-board-post .ui-button{padding:.2rem .6rem}"
+    "@keyframes ui-board-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}"
+    ".ui-world-side{display:flex;flex-direction:column;gap:8px;padding:8px;z-index:2;border-left:1px solid var(--ui-border);background:var(--ui-panel)}"
+    ".ui-world-menu[hidden]{display:none}"
+    ".ui-world-menu>summary{display:flex;align-items:center;justify-content:center;width:48px;height:48px;box-sizing:border-box;list-style:none;cursor:pointer;user-select:none;-webkit-user-select:none;font-size:1.25rem;line-height:1;border:1px solid var(--ui-border);background:var(--ui-bg);color:var(--ui-fg);border-radius:var(--ui-radius)}"
+    ".ui-world-menu>summary::-webkit-details-marker{display:none}.ui-world-menu[open]>summary{background:var(--ui-accent);color:var(--ui-bg)}"
+    ".ui-world-home,.ui-world-tool{display:flex;align-items:center;justify-content:center;width:48px;height:48px;box-sizing:border-box;text-decoration:none;color:var(--ui-fg);cursor:pointer;font-size:1.25rem;line-height:1;border:1px solid var(--ui-border);background:var(--ui-bg);border-radius:var(--ui-radius)}"
+    ".ui-world-head{position:relative;z-index:3;display:flex;align-items:center;border-bottom:1px solid var(--ui-border);background:var(--ui-panel)}"
+    ".ui-world-head .ui-board{flex:1;min-width:0;border-bottom:0}.ui-world-head .ui-board-track{flex:4 1 4rem}"
+    ".ui-world-tools{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;padding:4px 8px}"
+    ".ui-world-tools .ui-world-home,.ui-world-tools .ui-world-tool,.ui-world-tools .ui-world-menu>summary{width:40px;height:40px}"
+    "@media(max-width:600px){.ui-world-head{flex-wrap:wrap}.ui-world-head .ui-board{flex-basis:100%;box-sizing:border-box}"
+    ".ui-world-head .ui-world-tools{width:100%;box-sizing:border-box}}.ui-world-panel p{margin:0}.ui-world-panel>button{min-width:48px}"
+    ".ui-world-panel button[aria-pressed=true]{background:var(--ui-accent);color:var(--ui-bg)}"
+    ".ui-world-tools .ui-world-panel{top:100%;right:8px;width:min(320px,calc(100% - 16px));max-height:min(60vh,384px)}"
+    ".ui-world-settings,.ui-world-tools .ui-world-panel{display:flex;flex-wrap:wrap;gap:8px}.ui-world-tools .ui-world-panel[hidden]{display:none}"
+    ".ui-world-star,.ui-world-bag-rm{flex:none;min-width:40px;min-height:40px;border:0;background:none;color:var(--ui-accent);font-size:1.25rem;line-height:1;cursor:pointer;display:none}"
+    ".ui-world[data-js] .ui-world-star,.ui-world[data-js] .ui-world-bag-rm{display:inline-flex;align-items:center;justify-content:center}"
+    ".ui-world-rows li{display:flex;align-items:center}.ui-world-rows li>a{flex:1;min-width:0}.ui-world-favs,.ui-world-bag{width:100%}"
+    ".ui-world-favs:empty,.ui-world-bag:empty{display:none}.ui-world-empty{margin:0;width:100%;text-align:center;font-size:1.5rem;color:var(--ui-muted)}"
+    ".ui-world-panel:has(.ui-world-favs:not(:empty),.ui-world-bag:not(:empty)) .ui-world-empty{display:none}"
+    ".ui-world-panel{position:absolute;top:8px;right:72px;width:min(320px,calc(100% - 88px));max-height:calc(100% - 16px);overflow:auto;box-sizing:border-box;padding:16px;border:1px solid var(--ui-border);background:var(--ui-panel);color:var(--ui-fg);border-radius:var(--ui-radius);box-shadow:0 8px 24px rgb(0 0 0 / .25)}"
+    ".ui-world-panel h3{margin:0 0 8px}.ui-world-panel button{min-height:40px}.ui-world-rows{list-style:none;margin:0;padding:0}"
+    ".ui-world-rows a{display:flex;align-items:center;gap:8px;min-height:40px;padding:0 8px;color:inherit;text-decoration:none;border-radius:var(--ui-radius)}"
+    ".ui-world-rows a:hover,.ui-world-rows a:focus-visible{background:var(--ui-bg)}.ui-world-arrow{flex:none;width:2em;text-align:center}"
+    "@media(prefers-reduced-motion:reduce){.ui-world *{transition:none!important}.ui-actor,.ui-board-run{animation-play-state:paused!important}}"
+    ".ui-chrome{position:relative;z-index:32;margin:0;padding:0;gap:0;font-family:var(--ui-font);font-size:1rem;line-height:1.5;color:var(--ui-fg);text-align:left}"
+    ".ui-chrome,.ui-chrome *{box-sizing:border-box}"
+    ".ui-chrome .ui-world-tools,.ui-chrome .ui-world-menu,.ui-chrome .ui-world-rows,.ui-chrome .ui-world-rows li{margin:0;border:0;background:none}"
+    ".ui-chrome .ui-world-menu,.ui-chrome .ui-world-rows li{padding:0}.ui-chrome .ui-world-menu>summary{margin:0;padding:0}"
+    ".ui-chrome[data-js] .ui-world-star{display:inline-flex;align-items:center;justify-content:center}"
+    ".ui-chrome[data-motion-paused] .ui-board-run{animation-play-state:paused!important}"
+    ".ui-chrome .ui-world-panel{top:100%;right:8px;width:min(320px,calc(100% - 16px));max-height:min(60vh,384px)}"
+    ".ui-chrome .ui-world-rows a[aria-current]{font-weight:700}"
+    ".ui-chrome .ui-world-panel>button{min-width:48px;border:1px solid var(--ui-border);border-radius:var(--ui-radius);background:var(--ui-bg);color:var(--ui-fg);font-size:1.25rem;line-height:1;cursor:pointer}"
+    ".ui-chrome .ui-world-panel>button[aria-pressed=true]{background:var(--ui-accent);color:var(--ui-bg)}"
+    ".ui-chrome [data-menu=more] .ui-world-panel{display:flex;flex-wrap:wrap;gap:8px}"
+    ".ui-chrome .ui-world-side{flex-direction:row;padding:4px 8px 4px 0;border-left:0;background:none}"
+    ".ui-chrome .ui-world-side .ui-world-menu>summary,.ui-chrome .ui-world-side .ui-world-tool{width:40px;height:40px}"
+    "@media(max-width:600px){.ui-chrome .ui-world-tools{width:auto;flex:1}}"
+    "@media(min-width:960px){.ui-chrome .ui-world-side{position:fixed;right:0;top:50%;transform:translateY(-50%);flex-direction:column;padding:8px;border:1px solid var(--ui-border);border-right:0;background:var(--ui-panel)}"
+    ".ui-chrome .ui-world-side .ui-world-menu>summary,.ui-chrome .ui-world-side .ui-world-tool{width:48px;height:48px}"
+    ".ui-chrome .ui-world-side .ui-world-panel{top:50%;right:72px;transform:translateY(-50%);width:min(320px,calc(100vw - 88px));max-height:min(80vh,480px)}"
+    "}"
+)
+_JS["chrome.js"] = ("const CHROME_LANGS=" + json.dumps([code for code, _ in CHROME_LANGS], separators=(",", ":")) + ",CHROME_TEXT=" +
+                    json.dumps({k: list(v) for k, v in _CHROME_WORDS.items()}, ensure_ascii=False, separators=(",", ":")) + ";\n" + r"""
+// ── The shell: what a world's header and side share with 🧰 the chrome of a tool page (chrome_html) ──
+export function minutesUntil(now,at){return Math.ceil(((at-now)%1440+1440)%1440)}
+export function boardClock(now,offset){const seconds=((now+offset*60)%86400+86400)%86400,whole=Math.floor(seconds);return{clock:[Math.floor(whole/3600),Math.floor(whole/60)%60,whole%60].map(v=>String(v).padStart(2,"0")).join(":"),minutes:seconds/60}}
+export function boardSeconds(chars,cps=8){return Math.max(8,Math.round(chars/cps*10)/10)}
+export function gaugeState(now,start,end,cells){const m=n=>((n%1440)+1440)%1440,span=m(end-start)||1440,el=m(now-start);if(el<span)return[Math.floor(el*cells/span),Math.floor(el*100/span),"active"];return m(start-now)<=m(now-end)?[0,0,"before"]:[cells,100,"after"]}
+export function gaugeCells(filled,cells,done,todo){return done.repeat(filled)+todo.repeat(cells-filled)}
+export function clockLabel(minutes){const h=Math.floor(minutes/60)%24,m=minutes%60;return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0")}
+export function zoneOffset(rows,t){let lo=0,hi=rows.length/2-1;while(lo<hi){const mid=(lo+hi+1)>>1;if(rows[2*mid]<=t)lo=mid;else hi=mid-1}return rows[2*lo+1]}
+export function utcOffsetLabel(offset){if(offset===0)return"UTC";const a=Math.abs(offset),h=Math.floor(a/60),m=a%60;return"UTC"+(offset>0?"+":"-")+h+(m?":"+String(m).padStart(2,"0"):"")}
+// The info board: its clock (HH:MM:SS, once a second), "in N min", gauges and zone clocks (HH:MM). Returns {tick, clockNow}.
+export function bindBoard(board){const hm=t=>{const[h,m]=t.split(":").map(Number);return h*60+m},clockNow=()=>{const d=new Date(),off=board.dataset.offset===""?(-Math.round(d.getTimezoneOffset())||0):Number(board.dataset.offset);return{...boardClock(d.getTime()/1000,off),off}},chips=[...board.querySelectorAll("[data-zone-id]")].map(z=>({id:z.dataset.zoneId,rows:JSON.parse(z.dataset.rows),out:z.querySelector("[data-zone-clock]")})),tick=()=>{const clock=clockNow(),t=new Date().getTime()/1000,zones=new Map(chips.map(z=>{const c=boardClock(t,zoneOffset(z.rows,t));z.out.textContent=c.clock.slice(0,5);return[z.id,c]})),at=m=>(m.dataset.zone?zones.get(m.dataset.zone):clock).minutes,c=board.querySelector("[data-clock]");c.textContent=clock.clock+(board.dataset.offsetLabel!==undefined?" "+utcOffsetLabel(clock.off):"");for(const m of board.querySelectorAll("[data-at]")){const left=minutesUntil(at(m),hm(m.dataset.at));m.textContent=left===0?"いま":"あと"+left+"分"}for(const g of board.querySelectorAll(".ui-board-gauge")){const cells=Number(g.dataset.cells),[filled,pct]=gaugeState(Math.floor(at(g)),hm(g.dataset.from),hm(g.dataset.to),cells);g.querySelector(".ui-board-cells").textContent=gaugeCells(filled,cells,g.dataset.done,g.dataset.todo);g.querySelector(".ui-board-pct").textContent=pct+"%"}};
+const run=board.querySelector(".ui-board-run");if(run)run.style.animationDuration=boardSeconds(Number(board.dataset.chars))+"s";   // also where a strict CSP drops the style attribute
+tick();const timer=setInterval(()=>{if(board.isConnected)tick();else clearInterval(timer)},1000);return{tick,clockNow}}
+// ☰ ⋯ ⭐ ⚙️ and the emoji of your own: the menus show once the script runs, one open at a time; the returned shut() closes them all.
+function bindMenus(el){const menus=[...el.querySelectorAll('.ui-world-menu')];for(const m of menus){m.hidden=false;m.addEventListener('toggle',()=>{if(m.open)for(const o of menus)if(o!==m)o.open=false})}return()=>{for(const m of menus)m.open=false}}
+// A small cache in this browser, one key per world or chrome: [load, save(part)]. Nothing else is written.
+const stored=slot=>{const load=()=>{try{const v=JSON.parse(localStorage.getItem(slot));return v&&typeof v==='object'?v:{}}catch(e){return{}}};return[load,part=>{try{localStorage.setItem(slot,JSON.stringify({...load(),...part}))}catch(e){}}]};
+// 🌐: aria-labels and tooltips in one of eleven languages (data-t names a catalogue word, data-labels carries a tool's own words).
+const sayIn=(root,lang)=>{const i=CHROME_LANGS.indexOf(lang);for(const n of root.querySelectorAll('[data-t],[data-labels]')){const m=n.dataset.labels&&JSON.parse(n.dataset.labels),w=m?m[lang]||m.en||m.ja:CHROME_TEXT[n.dataset.t][i];n.setAttribute('aria-label',w);n.setAttribute('title',w)}};
+// 🧰 The chrome of a tool page: the board, the menus and 🌐 of a world's shell, with no map.
+// ☰ is this page: itself (📍), its sections (the h2 of <main>) and the rows it gave, each with a ☆. ⭐ lists the starred places of
+// every page sharing the chrome's id (a place is its path and fragment on this site), so they follow you from tool to tool, as 🌐
+// does. ⏯️ stops the board; ⋯ moves this screen to its top or its end. Nothing else is kept, and this module asks the network for nothing.
+export function bindChrome(root=document){return[...root.querySelectorAll('[data-ui-chrome]')].map(el=>{if(el.hasAttribute('data-js'))return el;el.dataset.js='';
+ const shut=bindMenus(el),[load,save]=stored('ui-chrome:'+el.id),kept=load(),sel=el.querySelector('[data-lang]'),page=p=>p.replace(/index\.html$/,'');let lang='ja';
+ const say=r=>sayIn(r,lang),setLang=to=>{if(!CHROME_LANGS.includes(to))return;lang=to;el.lang=to;if(sel)sel.value=to;say(el)};
+ sel?.addEventListener('change',()=>{setLang(sel.value);save({lang})});
+ const here=page(location.pathname),title=(document.title.trim()||here).slice(0,40),key=a=>a.origin===location.origin?page(a.pathname)+a.hash:a.href,
+  row=(href,text,mark='')=>{const li=document.createElement('li'),a=document.createElement('a'),arrow=document.createElement('span'),b=document.createElement('button');a.href=href;arrow.className='ui-world-arrow';arrow.setAttribute('aria-hidden','true');arrow.textContent=mark;a.append(arrow,text);b.type='button';b.className='ui-world-star';b.dataset.t='star';li.append(a,b);return li},
+  spots=el.querySelector('.ui-world-spots'),favs=el.querySelector('.ui-world-favs'),heads=[...document.querySelectorAll('main h2')].filter(h=>!el.contains(h)&&h.textContent.trim());
+ spots.prepend(row('#',title,'📍'),...heads.map((h,i)=>{if(!h.id)h.id=el.id+'-part-'+(i+1);return row('#'+h.id,h.textContent.trim().slice(0,40))}));
+ spots.querySelector('a').setAttribute('aria-current','page');
+ let fav=(Array.isArray(kept.fav)?kept.fav:[]).filter(f=>f&&typeof f.label==='string'&&typeof f.href==='string'&&/^(\/(?!\/)|https:\/\/)/.test(f.href)).slice(-32);
+ const words=a=>a.lastChild.textContent,show=()=>{for(const a of spots.querySelectorAll('a')){const on=fav.some(f=>f.href===key(a)),b=a.parentElement.querySelector('.ui-world-star');b.setAttribute('aria-pressed',String(on));b.textContent=on?'★':'☆'}
+  favs.replaceChildren(...fav.map(f=>{const li=row(f.href,f.label.slice(0,80),f.href===here?'📍':''),b=li.querySelector('button');b.setAttribute('aria-pressed','true');b.textContent='★';return li}));say(el)};
+ el.addEventListener('click',e=>{const b=e.target.closest('.ui-world-star'),s=e.target.closest('[data-scroll]');
+  if(b){const a=b.parentElement.querySelector('a'),k=key(a);fav=fav.some(f=>f.href===k)?fav.filter(f=>f.href!==k):[...fav,{href:k,label:k===here?title:title+' › '+words(a)}].slice(-32);show();save({fav})}
+  if(s){shut();scrollTo({top:s.dataset.scroll==='top'?0:document.documentElement.scrollHeight,behavior:'smooth'})}
+  if(e.target.closest('.ui-world-rows a'))shut()});
+ show();if(typeof kept.lang==='string'&&kept.lang!=='ja')setLang(kept.lang);
+ const pause=el.querySelector('.ui-world-pause');pause?.addEventListener('click',()=>{const on=el.toggleAttribute('data-motion-paused');pause.setAttribute('aria-pressed',String(on));pause.textContent=on?pause.dataset.resume:pause.dataset.pause});
+ el.addEventListener('keydown',e=>{if(e.key==='Escape')shut()});
+ document.addEventListener('pointerdown',e=>{if(!el.contains(e.target))shut()});
+ const board=el.querySelector('.ui-board');if(board)bindBoard(board);return el})}
+""")
 
 
 def shelf_html() -> str:
