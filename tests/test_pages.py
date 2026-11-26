@@ -248,6 +248,37 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pysaiyanweboo.add_back_nav('<p>no body</p>', "o/r")
 
+    def test_add_part_puts_a_component_into_a_built_page_once(self):
+        """🧩 add_part: the HTML at the top or the foot of <body>, the sheet in <head>, the module last; twice adds it once."""
+        part = {"html": '<div class="ui-x" data-x>X</div>', "css": "@layer components{.ui-x{color:var(--ui-fg)}}", "js": "console.log(1)"}
+        shared = pysaiyanweboo.render_document(trusted_html="<main><h1>A</h1></main>", title="A", css=pysaiyanweboo.bundled_css())
+        top, foot = pysaiyanweboo.add_part(shared, part, at="top"), pysaiyanweboo.add_part(shared, part)
+        self.assertRegex(top, r'<body[^>]*><div class="ui-x" data-x>X</div>')
+        self.assertIn('</main><div class="ui-x" data-x>X</div><script type="module">console.log(1)</script></body>', foot.replace("\n", ""))
+        self.assertLess(top.index('<style>@layer components{.ui-x{'), top.index("</head>"))
+        self.assertEqual(top.count('<script type="module">console.log(1)</script>'), 1)
+        self.assertEqual(pysaiyanweboo.add_part(top, part, at="top"), top)
+        self.assertEqual(pysaiyanweboo.add_part(top.replace(">X<", ">Y<"), part), top.replace(">X<", ">Y<"))   # its first tag: still there
+        self.assertNotIn(".ui-x{--ui-bg:", pysaiyanweboo.add_part(shared, part, scope=".ui-x"))                # the page has the tokens
+        for bad, kw in (("<p>no head</p>", {}), (shared, {"at": "side"})):
+            with self.subTest(kw=kw), self.assertRaises(ValueError):
+                pysaiyanweboo.add_part(bad, part, **kw)
+
+    def test_add_part_brings_its_colours_and_hashes_to_another_repositorys_strict_page(self):
+        """🎨 A page with its own sheet gets the tokens under the part's root and plain (unlayered) rules; 🔒 a CSP that lists its
+        scripts and styles gets the two hashes, and one that allows inline code is left as it is."""
+        part = {"html": '<div class="ui-x">X</div>', "css": "@layer components{.ui-x{color:var(--ui-fg)}@media(min-width:960px){.ui-x{gap:8px}}}", "js": "console.log(1)"}
+        strict = ("<!doctype html><html><head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self'; "
+                  "style-src 'self'\"><style>label{font-size:0}</style><title>t</title></head><body><main></main></body></html>")
+        built = pysaiyanweboo.add_part(strict, part, scope=".ui-x")
+        sheet = re.findall(r"<style>(.*?)</style>", built)[-1]
+        tokens = re.search(r":root\s*\{([^}]*)\}", pysaiyanweboo.css_source("tokens.css"))[1]
+        self.assertEqual(sheet, ".ui-x{" + tokens + "}.ui-x{color:var(--ui-fg)}@media(min-width:960px){.ui-x{gap:8px}}")
+        self.assertIn(f"script-src 'self' {pysaiyanweboo.module_csp_hash('console.log(1)')}; style-src 'self' {pysaiyanweboo.module_csp_hash(sheet)}\"", built)
+        loose = strict.replace("script-src 'self'; style-src 'self'", "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'")
+        self.assertNotIn("sha256-", pysaiyanweboo.add_part(loose, part, scope=".ui-x"))
+        self.assertEqual(pysaiyanweboo._unlayer("a{x:1}@layer b.c{d{y:2}@media(x){e{z:3}}}f{w:4}"), "a{x:1}d{y:2}@media(x){e{z:3}}f{w:4}")
+
     def test_front_page_keeps_the_way_back_behind_the_door(self):
         """🚪 A front page's way back is first in the door menu: the view under the bar stays one screen."""
         ROOM = [{"id": "one", "emoji": "1️⃣", "title": "One", "html": "<p id=\"one\">1</p>"}]
@@ -806,6 +837,28 @@ class DoorTests(unittest.TestCase):
         self.assertEqual(pysaiyanweboo.door_document(DOOR).count("<script"), 1)
         self.assertNotIn("<link", pysaiyanweboo.door_document(DOOR))
 
+    def test_the_door_as_a_pages_foot_carries_its_links_and_size(self):
+        """🚪 door_html(foot=True): the compact row as the page's foot, its links (another site's opens apart) and 📦 the page's size."""
+        x = [{"emoji": "🐦", "label": "X (Twitter) @me", "href": "https://twitter.com/me"}, {"emoji": "📜", "label": "README", "href": "../README.md"}]
+        foot = pysaiyanweboo.door_html(DOOR, foot=True, links=x, size=True)
+        self.assertEqual(foot, '<div class="ui-door-foot">' + pysaiyanweboo.door_html(DOOR, compact=True) + '<p class="ui-door-extras">'
+                         '<a href="https://twitter.com/me" title="X (Twitter) @me" aria-label="X (Twitter) @me" target="_blank" rel="noopener noreferrer">🐦</a>'
+                         '<a href="../README.md" title="README" aria-label="README">📜</a>'
+                         '<span class="ui-door-size" data-page-size title="HTML">📦</span></p></div>')
+        self.assertEqual(pysaiyanweboo.door_html(DOOR, foot=True), '<div class="ui-door-foot">' + pysaiyanweboo.door_html(DOOR, compact=True) + '</div>')
+        page = pysaiyanweboo.render_document(trusted_html="<main></main>" + foot, title="t")
+        stamped = pysaiyanweboo.stamp_page_size(page)
+        size = int(re.search(r'data-page-size title="HTML">📦 (\d+) KB</span>', stamped)[1])
+        self.assertEqual(size, round(len(page.encode("utf-8")) / 1024))
+        self.assertEqual(pysaiyanweboo.stamp_page_size(stamped).count("📦 "), 1)                                    # rewrites the number
+        for bad in ({"links": x}, {"size": True}, {"foot": True, "links": [{"emoji": "x", "label": "x", "href": "javascript:alert(1)"}]},
+                    {"foot": True, "links": [{"emoji": "x", "label": "x", "href": "//evil.test/"}]}, {"foot": True, "links": x * 5}):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                pysaiyanweboo.door_html(DOOR, **bad)
+        css = pysaiyanweboo.css_source("door.css")
+        self.assertIn(".ui-door-foot{position:sticky;bottom:0;z-index:32;", css)
+        self.assertEqual([int(px) % 8 for px in re.findall(r"(\d+)px", css[css.index(".ui-door-foot{"):]) if px != "1"], [0] * 5)
+
     def test_the_compact_door_is_the_pulldown_alone(self):
         """🚪 door_html(compact=True): one row for a header or a footer. The same data and options as the panel, none of its words."""
         panel, row = pysaiyanweboo.door_html(DOOR), pysaiyanweboo.door_html(DOOR, compact=True)
@@ -823,7 +876,7 @@ class DoorTests(unittest.TestCase):
         css, js = pysaiyanweboo.css_source("door.css"), pysaiyanweboo.js_source("door.js")
         self.assertIn(".ui-door-compact{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-height:56px;padding:8px}", css)
         self.assertIn(".ui-door-name{position:absolute;width:1px;height:1px;overflow:hidden", css)                # read, not drawn
-        self.assertEqual([int(px) % 8 for px in re.findall(r"(\d+)px", css[css.index(".ui-door-compact{"):]) if px != "1"], [0, 0, 0, 0, 0])
+        self.assertEqual([int(px) % 8 for px in re.findall(r"(\d+)px", css[css.index(".ui-door-compact{"):css.index(".ui-door-foot{")]) if px != "1"], [0, 0, 0, 0, 0])
         self.assertIn('addEventListener("pageshow",fill)', js)                                                   # the way back shows the current page again
         self.assertIn('$("[data-door-draw]")?.addEventListener', js)                                             # the panel's parts are optional
 
@@ -6292,7 +6345,8 @@ def args_for(name):
             "front": (("<p>main</p>", [room]), {"title": "Front"}), "scroll": (("<button>a</button>",), {"label": "Views"}), "repository-diagnostics": (("myon-bioinformatics/web-ui",), {}),
             "stage": (('<svg viewBox="0 0 16 9"></svg>',), {"label": "Slide"}), "pager": ((5,), {"variant": "dpad"}),
             "table": (({"columns": ["page", "chromium"], "rows": [["index", {"text": "pass", "status": "pass"}]], "row_headers": True},), {}),
-            "steps": (({"key": "demo/run", "steps": [{"id": "run", "title": "Run", "command": "python3 -S demo.py", "expect": "42"}]},), {})}.get(name, ((), {}))
+            "steps": (({"key": "demo/run", "steps": [{"id": "run", "title": "Run", "command": "python3 -S demo.py", "expect": "42"}]},), {}),
+            "tabs": (([("About", "<p>a</p>"), ("Skills", "<p>b</p>")],), {"id": "profile"})}.get(name, ((), {}))
 
 
 @pytest.mark.parametrize("name", sorted(ui.COMPONENTS))
@@ -6313,6 +6367,138 @@ def test_every_component_gives_html_css_and_a_module_that_mounts(name):
         assert parts["js"].rstrip().endswith(mount)
     else:                                                                                           # the module binds itself when a page loads it
         assert any(sign in parts["js"] for sign in ('if(typeof document!=="undefined")', "DOMContentLoaded", "if(rootNode)mount(rootNode)", "addEventListener("))
+
+
+CHROME = {"board": {"title": "TOOLS", "items": [{"text": "🎞 GIF工房"}, {"text": "🚌 次の便", "at": "09:30"}]}, "home": "../../index.html#tools",
+          "places": [{"label": "🧾 出力のしかた", "href": "#export"}],
+          "tools": {"🗼": {"label": "パラレル都市", "label_en": "Parallel cities", "links": [{"label": "🗼 パラレル東京", "href": "../maps/tokyo.html"}]},
+                    "🧭": {"label": "統合運用", "slot": "side", "href": "https://myon-bioinformatics.github.io/myon-bioinformatics/"}}}
+
+
+def test_tabs_need_no_script_and_the_page_block_uses_them():
+    """🗂️ tabs_html: radio inputs and labels, the first shown; the page spec's tabs block is the same markup."""
+    html = ui.tabs_html([("About", "<p>a</p>"), ("Skills <b>", "<p>b</p>")], id="profile")
+    assert html == ('<div class="ui-tabs" data-ui-tabs><input type="radio" class="ui-tab-input" name="ui-tabs-profile" id="ui-tabs-profile-0" checked>'
+                    '<label class="ui-tab" for="ui-tabs-profile-0">About</label><input type="radio" class="ui-tab-input" name="ui-tabs-profile" id="ui-tabs-profile-1">'
+                    '<label class="ui-tab" for="ui-tabs-profile-1">Skills &lt;b&gt;</label><div class="ui-tab-panel"><p>a</p></div><div class="ui-tab-panel"><p>b</p></div></div>')
+    block = ui._page_block({"type": "tabs", "id": "profile", "tabs": [{"label": "About", "blocks": [{"type": "text", "text": "a"}]},
+                                                                      {"label": "Skills <b>", "blocks": [{"type": "text", "text": "b"}]}]}, depth=0)
+    assert block == html
+    assert ".ui-tabs>.ui-tab-input:nth-of-type(2):checked~.ui-tab-panel:nth-of-type(2){display:block}" in ui.component_parts("tabs", [("A", ""), ("B", "")], id="t")["css"] == ui.tabs_css()
+    for bad, kw in (([("A", "")], {"id": "t"}), ([("A", "")] * 9, {"id": "t"}), ([("A", ""), ("B", "")], {"id": "T x"}), ([("", ""), ("B", "")], {"id": "t"})):
+        with pytest.raises(ValueError):
+            ui.tabs_html(bad, **kw)
+
+
+def test_the_chrome_is_a_header_and_a_side_for_a_page_that_is_not_a_world():
+    """🧰 chrome_html: 📟 the board (HH:MM:SS), 🏠, the page's own emoji, ⭐ ⚙️ in the header; ☰ (this page's own), its side emoji, ⋯ in the side."""
+    html = ui.chrome_html(CHROME)
+    assert html.startswith('<div class="ui-chrome ui-world-head" id="tools-chrome" data-ui-chrome lang="ja"><div class="ui-board"')
+    assert "<header" not in html and "<footer" not in html and ' style="' not in html            # the page's own header; no style attribute for a strict CSP
+    assert '<span class="ui-board-clock" data-clock>--:--:--</span>' in html and html.count('<span class="ui-board-min" data-at="09:30"></span>') == 2
+    head, side = html.split('<div class="ui-world-side">')
+    assert head.index(">🏠<") < head.index(">🗼<") < head.index(">⭐<") < head.index(">⚙️<") and "☰" not in head
+    assert side.index(">☰<") < side.index(">🧭<") < side.index(">⋯<")
+    assert '<a class="ui-world-tool" href="https://myon-bioinformatics.github.io/myon-bioinformatics/"' in side
+    assert '<li><a href="../maps/tokyo.html">🗼 パラレル東京</a></li>' in head
+    assert '<li><a href="#export"><span class="ui-world-arrow" aria-hidden="true"></span>🧾 出力のしかた</a><button type="button" class="ui-world-star"' in side
+    for waits in ('data-menu="favorites" hidden', 'data-menu="settings" hidden', 'data-menu="more" hidden'):
+        assert waits in html
+    assert 'data-pause="⏯️" data-resume="▶️"' in html and html.count("<option ") == len(ui.CHROME_LANGS) == 11
+    assert side.count("data-scroll=") == 2 and 'data-labels="{&quot;ja&quot;:&quot;パラレル都市&quot;,&quot;en&quot;:&quot;Parallel cities&quot;}"' in head
+    bare = ui.chrome_html()
+    assert "ui-board" not in bare and "ui-world-home" not in bare and "⏯️" not in bare and 'data-menu="spots" hidden><summary' in bare
+
+
+@pytest.mark.parametrize("spec,word", [
+    ({"extra": 1}, "a chrome has"), ({"id": "A b"}, "chrome id"),
+    ({"home": "javascript:alert(1)"}, "href"), ({"home": "//evil.test/"}, "href"), ({"home": "../x\"y"}, "href"),
+    ({"places": [{"label": "A"}]}, "places"), ({"places": [{"label": "A", "href": "./"}] * 33}, "places"),
+    ({"board": {"items": []}}, "1..12 items"), ({"board": {"items": [{"text": "x", "at": "25:00"}]}}, "HH:MM"),
+    ({"board": {"items": [{"text": "x"}], "post": True}}, "1..12 items"),
+    ({"tools": {"🏠": {"href": "./"}}}, "already used"), ({"tools": {"⚙️": {"href": "./"}}}, "already used"),
+    ({"tools": {"x": {"href": "./"}}}, "emoji"), ({"tools": {"🗼": {"href": "./", "body": "x"}}}, "exactly one of"),
+    ({"tools": {"🗼": {"links": []}}}, "links"), ({"tools": {"🗼": {"body": "x", "slot": "foot"}}}, "slot"),
+    ({"tools": {"🗼": {"body": "x", "labels": {"ja": "x"}}}}, "labels"),
+])
+def test_the_chrome_refuses(spec, word):
+    with pytest.raises(ValueError, match=re.escape(word)):
+        ui.chrome_validate(spec)
+
+
+def test_the_chrome_sheet_is_plain_and_its_module_asks_the_network_for_nothing():
+    css, js = ui.css_source("chrome.css"), ui.js_source("chrome.js")
+    assert "@layer" not in css and ".ui-chrome .ui-world-side{" in css and "@keyframes ui-board-scroll{" in css
+    for map_only in (".ui-floor", ".ui-spot", ".ui-player", ".ui-sheet{", ".ui-world-view", ".ui-world-dpad", ".ui-prop"):
+        assert map_only not in css, map_only
+    for word in ("fetch(", "XMLHttpRequest", "sendBeacon", "WebSocket", "sessionStorage", "indexedDB", "cookie", "import("):
+        assert word not in js, word
+    assert sorted(set(re.findall(r"save\(\{(\w+)", js))) == ["fav", "lang"] and "'ui-chrome:'+el.id" in js      # ⭐ and 🌐, nothing else
+    assert js.startswith('const CHROME_LANGS=["ja","en",') and "export function bindChrome" in js
+    page = ui.add_part(ui.render_document(trusted_html="<main><h1>t</h1></main>", title="t", css=ui.bundled_css()),
+                       ui.component_parts("chrome", CHROME), at="top", scope=".ui-chrome")
+    assert re.search(r'<body[^>]*><div class="ui-chrome ui-world-head"', page) and page.rstrip().endswith("bindChrome();\n</script></body></html>")
+
+
+def test_node26_the_chrome_counts_seconds_and_binds_a_fake_page():
+    """The board's clock in seconds, menus one at a time, ☰ this page and its sections, ⭐ of another page kept (unsafe entries dropped), ⋯ ⬇️, ⏯️."""
+    node26()
+    harness = r"""
+import assert from 'node:assert/strict';
+import {boardClock, bindChrome} from './js/chrome.js';
+assert.deepEqual(data.map(([n,o])=>boardClock(n,o).clock),data.map(c=>c[2]));
+// A small tree: enough of the DOM for bindChrome (append / prepend / replaceChildren, one-level queries, href → origin, pathname, hash).
+const find=(n,test,out=[])=>{for(const k of n.kids){if(k.kids){if(test(k))out.push(k);find(k,test,out)}}return out};
+const is=s=>k=>s==='a'?k.tag==='a':s==='button'?k.tag==='button':s==='.ui-world-star'?k.className==='ui-world-star':false;
+const node=(tag='div',extra={})=>{const n={tag,dataset:{},attrs:{},events:{},kids:[],hidden:true,open:false,className:'',parentElement:null,
+ addEventListener(e,f){this.events[e]=f},setAttribute(k,v){this.attrs[k]=v},hasAttribute(k){return k in this.attrs},
+ toggleAttribute(k){if(k in this.attrs){delete this.attrs[k];return false}this.attrs[k]='';return true},
+ take(c){return c.map(k=>{k=typeof k==='string'?{textContent:k}:k;k.parentElement=this;return k})},
+ append(...c){this.kids.push(...this.take(c))},prepend(...c){this.kids.unshift(...this.take(c))},replaceChildren(...c){this.kids=this.take(c)},
+ querySelector(s){return find(this,is(s))[0]??null},querySelectorAll(s){return find(this,is(s))},contains(){return false},
+ closest(s){for(let p=this;p;p=p.parentElement)if((s==='.ui-world-star'&&p.className==='ui-world-star')||(s==='.ui-world-rows a'&&p.tag==='a'))return p;return null},
+ get lastChild(){return this.kids.at(-1)},get textContent(){return this.text??this.kids.map(k=>k.textContent).join('')},set textContent(v){this.text=v;this.kids=[]},
+ set href(v){const u=new URL(v,location.origin+location.pathname);this.url=v;this.origin=u.origin;this.pathname=u.pathname;this.hash=u.hash},get href(){return this.url},...extra};return n};
+const store={'ui-chrome:tools-chrome':JSON.stringify({fav:[{href:'/tools/flow/#part',label:'流れ › 部品'},{href:'javascript:alert(1)',label:'x'},{href:'//evil.test/',label:'y'},{href:'/tools/gif/',label:5}]})};
+globalThis.localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=v}};
+globalThis.location={origin:'https://x.test',pathname:'/tools/gif/index.html'};
+globalThis.setInterval=()=>0;globalThis.clearInterval=()=>{};let scrolled=null;globalThis.scrollTo=o=>{scrolled=o};
+const menus=[node(),node(),node()],clock=node(),pause=node('button',{dataset:{pause:'⏯️',resume:'▶️'}}),spots=node('ul'),favs=node('ul');
+const given=node('li'),link=node('a'),star=node('button');star.className='ui-world-star';link.href='#export';link.append(node('span'),'🧾 出力のしかた');given.append(link,star);spots.append(given);
+const board=node('div',{isConnected:true,querySelector:s=>s==='[data-clock]'?clock:null});board.dataset.offset='540';
+const el=node('div',{id:'tools-chrome',querySelector:s=>s==='.ui-board'?board:s==='.ui-world-pause'?pause:s==='.ui-world-spots'?spots:s==='.ui-world-favs'?favs:null,
+ querySelectorAll:s=>s==='.ui-world-menu'?menus:[]});
+const heading=node('h2',{id:''});heading.textContent=' 地点 ';
+globalThis.document={title:' 🎞 GIF工房 ',documentElement:{scrollHeight:4096},querySelectorAll:s=>s==='[data-ui-chrome]'?[el]:s==='main h2'?[heading]:[],addEventListener(){},createElement:t=>node(t)};
+assert.deepEqual(bindChrome(),[el]);assert.equal(el.dataset.js,'');
+assert.match(clock.textContent,/^\d\d:\d\d:\d\d$/);
+assert.deepEqual(menus.map(m=>m.hidden),[false,false,false]);
+menus[0].open=true;menus[1].open=true;menus[1].events.toggle();assert.deepEqual(menus.map(m=>m.open),[false,true,false]);   // one at a time
+el.events.keydown({key:'Escape'});assert.deepEqual(menus.map(m=>m.open),[false,false,false]);
+// ☰ this page: itself (📍), its sections, then the row the page gave
+const rows=spots.querySelectorAll('a');
+assert.deepEqual(rows.map(a=>[a.href,a.textContent]),[['#','📍🎞 GIF工房'],['#tools-chrome-part-1','地点'],['#export','🧾 出力のしかた']]);
+assert.equal(rows[0].attrs['aria-current'],'page');assert.equal(heading.id,'tools-chrome-part-1');
+// ⭐ what was kept: a place of another tool page; the unsafe and the broken entries are dropped
+assert.deepEqual(favs.querySelectorAll('a').map(a=>[a.href,a.textContent]),[['/tools/flow/#part','流れ › 部品']]);
+const press=b=>el.events.click({target:b}),stars=()=>spots.querySelectorAll('.ui-world-star').map(b=>b.textContent).join('');
+assert.equal(stars(),'☆☆☆');
+press(spots.querySelectorAll('.ui-world-star')[1]);assert.equal(stars(),'☆★☆');                    // a section: "page › section", at its path on the site
+press(spots.querySelectorAll('.ui-world-star')[0]);assert.equal(stars(),'★★☆');                    // the page itself (index.html and / are one page)
+assert.deepEqual(JSON.parse(store['ui-chrome:tools-chrome']).fav,[{href:'/tools/flow/#part',label:'流れ › 部品'},{href:'/tools/gif/#tools-chrome-part-1',label:'🎞 GIF工房 › 地点'},{href:'/tools/gif/',label:'🎞 GIF工房'}]);
+assert.deepEqual(favs.querySelectorAll('a').map(a=>a.textContent),['流れ › 部品','🎞 GIF工房 › 地点','📍🎞 GIF工房']);
+press(favs.querySelectorAll('.ui-world-star')[0]);                                                 // ★ in the ⭐ panel: gone, here and in ☰
+assert.deepEqual(JSON.parse(store['ui-chrome:tools-chrome']).fav.map(f=>f.href),['/tools/gif/#tools-chrome-part-1','/tools/gif/']);
+menus[2].open=true;el.events.click({target:node('button',{dataset:{scroll:'bottom'},closest(s){return s==='[data-scroll]'?this:null}})});
+assert.deepEqual(scrolled,{top:4096,behavior:'smooth'});assert.equal(menus[2].open,false);         // ⋯ ⬇️
+pause.events.click();assert.equal('data-motion-paused' in el.attrs,true);assert.equal(pause.textContent,'▶️');assert.equal(pause.attrs['aria-pressed'],'true');
+pause.events.click();assert.equal('data-motion-paused' in el.attrs,false);assert.equal(pause.textContent,'⏯️');
+assert.deepEqual(Object.keys(JSON.parse(store['ui-chrome:tools-chrome'])),['fav']);                 // ⭐ only; 🌐 was not touched
+assert.deepEqual(bindChrome(),[el]);                                                               // bound once
+console.log('ok');
+"""
+    cases = [[0, 0, "00:00:00"], [86399, 540, "08:59:59"], [1800000000.7, -210, "04:30:00"], [59, 0, "00:00:59"]]
+    assert node_js(f"const data={json.dumps(cases)};\n" + harness.replace("import assert", "\nimport assert", 1)).stdout.strip() == "ok"
 
 
 def test_scroll_regions_are_marked_in_python_and_enhanced_by_one_module():
