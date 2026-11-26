@@ -4104,6 +4104,101 @@ class PatternTests(unittest.TestCase):
         self.assertNotIn("</script", source.lower())
         self.assertNotIn('"""', source)
 
+    @staticmethod
+    def _pixel_grids(seed: int = 20261127, count: int = 40, side: int = 12) -> list[dict]:
+        rng = random.Random(seed)
+        grids = []
+        for _ in range(count):
+            width, height, colors = rng.randint(1, side), rng.randint(1, side), rng.randint(1, 6)
+            grid = {"schema": pysaiyanweboo.PIXEL_GRID_SCHEMA, "width": width, "height": height,
+                    "colors": ["#%08x" % rng.getrandbits(32) if rng.random() < .8 else "#%06X00" % rng.getrandbits(24) for _ in range(colors)],
+                    "pixels": [[rng.randrange(colors) for _ in range(width)] for _ in range(height)]}
+            for key, value in (("mask", "cloud"), ("palette", "C01"), ("effect", None), ("resampling", "nearest"), ("note", "free <text>"), ("palette", "bad token!")):
+                if rng.random() < .35:
+                    grid[key] = value
+            grids.append(grid)
+        return grids
+
+    def test_pixel_grid_checks_resizes_draws_and_describes(self):
+        """🟦 pixel_grid_*: the grid of Ironmate's browser tools; base64_length: the characters a file takes."""
+        ui = pysaiyanweboo
+        grid = {"schema": ui.PIXEL_GRID_SCHEMA, "width": 2, "height": 2, "colors": ["#00000000", "#ff0000ff", "#00FF0080"], "pixels": [[0, 1], [2, 1]],
+                "palette": "C01", "effect": None, "mask": "has space", "note": "free text"}
+        checked = ui.pixel_grid_validate({**grid, "width": 2.0})
+        self.assertEqual(checked, grid); self.assertIsNot(checked["pixels"], grid["pixels"]); self.assertIs(type(checked["width"]), int)
+        self.assertEqual(ui.pixel_grid_svg(grid, 3), '<svg xmlns="http://www.w3.org/2000/svg" width="6" height="6" viewBox="0 0 2 2" shape-rendering="crispEdges">'
+                         '<rect x="1" y="0" width="1" height="1" fill="#ff0000" fill-opacity="1"/><rect x="0" y="1" width="1" height="1" fill="#00FF00" fill-opacity="0.5019607843137255"/>'
+                         '<rect x="1" y="1" width="1" height="1" fill="#ff0000" fill-opacity="1"/></svg>')
+        self.assertEqual(ui.pixel_grid_header(grid), {"schema": ui.PIXEL_GRID_SCHEMA, "width": 2, "height": 2, "colors": grid["colors"], "palette": "C01", "effect": None})
+        wide = ui.pixel_grid_resize(grid, 4, 2)                              # a whole-number enlargement loses nothing
+        self.assertEqual((wide["pixels"], wide["resampling"], list(wide)[-1]), ([[0, 0, 1, 1], [2, 2, 1, 1]], "nearest", "resampling"))
+        self.assertEqual(ui.pixel_grid_resize(wide, 2, 2)["pixels"], grid["pixels"])
+        self.assertEqual(ui.pixel_grid_resize(grid, 1, 1)["pixels"], [[1]])   # the old cell under the new cell's centre
+        png = ui.pixel_grid_png(grid, 3)
+        self.assertEqual(png, ui.pixel_grid_png(grid, 3))                     # the same grid and scale: the same bytes
+        text = b"ironmate\x00" + json.dumps(ui.pixel_grid_header(grid), separators=(",", ":")).encode("ascii")
+        self.assertEqual(png[33:45 + len(text)], struct.pack(">I", len(text)) + b"tEXt" + text + struct.pack(">I", zlib.crc32(b"tEXt" + text)))
+        decoded = ui.studio_png_decode(png)
+        self.assertEqual(decoded[:2], (6, 6))
+        self.assertEqual(bytes(decoded[2][:12]), bytes(12)); self.assertEqual(bytes(decoded[2][12:16]), b"\xff\x00\x00\xff")
+        self.assertEqual(bytes(decoded[2][6 * 4 * 3:6 * 4 * 3 + 4]), b"\x00\xff\x00\x80")
+        self.assertEqual([ui.base64_length(n) for n in (0, 1, 2, 3, 4, 300)], [0, 4, 4, 4, 8, 400])
+        self.assertEqual([ui.base64_length(n) for n in (1, 2, 3, 4, 300)], [len(base64.b64encode(bytes(n))) for n in (1, 2, 3, 4, 300)])
+        self.assertEqual(ui.base64_length(3, True), 4 + len("data:image/png;base64,"))
+        for bad, message in (({**grid, "schema": "x"}, "グリッド"), ({**grid, "width": 257}, "グリッド"), ({**grid, "height": 0}, "グリッド"), ({**grid, "width": True}, "グリッド"),
+                             (None, "グリッド"), ([grid], "グリッド"), ({**grid, "colors": []}, "色表"), ({**grid, "colors": ["#ff0000"]}, "色表"),
+                             ({**grid, "colors": ["#ff0000ff\n"]}, "色表"), ({**grid, "colors": "#ff0000ff"}, "色表"), ({**grid, "pixels": [[0, 1]]}, "色番号"),
+                             ({**grid, "pixels": [[0, 1], [2, 3]]}, "色番号"), ({**grid, "pixels": [[0, 1], [2, 1.5]]}, "色番号"), ({**grid, "pixels": [[0, 1], [2]]}, "色番号")):
+            with self.subTest(bad=repr(bad)[:70]), self.assertRaisesRegex(pysaiyanweboo.StudioError, message):
+                ui.pixel_grid_validate(bad)
+        for call, message in ((lambda: ui.pixel_grid_resize(grid, 0, 2), "幅・高さ"), (lambda: ui.pixel_grid_resize(grid, 2, 257), "幅・高さ"), (lambda: ui.pixel_grid_resize(grid, 2.5, 2), "幅・高さ"),
+                              (lambda: ui.pixel_grid_svg(grid, 17), "倍率は1〜16"), (lambda: ui.pixel_grid_svg(grid, 0), "倍率は1〜16"), (lambda: ui.pixel_grid_png(grid, 65), "倍率は1〜64"),
+                              (lambda: ui.base64_length(-1), "ファイルサイズ"), (lambda: ui.base64_length(1.5), "ファイルサイズ"), (lambda: ui.base64_length(2 ** 53), "ファイルサイズ")):
+            with self.assertRaisesRegex(pysaiyanweboo.StudioError, message):
+                call()
+        for g in self._pixel_grids():                                         # every random grid: the header never carries pixels, free text or a bad token
+            header = ui.pixel_grid_header(g)
+            self.assertLessEqual(set(header), {"schema", "width", "height", "colors", "mask", "palette", "effect", "resampling"})
+            self.assertNotIn("bad token!", header.values())
+            self.assertEqual(ui.pixel_grid_resize(ui.pixel_grid_resize(g, g["width"] * 3, g["height"] * 2), g["width"], g["height"])["pixels"], g["pixels"])
+
+    @unittest.skipUnless(node26(), "Node 26+ is required")
+    def test_pixel_grid_js_gives_what_python_gives(self):
+        """js/pixel-grid.js against pixel_grid_* on 16 random grids: the checked copy, resizes, SVG, the PNG's header chunk; Base64 length; refusals.
+        (Small grids: the cases travel to Node as one argument, which the system caps at 128 KiB.)"""
+        ui, rng, cases = pysaiyanweboo, random.Random(7), []
+        for g in self._pixel_grids(count=16, side=6):
+            w, h, scale = rng.randint(1, 9), rng.randint(1, 9), rng.randint(1, 16)
+            png = ui.pixel_grid_png(g, 1)
+            end = 41 + struct.unpack(">I", png[33:37])[0] + 4
+            cases.append({"grid": g, "valid": ui.pixel_grid_validate(g), "w": w, "h": h, "resized": ui.pixel_grid_resize(g, w, h), "scale": scale, "svg": ui.pixel_grid_svg(g, scale),
+                          "header": ui.pixel_grid_header(g), "chunk": png[33:end].hex()})
+        sizes = [0, 1, 2, 3, 4, 2 ** 31, (2 ** 53 - 1) // 2, *(rng.randrange(10 ** rng.randint(1, 12)) for _ in range(40))]
+        lengths = [[n, ui.base64_length(n), ui.base64_length(n, True)] for n in sizes]
+        bad = [None, [], {"schema": "x"}, {**cases[0]["grid"], "width": 300}, {**cases[0]["grid"], "colors": ["#ff0000"]}, {**cases[0]["grid"], "colors": ["#ff0000ff\n"]},
+               {**cases[0]["grid"], "pixels": []}]
+        script = """
+import assert from "node:assert/strict";
+import { PIXEL_GRID_SCHEMA, pixelGridValidate, pixelGridResize, pixelGridSvg, pixelGridHeader, base64Length, crc32, pngChunk } from "./js/pixel-grid.js";
+const [cases, lengths, bad, schema] = JSON.parse(process.argv[2]);
+assert.equal(PIXEL_GRID_SCHEMA, schema);
+const hex = bytes => [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
+for (const c of cases) {
+  assert.equal(JSON.stringify(pixelGridValidate(c.grid)), JSON.stringify(c.valid));
+  assert.equal(JSON.stringify(pixelGridResize(c.grid, c.w, c.h)), JSON.stringify(c.resized));
+  assert.equal(pixelGridSvg(c.grid, c.scale), c.svg);
+  assert.equal(JSON.stringify(pixelGridHeader(c.grid)), JSON.stringify(c.header));
+  assert.equal(hex(pngChunk("tEXt", new TextEncoder().encode("ironmate\\0" + JSON.stringify(pixelGridHeader(c.grid))))), c.chunk);
+}
+for (const [n, plain, uri] of lengths) { assert.equal(base64Length(n), plain); assert.equal(base64Length(n, true), uri); }
+for (const value of bad) assert.throws(() => pixelGridValidate(value), Error);
+for (const call of [() => pixelGridResize(cases[0].grid, 0, 1), () => pixelGridResize(cases[0].grid, 1, 2.5), () => pixelGridSvg(cases[0].grid, 17), () => base64Length(-1), () => base64Length(2 ** 53)]) assert.throws(call, Error);
+assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
+"""
+        payload = json.dumps([cases, lengths, bad, ui.PIXEL_GRID_SCHEMA])
+        self.assertLess(len(payload.encode("utf-8")), 96 * 1024)
+        node_js(script, payload)
+
     def test_studio_pages_sheet_waits_for_its_page_and_draws_with_the_theme_only(self):
         """🏭 studio-pages.css (Ironmate's studio pages): every selector waits for a ``data-page`` (nothing happens on another
         page), and every colour is a theme token but the picture's own (transparency checker, the white slide and its shadow)."""

@@ -15093,6 +15093,79 @@ _CSS["imagestudio.css"] = ("@layer components{.ui-imagestudio h3{margin:24px 0 8
                            ".ui-is-file{max-width:100%;min-width:0}.ui-imagestudio details{margin:8px 0}.ui-imagestudio details summary{cursor:pointer}}")
 
 
+# 🟦 Pixel grid (dot art): what Ironmate's browser tools do with a grid (its IronmateTools: check, resize, SVG, the PNG's header,
+# Base64 length), with Python first. A grid is ``{"schema": "ironmate-pixel-grid/1", "width", "height", "colors": ["#RRGGBBAA", ...],
+# "pixels": [[colour number, ...], ...]}`` plus whatever else it carries (``mask``, ``palette``, ``effect``, ``resampling``); a side is
+# 1 to 256 cells. The refusals are the page's text (Japanese), as ``StudioError``. ``js/pixel-grid.js`` is the same functions for a
+# page (pixelGridValidate, pixelGridResize, pixelGridSvg, pixelGridHeader, base64Length, crc32, pngChunk) and gives the same values.
+PIXEL_GRID_SCHEMA = "ironmate-pixel-grid/1"
+
+
+def pixel_grid_validate(grid: Any) -> dict[str, Any]:
+    """A checked deep copy of a pixel grid (other keys kept; ``4.0`` cells become ``4``)."""
+    g = studio_clone(grid) if isinstance(grid, dict) else None
+    _stu_need(g is not None and g.get("schema") == PIXEL_GRID_SCHEMA and all(_js_int(g.get(k)) and 1 <= g[k] <= 256 for k in ("width", "height")),
+              "グリッドは1〜256セル／辺です。")
+    colors, pixels = g.get("colors"), g.get("pixels")
+    _stu_need(isinstance(colors, list) and 1 <= len(colors) <= 65536 and all(isinstance(c, str) and re.fullmatch(r"#[0-9a-fA-F]{8}", c) for c in colors),
+              "色表は#RRGGBBAAで指定してください。")
+    _stu_need(isinstance(pixels, list) and len(pixels) == g["height"] and all(
+        isinstance(row, list) and len(row) == g["width"] and all(_js_int(i) and 0 <= i < len(colors) for i in row) for row in pixels),
+        "色番号または行列の寸法が不正です。")
+    return g
+
+
+def pixel_grid_resize(grid: Any, width: Any, height: Any) -> dict[str, Any]:
+    """The grid at ``width`` x ``height`` cells by nearest neighbour (each new cell takes the old cell under its centre), marked
+    ``resampling: "nearest"``. A whole-number enlargement loses nothing; a reduction does."""
+    g = pixel_grid_validate(grid)
+    _stu_need(all(_js_int(n) and 1 <= n <= 256 for n in (width, height)), "幅・高さは1〜256の整数です。")
+    width, height = int(width), int(height)
+    rows = [g["pixels"][min(g["height"] - 1, math.floor((y + 0.5) * g["height"] / height))] for y in range(height)]
+    columns = [min(g["width"] - 1, math.floor((x + 0.5) * g["width"] / width)) for x in range(width)]
+    g.update(width=width, height=height, pixels=[[row[x] for x in columns] for row in rows], resampling="nearest")
+    return g
+
+
+def pixel_grid_svg(grid: Any, scale: Any = 1) -> str:
+    """The grid as SVG: one 1 x 1 ``<rect>`` a cell (fully transparent cells left out), ``viewBox`` in cells, drawn ``scale`` (1 to 16)
+    times as large with crisp edges."""
+    g = pixel_grid_validate(grid)
+    _stu_need(_js_int(scale) and 1 <= scale <= 16, "倍率は1〜16です。")
+    cells = "".join(f'<rect x="{x}" y="{y}" width="1" height="1" fill="{g["colors"][i][:7]}" fill-opacity="{js_number(int(g["colors"][i][7:], 16) / 255)}"/>'
+                    for y, row in enumerate(g["pixels"]) for x, i in enumerate(row) if int(g["colors"][i][7:], 16))
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{g["width"] * int(scale)}" height="{g["height"] * int(scale)}" '
+            f'viewBox="0 0 {g["width"]} {g["height"]}" shape-rendering="crispEdges">{cells}</svg>')
+
+
+def pixel_grid_header(grid: Any) -> dict[str, Any]:
+    """What a PNG of the grid says about it (its ``tEXt`` chunk ``ironmate``): the schema, size and colour table, and of ``mask``,
+    ``palette``, ``effect`` and ``resampling`` those that are ``None`` or a short token (letters, digits, ``_ . / -``; 1 to 64). Never
+    the pixels, free text or a key that is not listed."""
+    g = pixel_grid_validate(grid)
+    return {k: g[k] for k in ("schema", "width", "height", "colors", "mask", "palette", "effect", "resampling")
+            if k in g and (k in ("schema", "width", "height", "colors") or g[k] is None or (isinstance(g[k], str) and re.fullmatch(r"[A-Za-z0-9_./-]{1,64}", g[k])))}
+
+
+def pixel_grid_png(grid: Any, scale: Any = 1) -> bytes:
+    """The grid as a PNG, each cell ``scale`` (1 to 64) pixels a side: 8-bit RGBA, no filter, the header (``pixel_grid_header``) as a
+    ``tEXt`` chunk after IHDR, the way the page writes it. The same grid and scale always give the same bytes."""
+    g = pixel_grid_validate(grid)
+    _stu_need(_js_int(scale) and 1 <= scale <= 64, "倍率は1〜64です。")
+    scale = int(scale)
+    table = [bytes.fromhex(c[1:]) for c in g["colors"]]
+    rgba = b"".join(b"".join(table[i] * scale for i in row) * scale for row in g["pixels"])
+    png = _rgba_png(g["width"] * scale, g["height"] * scale, rgba, compression=9)
+    text = b"tEXt" + b"ironmate\x00" + js_json(pixel_grid_header(g)).encode("ascii")
+    return png[:33] + struct.pack(">I", len(text) - 4) + text + struct.pack(">I", zlib.crc32(text)) + png[33:]
+
+
+def base64_length(size: Any, data_uri: bool = False) -> int:
+    """The characters ``size`` bytes take as standard Base64 with padding; with ``data_uri``, the 22 of ``data:image/png;base64,`` too."""
+    _stu_need(_js_int(size) and 0 <= size <= (2 ** 53 - 1) / 2, "ファイルサイズが大きすぎます。")
+    return 4 * ((int(size) + 2) // 3) + (22 if data_uri else 0)
+
+
 # 🏭 The pages of Ironmate's studio as Ironmate draws them (image studio, browser tools, slide studio, 📱 phone slides), by
 # ``<body data-page="studio">`` / ``"tools"`` / ``"studio slides"`` / ``"phone"``: header and brand, the three-column workspace, the
 # board and its handles, the shelf cards, the inspector, the tool sections, the slide controls and the pinned phone slide. Every
@@ -18238,6 +18311,37 @@ _JS["heatmap-color.js"] = f"const heatmapDefaultPalette={json.dumps(STUDIO_PALET
  return"#"+a.map((x,j)=>Math.round(x+(b[j]-x)*(p-i)).toString(16).padStart(2,"0")).join("").toUpperCase()}
 """
 
+
+# 🟦 The pixel grid for a page (Ironmate's browser tools): the functions of pixel_grid_* and base64_length, the same values.
+_JS["pixel-grid.js"] = "/* web-ui pixel-grid: a dot-art grid checked, resized, drawn as SVG and described for a PNG; Base64 length; PNG chunks. pysaiyanweboo.py (pixel_grid_*, base64_length) is the reference; this must agree. */\n" + f"export const PIXEL_GRID_SCHEMA={json.dumps(PIXEL_GRID_SCHEMA)};\n" + r"""export function pixelGridValidate(value){
+ const g=JSON.parse(JSON.stringify(value));
+ if(!g||typeof g!=="object"||Array.isArray(g)||g.schema!==PIXEL_GRID_SCHEMA||![g.width,g.height].every(n=>Number.isInteger(n)&&n>=1&&n<=256))throw new Error("グリッドは1〜256セル／辺です。");
+ if(!Array.isArray(g.colors)||!g.colors.length||g.colors.length>65536||g.colors.some(c=>typeof c!=="string"||!/^#[0-9a-f]{8}$/i.test(c)))throw new Error("色表は#RRGGBBAAで指定してください。");
+ if(!Array.isArray(g.pixels)||g.pixels.length!==g.height||g.pixels.some(r=>!Array.isArray(r)||r.length!==g.width||r.some(i=>!Number.isInteger(i)||i<0||i>=g.colors.length)))throw new Error("色番号または行列の寸法が不正です。");
+ return g}
+export function pixelGridResize(value,width,height){
+ const g=pixelGridValidate(value);
+ if(![width,height].every(n=>Number.isInteger(n)&&n>=1&&n<=256))throw new Error("幅・高さは1〜256の整数です。");
+ const pixels=Array.from({length:height},(_,y)=>Array.from({length:width},(_,x)=>g.pixels[Math.min(g.height-1,Math.floor(((y+0.5)*g.height)/height))][Math.min(g.width-1,Math.floor(((x+0.5)*g.width)/width))]));
+ return{...g,width,height,pixels,resampling:"nearest"}}
+export function pixelGridSvg(value,scale=1){
+ const g=pixelGridValidate(value);
+ if(!Number.isInteger(scale)||scale<1||scale>16)throw new Error("倍率は1〜16です。");
+ const cells=[];
+ g.pixels.forEach((row,y)=>row.forEach((i,x)=>{const c=g.colors[i],a=parseInt(c.slice(7),16)/255;if(a)cells.push(`<rect x="${x}" y="${y}" width="1" height="1" fill="${c.slice(0,7)}" fill-opacity="${a}"/>`)}));
+ return`<svg xmlns="http://www.w3.org/2000/svg" width="${g.width*scale}" height="${g.height*scale}" viewBox="0 0 ${g.width} ${g.height}" shape-rendering="crispEdges">${cells.join("")}</svg>`}
+export function pixelGridHeader(value){
+ const g=pixelGridValidate(value),always=["schema","width","height","colors"];
+ return Object.fromEntries([...always,"mask","palette","effect","resampling"].filter(k=>Object.hasOwn(g,k)&&(always.includes(k)||g[k]===null||(typeof g[k]==="string"&&/^[A-Za-z0-9_./-]{1,64}$/.test(g[k])))).map(k=>[k,g[k]]))}
+export function base64Length(bytes,dataUri=false){
+ if(!Number.isSafeInteger(bytes)||bytes<0||bytes>Number.MAX_SAFE_INTEGER/2)throw new Error("ファイルサイズが大きすぎます。");
+ return 4*Math.ceil(bytes/3)+(dataUri?22:0)}
+export function crc32(bytes){let c=0xffffffff;for(const b of bytes){c^=b;for(let k=0;k<8;k++)c=(c>>>1)^(c&1?0xedb88320:0)}return(c^0xffffffff)>>>0}
+export function pngChunk(type,body){
+ const out=new Uint8Array(body.length+12),view=new DataView(out.buffer);
+ view.setUint32(0,body.length);out.set(new TextEncoder().encode(type),4);out.set(body,8);view.setUint32(out.length-4,crc32(out.subarray(4,out.length-4)));
+ return out}
+"""
 
 _JS["imagestudio.js"] = "/* web-ui imagestudio: the Ironmate image studio in the page (memory only). Scene checks, SVG, history, workspace files and the layers a click places are the functions of pysaiyanweboo.py (studio_*) and give the same text; the editor on top is the page's. Python is the reference; this must agree. Differences: text is measured with the installed fonts here (a fixed 0.65 em / 1 em estimate in Python), words and graphemes follow the same rules as Python (Latin, Hangul, kana and Han; the Japanese dictionary of Intl.Segmenter is not used, so every engine gives the same lines), and the clock hands use fdlibm's sin and cos written out here and in Python (V8's of Node 22), not the engine's Math.sin and Math.cos, which differ in the last bit between engines and versions. */\n" + _CLIPBOARD_JS + _studio_js_constants() + _JS["heatmap-color.js"] + r"""export class StudioError extends Error{}
 const fail=message=>{throw new StudioError(message)};
