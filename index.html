@@ -54,6 +54,8 @@ body[data-ui-theme="terminal"]{--ui-bg:#0a0e10;--ui-panel:#11171a;--ui-fg:#d5dee
 @layer components{.ui-source label{display:block;margin:8px 0 4px}.ui-source-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.ui-source-row .ui-input{flex:1 1 192px;min-width:0}.ui-source>textarea.ui-input{width:100%;box-sizing:border-box;margin-bottom:8px}.ui-source-error{margin:8px 0;color:var(--ui-danger);font-weight:600;overflow-wrap:anywhere}.ui-source-error[hidden],.ui-source .ui-output[hidden]{display:none}}
 /* css/stage.css */
 @layer components{.ui-stage{--ui-stage-w:16;--ui-stage-h:9;--ui-stage-room:64dvh;position:relative;flex:none;align-self:center;box-sizing:border-box;margin:0 auto;width:min(100%,calc(var(--ui-stage-room) * var(--ui-stage-w) / var(--ui-stage-h)));aspect-ratio:var(--ui-stage-w)/var(--ui-stage-h);overflow:hidden;background:var(--ui-panel);border:1px solid var(--ui-border)}.ui-stage[data-ui-stage=pinned]{position:sticky;top:0;z-index:1}.ui-stage>:is(svg,img,canvas,video,[data-ui-fill]){position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:contain}@media(orientation:landscape) and (max-height:560px){.ui-stage{--ui-stage-room:100dvh}}}
+/* css/status.css */
+@layer components{.ui-status{margin:.5rem 0;min-height:1.5em;color:var(--ui-fg)}.ui-status[data-ui-tone=error]{color:var(--ui-danger)}}
 /* css/stub.css */
 @layer components{
 .stub-shell{display:grid;gap:1rem}
