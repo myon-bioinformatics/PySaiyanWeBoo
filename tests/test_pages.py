@@ -4256,6 +4256,54 @@ assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
             self.assertEqual(ui.image_error(x, x)["exact_rgba_pixels"], w * h)
             self.assertLessEqual(ui.image_error(x, y)["rgb_mae"], ui.image_error(x, y)["rgb_rmse"] + 1e-9)
 
+    def test_many_images_with_a_status_each_become_one_page_and_a_summary(self):
+        """🗂️ image_thumbnail, image_digest_validate, image_digest_html, image_digest_markdown, image_digest (Ironmate's image_digest)."""
+        ui = pysaiyanweboo
+        red, blue = bytes((255, 0, 0, 255)), bytes((0, 0, 255, 255))
+        thumb = ui.image_thumbnail((4, 2, red * 2 + blue * 2 + red * 2 + blue * 2), 2, 3)   # 4 x 2 at width 2 is 2 x 1: the rest is white
+        self.assertEqual(thumb, (2, 3, red + blue + b"\xff" * 16))
+        self.assertEqual(ui.image_thumbnail((2, 2, red + blue + blue + red), 1, 1), (1, 1, bytes((128, 0, 128, 255))))   # the mean of what it covers
+        self.assertEqual(ui.image_thumbnail((1, 4, red * 4), 2, 2)[2], red * 4)                                   # taller than the tile: cut
+        spec = {"schema": ui.IMAGE_DIGEST_SCHEMA, "title": "Screens <1>", "rows": ["home", "list|2"], "cols": ["phone", "desktop"],
+                "meta": {"build": "abc", "link": "https://example.com/run?a=1&b=2"},
+                "cells": [{"row": "home", "col": "phone", "image": "shots/a.png", "status": "pass"},
+                          {"row": "home", "col": "desktop", "image": "shots/b.png", "status": "fail", "notes": ["320px:overlap", "<b>", "3", "4", "5", "6", "7"]},
+                          {"row": "list|2", "col": "phone"}]}
+        data = ui.image_digest_validate(spec)
+        self.assertEqual([c["status"] for c in data["cells"]], ["pass", "fail", "unknown"]); self.assertEqual(len(data["cells"][1]["notes"]), 6)
+        images = {"shots/a.png": ui.studio_png_encode(2, 2, red * 4), "shots/b.png": (3, 1, blue * 3)}             # PNG bytes, or an image already decoded
+        page, summary, info = ui.image_digest(spec, images)
+        self.assertEqual(info, {"schema": "ironmate-image-digest/1", "tile": [64, 128], "bytes": len(page.encode("utf-8")), "fits": True, "rows": 2, "cols": 2,
+                                "passed": 1, "statuses": {"fail": 1, "pass": 1, "unknown": 1}})
+        self.assertTrue(page.startswith("<!doctype html>") and "<title>Screens &lt;1&gt;</title>" in page and "<script" not in page and "http://" not in page)
+        self.assertEqual(page.count('<img src="data:image/png;base64,'), 2); self.assertEqual(page.count('width="64" height="128"'), 2)
+        self.assertIn('<td class="s-fail">', page); self.assertIn('<td class="missing">not run</td>', page); self.assertIn("320px:overlap<br>&lt;b&gt;", page)
+        self.assertIn('<a href="https://example.com/run?a=1&amp;b=2">link</a>', page); self.assertIn("Thumbnails 64x128 px · build abc", page)
+        png = base64.b64decode(re.search(r'base64,([A-Za-z0-9+/=]+)"', page)[1])
+        self.assertEqual(ui.studio_png_decode(png)[:2], (64, 128))
+        self.assertEqual(summary.splitlines(), ["<!-- ironmate-image-digest -->", "### Screens <1>", "", "1/4 passed; build abc. [Link](https://example.com/run?a=1&b=2)", "",
+                                                "| Row | Passed | Needs a look |", "| --- | --- | --- |", "| home | 1/2 | desktop (320px:overlap, &lt;b&gt;) |",
+                                                "| list&#124;2 | 0/2 | phone (unknown); desktop (not run) |"])
+        self.assertEqual(ui.image_digest_markdown(data, marker="<!-- mine -->").splitlines()[0], "<!-- mine -->")
+        noisy = {name: (200, 400, random.Random(i).randbytes(200 * 400 * 4)) for i, name in enumerate(images)}     # noise does not compress: the tiles must shrink
+        small_page, _, small = ui.image_digest(spec, noisy, max_bytes=20_000)
+        self.assertEqual((small["tile"], small["fits"]), ([32, 64], True)); self.assertLessEqual(len(small_page.encode("utf-8")), 20_000)
+        self.assertEqual(ui.image_digest(spec, noisy, max_bytes=20_000, tile=(16, 32))[2]["tile"], [16, 32])
+        for bad, message in (({**spec, "schema": "x"}, "expected schema"), ({**spec, "rows": ["a", "a"]}, "rows must be"), ({**spec, "cols": []}, "cols must be"),
+                             ({**spec, "cells": [{"row": "nope", "col": "phone"}]}, "listed row"), ({**spec, "cells": [spec["cells"][0]] * 2}, "two cells"),
+                             ({**spec, "cells": [{"row": "home", "col": "phone", "status": "Pass"}]}, "status must be"),
+                             ({**spec, "cells": [{"row": "home", "col": "phone", "image": "../x.png"}]}, "relative path"),
+                             ({**spec, "cells": [{"row": "home", "col": "phone", "image": "/etc/x.png"}]}, "relative path"),
+                             ({**spec, "cells": [{"row": "home", "col": "phone", "notes": ["x" * 201]}]}, "notes must be"),
+                             ({**spec, "meta": {"link": "http://example.com"}}, "https URL"), ({**spec, "title": "a\nb"}, "title must be")):
+            with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
+                ui.image_digest_validate(bad)
+        for call, message in ((lambda: ui.image_digest(spec, {}), "no such image"), (lambda: ui.image_digest(spec, images, max_bytes=100), "max_bytes"),
+                              (lambda: ui.image_digest(spec, images, tile=(8, 8)), "tile must be"), (lambda: ui.image_thumbnail((2, 2, b"x"), 2, 2), "an image is"),
+                              (lambda: ui.image_thumbnail((1, 1, red), 0, 2), "thumbnail is")):
+            with self.assertRaisesRegex(ValueError, message):
+                call()
+
     def test_studio_pages_sheet_waits_for_its_page_and_draws_with_the_theme_only(self):
         """🏭 studio-pages.css (Ironmate's studio pages): every selector waits for a ``data-page`` (nothing happens on another
         page), and every colour is a theme token but the picture's own (transparency checker, the white slide and its shadow)."""

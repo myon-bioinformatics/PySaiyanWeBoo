@@ -15306,6 +15306,173 @@ def image_compare(reference: Any, candidate: Any, *, radius: int = 2, threshold:
             "Aligned_IoU": best[0], "Alignment_dx": best[1], "Alignment_dy": best[2], "Alignment_L1_Pixels": abs(best[1]) + abs(best[2])}
 
 
+# 🗂️ Many images with a status each on one small page (Ironmate's image_digest, first written there): rows and columns are any
+# labels (pages x browsers, cases x devices, slides x themes). The input is ``{"schema": "ironmate-image-digest-input/1", "title",
+# "rows": [...], "cols": [...], "meta": {"build": "...", "link": "https://..."}, "cells": [{"row", "col", "image": "shots/home.png",
+# "status": "pass", "notes": [...]}]}``. Each image becomes a thumbnail in the page itself (a data URI), so the page is one file
+# anyone can open; a status only colours and counts, it is never read from the pixels. Nothing here opens a file: the caller hands
+# the images over.
+IMAGE_DIGEST_SCHEMA = "ironmate-image-digest-input/1"
+_DIGEST_MIN_TILE = (16, 32)
+
+
+def image_thumbnail(image: Any, width: int, height: int) -> tuple[int, int, bytes]:
+    """The image as a ``width`` x ``height`` thumbnail: shrunk to ``width`` (its shape kept, up to about 4 x 4 samples a pixel), then
+    cut at ``height`` or filled with white below. An image of up to 4096 x 4096 pixels; a thumbnail is for finding one's way, not
+    for judging pixels."""
+    if (not isinstance(image, (tuple, list)) or len(image) != 3 or type(image[0]) is not int or type(image[1]) is not int or image[0] < 1 or image[1] < 1
+            or image[0] * image[1] > 4096 * 4096 or not isinstance(image[2], (bytes, bytearray)) or len(image[2]) != image[0] * image[1] * 4):
+        raise ValueError("an image is (width, height, RGBA bytes) of 1 to 16777216 pixels")
+    if any(type(v) is not int or not 1 <= v <= 4096 for v in (width, height)):
+        raise ValueError("a thumbnail is 1 to 4096 pixels a side")
+    w, h, rgba = image
+    scaled = max(1, round(h * width / w))
+    out = bytearray(b"\xff\xff\xff\xff" * (width * height))
+    for ty in range(min(height, scaled)):
+        y0, y1 = ty * h // scaled, max(ty * h // scaled + 1, (ty + 1) * h // scaled)
+        ys = range(y0, y1, max(1, (y1 - y0) // 4))
+        for tx in range(width):
+            x0, x1 = tx * w // width, max(tx * w // width + 1, (tx + 1) * w // width)
+            xs = range(x0, x1, max(1, (x1 - x0) // 4))
+            total, n = [0, 0, 0, 0], len(ys) * len(xs)
+            for y in ys:
+                for x in xs:
+                    i = (y * w + x) * 4
+                    for c in range(4):
+                        total[c] += rgba[i + c]
+            out[(ty * width + tx) * 4:(ty * width + tx) * 4 + 4] = bytes((v + n // 2) // n for v in total)
+    return width, height, bytes(out)
+
+
+def image_digest_validate(spec: Any) -> dict[str, Any]:
+    """The input checked: ``{"title", "rows", "cols", "cells": [{"row", "col", "status", "image", "notes"}], "meta"}``. Rows and columns
+    are distinct labels (1 to 120 characters, no control characters), at most 2000 cells and one a row and column, a status is a
+    short lowercase token (``unknown`` when left out), an image a relative name without ``..``, notes at most 6 kept, ``meta.link``
+    an https URL."""
+    if not isinstance(spec, dict) or spec.get("schema") != IMAGE_DIGEST_SCHEMA:
+        raise ValueError(f"expected schema {IMAGE_DIGEST_SCHEMA}")
+    label = re.compile(r"[^\x00-\x1f\x7f]{1,120}")
+    rows, cols, cells = spec.get("rows"), spec.get("cols"), spec.get("cells")
+    for name, values in (("rows", rows), ("cols", cols)):
+        if not isinstance(values, list) or not values or not all(isinstance(v, str) and label.fullmatch(v) for v in values) or len(set(values)) != len(values):
+            raise ValueError(f"{name} must be distinct nonempty labels")
+    if not isinstance(cells, list) or len(cells) > 2000:
+        raise ValueError("cells must be a list of at most 2000")
+    seen, out = set(), []
+    for cell in cells:
+        if not isinstance(cell, dict) or cell.get("row") not in rows or cell.get("col") not in cols:
+            raise ValueError("each cell needs a listed row and col")
+        key = (cell["row"], cell["col"])
+        if key in seen:
+            raise ValueError(f"two cells for {key}")
+        seen.add(key)
+        status, image, notes = cell.get("status", "unknown"), cell.get("image"), cell.get("notes", [])
+        if not isinstance(status, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,23}", status):
+            raise ValueError(f"status must be a short lowercase token: {status!r}")
+        if image is not None and (not isinstance(image, str) or not image or image.startswith(("/", "\\")) or re.match(r"[A-Za-z]:", image)
+                                  or ".." in re.split(r"[/\\]", image)):
+            raise ValueError(f"image must be a relative path inside the input directory: {image!r}")
+        if not isinstance(notes, list) or not all(isinstance(n, str) and len(n) <= 200 for n in notes):
+            raise ValueError("notes must be short strings")
+        out.append({"row": cell["row"], "col": cell["col"], "status": status, "image": image, "notes": notes[:6]})
+    meta = spec.get("meta", {})
+    if not isinstance(meta, dict) or not all(isinstance(k, str) and isinstance(v, str) and len(v) <= 300 for k, v in meta.items()):
+        raise ValueError("meta must map names to short strings")
+    if meta.get("link") is not None and not re.fullmatch(r'https://[^\s"<>]+', meta["link"]):
+        raise ValueError("meta.link must be an https URL")
+    title = spec.get("title", "Image digest")
+    if not isinstance(title, str) or not label.fullmatch(title):
+        raise ValueError("title must be a short label")
+    return {"title": title, "rows": rows, "cols": cols, "cells": out, "meta": meta}
+
+
+def image_digest_html(data: dict[str, Any], thumbnails: dict[tuple[str, str], bytes], tile: Sequence[int]) -> str:
+    """The page: a table of rows x columns, each cell its thumbnail (``thumbnails[row, col]``, PNG bytes of ``tile`` size), status and
+    notes; a failing cell is tinted, a cell nobody listed says ``not run``. One file: no script, no outside reference."""
+    cells = {(c["row"], c["col"]): c for c in data["cells"]}
+    body = []
+    for row in data["rows"]:
+        tds = [f"<th>{escape(row, quote=False)}</th>"]
+        for col in data["cols"]:
+            cell = cells.get((row, col))
+            if cell is None:
+                tds.append('<td class="missing">not run</td>')
+                continue
+            img = (f'<img src="data:image/png;base64,{base64.b64encode(thumbnails[row, col]).decode("ascii")}" width="{tile[0]}" height="{tile[1]}" alt=""><br>'
+                   if (row, col) in thumbnails else "")
+            notes = "<br>".join(escape(n, quote=False) for n in cell["notes"])
+            tds.append(f'<td class="s-{cell["status"]}">{img}{escape(cell["status"], quote=False)}' + (f"<br><small>{notes}</small>" if notes else "") + "</td>")
+        body.append("<tr>" + "".join(tds) + "</tr>")
+    meta = " · ".join(f"{escape(k, quote=False)} {escape(v, quote=False)}" for k, v in data["meta"].items() if k != "link")
+    link = data["meta"].get("link")
+    return ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<title>{escape(data["title"], quote=False)}</title><style>body{{font:13px system-ui,sans-serif;margin:8px}}'
+            "table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px;vertical-align:top;text-align:center}"
+            "td.s-fail,td.s-error{background:#ffebe9}td.missing{color:#666}small{color:#555}</style>"
+            f'<h1>{escape(data["title"], quote=False)}</h1><p>Thumbnails {tile[0]}x{tile[1]} px' + (f" · {meta}" if meta else "")
+            + (f' · <a href="{escape(link, quote=True)}">link</a>' if link else "") + ". Thumbnails are for orientation, not pixel review.</p>"
+            f'<table><tr><th></th>{"".join(f"<th>{escape(c, quote=False)}</th>" for c in data["cols"])}</tr>{"".join(body)}</table>\n')
+
+
+def image_digest_markdown(data: dict[str, Any], *, marker: str = "<!-- ironmate-image-digest -->") -> str:
+    """The same in a few lines of Markdown, for a pull request comment or a job summary: how many passed, then a row a line with
+    what needs a look (``marker`` first, so a later run can find and replace its own comment)."""
+    def text(value: str) -> str:
+        return re.sub(r"([\\`*_\[\]])", r"\\\1", escape(" ".join(value.split()), quote=False)).replace("|", "&#124;")
+
+    cells = {(c["row"], c["col"]): c for c in data["cells"]}
+    meta, link = ", ".join(f"{k} {v}" for k, v in data["meta"].items() if k != "link"), data["meta"].get("link")
+    lines = [marker, f'### {data["title"]}', "",
+             f'{sum(1 for c in data["cells"] if c["status"] == "pass")}/{len(data["rows"]) * len(data["cols"])} passed' + (f"; {meta}" if meta else "") + "."
+             + (f" [Link]({link})" if link else ""), "", "| Row | Passed | Needs a look |", "| --- | --- | --- |"]
+    for row in data["rows"]:
+        bad = [f"{col} (not run)" if (row, col) not in cells else f'{col} ({", ".join(cells[row, col]["notes"][:2]) or cells[row, col]["status"]})'
+               for col in data["cols"] if (row, col) not in cells or cells[row, col]["status"] != "pass"]
+        lines.append(f'| {text(row)} | {len(data["cols"]) - len(bad)}/{len(data["cols"])} | {text("; ".join(bad) or "-")} |')
+    return "\n".join(lines) + "\n"
+
+
+def image_digest(spec: Any, images: dict[str, Any], *, max_bytes: int = 1_000_000, tile: Sequence[int] = (64, 128)) -> tuple[str, str, dict[str, Any]]:
+    """``(page, summary, info)`` for ``spec``: ``image_digest_html``, ``image_digest_markdown`` and what was done. ``images`` gives each
+    cell's image by its name: PNG bytes (``studio_png_decode``: 8 bits, up to 4 MP) or an image already decoded, ``(width, height,
+    RGBA bytes)`` up to 4096 x 4096. Thumbnails start at ``tile`` and are halved each way (a quarter of the pixels) until the page is
+    at most ``max_bytes`` or they are 16 x 32; ``info`` says the size used and whether it fits."""
+    data = image_digest_validate(spec)
+    if type(max_bytes) is not int or not 20_000 <= max_bytes <= 20_000_000:
+        raise ValueError("max_bytes must be 20000..20000000")
+    if (not isinstance(tile, (tuple, list)) or len(tile) != 2 or not all(type(v) is int for v in tile)
+            or not (_DIGEST_MIN_TILE[0] <= tile[0] <= 640 and _DIGEST_MIN_TILE[1] <= tile[1] <= 1280)):
+        raise ValueError("tile must be within 16..640 x 32..1280 pixels")
+    sizes = [tuple(tile)]
+    while sizes[-1] != _DIGEST_MIN_TILE:
+        sizes.append((max(_DIGEST_MIN_TILE[0], sizes[-1][0] // 2), max(_DIGEST_MIN_TILE[1], sizes[-1][1] // 2)))
+    thumbnails: dict[tuple[int, int], dict[tuple[str, str], bytes]] = {size: {} for size in sizes}
+    made: dict[str, dict[tuple[int, int], bytes]] = {}
+    for cell in data["cells"]:
+        name = cell["image"]
+        if not name:
+            continue
+        if name not in images:
+            raise ValueError(f"{name}: no such image")
+        if name not in made:                                               # the thumbnails are kept, not every full image, across the passes
+            source = images[name]
+            if isinstance(source, (bytes, bytearray)):
+                if len(source) > 32 * 1024 * 1024:
+                    raise ValueError(f"{name}: larger than 32MiB")
+                source = studio_png_decode(bytes(source))
+            made[name] = {size: _rgba_png(*image_thumbnail(source, *size), compression=9) for size in sizes}
+        for size in sizes:
+            thumbnails[size][cell["row"], cell["col"]] = made[name][size]
+    for size in sizes:
+        page = image_digest_html(data, thumbnails[size], size)
+        if len(page.encode("utf-8")) <= max_bytes or size == _DIGEST_MIN_TILE:
+            break
+    statuses = [c["status"] for c in data["cells"]]
+    return page, image_digest_markdown(data), {
+        "schema": "ironmate-image-digest/1", "tile": list(size), "bytes": len(page.encode("utf-8")), "fits": len(page.encode("utf-8")) <= max_bytes,
+        "rows": len(data["rows"]), "cols": len(data["cols"]), "passed": statuses.count("pass"), "statuses": {s: statuses.count(s) for s in sorted(set(statuses))}}
+
+
 # 🏭 The pages of Ironmate's studio as Ironmate draws them (image studio, browser tools, slide studio, 📱 phone slides), by
 # ``<body data-page="studio">`` / ``"tools"`` / ``"studio slides"`` / ``"phone"``: header and brand, the three-column workspace, the
 # board and its handles, the shelf cards, the inspector, the tool sections, the slide controls and the pinned phone slide. Every
