@@ -69,7 +69,7 @@ theme-internal selectors, and most concrete DOM tag choices remain
 implementation details.
 
 The machine-readable source of truth is [contract.json](./contract.json).
-[example.html](./example.html) is the canonical structural fixture used by CI.
+`contract/v1/example.html` (built in memory by `example_pages()["contract/v1/example.html"]`) is the canonical structural fixture used by CI.
 It is a proof-of-presence fixture, not a prescriptive application layout.
 
 CI structurally validates the declared classes/themes and browser smoke captures
