@@ -4051,6 +4051,25 @@ class PatternTests(unittest.TestCase):
         self.assertNotIn("</script", source.lower())
         self.assertNotIn('"""', source)
 
+    def test_studio_pages_sheet_waits_for_its_page_and_draws_with_the_theme_only(self):
+        """🏭 studio-pages.css (Ironmate's studio pages): every selector waits for a ``data-page`` (nothing happens on another
+        page), and every colour is a theme token but the picture's own (transparency checker, the white slide and its shadow)."""
+        css = pysaiyanweboo.css_source("studio-pages.css")
+        self.assertIn(css.strip("\n"), pysaiyanweboo.bundled_css())
+        flat = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        pages = set()
+        for selectors in re.findall(r"([^{}]+)\{[^{}]*\}", re.sub(r"@media[^{]*\{", "", flat)):
+            for part in selectors.split(","):
+                guard = re.search(r':where\(\[data-page~="([a-z]+)"\]\)', part)
+                self.assertTrue(guard, f"waits for its page: {part.strip()}")
+                pages.add(guard[1])
+        self.assertEqual(pages, {"studio", "tools", "slides", "phone"})
+        picture = {"#e1e8e3", "#e4e9e2", "#f7f9f4", "#fff", "rgba(0,0,0,.16)"}
+        self.assertEqual(set(re.findall(r"#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)", flat)), picture)
+        for rule in re.findall(r"[^{}]*\{[^{}]*(?:#[0-9a-fA-F]{3,8}\b|rgba?\()[^{}]*\}", flat):
+            self.assertRegex(rule, r"conic-gradient|\.ui-stage", f"only the picture keeps a literal colour: {rule.strip()[:80]}")
+        self.assertNotIn("@layer", css)                                   # unlayered, like the page CSS it was
+
     def test_the_platform_adapters_check_the_page(self):
         for name, fragment in (("web-ui-patterns", None), ("web-ui-pattern-run", "patterns-run-title")):
             adapter = pysaiyanweboo.btk_adapter(name)
