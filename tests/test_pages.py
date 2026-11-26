@@ -6384,7 +6384,7 @@ def test_tabs_need_no_script_and_the_page_block_uses_them():
     block = ui._page_block({"type": "tabs", "id": "profile", "tabs": [{"label": "About", "blocks": [{"type": "text", "text": "a"}]},
                                                                       {"label": "Skills <b>", "blocks": [{"type": "text", "text": "b"}]}]}, depth=0)
     assert block == html
-    assert ".ui-tabs>.ui-tab-input:nth-of-type(2):checked~.ui-tab-panel:nth-of-type(2){display:block}" in ui.component_parts("tabs", [("A", ""), ("B", "")], id="t")["css"]
+    assert ".ui-tabs>.ui-tab-input:nth-of-type(2):checked~.ui-tab-panel:nth-of-type(2){display:block}" in ui.component_parts("tabs", [("A", ""), ("B", "")], id="t")["css"] == ui.tabs_css()
     for bad, kw in (([("A", "")], {"id": "t"}), ([("A", "")] * 9, {"id": "t"}), ([("A", ""), ("B", "")], {"id": "T x"}), ([("", ""), ("B", "")], {"id": "t"})):
         with pytest.raises(ValueError):
             ui.tabs_html(bad, **kw)

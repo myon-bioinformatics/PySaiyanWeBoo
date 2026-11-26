@@ -2035,6 +2035,11 @@ _TABS_CSS = (".ui-tabs{margin:var(--ui-space) 0}.ui-tab-input{position:absolute;
              + "".join(f".ui-tabs>.ui-tab-input:nth-of-type({k}):checked~.ui-tab-panel:nth-of-type({k}){{display:block}}" for k in range(1, _TABS_MAX + 1)))
 
 
+def tabs_css() -> str:
+    """🗂️ The rules ``tabs_html`` needs (radio tabs, up to 8 per group): for a page that does not load them with ``page_document``."""
+    return _TABS_CSS
+
+
 def tabs_html(tabs: Any, *, id: str) -> str:
     """🗂️ Tabs with no script: ``tabs`` lists 2..8 ``(label, trusted_html)``, the first shown; ``id`` (1..40 of a-z, 0-9, -) names the group.
     Radio inputs and labels, so the keyboard and a page without JavaScript both work; the rules are ``_TABS_CSS`` (``component_parts("tabs", …)``).
@@ -5464,7 +5469,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
 }
 # Stylesheets that are built rather than stored: the spec (the first argument) decides them.
 _COMPONENT_CSS = {"showcase_css": lambda *a: showcase_css(showcase_validate(a[0])),
-                  "front_css": lambda *a: front_css(), "gaze_avatar_css": lambda: GAZE_AVATAR_CSS, "tabs_css": lambda *a, **k: _TABS_CSS}
+                  "front_css": lambda *a: front_css(), "gaze_avatar_css": lambda: GAZE_AVATAR_CSS, "tabs_css": lambda *a, **k: tabs_css()}
 
 
 def component_parts(name: str, /, *args: Any, **kwargs: Any) -> dict[str, str]:
