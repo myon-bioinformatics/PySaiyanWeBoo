@@ -3,10 +3,10 @@
 🌐 [GitHub Pages](https://myon-bioinformatics.github.io/PySaiyanWeBoo/) · 🏠 [Portfolio](https://myon-bioinformatics.github.io/)
 
 <p align="center">
-  <img src="docs/brand/icon.png" alt="PySaiyanWeBoo icon" width="160" />
+  <img src="https://myon-bioinformatics.github.io/PySaiyanWeBoo/guide/icon.png" alt="PySaiyanWeBoo icon" width="160" />
 </p>
 
-[Icon](docs/brand/icon.png) · [Favicon](docs/brand/favicon.png)
+[Icon](https://myon-bioinformatics.github.io/PySaiyanWeBoo/guide/icon.png) · [Favicon](https://myon-bioinformatics.github.io/PySaiyanWeBoo/guide/favicon.png)
 
 Shared CSS themes, semantic UI components, and small browser modules for static interfaces across myon-bioinformatics projects, all built by one standard-library Python module (`pysaiyanweboo.py`) that keeps them as Python data.
 
