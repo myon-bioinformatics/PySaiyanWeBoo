@@ -15166,6 +15166,146 @@ def base64_length(size: Any, data_uri: bool = False) -> int:
     return 4 * ((int(size) + 2) // 3) + (22 if data_uri else 0)
 
 
+# 🔍 Two images compared in numbers (Ironmate's image_compare and studio_image_quality, first written there). An image is
+# ``(width, height, rgba)``: what ``studio_png_decode`` returns, at most 4,194,304 pixels. Nothing here judges how an image looks to a
+# person: the numbers are channel errors, overlap of masks and the shift that overlaps best, each one explainable by hand.
+IMAGE_MAX_PIXELS = 4_194_304
+
+
+def _image(image: Any, other: Any = None) -> tuple[int, int, bytes]:
+    """The image checked (and, with ``other``, of the same size)."""
+    if (not isinstance(image, (tuple, list)) or len(image) != 3 or type(image[0]) is not int or type(image[1]) is not int or image[0] < 1 or image[1] < 1
+            or image[0] * image[1] > IMAGE_MAX_PIXELS or not isinstance(image[2], (bytes, bytearray)) or len(image[2]) != image[0] * image[1] * 4):
+        raise ValueError(f"an image is (width, height, RGBA bytes) of 1 to {IMAGE_MAX_PIXELS} pixels")
+    if other is not None and tuple(_image(other)[:2]) != tuple(image[:2]):
+        raise ValueError("the images must have the same size")
+    return image[0], image[1], bytes(image[2])
+
+
+def image_error(reference: Any, candidate: Any, background: Sequence[int] = (255, 255, 255)) -> dict[str, Any]:
+    """How far ``candidate`` is from ``reference``, pixel for pixel: ``rgb_mae`` and ``rgb_rmse`` (0 to 255, of the colours once both lie
+    on ``background``), ``alpha_mae``, ``exact_rgba_pixels`` and ``pixels``."""
+    width, height, a = _image(reference, candidate)
+    b = bytes(candidate[2])
+    if len(background) != 3 or any(type(c) is not int or not 0 <= c <= 255 for c in background):
+        raise ValueError("background needs three integer bytes")
+    absolute = squared = alpha = exact = 0
+    for i in range(0, len(a), 4):
+        exact += a[i:i + 4] == b[i:i + 4]
+        alpha += abs(a[i + 3] - b[i + 3])
+        for c in range(3):
+            d = (a[i + c] * a[i + 3] + background[c] * (255 - a[i + 3]) + 127) // 255 - (b[i + c] * b[i + 3] + background[c] * (255 - b[i + 3]) + 127) // 255
+            absolute += abs(d)
+            squared += d * d
+    count = width * height
+    return {"rgb_mae": absolute / (count * 3), "rgb_rmse": math.sqrt(squared / (count * 3)), "alpha_mae": alpha / count, "exact_rgba_pixels": exact, "pixels": count}
+
+
+def image_blend(left: Any, right: Any, numerator: int, denominator: int = 10) -> tuple[int, int, bytes]:
+    """``left`` and ``right`` mixed ``numerator / denominator`` of the way to ``right`` (colours weighted by their alpha, rounded to
+    bytes): only pixels that exist are interpolated, no detail is invented."""
+    width, height, a = _image(left, right)
+    b = bytes(right[2])
+    if type(denominator) is not int or not 2 <= denominator <= 100 or type(numerator) is not int or not 0 <= numerator <= denominator:
+        raise ValueError("blend needs integer 0 <= numerator <= denominator, denominator 2..100")
+    if numerator in (0, denominator):
+        return width, height, b if numerator else a
+    out, k, n = bytearray(len(a)), numerator, denominator
+    for i in range(0, len(a), 4):
+        alpha = (n - k) * a[i + 3] + k * b[i + 3]
+        out[i + 3] = (alpha + n // 2) // n
+        for c in range(3):
+            out[i + c] = ((n - k) * a[i + 3] * a[i + c] + k * b[i + 3] * b[i + c] + alpha // 2) // alpha if alpha else 0
+    return width, height, bytes(out)
+
+
+def image_foreground(image: Any) -> set[int]:
+    """The pixels (their numbers, row by row) that stand out from white once the image lies on it: any channel more than 32 away.
+    The threshold is fixed, never fitted to an image."""
+    _, _, rgba = _image(image)
+    return {i // 4 for i in range(0, len(rgba), 4) if max((255 - rgba[i + c]) * rgba[i + 3] / 255 for c in range(3)) > 32}
+
+
+def image_edge_energy(image: Any) -> list[int]:
+    """For each pixel, how much its colour (on white) differs from the pixel to its right and the one below: whole numbers, 0 where
+    the picture is flat. Weights for ``mask_overlap`` taken from the reference alone."""
+    width, height, rgba = _image(image)
+    values = [tuple((rgba[i + c] * rgba[i + 3] + 255 * (255 - rgba[i + 3])) // 255 for c in range(3)) for i in range(0, len(rgba), 4)]
+    return [sum(abs(a - b) for j in (i + 1 if i % width + 1 < width else i, i + width if i // width + 1 < height else i) for a, b in zip(values[i], values[j]))
+            for i in range(width * height)]
+
+
+def image_translate(image: Any, dx: int, dy: int, fill: Sequence[int] = (0, 0, 0, 0)) -> dict[str, Any]:
+    """The image moved ``dx`` right and ``dy`` down: ``{"image", "dx", "dy", "clipped_nonfill"}``. What leaves the frame is lost
+    (``clipped_nonfill`` counts the lost pixels that were not ``fill``) and what enters it is ``fill``; moving back by ``-dx, -dy``
+    gives the original exactly when nothing was clipped."""
+    width, height, rgba = _image(image)
+    if any(type(v) is not int for v in (dx, dy)):
+        raise ValueError("integer translation required")
+    if len(fill) != 4 or any(type(v) is not int or not 0 <= v <= 255 for v in fill):
+        raise ValueError("fill needs four integer bytes")
+    fill, out, clipped = bytes(fill), bytearray(bytes(fill) * (width * height)), 0
+    for y in range(height):
+        for x in range(width):
+            i, xx, yy = (y * width + x) * 4, x + dx, y + dy
+            if 0 <= xx < width and 0 <= yy < height:
+                out[(yy * width + xx) * 4:(yy * width + xx) * 4 + 4] = rgba[i:i + 4]
+            elif rgba[i:i + 4] != fill:
+                clipped += 1
+    return {"image": (width, height, bytes(out)), "dx": dx, "dy": dy, "clipped_nonfill": clipped}
+
+
+def mask_overlap(width: int, height: int, reference: Any, candidate: Any, energy: Any = None) -> dict[str, Any]:
+    """How well two masks (sets of pixel numbers on a ``width`` x ``height`` grid) agree: ``IoU``, ``Dice``, ``Symmetric_Near_Field``
+    (a pixel that misses but touches the other mask by an edge counts a half; both directions, averaged) and, with ``energy`` (a
+    whole-number weight a pixel: ``image_edge_energy``), ``Energy_Dice``. Two empty masks agree fully (1.0)."""
+    a, b = set(reference), set(candidate)
+    if type(width) is not int or type(height) is not int or width < 1 or height < 1 or width * height > IMAGE_MAX_PIXELS:
+        raise ValueError(f"a grid has 1 to {IMAGE_MAX_PIXELS} pixels")
+    if any(type(i) is not int or not 0 <= i < width * height for group in (a, b) for i in group):
+        raise ValueError("mask index outside grid")
+
+    def near(inside: set[int], other: set[int]) -> float:
+        if not other:
+            return 1.0 if not inside else 0.0
+        touching = sum(1 for i in other - inside if (i % width and i - 1 in inside) or (i % width + 1 < width and i + 1 in inside)
+                       or (i >= width and i - width in inside) or (i // width + 1 < height and i + width in inside))
+        return (len(inside & other) + touching / 2) / len(other)
+
+    weighted = None
+    if energy is not None:
+        if len(energy) != width * height or any(type(v) is not int or v < 0 for v in energy):
+            raise ValueError("energy must contain nonnegative integer weights")
+        total = sum(energy[i] for i in a) + sum(energy[i] for i in b)
+        weighted = (sum(energy[i] for i in a & b) << 1) / total if total else None
+    return {"IoU": len(a & b) / len(a | b) if a | b else 1.0, "Dice": (len(a & b) << 1) / (len(a) + len(b)) if a or b else 1.0,
+            "Energy_Dice": weighted, "Symmetric_Near_Field": (near(a, b) + near(b, a)) / 2}
+
+
+def image_compare(reference: Any, candidate: Any, *, radius: int = 2, threshold: int = 0) -> dict[str, Any]:
+    """``candidate`` against ``reference`` in numbers one can explain: the overlap of their shapes (``mask_overlap`` of the pixels whose
+    alpha is above ``threshold``), ``RGBA_L1_Similarity`` (1 minus the mean channel difference, alpha included) and, apart from those,
+    the shift within ``radius`` (0 to 16) pixels that overlaps best: ``Aligned_IoU``, ``Alignment_dx``, ``Alignment_dy`` and
+    ``Alignment_L1_Pixels`` (the smaller shift wins a tie). The shift is reported, never used to hide a misplacement."""
+    width, height, a_bytes = _image(reference, candidate)
+    b_bytes = bytes(candidate[2])
+    if type(radius) is not int or not 0 <= radius <= 16:
+        raise ValueError("radius is an integer from 0 to 16")
+    if type(threshold) is not int or not 0 <= threshold <= 255:
+        raise ValueError("threshold is an alpha from 0 to 255")
+    a = {i // 4 for i in range(0, len(a_bytes), 4) if a_bytes[i + 3] > threshold}
+    b = {i // 4 for i in range(0, len(b_bytes), 4) if b_bytes[i + 3] > threshold}
+    best = (-1.0, 0, 0)
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            moved = {(i // width + dy) * width + i % width + dx for i in b if 0 <= i % width + dx < width and 0 <= i // width + dy < height}
+            aligned = len(a & moved) / len(a | moved) if a | moved else 1.0
+            if (aligned, -(abs(dx) + abs(dy)), -abs(dy), -abs(dx)) > (best[0], -(abs(best[1]) + abs(best[2])), -abs(best[2]), -abs(best[1])):
+                best = (aligned, dx, dy)
+    return {**mask_overlap(width, height, a, b), "RGBA_L1_Similarity": 1 - sum(abs(x - y) for x, y in zip(a_bytes, b_bytes)) / (len(a_bytes) * 255),
+            "Aligned_IoU": best[0], "Alignment_dx": best[1], "Alignment_dy": best[2], "Alignment_L1_Pixels": abs(best[1]) + abs(best[2])}
+
+
 # 🏭 The pages of Ironmate's studio as Ironmate draws them (image studio, browser tools, slide studio, 📱 phone slides), by
 # ``<body data-page="studio">`` / ``"tools"`` / ``"studio slides"`` / ``"phone"``: header and brand, the three-column workspace, the
 # board and its handles, the shelf cards, the inspector, the tool sections, the slide controls and the pinned phone slide. Every

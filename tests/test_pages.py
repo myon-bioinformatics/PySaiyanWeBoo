@@ -4199,6 +4199,63 @@ assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
         self.assertLess(len(payload.encode("utf-8")), 96 * 1024)
         node_js(script, payload)
 
+    def test_two_images_are_compared_in_numbers_one_can_work_out_by_hand(self):
+        """🔍 image_error, image_blend, image_foreground, image_edge_energy, image_translate, mask_overlap, image_compare (Ironmate's image_compare and studio_image_quality)."""
+        ui = pysaiyanweboo
+        px = lambda *pixels: b"".join(bytes(p) for p in pixels)
+        red, clear, white, black = (255, 0, 0, 255), (0, 0, 0, 0), (255, 255, 255, 255), (0, 0, 0, 255)
+        a = (2, 2, px(red, clear, clear, clear))                              # one red pixel, top left
+        b = (2, 2, px(clear, red, clear, clear))                              # the same pixel, one to the right
+        self.assertEqual(ui.image_error(a, a), {"rgb_mae": 0.0, "rgb_rmse": 0.0, "alpha_mae": 0.0, "exact_rgba_pixels": 4, "pixels": 4})
+        error = ui.image_error(a, b)                                          # on white: 2 pixels differ, in green and blue, by 255 each
+        self.assertEqual((error["rgb_mae"], error["alpha_mae"], error["exact_rgba_pixels"]), (4 * 255 / 12, 2 * 255 / 4, 2))
+        self.assertAlmostEqual(error["rgb_rmse"], math.sqrt(4 * 255 * 255 / 12))
+        self.assertEqual(ui.image_error((1, 1, px((0, 0, 0, 128))), (1, 1, px(black)), (0, 0, 0))["rgb_mae"], 0.0)   # on black, half-clear black is black
+        self.assertEqual(ui.image_blend(a, b, 0), a); self.assertEqual(ui.image_blend(a, b, 10), b)
+        half = ui.image_blend((1, 1, px(red)), (1, 1, px((0, 0, 255, 255))), 5)
+        self.assertEqual(half, (1, 1, px((128, 0, 128, 255))))
+        self.assertEqual(ui.image_blend((1, 1, px(red)), (1, 1, px(clear)), 5), (1, 1, px((255, 0, 0, 128))))   # a clear pixel has no colour to mix in
+        self.assertEqual(ui.image_foreground((3, 1, px(red, white, (250, 250, 250, 255)))), {0})
+        self.assertEqual(ui.image_foreground((2, 1, px((0, 0, 0, 32), (0, 0, 0, 33)))), {1})                 # 32 away from white is not enough, 33 is
+        self.assertEqual(ui.image_edge_energy((2, 2, px(white, black, white, white))), [765, 765, 0, 0])      # right neighbour, then the one below
+        moved = ui.image_translate(a, 1, 0)
+        self.assertEqual((moved["image"], moved["clipped_nonfill"]), (b, 0))
+        self.assertEqual(ui.image_translate(moved["image"], -1, 0)["image"], a)                               # nothing clipped: back exactly
+        self.assertEqual(ui.image_translate(b, 1, 0)["clipped_nonfill"], 1)
+        self.assertEqual(ui.image_translate(a, 0, 5, white)["image"], (2, 2, px(white) * 4))
+        self.assertEqual(ui.mask_overlap(2, 2, {0}, {0}), {"IoU": 1.0, "Dice": 1.0, "Energy_Dice": None, "Symmetric_Near_Field": 1.0})
+        self.assertEqual(ui.mask_overlap(2, 2, set(), set())["IoU"], 1.0)
+        miss = ui.mask_overlap(2, 2, {0}, {1})                                # no overlap, but the two pixels touch by an edge: a half each way
+        self.assertEqual((miss["IoU"], miss["Dice"], miss["Symmetric_Near_Field"]), (0.0, 0.0, 0.5))
+        self.assertEqual(ui.mask_overlap(2, 2, {0}, {3})["Symmetric_Near_Field"], 0.0)                         # diagonal: not touching
+        self.assertEqual(ui.mask_overlap(2, 2, {0, 1}, {1, 3}, [5, 1, 0, 2])["Energy_Dice"], 2 * 1 / (6 + 3))
+        same = ui.image_compare(a, a)
+        self.assertEqual((same["IoU"], same["RGBA_L1_Similarity"], same["Aligned_IoU"], same["Alignment_L1_Pixels"]), (1.0, 1.0, 1.0, 0))
+        shifted = ui.image_compare(a, b)                                      # the shape is whole, one pixel to the right: said apart, not hidden
+        self.assertEqual((shifted["IoU"], shifted["Aligned_IoU"], shifted["Alignment_dx"], shifted["Alignment_dy"], shifted["Alignment_L1_Pixels"]), (0.0, 1.0, -1, 0, 1))
+        self.assertEqual(shifted["RGBA_L1_Similarity"], 1 - (4 * 255) / (16 * 255))
+        self.assertEqual(ui.image_compare(a, b, radius=0)["Aligned_IoU"], 0.0)
+        decoded = ui.studio_png_decode(ui.pixel_grid_png({"schema": ui.PIXEL_GRID_SCHEMA, "width": 2, "height": 2, "colors": ["#00000000", "#ff0000ff"], "pixels": [[1, 0], [0, 0]]}))
+        self.assertEqual(ui.image_compare(decoded, a)["RGBA_L1_Similarity"], 1.0)                             # a decoded PNG is an image
+        for call, message in ((lambda: ui.image_error(a, (1, 1, px(red))), "same size"), (lambda: ui.image_error((2, 2, b"x"), a), "an image is"),
+                              (lambda: ui.image_error((0, 2, b""), a), "an image is"), (lambda: ui.image_error(a, a, (0, 0, 256)), "background"),
+                              (lambda: ui.image_blend(a, b, 11), "blend needs"), (lambda: ui.image_blend(a, b, 1, 1), "blend needs"),
+                              (lambda: ui.image_translate(a, 0.5, 0), "integer translation"), (lambda: ui.image_translate(a, 1, 0, (0, 0, 0)), "fill"),
+                              (lambda: ui.mask_overlap(2, 2, {4}, set()), "outside grid"), (lambda: ui.mask_overlap(2, 2, {0}, {0}, [1, 2]), "energy"),
+                              (lambda: ui.mask_overlap(0, 2, set(), set()), "a grid has"), (lambda: ui.image_compare(a, b, radius=17), "radius"),
+                              (lambda: ui.image_compare(a, b, threshold=256), "threshold")):
+            with self.assertRaisesRegex(ValueError, message):
+                call()
+        rng = random.Random(11)                                               # random images: what must hold whatever the pixels are
+        for _ in range(20):
+            w, h = rng.randint(1, 6), rng.randint(1, 6)
+            x, y = ((w, h, bytes(rng.choice((0, 255, rng.randrange(256))) for _ in range(w * h * 4))) for _ in range(2))
+            result, back = ui.image_compare(x, y, radius=1), ui.image_compare(y, x, radius=1)
+            self.assertTrue(0 <= result["IoU"] <= result["Aligned_IoU"] <= 1 and 0 <= result["RGBA_L1_Similarity"] <= 1 and 0 <= result["Symmetric_Near_Field"] <= 1)
+            self.assertEqual((result["IoU"], result["Dice"], result["RGBA_L1_Similarity"]), (back["IoU"], back["Dice"], back["RGBA_L1_Similarity"]))
+            self.assertEqual(ui.image_error(x, x)["exact_rgba_pixels"], w * h)
+            self.assertLessEqual(ui.image_error(x, y)["rgb_mae"], ui.image_error(x, y)["rgb_rmse"] + 1e-9)
+
     def test_studio_pages_sheet_waits_for_its_page_and_draws_with_the_theme_only(self):
         """🏭 studio-pages.css (Ironmate's studio pages): every selector waits for a ``data-page`` (nothing happens on another
         page), and every colour is a theme token but the picture's own (transparency checker, the white slide and its shadow)."""
