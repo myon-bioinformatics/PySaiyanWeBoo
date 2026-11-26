@@ -7204,12 +7204,19 @@ def door_options(spec: Any, seed: int | None = None) -> list[dict[str, Any]]:
     return [{**p, "current": p["href"] == door["current"], "drawn": p in drawn} for p in [stable[0], *drawn, *stable[1:]]]
 
 
-def door_html(spec: Any) -> str:
-    """The Door-to-Door pull-down, a way to try the transition notation, and the data the page script needs (escaped)."""
+def door_html(spec: Any, *, compact: bool = False) -> str:
+    """The Door-to-Door pull-down, a way to try the transition notation, and the data the page script needs (escaped).
+
+    ``compact=True`` is the pull-down alone, as one 56px row (🚪 and the select): for a page's header or footer, where the panel's
+    words, the draw button and the notation have no room. The same ``door.js`` binds both; ``k`` pages are still drawn."""
     door = door_validate(spec)
     options = "".join(f'<option value="{escape(o["href"], quote=True)}"{" selected disabled" if o["current"] else ""}>{escape(o["emoji"])} {escape(o["label"])}'
                       f'{" (current)" if o["current"] else ""}</option>' for o in door_options(door))
     data = escape(json.dumps({"pages": door["pages"], "k": door["k"], "seed": door["seed"], "current": door["current"]}, ensure_ascii=False, separators=(",", ":")), quote=True)
+    if compact:
+        return ('<div class="ui-door ui-door-compact" id="door" data-ui-door data-door-draws="0" data-door="' + data + '">'
+                '<label for="door-select" title="Door-to-Door"><span aria-hidden="true">🚪</span><span class="ui-door-name">Door-to-Door</span></label>'
+                f'<select class="ui-input" id="door-select" data-door-select>{options}</select></div>')
     return ('<section class="ui-panel ui-door" id="door" data-ui-door data-door-draws="0" data-door="' + data + '"><h2>Door-to-Door</h2>'
             '<p class="ui-muted">Jump to another tool without going Home first. Some entries are drawn at random; the same seed draws the same ones in Python and here.</p>'
             f'<label for="door-select">Door-to-Door tools</label><div class="ui-door-row"><select class="ui-input" id="door-select" data-door-select>{options}</select> '
@@ -15203,7 +15210,12 @@ def _shelf_css() -> str:
 _CSS["shelf.css"] = _shelf_css()
 _CSS["door.css"] = ("@layer components{.ui-door label{display:block;margin:8px 0 4px}.ui-door-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
                     ".ui-door-row .ui-input{flex:1 1 256px;min-width:0}.ui-door>.ui-input{width:100%;box-sizing:border-box}"
-                    ".ui-door-path{margin:8px 0;padding-left:24px}.ui-door-path a{overflow-wrap:anywhere}}")
+                    ".ui-door-path{margin:8px 0;padding-left:24px}.ui-door-path a{overflow-wrap:anywhere}"
+                    # door_html(compact=True): the pull-down alone, one 56px row; its name is read, not drawn
+                    ".ui-door-compact{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-height:56px;padding:8px}"
+                    ".ui-door.ui-door-compact label{display:inline-flex;margin:0;font-size:1.25rem;line-height:1}"
+                    ".ui-door-compact .ui-input{flex:1 1 auto;min-width:0;max-width:384px;min-height:40px;box-sizing:border-box}"
+                    ".ui-door-name{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}}")
 
 
 def shelf_html() -> str:
@@ -15635,17 +15647,19 @@ export function doorOptions(door,seed=door.seed){const stable=door.pages.filter(
  return[stable[0],...drawn,...stable.slice(1)].map(p=>({...p,current:p.href===door.current,drawn:drawn.includes(p)}))}
 const safe=href=>{try{const u=new URL(href,location.href);return u.protocol==="http:"||u.protocol==="https:"}catch(e){return false}};
 export function bindDoor(root=document){return[...root.querySelectorAll("[data-ui-door]")].map(box=>{
- const door=JSON.parse(box.dataset.door),$=s=>box.querySelector(s),select=$("[data-door-select]"),status=$("[data-door-status]");let seed=door.seed;
+ const door=JSON.parse(box.dataset.door),$=s=>box.querySelector(s),select=$("[data-door-select]"),status=$("[data-door-status]")??{};let seed=door.seed;   // a compact door has no status line
  const fill=()=>{select.replaceChildren(...doorOptions(door,seed).map(o=>{const op=document.createElement("option");op.value=o.href;op.textContent=o.emoji+" "+o.label+(o.current?" (current)":"");if(o.current){op.selected=true;op.disabled=true}return op}))};
  select.addEventListener("change",()=>{const href=select.value,page=door.pages.find(p=>p.href===href);if(!page||href===door.current)return;
   const stay=!box.dispatchEvent(new CustomEvent("ui-door-leave",{cancelable:true,bubbles:true,detail:{href,emoji:page.emoji,label:page.label}}));
   if(stay){fill();status.textContent="Staying here.";return}
   if(!safe(href)){status.textContent="That destination is not allowed.";fill();return}
   status.textContent="Opening "+page.label+"…";box.dispatchEvent(new CustomEvent("ui-door-go",{bubbles:true,detail:{href}}));if(!box.hasAttribute("data-door-dry"))location.assign(href)});
- $("[data-door-draw]").addEventListener("click",()=>{seed=Math.floor(Math.random()*4294967296);fill();box.setAttribute("data-door-draws",String(Number(box.getAttribute("data-door-draws")||0)+1));status.textContent="Drew new entries (seed "+seed+")."});
+ $("[data-door-draw]")?.addEventListener("click",()=>{seed=Math.floor(Math.random()*4294967296);fill();box.setAttribute("data-door-draws",String(Number(box.getAttribute("data-door-draws")||0)+1));status.textContent="Drew new entries (seed "+seed+")."});
  const input=$("[data-door-notation]"),path=$("[data-door-path]"),note=$("[data-door-note]");
  const show=()=>{try{const hrefs=emojiPath(input.value,door.pages);path.replaceChildren(...hrefs.map(h=>{const li=document.createElement("li"),a=document.createElement("a");a.textContent=h;if(safe(h))a.href=h;li.append(a);return li}));note.textContent=hrefs.length+" page(s)."}catch(e){path.replaceChildren();note.textContent=e.message}};
- input.addEventListener("input",show);fill();show();box.dataset.door_ready="";return box})}
+ input?.addEventListener("input",show);fill();if(input)show();
+ // The browser's own way back restores the page as it was left (the destination still chosen): show the current page again, or the same door would not open twice.
+ addEventListener("pageshow",fill);box.dataset.door_ready="";return box})}
 globalThis.webUiDoor={emojiKey,emojiPath,mulberry32,doorDraw,doorOptions,bindDoor};
 if(typeof document!=="undefined")bindDoor();
 """

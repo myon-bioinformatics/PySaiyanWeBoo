@@ -134,6 +134,8 @@ Door-to-Door and emoji transitions (`examples/door.html`): `door_validate` keeps
 back) into the hrefs visited, and an unknown emoji returns nothing at all; `door_options` orders the pull-down as Home, the drawn discoveries, then the rest.
 The draw is seeded (`mulberry32`, `door_draw`): the same seed draws the same pages in Python and in the page (`door.js`), checked bit for bit in Chromium.
 A listener on `ui-door-leave` can cancel a trip (a "really leave?" guard) without a dialog.
+`door_html(spec, compact=True)` is the pull-down alone, as one 56px row (🚪 and the select) for a page's header or footer; the same `door.js` binds
+it. After the browser's own way back the pull-down shows the current page again, so the same door opens twice.
 
 Clipboard shelf (`examples/clipboard-shelf.html`): paste text, a URL, Markdown or a Base64 image into a shelf that lives in the page only (no storage, no
 requests; a reload empties it). Python is the reference: `shelf_classify`, `markdown_plain`, `looks_like_image`, `decode_image_text` (strict: PNG, JPEG,
