@@ -692,6 +692,24 @@ class ChatTests(unittest.TestCase):
         got = json.loads(node_js(script, json.dumps(cases, ensure_ascii=False)).stdout)
         self.assertEqual(got, [c[4] for c in cases])
 
+    def test_share_links_are_encoded_like_javascript(self):
+        link = pysaiyanweboo.chat_link
+        self.assertEqual(link("https://x.test/chat.html#old", "/onto ギター"), "https://x.test/chat.html#%2Fonto%20%E3%82%AE%E3%82%BF%E3%83%BC")
+        self.assertEqual(link("chat.html", "a#b&c=d (e)!*'~"), "chat.html#a%23b%26c%3Dd%20(e)!*'~")
+        for bad in ("", "   ", "x" * 2001):
+            with self.subTest(bad=bad[:8]), self.assertRaises(ValueError):
+                link("chat.html", bad)
+        rng = random.Random(20261126)
+        alphabet = "abcAZ09 -_.!~*'()#?&=/%+:@😀ギター\n\t\"<>"
+        texts = ["".join(rng.choice(alphabet) for _ in range(rng.randint(1, 40))) for _ in range(200)]
+        texts = [t for t in texts if t.strip()]
+        script = ('import {chatLink} from "./js/chat.js";const texts=JSON.parse(process.argv[2]);'
+                  'console.log(JSON.stringify(texts.map(t=>chatLink("https://x.test/c.html#z",t))))')
+        got = json.loads(node_js(script, json.dumps(texts, ensure_ascii=False)).stdout)
+        self.assertEqual(got, [link("https://x.test/c.html#z", t) for t in texts])
+        self.assertIn(' data-chat-share>', pysaiyanweboo.chat_html(share=True))
+        self.assertNotIn('data-chat-share', pysaiyanweboo.chat_html())
+
     def test_markup_is_escaped_checked_and_a_component(self):
         html = pysaiyanweboo.chat_html(chat_id="talk", placeholder='<b>"x"</b>', chips=("/help", ("🎨 <ascii>", '/ascii "HI"')),
                                        ready=False, status="<⏳>")

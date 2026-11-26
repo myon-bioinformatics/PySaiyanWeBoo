@@ -750,8 +750,12 @@ from Node, `require("./vendor/py_launch.cjs").run("vendor/pysaiyanweboo.py", ["-
 reactions on every bubble. The answer is the page's own: `webUiChat.bindChat(document, {respond})[0]` gives the controller (`say`, `bubble`, `ready`,
 `status`, `react`), and `respond(text, reply)` returns trusted HTML or writes through `reply.text()` / `reply.html()` while it streams. Reactions stay in
 the page (`chat_react` in Python is the rule, `chatReact` in chat.js its twin) and every change is a `ui-chat-react` event, for a relay to share.
+🔗 `chat_html(share=True)`: your bubbles get 🔗, which puts the link to that message in the address bar and on the clipboard (✅, or 📋 where copying is
+refused) with a `ui-chat-link` event, and a page opened as `chat_link("chat.html", "/onto ギター")` (`chat.html#%2Fonto%20…`, `chatLink` in chat.js) sends
+the message once, when the bot is in (`ready()` with a `respond`).
 
 ![💬 chat: Enter sends, the answer streams, 😀＋ reactions toggle](docs/evidence/component-chat.gif)
+![🔗 chat share: #message waits for the bot, then 🔗 copies a link](docs/evidence/component-chat-share.gif)
 `css_source(name)` and `js_source(name)` stay the raw sources by file name; `write_js()` still writes the modules out for pages that link files (`python -S pysaiyanweboo.py --css-bundle` the stylesheets).
 mcp-toolcall-lab is the model consumer: it vendors `pysaiyanweboo.py` through the parent repository's `vendor_sync.py` (`vendor-consumers.json`, `vendor.lock.json`)
 and builds its Pokémon panel from `source_panel_html(spec)` + `css_source("source.css")` + `js_source("source.js")`; `component_parts("source", spec)` is the
