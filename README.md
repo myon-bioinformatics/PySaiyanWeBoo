@@ -731,7 +731,7 @@ boundary](docs/python-controls.md).
 
 `COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `coordinates`,
 `door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `chat`, `curl`, `showcase`,
-`front`, `repository-diagnostics`, `table`, `steps`, `scroll`, `stage`, `pager`; `components()` lists them as data), and two calls wrap them:
+`front`, `repository-diagnostics`, `table`, `steps`, `scroll`, `stage`, `status`, `pager`; `components()` lists them as data), and two calls wrap them:
 
 ```python
 import pysaiyanweboo                            # in another repository: pinned by commit in pyproject.toml (uv)
@@ -804,6 +804,9 @@ and `row_statuses=` on `table()` / `data_table()` so `status_filter()` narrows t
 `stage_html(html, label=, ratio=(16, 9), pin=True)` is a fixed display area 🖼️ (a slide's SVG, a canvas, a photo): it keeps its ratio, is
 never taller than `--ui-stage-room` (64dvh; a phone on its side: the whole height) and, pinned, stays at the top while what is under it scrolls.
 svg, img, canvas and video fill it; other children are overlays the page places. CSS only, no module.
+`status_html(text="", tone=, id=)` is one line of news 📣 (what the page just did — pinned, copied, saved — or, with `tone="error"`, what went
+wrong): a polite live region (`role="status"`; an error is a `role="alert"` in the danger colour), text never markup, and the line keeps its
+height while empty so the page does not jump. Pages write later messages with `textContent` on `[data-ui-status-line]`. CSS only, no module.
 `pager_html(count, variant=, words=, wrap=, keys=)` is page controls 🧭 in six variants (`pager_variants()`): `arrows` ⬅️ 1/N ➡️, `ends`
 ⏮️ ⬅️ 1/N ➡️ ⏭️, the cross-key `dpad` (⬆️ first, ⬇️ last), `dots` (one ● per page), `slider` and `dial` (the dial component). Every variant is
 in the markup and `PAGER_PARTS` is the one table of which parts each shows, so setting `data-ui-pager` switches it with no reload. pager.js

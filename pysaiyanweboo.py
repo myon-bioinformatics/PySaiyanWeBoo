@@ -5220,6 +5220,29 @@ def stage_html(trusted_html: str, *, label: str, ratio: tuple[int, int] = (16, 9
             f'{shape}{identity}>{trusted_html}</div>')
 
 
+STATUS_CSS = (
+    # One line of news about what the page just did (pinned, copied, saved) or what went wrong: it keeps one line of height
+    # while empty, so what stands under it does not jump when a message lands or clears. data-ui-tone=error is the alert.
+    ".ui-status{margin:.5rem 0;min-height:1.5em;color:var(--ui-fg)}"
+    ".ui-status[data-ui-tone=error]{color:var(--ui-danger)}")
+
+
+def status_html(text: str = "", *, tone: str = "info", id: str | None = None) -> str:
+    """📣 One line that says what the page just did (pinned, copied, saved) or what went wrong: a polite live region
+    (``role="status"``), or with ``tone="error"`` an alert (``role="alert"``, the danger colour). The text is data, never
+    markup, and the line keeps its height while empty so the page does not jump. A page writes later messages with
+    ``textContent`` on ``[data-ui-status-line]`` (ui.js ``setText`` takes a selector). STATUS_CSS only: no module.
+    Pages used to each name their own (``map-status`` and the like); this is that line, generalised."""
+    if not isinstance(text, str):
+        raise ValueError("a status line's text is a string")
+    if tone not in ("info", "error"):
+        raise ValueError("a status line's tone is \"info\" or \"error\"")
+    identity = f' id="{_element_id(id)}"' if id is not None else ""
+    if tone == "error":
+        return f'<p class="ui-status" role="alert" data-ui-status-line data-ui-tone="error"{identity}>{escape(text)}</p>'
+    return f'<p class="ui-status" role="status" aria-live="polite" data-ui-status-line{identity}>{escape(text)}</p>'
+
+
 # One row per part of a pager: (part, emoji, action, the variants that show it), in the order they stand. Every variant is in the markup and the
 # stylesheet shows one, so setting data-ui-pager switches it with no reload: ⬅️ 1/N ➡️ (arrows), ⏮️ ⬅️ 1/N ➡️ ⏭️ (ends), a cross-key with
 # ⬆️ first and ⬇️ last around 1/N (dpad), one ● per page (dots), a range (slider) or a rotary dial (dial, turned by dial.js). A new variant is a word.
@@ -5336,6 +5359,7 @@ export function bindPager(root=document){
 if(typeof document!=="undefined")bindPager();
 """
 _CSS["stage.css"] = "@layer components{" + STAGE_CSS + "}"
+_CSS["status.css"] = "@layer components{" + STATUS_CSS + "}"
 _CSS["pager.css"] = "@layer components{" + PAGER_CSS + "}"
 
 
@@ -5348,6 +5372,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "dial": {"html": "dial_html", "css": ("dial.css",), "js": ("dial.js",)},
     "gaze-avatar": {"html": "gaze_avatar_html", "css": ("gaze_avatar_css",), "js": ("gaze-avatar.js",)},
     "stage": {"html": "stage_html", "css": ("stage.css",), "js": ()},
+    "status": {"html": "status_html", "css": ("status.css",), "js": ()},
     "pager": {"html": "pager_html", "css": ("pager.css", "dial.css"), "js": ("dial.js", "pager.js")},
     "scroll": {"html": "scroll_html", "css": ("scroll.css",), "js": ("scroll.js",)},
     "seed-dial": {"html": "seed_dial_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},

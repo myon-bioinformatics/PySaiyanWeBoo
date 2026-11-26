@@ -6294,6 +6294,23 @@ def test_the_stage_keeps_its_ratio_and_pins_with_css_alone():
     assert "position:sticky" in sheet and "aspect-ratio:var(--ui-stage-w)/var(--ui-stage-h)" in sheet and "#" not in sheet   # colours are tokens only
 
 
+def test_the_status_line_is_a_live_region_that_keeps_its_height():
+    """📣 status_html: one line of news (what the page just did, or what went wrong), text never markup; CSS only, no module."""
+    assert ui.status_html() == '<p class="ui-status" role="status" aria-live="polite" data-ui-status-line></p>'
+    assert ui.status_html("ピン留めしました。", id="map-status") == (
+        '<p class="ui-status" role="status" aria-live="polite" data-ui-status-line id="map-status">ピン留めしました。</p>')
+    assert ui.status_html("<b>bad</b>", tone="error") == (
+        '<p class="ui-status" role="alert" data-ui-status-line data-ui-tone="error">&lt;b&gt;bad&lt;/b&gt;</p>')
+    for kwargs in ({"tone": "warn"}, {"id": "a b"}):
+        with pytest.raises(ValueError):
+            ui.status_html("x", **kwargs)
+    with pytest.raises(ValueError):
+        ui.status_html(1)
+    sheet = ui.css_source("status.css")
+    assert sheet == "@layer components{" + ui.STATUS_CSS + "}" and sheet in ui.bundled_css() and ui.COMPONENTS["status"]["js"] == ()
+    assert "min-height:1.5em" in sheet and "var(--ui-danger)" in sheet and "#" not in sheet   # colours are tokens only
+
+
 def test_pager_index_is_one_rule_for_every_variant():
     """🧭 pager_index: first/prev/next/last or a page number, kept within the pages; wrap turns the ends around."""
     cases = [((0, 5, "prev"), 0), ((0, 5, "next"), 1), ((4, 5, "next"), 4), ((2, 5, "first"), 0), ((2, 5, "last"), 4), ((2, 5, 9), 4), ((2, 5, -3), 0),
