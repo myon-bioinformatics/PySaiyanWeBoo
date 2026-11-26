@@ -1854,21 +1854,7 @@ class GifCamera:
         """Zoom into what is on screen toward ``anchor`` and stay there. ``anchor`` is (x, y) from 0 to 1, a name (``"bottom-right"``) or an arrow
         emoji (``↘️``, ``⬅``, ``🎯`` for the centre; ``ZOOM_ANCHORS``). Every pixel changes in a zoom, so it costs a few frames; it does not zoom back."""
         from PIL import Image
-        if isinstance(anchor, str):
-            name = anchor.replace("\ufe0e", "").replace("\ufe0f", "")
-            anchor = ZOOM_ANCHORS.get(name)
-            anchor = ZOOM_ANCHORS.get(anchor, anchor)
-            if not isinstance(anchor, tuple):
-                raise ValueError(f"not an anchor: {name!r}")
-        source = Image.open(io.BytesIO(self.png())).convert("RGB")
-        width, height = source.size
-        forward = []
-        for i in range(1, steps + 1):
-            t = i / steps
-            grow = 1 + (factor - 1) * t * t * (3 - 2 * t)          # smoothstep, as in Ironmate's png_zoom_gif
-            w, h = max(1, round(width / grow)), max(1, round(height / grow))
-            left, top = round((width - w) * anchor[0]), round((height - h) * anchor[1])
-            forward.append(source.crop((left, top, left + w, top + h)).resize(source.size, Image.Resampling.LANCZOS))
+        forward = _zoom_frames(Image.open(io.BytesIO(self.png())).convert("RGB"), _zoom_anchor(anchor), factor, steps)
         path = [(f, 60) for f in forward[:-1]] + [(forward[-1], hold_ms)]
         t = time.monotonic()
         for frame, ms in path:
@@ -1885,6 +1871,69 @@ class GifCamera:
                 raise TimeoutError(script)
             self.hold(self.frame_ms)
         self.snap()
+
+
+def _zoom_anchor(anchor):
+    """(x, y) from 0 to 1 for an anchor: a pair, a name or an arrow emoji of ``ZOOM_ANCHORS`` (a presentation selector does not matter)."""
+    if isinstance(anchor, str):
+        name = anchor.replace("\ufe0e", "").replace("\ufe0f", "")
+        anchor = ZOOM_ANCHORS.get(name)
+        anchor = ZOOM_ANCHORS.get(anchor, anchor)
+        if not isinstance(anchor, tuple):
+            raise ValueError(f"not an anchor: {name!r}")
+    elif (not isinstance(anchor, (tuple, list)) or len(anchor) != 2
+          or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or not 0 <= v <= 1 for v in anchor)):
+        raise ValueError("an anchor is a name, an arrow or two coordinates from 0 to 1")
+    return tuple(anchor)
+
+
+def _zoom_frames(source, anchor, factor, steps):
+    """``steps`` pictures of ``source`` (a Pillow image) going in toward ``anchor``, the last ``factor`` times as large (smoothstep, as in Ironmate's png_zoom_gif)."""
+    from PIL import Image
+    width, height = source.size
+    forward = []
+    for i in range(1, steps + 1):
+        t = i / steps
+        grow = 1 + (factor - 1) * t * t * (3 - 2 * t)
+        w, h = max(1, round(width / grow)), max(1, round(height / grow))
+        left, top = round((width - w) * anchor[0]), round((height - h) * anchor[1])
+        forward.append(source.crop((left, top, left + w, top + h)).resize(source.size, Image.Resampling.LANCZOS))
+    return forward
+
+
+def zoom_shots(png, *, anchors=("center",), factor=3.0, steps=16, frame_ms=60, hold_ms=400, background=(255, 255, 255)):
+    """A still picture as the shots of a zoom, for ``encode_gif``: the whole picture, into each of ``anchors`` in turn (1 to 16; a pair
+    from 0 to 1, a name or an arrow emoji of ``ZOOM_ANCHORS``) and back out the same way before the next. A frame lasts ``frame_ms``;
+    the whole picture and each peak stay ``hold_ms`` longer (pass ``tail_ms=frame_ms + hold_ms`` to ``encode_gif`` for the last one).
+    A GIF keeps no partial transparency, so the picture is laid on ``background`` first. (Ironmate's png_zoom_gif; ``GifCamera.zoom``
+    is the same zoom on a live page, one way.)"""
+    if isinstance(factor, bool) or not isinstance(factor, (int, float)) or not math.isfinite(factor) or not 1 < factor <= 64:
+        raise ValueError("factor is greater than 1 and at most 64")
+    if type(steps) is not int or not 2 <= steps <= 120:
+        raise ValueError("steps is an integer from 2 to 120")
+    if not isinstance(anchors, (list, tuple)) or not 1 <= len(anchors) <= 16:
+        raise ValueError("anchors holds 1 to 16 anchors")
+    route = [_zoom_anchor(anchor) for anchor in anchors]
+    if len(background) != 3 or any(type(v) is not int or not 0 <= v <= 255 for v in background):
+        raise ValueError("background is three bytes")
+    if any(type(v) is not int or not 0 <= v <= 60000 for v in (frame_ms, hold_ms)) or frame_ms < 10:
+        raise ValueError("frame_ms is 10 to 60000 and hold_ms 0 to 60000")
+    from PIL import Image
+    picture = Image.open(io.BytesIO(png)).convert("RGBA")
+    if picture.width * picture.height * (steps * len(route) + 1) > 32_000_000:
+        raise ValueError("the animation would keep over 32000000 pixels; use a smaller picture or fewer steps")
+    source = Image.alpha_composite(Image.new("RGBA", picture.size, tuple(background) + (255,)), picture).convert("RGB")
+    frames = [source]
+    for anchor in route:
+        forward = [source, *_zoom_frames(source, anchor, factor, steps)]
+        frames += forward[1:] + forward[-2::-1]
+    shots, at = [], 0.0
+    for index, frame in enumerate(frames):
+        out = io.BytesIO()
+        frame.save(out, format="PNG")
+        shots.append((at, out.getvalue()))
+        at += (frame_ms + (hold_ms if index % steps == 0 else 0)) / 1000
+    return shots
 
 
 def encode_gif(shots, *, width=None, tail_ms=1500, min_ms=20, max_ms=2000):
@@ -15472,6 +15521,225 @@ def image_digest(spec: Any, images: dict[str, Any], *, max_bytes: int = 1_000_00
         "schema": "ironmate-image-digest/1", "tile": list(size), "bytes": len(page.encode("utf-8")), "fits": len(page.encode("utf-8")) <= max_bytes,
         "rows": len(data["rows"]), "cols": len(data["cols"]), "passed": statuses.count("pass"), "statuses": {s: statuses.count(s) for s in sorted(set(statuses))}}
 
+
+# 🖨️ A small, safe part of SVG drawn to pixels with the standard library alone (Ironmate's svg_raster, first written there): enough
+# for dot art and flat diagrams, strict about everything else.
+_SVGR_NS = '{http://www.w3.org/2000/svg}'
+_SVGR_SAMPLES = 4  # per axis for curved shapes and polygons
+_SVGR_NUMBER = re.compile(r'\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)(px)?\s*', re.ASCII)
+_SVGR_TRANSLATE = re.compile(r'\s*translate\(\s*([^,\s)]+)(?:[\s,]+([^,\s)]+))?\s*\)\s*', re.ASCII)
+_SVGR_REASONS = {
+    'path': 'path data (lines/curves/arcs) is not supported',
+    'line': 'strokes are not supported', 'polyline': 'strokes are not supported',
+    'linearGradient': 'gradients are not supported', 'radialGradient': 'gradients are not supported',
+    'pattern': 'patterns are not supported', 'style': 'CSS is not supported',
+    'script': 'scripts are not allowed', 'image': 'embedded/external images are not supported',
+    'use': 'references (<use>) are not supported', 'text': 'text needs fonts and is not supported',
+    'foreignObject': 'foreign content is not supported', 'filter': 'filters are not supported',
+    'mask': 'masks are not supported', 'clipPath': 'clip paths are not supported',
+    'defs': 'definitions are not supported', 'symbol': 'symbols are not supported',
+}
+_SVGR_PAINT = {'fill', 'fill-opacity', 'opacity', 'id', 'stroke'}
+_SVGR_ATTRS = {
+    'rect': {'x', 'y', 'width', 'height', 'rx', 'ry'}, 'circle': {'cx', 'cy', 'r'},
+    'ellipse': {'cx', 'cy', 'rx', 'ry'}, 'polygon': {'points'},
+    'g': {'transform', 'fill', 'fill-opacity', 'id'},
+    'svg': {'width', 'height', 'viewBox', 'version', 'shape-rendering', 'preserveAspectRatio'},
+}
+
+
+class SvgError(ValueError):
+    """The SVG is outside the supported subset or unsafe."""
+
+
+def _svgr_num(value, what):
+    match = _SVGR_NUMBER.fullmatch(value or '')
+    if not match:
+        raise SvgError(f'{what}: unsupported number {value!r} (plain numbers or px only)')
+    return float(match.group(1))
+
+
+def _svgr_color(value):
+    if value is None:
+        return (0, 0, 0)  # SVG default fill is black
+    value = value.strip()
+    if value == 'none':
+        return None
+    if value.startswith('url('):
+        raise SvgError('gradient/pattern fills (url(...)) are not supported')
+    if re.fullmatch(r'#[0-9A-Fa-f]{6}', value):
+        return tuple(int(value[i:i + 2], 16) for i in (1, 3, 5))
+    if re.fullmatch(r'#[0-9A-Fa-f]{3}', value):
+        return tuple(int(c * 2, 16) for c in value[1:])
+    raise SvgError(f'unsupported fill {value!r} (use #rgb, #rrggbb or none)')
+
+
+def _svgr_opacity(value, what):
+    if value is None:
+        return 1.0
+    number = _svgr_num(value, what)
+    if not 0 <= number <= 1:
+        raise SvgError(f'{what} must be between 0 and 1')
+    return number
+
+
+def _svgr_local(tag):
+    if not isinstance(tag, str):
+        raise SvgError('comments/processing instructions inside elements are not supported')
+    if tag.startswith(_SVGR_NS):
+        return tag[len(_SVGR_NS):]
+    if tag.startswith('{'):
+        raise SvgError(f'foreign namespace element {tag!r} is not supported')
+    return tag
+
+
+def _svgr_check(name, element):
+    allowed = _SVGR_ATTRS.get(name, set()) | (_SVGR_PAINT if name in ('rect', 'circle', 'ellipse', 'polygon') else set())
+    for key, value in element.attrib.items():
+        if key.startswith('{'):
+            raise SvgError(f'namespaced attribute {key!r} on <{name}> is not supported')
+        if key not in allowed:
+            reason = 'CSS is not supported' if key in ('style', 'class') else 'not supported'
+            raise SvgError(f'attribute {key!r} on <{name}>: {reason}')
+        if key == 'stroke' and value.strip() != 'none':
+            raise SvgError('strokes are not supported (stroke must be none)')
+        if key in ('rx', 'ry') and name == 'rect' and _svgr_num(value, key):
+            raise SvgError('rounded rect corners (rx/ry) are not supported')
+
+
+def _svgr_shapes(element, dx, dy, fill, fill_opacity, out):
+    for child in element:
+        name = _svgr_local(child.tag)
+        if name in ('title', 'desc'):
+            continue
+        if name in _SVGR_REASONS:
+            raise SvgError(f'<{name}>: {_SVGR_REASONS[name]}')
+        if name not in _SVGR_ATTRS or name == 'svg':
+            raise SvgError(f'unsupported SVG element <{name}>')
+        _svgr_check(name, child)
+        if name == 'g':
+            tx = ty = 0.0
+            if 'transform' in child.attrib:
+                match = _SVGR_TRANSLATE.fullmatch(child.attrib['transform'])
+                if not match:
+                    raise SvgError('only transform="translate(x[,y])" is supported on <g>')
+                tx, ty = _svgr_num(match.group(1), 'translate'), _svgr_num(match.group(2) or '0', 'translate')
+            _svgr_shapes(child, dx + tx, dy + ty, child.attrib.get('fill', fill),
+                    child.attrib.get('fill-opacity', fill_opacity), out)
+            continue
+        rgb = _svgr_color(child.attrib.get('fill', fill))
+        alpha = (_svgr_opacity(child.attrib.get('fill-opacity', fill_opacity), 'fill-opacity')
+                 * _svgr_opacity(child.attrib.get('opacity'), 'opacity'))
+        a = child.attrib
+        if name == 'rect':
+            geom = ('rect', _svgr_num(a.get('x', '0'), 'x') + dx, _svgr_num(a.get('y', '0'), 'y') + dy,
+                    _svgr_num(a.get('width'), 'width'), _svgr_num(a.get('height'), 'height'))
+            if geom[3] < 0 or geom[4] < 0:
+                raise SvgError('negative rect size')
+        elif name == 'circle':
+            r = _svgr_num(a.get('r'), 'r')
+            geom = ('ellipse', _svgr_num(a.get('cx', '0'), 'cx') + dx, _svgr_num(a.get('cy', '0'), 'cy') + dy, r, r)
+        elif name == 'ellipse':
+            geom = ('ellipse', _svgr_num(a.get('cx', '0'), 'cx') + dx, _svgr_num(a.get('cy', '0'), 'cy') + dy,
+                    _svgr_num(a.get('rx'), 'rx'), _svgr_num(a.get('ry'), 'ry'))
+        else:
+            values = [_svgr_num(v, 'points') for v in re.split(r'[\s,]+', a.get('points', '').strip()) if v]
+            if len(values) < 6 or len(values) % 2:
+                raise SvgError('polygon needs at least 3 x,y points')
+            geom = ('polygon', [(values[i] + dx, values[i + 1] + dy) for i in range(0, len(values), 2)])
+        if rgb is not None and alpha > 0:
+            out.append((geom, rgb, alpha))
+
+
+def _svgr_inside(geom, x, y):
+    if geom[0] == 'ellipse':
+        _, cx, cy, rx, ry = geom
+        return rx > 0 and ry > 0 and ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1
+    points, hit = geom[1], False  # even-odd ray casting
+    for (x1, y1), (x2, y2) in zip(points, points[1:] + points[:1]):
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+            hit = not hit
+    return hit
+
+
+def _svgr_coverage(geom, width, height, sx, sy, ox, oy):
+    """{(px, py): fraction} for one shape in pixel space."""
+    cov = {}
+    if geom[0] == 'rect':
+        _, x, y, w, h = geom
+        x0, x1, y0, y1 = (x - ox) * sx, (x + w - ox) * sx, (y - oy) * sy, (y + h - oy) * sy
+        for py in range(max(0, int(y0)), min(height, int(y1) + 1)):
+            fy = min(y1, py + 1) - max(y0, py)
+            for px in range(max(0, int(x0)), min(width, int(x1) + 1)):
+                fx = min(x1, px + 1) - max(x0, px)
+                if fx > 0 and fy > 0:
+                    cov[(px, py)] = fx * fy
+        return cov
+    step = 1 / _SVGR_SAMPLES
+    for py in range(height):
+        for px in range(width):
+            hits = sum(_svgr_inside(geom, (px + (i + 0.5) * step) / sx + ox, (py + (j + 0.5) * step) / sy + oy)
+                       for j in range(_SVGR_SAMPLES) for i in range(_SVGR_SAMPLES))
+            if hits:
+                cov[(px, py)] = hits / _SVGR_SAMPLES ** 2
+    return cov
+
+
+def svg_rasterize(data: Any, width: int | None = None, *, max_bytes: int = 1024 * 1024, max_pixels: int = 1024 * 1024) -> tuple[int, int, bytes]:
+    """A small, safe part of SVG as an image, ``(width, height, RGBA bytes)``: ``<svg>`` with a viewBox or width and height, ``<g>``
+    (translate only; fill and fill-opacity inherited), ``<rect>`` (exact area coverage), ``<circle>``, ``<ellipse>`` and ``<polygon>``
+    (4 x 4 samples a pixel), solid fills (``#rgb``, ``#rrggbb``, ``none``) with fill-opacity and opacity, ``<title>`` and ``<desc>``.
+    Anything else is refused with ``SvgError`` naming the element or attribute (paths, strokes, text, gradients, CSS, scripts, images,
+    references, a DOCTYPE). The size is ``width`` (the height keeps the viewBox's shape) or the viewBox's own, rounded. What
+    ``pixel_grid_svg`` writes is within this part."""
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    if len(data) > max_bytes:
+        raise SvgError(f'SVG exceeds {max_bytes} bytes')
+    lowered = data.lower()
+    if b'<!doctype' in lowered or b'<!entity' in lowered:
+        raise SvgError('DOCTYPE/ENTITY declarations are not allowed')
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError as exc:
+        raise SvgError(f'invalid XML: {exc}') from None
+    if _svgr_local(root.tag) != 'svg':
+        raise SvgError('root element must be <svg>')
+    _svgr_check('svg', root)
+    if 'viewBox' in root.attrib:
+        parts = [_svgr_num(v, 'viewBox') for v in re.split(r'[\s,]+', root.attrib['viewBox'].strip())]
+        if len(parts) != 4:
+            raise SvgError('viewBox needs 4 numbers')
+        ox, oy, vw, vh = parts
+    else:
+        ox = oy = 0.0
+        if 'width' not in root.attrib or 'height' not in root.attrib:
+            raise SvgError('<svg> needs a viewBox or both width and height')
+        vw, vh = _svgr_num(root.attrib.get('width'), 'width'), _svgr_num(root.attrib.get('height'), 'height')
+    if vw <= 0 or vh <= 0:
+        raise SvgError('viewBox/width/height must be positive')
+    out_w = round(vw) if width is None else width
+    if type(out_w) is not int or out_w < 1:
+        raise SvgError('width must be a positive integer')
+    out_h = max(1, round(vh * out_w / vw))
+    if out_w * out_h > max_pixels:
+        raise SvgError(f'raster {out_w}x{out_h} exceeds {max_pixels} pixels')
+    shapes = []
+    _svgr_shapes(root, 0.0, 0.0, None, None, shapes)
+    sx, sy = out_w / vw, out_h / vh
+    acc = [[0.0, 0.0, 0.0, 0.0] for _ in range(out_w * out_h)]  # premultiplied RGBA, 0..1
+    for geom, rgb, alpha in shapes:
+        for (px, py), frac in _svgr_coverage(geom, out_w, out_h, sx, sy, ox, oy).items():
+            a = alpha * min(1.0, frac)
+            cell = acc[py * out_w + px]
+            for k in range(3):
+                cell[k] = rgb[k] / 255 * a + cell[k] * (1 - a)
+            cell[3] = a + cell[3] * (1 - a)
+    out = bytearray()
+    for r, g, b, a in acc:
+        alpha = round(a * 255)
+        out += bytes((round(r / a * 255), round(g / a * 255), round(b / a * 255), alpha)) if alpha else bytes(4)
+    return out_w, out_h, bytes(out)
 
 # 🏭 The pages of Ironmate's studio as Ironmate draws them (image studio, browser tools, slide studio, 📱 phone slides), by
 # ``<body data-page="studio">`` / ``"tools"`` / ``"studio slides"`` / ``"phone"``: header and brand, the three-column workspace, the

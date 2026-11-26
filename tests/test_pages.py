@@ -4304,6 +4304,47 @@ assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
             with self.assertRaisesRegex(ValueError, message):
                 call()
 
+    def test_a_small_safe_part_of_svg_is_drawn_to_pixels_and_the_rest_is_refused(self):
+        """🖨️ svg_rasterize (Ironmate's svg_raster): rectangles by exact area, round shapes by 4 x 4 samples, nothing outside the part."""
+        ui = pysaiyanweboo
+        svg = lambda body, box="0 0 4 2", more="": f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{box}"{more}>{body}</svg>'
+        px = lambda image, x, y: tuple(image[2][(y * image[0] + x) * 4:(y * image[0] + x) * 4 + 4])
+        image = ui.svg_rasterize(svg('<rect x="1" y="1" width="2" height="1" fill="#f00"/>'))
+        self.assertEqual(image[:2], (4, 2))
+        self.assertEqual([px(image, x, 1) for x in range(4)], [(0, 0, 0, 0), (255, 0, 0, 255), (255, 0, 0, 255), (0, 0, 0, 0)])
+        self.assertEqual(image[2][:16], bytes(16))                                               # nothing drawn: clear, not white
+        half = ui.svg_rasterize(svg('<rect x="0.5" y="0" width="1" height="2" fill="#0f0"/>'))  # half of pixel 0 and half of pixel 1
+        self.assertEqual((px(half, 0, 0), px(half, 1, 0)), ((0, 255, 0, 128), (0, 255, 0, 128)))
+        self.assertEqual(px(ui.svg_rasterize(svg('<rect width="4" height="2"/>')), 0, 0), (0, 0, 0, 255))   # no fill is black, as in SVG
+        over = ui.svg_rasterize(svg('<rect width="4" height="2" fill="#fff"/><rect width="4" height="2" fill="#000" fill-opacity="0.5"/>'))
+        self.assertEqual(px(over, 0, 0), (128, 128, 128, 255))                                   # later shapes lie over earlier ones
+        group = ui.svg_rasterize(svg('<g transform="translate(2,1)" fill="#00f"><rect width="1" height="1"/></g><title>t</title>'))
+        self.assertEqual((px(group, 2, 1), px(group, 1, 1)), ((0, 0, 255, 255), (0, 0, 0, 0)))  # a group moves and lends its fill
+        wide = ui.svg_rasterize(svg('<rect width="2" height="2" fill="#abc"/>'), 8)             # twice the size: the shape keeps its half
+        self.assertEqual((wide[:2], px(wide, 3, 3), px(wide, 4, 3)), ((8, 4), (170, 187, 204, 255), (0, 0, 0, 0)))
+        disc = ui.svg_rasterize(svg('<circle cx="4" cy="4" r="4" fill="#f00"/>', "0 0 8 8"))
+        self.assertEqual((px(disc, 4, 4), px(disc, 0, 0)[3] < 64, px(disc, 3, 0)[3] > 128), ((255, 0, 0, 255), True, True))
+        self.assertEqual(disc, ui.svg_rasterize(svg('<ellipse cx="4" cy="4" rx="4" ry="4" fill="#f00"/>', "0 0 8 8")))
+        corner = ui.svg_rasterize(svg('<polygon points="0,0 4,0 0,4" fill="#f00"/>', "0 0 4 4"))
+        self.assertEqual((px(corner, 0, 0), px(corner, 3, 3)), ((255, 0, 0, 255), (0, 0, 0, 0)))
+        grid = {"schema": ui.PIXEL_GRID_SCHEMA, "width": 3, "height": 2, "colors": ["#00000000", "#ff0000ff", "#00ff0080"], "pixels": [[0, 1, 2], [2, 1, 0]]}
+        self.assertEqual(ui.svg_rasterize(ui.pixel_grid_svg(grid)), ui.studio_png_decode(ui.pixel_grid_png(grid)))   # the grid's own SVG comes back as its pixels
+        for body, word in (('<path d="M0 0"/>', "path"), ('<rect width="1" height="1" stroke="#000"/>', "stroke"), ('<text>a</text>', "text"),
+                           ('<rect width="1" height="1" style="fill:red"/>', "CSS"), ('<rect width="1" height="1" fill="red"/>', "fill"),
+                           ('<rect width="1" height="1" rx="1"/>', "rounded"), ('<script/>', "script"), ('<image href="x.png"/>', "image"),
+                           ('<g transform="rotate(3)"/>', "translate"), ('<rect width="-1" height="1"/>', "negative"), ('<polygon points="0,0 1,1"/>', "3")):
+            with self.assertRaisesRegex(ui.SvgError, word, msg=body):
+                ui.svg_rasterize(svg(body))
+        for text, word in (('<!DOCTYPE svg>' + svg(""), "DOCTYPE"), ("<svg", "XML"), ('<html/>', "root"), ('<svg xmlns="http://www.w3.org/2000/svg"/>', "viewBox"),
+                           (svg("", "0 0 0 2"), "positive"), (svg("", "0 0 4"), "4 numbers")):
+            with self.assertRaisesRegex(ui.SvgError, word, msg=text):
+                ui.svg_rasterize(text)
+        with self.assertRaisesRegex(ui.SvgError, "bytes"):
+            ui.svg_rasterize(svg(""), max_bytes=16)
+        with self.assertRaisesRegex(ui.SvgError, "pixels"):
+            ui.svg_rasterize(svg(""), 64, max_pixels=1024)
+        self.assertTrue(issubclass(ui.SvgError, ValueError))
+
     def test_studio_pages_sheet_waits_for_its_page_and_draws_with_the_theme_only(self):
         """🏭 studio-pages.css (Ironmate's studio pages): every selector waits for a ``data-page`` (nothing happens on another
         page), and every colour is a theme token but the picture's own (transparency checker, the white slide and its shadow)."""
