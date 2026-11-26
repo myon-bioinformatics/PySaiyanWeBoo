@@ -1652,6 +1652,98 @@ class ChatShareBrowserTests(unittest.TestCase):
             server.shutdown()
 
 
+class ChromeBrowserTests(unittest.TestCase):
+    """🧰 The chrome and 🚪 the door's foot on two pages of one site, as add_part puts them: the clock counts seconds, ☰ is this page
+    (itself, its sections), ⭐ and 🌐 follow through the door to the next page, ⋯ ⬇️ goes to the end, and a phone or a desktop keeps
+    the page's width. ``PSWB_GIFS`` keeps component-chrome.gif (pysaiyanweboo.gif_targets_from)."""
+
+    @staticmethod
+    def pages():
+        def page(name, title, parts):
+            door = {'schema': 'web-ui-door/1', 'current': f'./{name}', 'k': 0, 'pages': [
+                {'emoji': '🎞', 'label': 'GIF', 'href': './gif.html'}, {'emoji': '🌊', 'label': 'Flow', 'href': './flow.html'}]}
+            body = f'<main class="ui-page"><h1>{title}</h1>' + ''.join(f'<h2>{p}</h2><p style="min-height:480px">{p}…</p>' for p in parts) + '</main>'
+            built = ui.render_document(trusted_html=body, title=title, css=ui.bundled_css())
+            chrome = {'board': {'title': 'TOOLS', 'items': [{'text': '🎞 GIF'}, {'text': '🌊 Flow'}]}, 'home': './gif.html',
+                      'tools': {'🗼': {'label': 'パラレル都市', 'label_en': 'Parallel cities', 'links': [{'label': '🗼 Tokyo', 'href': './gif.html'}]}}}
+            built = ui.add_part(built, ui.component_parts('chrome', chrome), at='top', scope='.ui-chrome')
+            foot = ui.component_parts('door', door, foot=True, links=[{'emoji': '🐦', 'label': 'X', 'href': 'https://example.test/x'}], size=True)
+            return ui.stamp_page_size(ui.add_part(built, foot, scope='.ui-door-foot'))
+        return {'gif.html': page('gif.html', '🎞 GIF', ['えらぶ', 'ならべる', 'つくる']), 'flow.html': page('flow.html', '🌊 Flow', [])}
+
+    def test_the_chrome_and_the_doors_foot_follow_from_page_to_page(self):
+        server, origin = serve_pages(self.pages())
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={'width': 560, 'height': 480})
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/gif.html')
+                    page.wait_for_selector('.ui-chrome[data-js]')
+                    cam = ui.GifCamera(page)
+                    clock = page.locator('.ui-chrome [data-clock]')
+                    first = clock.inner_text()
+                    self.assertRegex(first, r'^\d\d:\d\d:\d\d$')
+                    page.wait_for_function("t => document.querySelector('.ui-chrome [data-clock]').textContent !== t", arg=first, timeout=3000)
+                    self.assertEqual(page.evaluate('Object.keys(localStorage)'), [])
+                    cam.hold(600)
+                    page.click('.ui-chrome [data-menu="spots"] > summary')                     # ☰ this page, then its sections
+                    rows = page.locator('.ui-chrome .ui-world-spots')
+                    self.assertEqual([t.replace('\n', '') for t in rows.locator('a').all_inner_texts()], ['📍🎞 GIF', 'えらぶ', 'ならべる', 'つくる'])
+                    rows.locator('li', has_text='つくる').locator('.ui-world-star').click()
+                    cam.hold(700)
+                    page.click('.ui-chrome [data-menu="settings"] > summary')
+                    page.select_option('.ui-chrome [data-lang]', 'en')
+                    self.assertEqual(page.get_attribute('.ui-chrome .ui-world-home', 'aria-label'), 'Home')
+                    self.assertEqual(page.get_attribute('.ui-chrome [data-menu="tool"] > summary', 'title'), 'Parallel cities')
+                    cam.hold(700)
+                    self.assertRegex(page.locator('.ui-door-size').inner_text(), r'^📦 \d+ KB$')
+                    page.locator('.ui-door-foot [data-door-select]').select_option(label='🌊 Flow')   # 🚪 to the next page
+                    page.wait_for_url('**/flow.html')
+                    page.wait_for_selector('.ui-chrome[data-js]')
+                    cam.hold(600)
+                    self.assertEqual(page.get_attribute('.ui-chrome .ui-world-home', 'aria-label'), 'Home')   # 🌐 followed
+                    page.click('.ui-chrome [data-menu="favorites"] > summary')
+                    self.assertEqual(page.locator('.ui-chrome .ui-world-favs a').all_inner_texts(), ['🎞 GIF › つくる'])   # ⭐ followed
+                    kept = page.evaluate('JSON.parse(localStorage.getItem("ui-chrome:tools-chrome"))')
+                    self.assertEqual(kept, {'fav': [{'href': '/gif.html#tools-chrome-part-3', 'label': '🎞 GIF › つくる'}], 'lang': 'en'})
+                    cam.hold(800)
+                    page.locator('.ui-chrome .ui-world-favs a').click()                            # ⭐ leads to the section
+                    page.wait_for_url('**/gif.html#tools-chrome-part-3')
+                    page.wait_for_selector('.ui-chrome[data-js]')
+                    self.assertLess(page.evaluate("document.querySelector('#tools-chrome-part-3').getBoundingClientRect().top"), 240)
+                    page.goto(origin + '/gif.html')
+                    page.wait_for_selector('.ui-chrome[data-js]')
+                    page.click('.ui-chrome [data-menu="more"] > summary')
+                    page.click('.ui-chrome [data-scroll="bottom"]')                               # ⋯ ⬇️
+                    page.wait_for_function('() => scrollY + innerHeight >= document.documentElement.scrollHeight - 1')
+                    cam.hold(700)
+                    self.assertEqual(errors, [])
+                    gif = ui.encode_gif(cam.shots)
+                    self.assertTrue(gif.startswith(b'GIF89a'))
+                    if os.environ.get('PSWB_GIFS'):
+                        ui.gif_targets_from(os.environ['PSWB_GIFS'], ['component-chrome'])['component-chrome'].write_bytes(gif)
+                    for width, height in ((320, 568), (390, 844), (1280, 800)):                  # the page keeps its width, the foot its row
+                        page.set_viewport_size({'width': width, 'height': height})
+                        page.goto(origin + '/gif.html')
+                        page.wait_for_selector('.ui-chrome[data-js]')
+                        self.assertEqual(page.evaluate('document.documentElement.scrollWidth - document.documentElement.clientWidth'), 0, width)
+                        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.ui-chrome .ui-world-side')).position"),
+                                         'fixed' if width >= 960 else 'static')
+                        foot = page.locator('.ui-door-foot').bounding_box()
+                        self.assertEqual((foot['x'], round(foot['width']), round(foot['y'] + foot['height'])), (0, width, height))
+                        page.click('.ui-chrome [data-menu="spots"] > summary')
+                        box = page.locator('.ui-chrome [data-menu="spots"] .ui-world-panel').bounding_box()
+                        self.assertTrue(box['x'] >= 0 and box['x'] + box['width'] <= width and box['y'] + box['height'] <= height, (width, box))
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
 class DoorBrowserTests(unittest.TestCase):
     """Door-to-Door in Chromium: the page's seeded draw, notation and pull-down equal Python's, and the pull-down really goes there."""
 
