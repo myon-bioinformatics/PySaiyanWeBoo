@@ -2042,7 +2042,7 @@ def tabs_css() -> str:
 
 def tabs_html(tabs: Any, *, id: str) -> str:
     """🗂️ Tabs with no script: ``tabs`` lists 2..8 ``(label, trusted_html)``, the first shown; ``id`` (1..40 of a-z, 0-9, -) names the group.
-    Radio inputs and labels, so the keyboard and a page without JavaScript both work; the rules are ``_TABS_CSS`` (``component_parts("tabs", …)``).
+    Radio inputs and labels, so the keyboard and a page without JavaScript both work; the rules are ``tabs_css()`` (or ``component_parts("tabs", …)``).
     A panel's animations start each time it is shown (``display`` turns it on), so a bar can grow on its own when its tab opens."""
     if not isinstance(tabs, (list, tuple)) or not 2 <= len(tabs) <= _TABS_MAX or any(not isinstance(t, (list, tuple)) or len(t) != 2 for t in tabs):
         raise ValueError(f"tabs lists 2..{_TABS_MAX} (label, html)")

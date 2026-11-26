@@ -766,7 +766,7 @@ its scripts or styles without `'unsafe-inline'` gets the two hashes added to tha
 | | |
 |---|---|
 | 🧰 `chrome` | `chrome_html({"id", "board", "home", "places", "tools"})`: the header and side of a page that is not a world. 📟 a board (title, a scrolling line, the clock `hh:mm:ss`, "in N min"), 🏠, ⭐ starred places of every page that shares the id, ⚙️ (⏯️ stops the board, 🌐 the icons' words in 11 languages), ☰ this page (itself 📍, its `h2`, the rows it gives), ⋯ (⬆️ ⬇️) and up to 8 emoji of the page's own (`href`, `links`, `body`, in the head or the side). ⭐ and 🌐 are kept in this browser; nothing is sent |
-| 🗂️ `tabs` | `tabs_html([(label, html), …], id="profile")`: 2..8 tabs with no script (radio inputs and labels). A panel's animations start each time it is shown, so a bar can grow on its own when its tab opens. The page spec's `tabs` block is the same markup |
+| 🗂️ `tabs` | `tabs_html([(label, html), …], id="profile")`: 2..8 tabs with no script (radio inputs and labels). A panel's animations start each time it is shown, so a bar can grow on its own when its tab opens. The page spec's `tabs` block is the same markup; a page that links its own sheets adds `tabs_css()` |
 
 ```python
 page = pysaiyanweboo.add_part(page, pysaiyanweboo.component_parts("chrome", {"home": "../../index.html#tools", "board": {"title": "TOOLS", "items": [{"text": "🎞 GIF"}]}}), at="top", scope=".ui-chrome")
