@@ -3,7 +3,6 @@ source panel, theme seed, records board). Node runs the browser modules through 
 
 import base64
 import contextlib
-import contextlib
 import io
 import copy
 import hashlib
@@ -806,6 +805,27 @@ class DoorTests(unittest.TestCase):
         self.assertIn("(current)", html)
         self.assertEqual(pysaiyanweboo.door_document(DOOR).count("<script"), 1)
         self.assertNotIn("<link", pysaiyanweboo.door_document(DOOR))
+
+    def test_the_compact_door_is_the_pulldown_alone(self):
+        """🚪 door_html(compact=True): one row for a header or a footer. The same data and options as the panel, none of its words."""
+        panel, row = pysaiyanweboo.door_html(DOOR), pysaiyanweboo.door_html(DOOR, compact=True)
+        self.assertEqual(panel, pysaiyanweboo.door_html(DOOR, compact=False))
+        self.assertTrue(row.startswith('<div class="ui-door ui-door-compact" id="door" data-ui-door data-door-draws="0" data-door="'))
+        self.assertTrue(row.endswith("</option></select></div>"))
+        data, options = re.compile(r'data-door="([^"]*)"'), re.compile(r'<select class="ui-input" id="door-select" data-door-select>(.*?)</select>')
+        self.assertEqual(data.search(row)[1], data.search(panel)[1])
+        self.assertEqual(options.search(row)[1], options.search(panel)[1])
+        self.assertEqual(row.count("selected disabled"), 1)
+        self.assertIn('<label for="door-select" title="Door-to-Door"><span aria-hidden="true">🚪</span><span class="ui-door-name">Door-to-Door</span></label>', row)
+        for panel_only in ("<h2", "<h3", "<p", "data-door-draw>", "data-door-status", "data-door-notation", "data-door-path", "ui-panel"):
+            self.assertIn(panel_only, panel)
+            self.assertNotIn(panel_only, row)
+        css, js = pysaiyanweboo.css_source("door.css"), pysaiyanweboo.js_source("door.js")
+        self.assertIn(".ui-door-compact{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-height:56px;padding:8px}", css)
+        self.assertIn(".ui-door-name{position:absolute;width:1px;height:1px;overflow:hidden", css)                # read, not drawn
+        self.assertEqual([int(px) % 8 for px in re.findall(r"(\d+)px", css[css.index(".ui-door-compact{"):]) if px != "1"], [0, 0, 0, 0, 0])
+        self.assertIn('addEventListener("pageshow",fill)', js)                                                   # the way back shows the current page again
+        self.assertIn('$("[data-door-draw]")?.addEventListener', js)                                             # the panel's parts are optional
 
 
 BASE64_CASES = json.loads((Path(__file__).resolve().parent / "fixtures" / "base64_bridge_cases.json").read_text(encoding="utf-8"))
@@ -6310,6 +6330,23 @@ def test_the_stage_keeps_its_ratio_and_pins_with_css_alone():
     sheet = ui.css_source("stage.css")
     assert sheet == "@layer components{" + ui.STAGE_CSS + "}" and sheet in ui.bundled_css() and ui.COMPONENTS["stage"]["js"] == ()
     assert "position:sticky" in sheet and "aspect-ratio:var(--ui-stage-w)/var(--ui-stage-h)" in sheet and "#" not in sheet   # colours are tokens only
+
+
+def test_the_status_line_is_a_live_region_that_keeps_its_height():
+    """📣 status_html: one line of news (what the page just did, or what went wrong), text never markup; CSS only, no module."""
+    assert ui.status_html() == '<p class="ui-status" role="status" aria-live="polite" data-ui-status-line></p>'
+    assert ui.status_html("ピン留めしました。", id="map-status") == (
+        '<p class="ui-status" role="status" aria-live="polite" data-ui-status-line id="map-status">ピン留めしました。</p>')
+    assert ui.status_html("<b>bad</b>", tone="error") == (
+        '<p class="ui-status" role="alert" data-ui-status-line data-ui-tone="error">&lt;b&gt;bad&lt;/b&gt;</p>')
+    for kwargs in ({"tone": "warn"}, {"id": "a b"}):
+        with pytest.raises(ValueError):
+            ui.status_html("x", **kwargs)
+    with pytest.raises(ValueError):
+        ui.status_html(1)
+    sheet = ui.css_source("status.css")
+    assert sheet == "@layer components{" + ui.STATUS_CSS + "}" and sheet in ui.bundled_css() and ui.COMPONENTS["status"]["js"] == ()
+    assert "min-height:1.5em" in sheet and "var(--ui-danger)" in sheet and "#" not in sheet   # colours are tokens only
 
 
 def test_pager_index_is_one_rule_for_every_variant():

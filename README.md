@@ -134,6 +134,8 @@ Door-to-Door and emoji transitions (`examples/door.html`): `door_validate` keeps
 back) into the hrefs visited, and an unknown emoji returns nothing at all; `door_options` orders the pull-down as Home, the drawn discoveries, then the rest.
 The draw is seeded (`mulberry32`, `door_draw`): the same seed draws the same pages in Python and in the page (`door.js`), checked bit for bit in Chromium.
 A listener on `ui-door-leave` can cancel a trip (a "really leave?" guard) without a dialog.
+`door_html(spec, compact=True)` is the pull-down alone, as one 56px row (🚪 and the select) for a page's header or footer; the same `door.js` binds
+it. After the browser's own way back the pull-down shows the current page again, so the same door opens twice.
 
 Clipboard shelf (`examples/clipboard-shelf.html`): paste text, a URL, Markdown or a Base64 image into a shelf that lives in the page only (no storage, no
 requests; a reload empties it). Python is the reference: `shelf_classify`, `markdown_plain`, `looks_like_image`, `decode_image_text` (strict: PNG, JPEG,
@@ -731,7 +733,7 @@ boundary](docs/python-controls.md).
 
 `COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `coordinates`,
 `door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `chat`, `curl`, `showcase`,
-`front`, `repository-diagnostics`, `table`, `steps`, `scroll`, `stage`, `pager`; `components()` lists them as data), and two calls wrap them:
+`front`, `repository-diagnostics`, `table`, `steps`, `scroll`, `stage`, `status`, `pager`; `components()` lists them as data), and two calls wrap them:
 
 ```python
 import pysaiyanweboo                            # in another repository: pinned by commit in pyproject.toml (uv)
@@ -808,6 +810,9 @@ and `row_statuses=` on `table()` / `data_table()` so `status_filter()` narrows t
 `stage_html(html, label=, ratio=(16, 9), pin=True)` is a fixed display area 🖼️ (a slide's SVG, a canvas, a photo): it keeps its ratio, is
 never taller than `--ui-stage-room` (64dvh; a phone on its side: the whole height) and, pinned, stays at the top while what is under it scrolls.
 svg, img, canvas and video fill it; other children are overlays the page places. CSS only, no module.
+`status_html(text="", tone=, id=)` is one line of news 📣 (what the page just did — pinned, copied, saved — or, with `tone="error"`, what went
+wrong): a polite live region (`role="status"`; an error is a `role="alert"` in the danger colour), text never markup, and the line keeps its
+height while empty so the page does not jump. Pages write later messages with `textContent` on `[data-ui-status-line]`. CSS only, no module.
 `pager_html(count, variant=, words=, wrap=, keys=)` is page controls 🧭 in six variants (`pager_variants()`): `arrows` ⬅️ 1/N ➡️, `ends`
 ⏮️ ⬅️ 1/N ➡️ ⏭️, the cross-key `dpad` (⬆️ first, ⬇️ last), `dots` (one ● per page), `slider` and `dial` (the dial component). Every variant is
 in the markup and `PAGER_PARTS` is the one table of which parts each shows, so setting `data-ui-pager` switches it with no reload. pager.js

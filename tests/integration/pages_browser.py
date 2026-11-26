@@ -1709,6 +1709,64 @@ class DoorBrowserTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_the_compact_pulldown_goes_there_and_the_same_door_opens_after_the_way_back(self):
+        """🚪 door_html(compact=True) on two pages: only 🚪 and the pull-down are drawn (one 56px row), a choice goes there, the browser's
+        own way back shows the current page again, the same door opens a second time, and a guard can still stop a trip."""
+        import pysaiyanweboo
+        from pysaiyanweboo import door_html
+        pages_of = lambda current: {'schema': 'web-ui-door/1', 'current': current, 'k': 0, 'pages': [
+            {'emoji': '🏠', 'label': 'Home', 'href': './home.html'}, {'emoji': '🅰️', 'label': 'A', 'href': './a.html'},
+            {'emoji': '🅱️', 'label': 'B', 'href': './b.html'}]}
+        doc = lambda current, words: pysaiyanweboo.render_document(
+            trusted_html=f'<main class="ui-page"><h1 id="here">{words}</h1></main>' + door_html(pages_of(current), compact=True)
+            + pysaiyanweboo.module_script(pysaiyanweboo.js_source('door.js')), title=words, css=pysaiyanweboo.bundled_css())
+        server, origin = serve_pages({'a.html': doc('./a.html', 'A'), 'b.html': doc('./b.html', 'B'), 'home.html': '<p id=here>HOME</p>'})
+        shown = "() => document.querySelector('[data-door-select]').selectedOptions[0].textContent"
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    for width in (320, 1280):
+                        with self.subTest(width=width):
+                            page = browser.new_page(viewport={'width': width, 'height': 640})
+                            errors = []
+                            page.on('pageerror', lambda error: errors.append(str(error)))
+                            page.goto(origin + '/a.html')
+                            page.wait_for_selector('#door[data-door_ready]')
+                            self.assertEqual(page.evaluate(shown), '🅰️ A (current)')
+                            drawn = page.evaluate("[...document.querySelectorAll('#door *')].filter(e => e.offsetParent && e.tagName !== 'OPTION' && e.getBoundingClientRect().width > 1).map(e => e.tagName)")
+                            self.assertEqual(drawn, ['LABEL', 'SPAN', 'SELECT'])                    # 🚪 and the pull-down: no heading, button or notation
+                            box, select = page.locator('#door').bounding_box(), page.locator('[data-door-select]').bounding_box()
+                            self.assertAlmostEqual(box['height'], 56, delta=1)       # one row
+                            self.assertGreaterEqual(select['height'], 40)
+                            self.assertLessEqual(select['x'] + select['width'], width)
+                            self.assertEqual(page.evaluate('document.documentElement.scrollWidth - document.documentElement.clientWidth'), 0)
+                            self.assertEqual(page.locator('[data-door-select]').evaluate('e => e.labels[0].textContent'), '🚪Door-to-Door')   # its name is read
+                            page.locator('[data-door-select]').select_option(label='🅱️ B')
+                            page.wait_for_url('**/b.html')
+                            page.wait_for_selector('#door[data-door_ready]')
+                            self.assertEqual(page.evaluate(shown), '🅱️ B (current)')
+                            page.go_back()                                                         # the browser's own way back
+                            page.wait_for_url('**/a.html')
+                            page.wait_for_function(shown + " === '🅰️ A (current)'")
+                            page.locator('[data-door-select]').select_option(label='🅱️ B')          # the same door, a second time
+                            page.wait_for_url('**/b.html')
+                            page.wait_for_selector('#door[data-door_ready]')
+                            page.evaluate("document.querySelector('[data-ui-door]').addEventListener('ui-door-leave', e => e.preventDefault(), {once: true})")
+                            page.locator('[data-door-select]').select_option(label='🏠 Home')        # a guard stops the trip; no status line is needed
+                            self.assertEqual(page.url, origin + '/b.html')
+                            self.assertEqual(page.evaluate(shown), '🅱️ B (current)')
+                            page.locator('[data-door-select]').select_option(label='🏠 Home')
+                            page.wait_for_url('**/home.html')
+                            self.assertEqual(page.locator('#here').text_content(), 'HOME')
+                            self.assertEqual(errors, [])
+                            page.close()
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_the_pulldown_goes_there_can_be_stopped_and_draws_again(self):
         import json
         from pysaiyanweboo import door_document, door_options, door_validate
