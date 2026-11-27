@@ -556,9 +556,19 @@ class PptxPresentationTests(unittest.TestCase):
         self.assertEqual(table["rows"][0][1]["options"]["fontFace"], "Meiryo")
 
     def test_python_source_does_not_assemble_office_xml(self):
+        """No Office XML in pysaiyanweboo.py, with one part set apart: 🏭 the ability to build a studio (``zip_stored`` and
+        ``slide_deck_pptx``, and the same writer in js/slide-deck.js), which writes slides into a shell the consumer supplies."""
         source = (ROOT / "pysaiyanweboo.py").read_text(encoding="utf-8")
+        studio = []
+        for begin, end in (("\ndef zip_stored(", "\n\n# 🏭 The pages of Ironmate's studio as Ironmate draws them"), ('\n_JS["slide-deck.js"] = ', '"""\n')):
+            start = source.index(begin)
+            stop = source.index(end, source.index('r"""', start) if begin.startswith("\n_JS") else start)
+            studio.append(source[start:stop])
+            source = source[:start] + source[stop:]
         for marker in ("p:spTree", "a:xfrm", "[Content_Types]", "ppt/slides"):
             self.assertNotIn(marker, source)
+            self.assertTrue(all(marker in part for part in studio), marker)       # the writer is where it says it is
+        self.assertIn("def slide_deck_pptx(", studio[0])
 
     def test_cli_and_one_liner_without_extra_packages(self):
         fragment = pptx_presentation({"slides": [{"items": [
