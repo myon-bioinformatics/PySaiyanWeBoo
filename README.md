@@ -132,8 +132,9 @@ Call `cancel()` when replacing a request or leaving the page. The operation can 
 between steps when the browser API it calls cannot itself be interrupted.
 
 `studio_document()` and the original Flutter music APIs remain available to existing callers and the
-migration regression suite. The public example gallery uses the current-item demo. The Portfolio's
-[Composition Studio](https://myon-bioinformatics.github.io/tools/browser-tools/#composition) is supplied by Ironmate.
+migration regression suite. The public example gallery uses the current-item demo.
+The [standalone metronome and composition demo](https://myon-bioinformatics.github.io/PySaiyanWeBoo/examples/composition-studio.html)
+is still available by direct link.
 
 Door-to-Door and emoji transitions (`examples/door.html`): `door_validate` keeps one emoji per page (variation selectors and spaces do not count, so `🗺️` and
 `🗺` collide) and only safe targets (a relative path or an http(s) address); `emoji_path("🏠 → 🗺️ → 🌍 ↔ 🕶️", pages)` expands `A → B` (go) and `A ↔ B` (go and come

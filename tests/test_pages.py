@@ -6489,13 +6489,21 @@ class StaticContractTest(unittest.TestCase):
                 self.assertEqual((path.parent / href).resolve(), icon.resolve())
 
     def test_example_pages_are_single_files_carrying_the_whole_bundle(self):
-        self.assertEqual(sorted(PAGES), ["contract/v1/example.html", "examples/clipboard-shelf.html", "examples/coordinates.html", "examples/current-item.html", "examples/door.html", "examples/github-like.html",
+        self.assertEqual(sorted(PAGES), ["contract/v1/example.html", "examples/clipboard-shelf.html", "examples/composition-studio.html", "examples/coordinates.html", "examples/current-item.html", "examples/door.html", "examples/github-like.html",
                                          "examples/image-studio.html", "examples/index.html", "examples/mcp-lab.html", "examples/parts.html", "examples/patterns.html", "examples/photo-studio.html", "examples/play-studio.html", "examples/playground.html", "examples/screens.html", "examples/showcase.html", "examples/test-report.html", "examples/timeline.html", "index.html"])
         self.assertEqual((ROOT / "index.html").read_text(encoding="utf-8"), PAGES["index.html"], "run: python -S pysaiyanweboo.py --site DIR; copy DIR/index.html")
         for name, text in PAGES.items():
             self.assertNotIn('rel="stylesheet"', text, name)
             self.assertIn(pysaiyanweboo.bundled_css(), text, name)
             self.assertNotIn("<script src", text, name)
+
+    def test_composition_keeps_its_direct_url_without_a_gallery_card(self):
+        path = "examples/composition-studio.html"
+        self.assertEqual(PAGES[path], pysaiyanweboo.studio_document())
+        self.assertIn("Metronome", PAGES[path])
+        for gallery in ("index.html", "examples/index.html"):
+            self.assertNotIn("composition-studio.html", self.parsed_text(PAGES[gallery]).hrefs)
+            self.assertNotIn("examples/composition-studio.html", self.parsed_text(PAGES[gallery]).hrefs)
 
     def test_theme_examples_keep_semantic_markup(self):
         text = PAGES["examples/github-like.html"]

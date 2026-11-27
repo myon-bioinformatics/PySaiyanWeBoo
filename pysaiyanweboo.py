@@ -21000,6 +21000,8 @@ def example_pages() -> dict[str, str]:
         "examples/clipboard-shelf.html": shelf_document(),
         "examples/coordinates.html": coordinates_document(),
         "examples/photo-studio.html": photo_document(),
+        # Keep direct access to the standalone metronome; it is not a gallery card.
+        "examples/composition-studio.html": studio_document(),
         "examples/current-item.html": current_item_document(),
         "examples/play-studio.html": play_document(),
         "examples/timeline.html": timeline_document(),
