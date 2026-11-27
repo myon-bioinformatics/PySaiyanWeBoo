@@ -1655,6 +1655,113 @@ class SiteChromeBrowserTests(unittest.TestCase):
             server.shutdown()
 
 
+    # 🌐 What the test reads: every word the chrome brought (the chrome, 🫧, the door's foot), shown or said (text, option, aria-label,
+    # title, placeholder), menus closed or open. A copy hidden from readers (the board's second lap) is the first one again.
+    WORDS = """() => [...document.querySelectorAll('.ui-chrome, .ui-door-foot')].flatMap(root => {
+        const out = [], walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        for (let t; (t = walk.nextNode());) { const p = t.parentElement, s = t.textContent.trim();
+            if (s && !p.closest('script,style,[aria-hidden=true]')) out.push({where: p.closest('option') ? 'option' : 'text', s,
+                skip: !!p.closest('[data-clock], [data-lang], [data-ui-theme-switch] option[value]:not([value=""])')}) }
+        for (const n of [root, ...root.querySelectorAll('*')]) for (const a of ['aria-label', 'title', 'placeholder'])
+            if (n.getAttribute(a)?.trim()) out.push({where: a, s: n.getAttribute(a).trim(), skip: false});
+        return out })"""
+
+    def test_every_word_the_chrome_brings_follows_every_language(self):
+        """🌐 ⚙️'s language, all eleven, on a guide page: each word the chrome, 🫧 and the foot put there changes and no kana is left
+        (the page's own words stay as they are; endonyms and theme names are names). The door relabels its pull-down, the board says
+        "in N min" in the language, and the page says ja in <html lang> while the chrome and the foot say the visitor's.
+        ``PSWB_GIFS`` keeps site-chrome-languages.gif (⚙️ open, language by language)."""
+        from pysaiyanweboo import CHROME_LANGS, add_back_nav, add_part, component_parts, page_document
+        spec = {"schema": "web-ui-page/1", "title": "xprobe ガイド", "description": "単一ファイルのテスト支援。まずは 1 行で。",
+                "blocks": [{"type": "heading", "text": "使い方"}, {"type": "text", "text": "pip も設定もいりません。"}]}
+        own = {"xprobe ガイド", "単一ファイルのテスト支援。", "まずは 1 行で。", "GUIDE", "📌 xprobe ガイド", "使い方"}   # the page's own words (☰ lists its headings)
+        timed = add_part(render_document(trusted_html='<main><h1>t</h1></main>', title='t', css=bundled_css()),
+                         component_parts('chrome', {'id': 'timed', 'board': {'title': 'T', 'items': [{'text': '🚌', 'at': '23:59'}]}}), at='top', scope='.ui-chrome')
+        server, origin = serve_pages({'index.html': add_back_nav(page_document(spec), "myon-bioinformatics/xprobe", chrome=True), 'timed.html': timed})
+        kana = re.compile(r'[぀-ヿ]')
+        letters = lambda s: re.sub(r'\b(?:KB|HTML|GitHub)\b|[\W\d_]', '', s)     # what is left to translate once units and names are out
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={'width': 392, 'height': 760})
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/index.html')
+                    page.wait_for_selector('.ui-chrome[data-js]')
+                    cam = ui.GifCamera(page, frame_ms=160)                                       # the whole screen: ⚙️'s panel hangs below the chrome
+                    self.assertEqual(page.evaluate('document.documentElement.lang'), 'ja')            # the page's own words are Japanese
+                    first = page.evaluate(self.WORDS)
+                    self.assertTrue(any(w['s'] == 'ポートフォリオ' for w in first) and any(w['s'] == 'まばたき' for w in first), first)
+                    page.click('.ui-chrome [data-menu="settings"] > summary')
+                    left = {}
+                    for code, _ in CHROME_LANGS[1:]:
+                        page.select_option('.ui-chrome [data-lang]', code)
+                        cam.hold(240)
+                        now = page.evaluate(self.WORDS)
+                        self.assertEqual(len(now), len(first), code)
+                        same = [b['s'] for a, b in zip(first, now) if not a['skip'] and a['s'] not in own and letters(a['s']) and (a['s'] == b['s'] or kana.search(b['s']))]
+                        if same:
+                            left[code] = same
+                        self.assertEqual(page.evaluate("[document.querySelector('.ui-chrome').lang, document.querySelector('.ui-door-foot').lang, document.documentElement.lang]"), [code, code, 'ja'])
+                        here = page.locator('.ui-door-foot option:disabled').text_content()
+                        self.assertTrue(here.startswith('📌 xprobe ガイド') and not kana.search(here.removeprefix('📌 xprobe ガイド')), (code, here))
+                    self.assertEqual(left, {})                                                      # nothing the chrome brought stayed behind
+                    page.select_option('.ui-chrome [data-lang]', 'ja')
+                    unclocked = lambda words: [w for w in words if not re.fullmatch(r'\d\d:\d\d:\d\d', w['s'])]
+                    self.assertEqual(unclocked(page.evaluate(self.WORDS)), unclocked(first))            # and back again, word for word
+                    page.goto(origin + '/timed.html')
+                    page.wait_for_selector('.ui-chrome[data-js]')
+                    minutes = page.locator('.ui-chrome .ui-board-min').first
+                    for code, pattern in (('ja', r'^(?:いま|あと\d+分)$'), ('en', r'^(?:now|in \d+ min)$'), ('ar', r'^(?:الآن|بعد \d+ د)$'), ('zh', r'^(?:现在|\d+ 分钟后)$')):
+                        page.evaluate("c => { const s = document.querySelector('.ui-chrome [data-lang]'); s.value = c; s.dispatchEvent(new Event('change')) }", code)
+                        page.wait_for_timeout(1100)                                                   # the board writes it once a second
+                        self.assertRegex(minutes.text_content(), pattern)
+                    self.assertEqual(errors, [])
+                    gif = ui.encode_gif(cam.shots)
+                    self.assertTrue(gif.startswith(b'GIF89a'))
+                    if os.environ.get('PSWB_GIFS'):
+                        ui.gif_targets_from(os.environ['PSWB_GIFS'], ['site-chrome-languages'])['site-chrome-languages'].write_bytes(gif)
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+    def test_settings_colors_follow_from_page_to_page(self):
+        """🎨 ⚙️'s colors: a theme recolours the page (its tokens on <body>), the next page of the origin opens in it, and "this page's
+        own" gives the page back its theme (a guide's is auto)."""
+        from pysaiyanweboo import add_back_nav, page_document, theme_palettes
+        spec = lambda title: {"schema": "web-ui-page/1", "title": title, "theme": "auto", "description": "色の見本。", "blocks": [{"type": "heading", "text": "見出し"}]}
+        server, origin = serve_pages({'index.html': add_back_nav(page_document(spec("一")), "myon-bioinformatics/xprobe", chrome=True),
+                                      'two.html': add_back_nav(page_document(spec("二")), "myon-bioinformatics/xprobe", chrome=True)})
+        bg = "getComputedStyle(document.body).getPropertyValue('--ui-bg').trim()"
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page()
+                    page.goto(origin + '/index.html')
+                    page.wait_for_selector('.ui-chrome[data-js]')
+                    self.assertEqual(page.evaluate('document.body.dataset.uiTheme'), 'auto')
+                    page.click('.ui-chrome [data-menu="settings"] > summary')
+                    page.select_option('.ui-chrome [data-ui-theme-switch]', 'green')
+                    self.assertEqual(page.evaluate(bg), theme_palettes()['green']['--ui-bg'])
+                    page.goto(origin + '/two.html')
+                    page.wait_for_selector('.ui-chrome[data-js]')
+                    self.assertEqual((page.evaluate('document.body.dataset.uiTheme'), page.evaluate(bg)), ('green', theme_palettes()['green']['--ui-bg']))
+                    self.assertEqual(page.locator('.ui-chrome [data-ui-theme-switch]').input_value(), 'green')
+                    page.click('.ui-chrome [data-menu="settings"] > summary')
+                    page.select_option('.ui-chrome [data-ui-theme-switch]', 'github-like')
+                    self.assertEqual(page.evaluate('document.body.dataset.uiTheme'), 'github-like')
+                    self.assertNotEqual(page.evaluate(bg), theme_palettes()['green']['--ui-bg'])
+                    page.select_option('.ui-chrome [data-ui-theme-switch]', '')
+                    self.assertEqual(page.evaluate('[document.body.dataset.uiTheme, localStorage.getItem("web-ui-theme")]'), ['auto', None])
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
 class ChatShareBrowserTests(unittest.TestCase):
     """🔗 chat_html(share=True): a page opened with #message sends it once the bot is in (not before), and 🔗 on your bubble copies
     the link (clipboard and address bar) with a ui-chat-link event. ``PSWB_GIFS`` keeps component-chat-share.gif."""

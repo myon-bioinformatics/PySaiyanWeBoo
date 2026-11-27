@@ -313,10 +313,14 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
         self.assertEqual([body.count(part) for part in ('<div class="ui-chrome ', '<button type="button" class="ui-gaze"', '<div class="ui-door-foot">', 'data-ui-back')], [1, 1, 1, 1])
         self.assertLess(body.index('<div class="ui-chrome '), body.index('<main class="ui-page">'))    # the header first, the foot last
         self.assertLess(body.index("</main>"), body.index('<div class="ui-door-foot">'))
-        items = [html.unescape(t) for t in re.findall(r'<span class="ui-board-item">([^<]*)</span>', body)]
+        items = [html.unescape(re.sub(r"<[^>]+>", "", t)) for t in re.findall(r'<span class="ui-board-item">((?:[^<]|<span data-tx="\w+">[^<]*</span>)*)</span>', body)]
         self.assertEqual(items, ["単一ファイルのテスト支援。", "まずは 1 行で。", "🏠 ポートフォリオ", "🐙 GitHub リポジトリ"])
+        self.assertIn('<span class="ui-board-item">🏠 <span data-tx="portfolio">ポートフォリオ</span></span>', body)         # 🌐 the way back by its catalogue words
+        self.assertRegex(body, r'href="https://github.com/myon-bioinformatics/xprobe" aria-label="GitHub リポジトリ" title="GitHub リポジトリ" data-t="repository">🐙')
+        self.assertIn('<html lang="ja">', page)                                                        # the page's own words are Japanese
+        self.assertIn('data-t="blink" aria-label="まばたき"', body)
         self.assertIn('<strong>GUIDE</strong>', body)
-        self.assertIn('</div><button type="button" class="ui-gaze"', body[:body.index('<nav class="ui-world-tools" aria-label="関連リンク" data-ui-back>')])        # 🫧 after the board
+        self.assertIn('</div><button type="button" class="ui-gaze"', body[:body.index('<nav class="ui-world-tools" aria-label="関連リンク" data-t="links" data-ui-back>')])        # 🫧 after the board
         self.assertIn('<a class="ui-world-home" href="https://myon-bioinformatics.github.io/"', body)
         self.assertRegex(body, r'href="https://github.com/myon-bioinformatics/xprobe"[^>]*>🐙')
         options = re.findall(r'<option value="([^"]*)"[^>]*>([^<]*)</option>', body[body.index('<div class="ui-door-foot">'):])
@@ -324,8 +328,12 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
                          [("https://myon-bioinformatics.github.io/", "🏠 ポートフォリオ"), ("https://github.com/myon-bioinformatics/xprobe", "🐙 GitHub リポジトリ"), ("./", "📌 xprobe ガイド")])
         self.assertRegex(body, rf'📦 {len(page.encode("utf-8")) / 1024:.0f} KB')
         bare = ui.add_site_chrome("<!doctype html><html><head><title>T &amp; U</title></head><body><main><p>x</p></main></body></html>", links[:1], title="DOCS")
-        said = [html.unescape(t) for t in re.findall(r'<span class="ui-board-item">([^<]*)</span>', bare)]
-        self.assertEqual(said, ["T & U：このページの案内。", "🚪 でほかの場所へ、🏠 で戻れます。", "🏠 ポートフォリオ"])              # 📟 nothing of its own to say: a line any page can
+        said = [json.loads(html.unescape(t)) for t in re.findall(r'<span class="ui-board-item"><span data-texts="([^"]*)">', bare)]
+        self.assertEqual([t["ja"] for t in said], ["T & U：このページの案内。", "🚪 でほかの場所へ、🏠 で戻れます。"])            # 📟 nothing of its own to say: a line any page can,
+        self.assertEqual([t["en"] for t in said], ["T & U: a guide to this page.", "🚪 takes you elsewhere, 🏠 back home."])   # in every language
+        self.assertEqual({len(t) for t in said}, {len(ui.CHROME_LANGS)})
+        self.assertIn('<html><head>', bare)                                                            # a page with no Japanese of its own keeps its <html>,
+        self.assertIn('data-ui-chrome lang="en">', bare)                                               # and the chrome starts in English
         self.assertIn('<strong>DOCS</strong>', bare)
         csp = "<!doctype html><html><head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'sha256-x'; style-src 'sha256-y'\"><title>T</title></head><body><main></main></body></html>"
         policy = re.search(r'Content-Security-Policy" content="([^"]*)"', ui.add_site_chrome(csp, links))[1]
@@ -346,7 +354,7 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
                 with self.subTest(argv=argv), contextlib.redirect_stdout(out):
                     self.assertEqual(pysaiyanweboo.main(argv), 0)
                 page = out.getvalue()
-                marker = '<nav class="ui-world-tools" aria-label="関連リンク" data-ui-back>'
+                marker = '<nav class="ui-world-tools" aria-label="関連リンク" data-t="links" data-ui-back>'
                 self.assertEqual(marker in page, expect)
                 self.assertNotIn('<nav class="ui-back"', page)
                 if expect:
@@ -894,11 +902,11 @@ class DoorTests(unittest.TestCase):
         self.assertEqual(foot, '<div class="ui-door-foot">' + pysaiyanweboo.door_html(DOOR, compact=True) + '<p class="ui-door-extras">'
                          '<a href="https://twitter.com/me" title="X (Twitter) @me" aria-label="X (Twitter) @me" target="_blank" rel="noopener noreferrer">🐦</a>'
                          '<a href="../README.md" title="README" aria-label="README">📜</a>'
-                         '<span class="ui-door-size" data-page-size title="HTML">📦</span></p></div>')
+                         '<span class="ui-door-size" data-page-size title="HTML" data-t="size">📦</span></p></div>')
         self.assertEqual(pysaiyanweboo.door_html(DOOR, foot=True), '<div class="ui-door-foot">' + pysaiyanweboo.door_html(DOOR, compact=True) + '</div>')
         page = pysaiyanweboo.render_document(trusted_html="<main></main>" + foot, title="t")
         stamped = pysaiyanweboo.stamp_page_size(page)
-        size = int(re.search(r'data-page-size title="HTML">📦 (\d+) KB</span>', stamped)[1])
+        size = int(re.search(r'data-page-size title="HTML" data-t="size">📦 (\d+) KB</span>', stamped)[1])
         self.assertEqual(size, round(len(page.encode("utf-8")) / 1024))
         self.assertEqual(pysaiyanweboo.stamp_page_size(stamped).count("📦 "), 1)                                    # rewrites the number
         for bad in ({"links": x}, {"size": True}, {"foot": True, "links": [{"emoji": "x", "label": "x", "href": "javascript:alert(1)"}]},
@@ -919,7 +927,7 @@ class DoorTests(unittest.TestCase):
         self.assertEqual(data.search(row)[1], data.search(panel)[1])
         self.assertEqual(options.search(row)[1], options.search(panel)[1])
         self.assertEqual(row.count("selected disabled"), 1)
-        self.assertIn('<label for="door-select" title="Door-to-Door"><span aria-hidden="true">🚪</span><span class="ui-door-name">Door-to-Door</span></label>', row)
+        self.assertIn('<label for="door-select" title="Door-to-Door" data-t="door"><span aria-hidden="true">🚪</span><span class="ui-door-name" data-tx="door">Door-to-Door</span></label>', row)
         for panel_only in ("<h2", "<h3", "<p", "data-door-draw>", "data-door-status", "data-door-notation", "data-door-path", "ui-panel"):
             self.assertIn(panel_only, panel)
             self.assertNotIn(panel_only, row)
@@ -6845,7 +6853,8 @@ def test_the_chrome_is_a_header_and_a_side_for_a_page_that_is_not_a_world():
     assert '<li><a href="#export"><span class="ui-world-arrow" aria-hidden="true"></span>🧾 出力のしかた</a><button type="button" class="ui-world-star"' in side
     for waits in ('data-menu="favorites" hidden', 'data-menu="settings" hidden', 'data-menu="more" hidden'):
         assert waits in html
-    assert 'data-pause="⏯️" data-resume="▶️"' in html and html.count("<option ") == len(ui.CHROME_LANGS) == 11
+    assert 'data-pause="⏯️" data-resume="▶️"' in html and html.count('<option value="') - html.count("<option value=\"\"") == len(ui.CHROME_LANGS) + len(ui.THEMES) + len(ui.CANDIDATE_THEMES) == 18
+    assert '<select data-ui-theme-switch aria-label="配色" title="配色" data-t="theme"><option value="" data-tx="own">このページの色</option><option value="modern">⬛ modern</option>' in html
     assert side.count("data-scroll=") == 2 and 'data-labels="{&quot;ja&quot;:&quot;パラレル都市&quot;,&quot;en&quot;:&quot;Parallel cities&quot;}"' in head
     bare = ui.chrome_html()
     assert "ui-board" not in bare and "ui-world-home" not in bare and "⏯️" not in bare and 'data-menu="spots" hidden><summary' in bare
@@ -6889,6 +6898,36 @@ def test_the_chrome_takes_actions_and_rows_for_settings_and_this_screen():
     assert "new CustomEvent('ui-chrome-action',{bubbles:true,detail:{key:act.dataset.chromeAction}})" in module and "e.preventDefault()" in module
 
 
+def test_every_word_the_chrome_brings_is_in_eleven_languages():
+    """🌐 The catalogue: every word in all eleven languages (a format keeps its {0} in each), every key a part writes is in it, a
+    catalogue word in a link's label is found (formats are not), and the languages a page, a board item or a door page can carry."""
+    ui = pysaiyanweboo
+    codes = [code for code, _ in ui.CHROME_LANGS]
+    assert all(len(row) == len(codes) == 11 and all(w.strip() for w in row) for row in ui._CHROME_WORDS.values())
+    for key in ("in", "about"):
+        assert all("{0}" in w for w in ui._CHROME_WORDS[key]), key
+    spec = {"schema": "web-ui-page/1", "title": "ガイド", "description": "説明。", "blocks": [{"type": "heading", "text": "見出し"}]}
+    page = ui.add_back_nav(ui.page_document(spec), "myon-bioinformatics/xprobe", chrome=True)
+    stand_in = ui.add_site_chrome("<!doctype html><html><head><title>T</title></head><body><main></main></body></html>", [{"label": "🏠 ポートフォリオ", "href": "https://x.test/"}])
+    keys = set(re.findall(r'data-tx?="(\w+)"', page + stand_in))
+    assert keys >= {"home", "settings", "language", "theme", "own", "blink", "links", "portfolio", "repository", "door", "size"} and keys <= set(ui._CHROME_WORDS)
+    module = ui.js_source("chrome.js")
+    assert set(re.search(r"CHROME_TEXT=(\{.*?\});", module)[1] and json.loads(re.search(r"CHROME_TEXT=(\{.*?\});", module)[1])) == set(ui._CHROME_WORDS) - {"about", "about2"}
+    assert ui.chrome_words("ポートフォリオ")["en"] == "Portfolio" and ui.chrome_words("GitHub リポジトリ")["zh"] == "GitHub 仓库"
+    assert ui.chrome_words("あと{0}分") is None and ui.chrome_words("xprobe") is None             # a format is not a label; a name is a name
+    assert ui.page_language(page) == "ja" and ui.page_language("<html><body><main><p>Pick a template and send.</p><pre>日本語</pre></main></body></html>") == "en"
+    assert ui.chrome_validate({"lang": "ar"})["lang"] == "ar" and '<option value="ar" lang="ar" selected>' in ui.chrome_html({"lang": "ar"})
+    assert ui.chrome_validate({"board": {"items": [{"text": "🏠 家", "labels": {"en": "🏠 Home"}}]}})["board"]["items"][0]["labels"] == {"en": "🏠 Home"}
+    door = {"schema": ui.DOOR_SCHEMA, "pages": [{"emoji": "🏠", "label": "家", "href": "./", "labels": {"en": "Home", "fr": "Maison"}}], "k": 0}
+    assert ui.door_validate(door)["pages"][0]["labels"] == {"en": "Home", "fr": "Maison"}
+    for bad, word in (({"lang": "xx"}, "lang is one of"), ({"board": {"items": [{"text": "a", "labels": {"ja": "a"}}]}}, "labels maps"),
+                      ({"board": {"items": [{"text": "a", "labels": {"en": ""}}]}}, "labels must be")):
+        with pytest.raises(ValueError, match=re.escape(word)):
+            ui.chrome_validate(bad)
+    with pytest.raises(ValueError, match="labels maps"):
+        ui.door_validate({**door, "pages": [{**door["pages"][0], "labels": {"xx": "?"}}]})
+
+
 def test_the_chrome_sheet_is_plain_and_its_module_asks_the_network_for_nothing():
     css, js = ui.css_source("chrome.css"), ui.js_source("chrome.js")
     assert "@layer" not in css and ".ui-chrome .ui-world-side{" in css and "@keyframes ui-board-scroll{" in css
@@ -6900,7 +6939,8 @@ def test_the_chrome_sheet_is_plain_and_its_module_asks_the_network_for_nothing()
         assert map_only not in css, map_only
     for word in ("fetch(", "XMLHttpRequest", "sendBeacon", "WebSocket", "sessionStorage", "indexedDB", "cookie", "import("):
         assert word not in js, word
-    assert sorted(set(re.findall(r"save\(\{(\w+)", js))) == ["fav", "lang"] and "'ui-chrome:'+el.id" in js      # ⭐ and 🌐, nothing else
+    assert sorted(set(re.findall(r"save\(\{(\w+)", js))) == ["fav", "lang"] and "'ui-chrome:'+el.id" in js      # ⭐ and 🌐,
+    assert re.findall(r"localStorage\.(?:set|remove)Item\((\w+)", js) == ["key", "key", "slot"] and 'key="web-ui-theme"' in js   # 🎨 bindTheme's, then that slot
     assert js.startswith('const CHROME_LANGS=["ja","en",') and "export function bindChrome" in js
     page = ui.add_part(ui.render_document(trusted_html="<main><h1>t</h1></main>", title="t", css=ui.bundled_css()),
                        ui.component_parts("chrome", CHROME), at="top", scope=".ui-chrome")
@@ -6936,7 +6976,8 @@ const board=node('div',{isConnected:true,querySelector:s=>s==='[data-clock]'?clo
 const el=node('div',{id:'tools-chrome',querySelector:s=>s==='.ui-board'?board:s==='.ui-world-pause'?pause:s==='.ui-world-spots'?spots:s==='.ui-world-favs'?favs:null,
  querySelectorAll:s=>s==='.ui-world-menu'?menus:[]});
 const heading=node('h2',{id:''});heading.textContent=' 地点 ';
-globalThis.document={title:' 🎞 GIF工房 ',documentElement:{scrollHeight:4096},querySelectorAll:s=>s==='[data-ui-chrome]'?[el]:s==='main h2'?[heading]:[],addEventListener(){},createElement:t=>node(t)};
+const heard=[];
+globalThis.document={title:' 🎞 GIF工房 ',body:{dataset:{}},documentElement:{scrollHeight:4096},querySelectorAll:s=>s==='[data-ui-chrome]'?[el]:s==='main h2'?[heading]:[],addEventListener(){},createElement:t=>node(t),dispatchEvent:e=>heard.push([e.type,e.detail.lang,e.detail.word('in',5)])};
 assert.deepEqual(bindChrome(),[el]);assert.equal(el.dataset.js,'');
 assert.match(clock.textContent,/^\d\d:\d\d:\d\d$/);
 assert.deepEqual(menus.map(m=>m.hidden),[false,false,false]);
@@ -6961,6 +7002,7 @@ assert.deepEqual(scrolled,{top:4096,behavior:'smooth'});assert.equal(menus[2].op
 pause.events.click();assert.equal('data-motion-paused' in el.attrs,true);assert.equal(pause.textContent,'▶️');assert.equal(pause.attrs['aria-pressed'],'true');
 pause.events.click();assert.equal('data-motion-paused' in el.attrs,false);assert.equal(pause.textContent,'⏯️');
 assert.deepEqual(Object.keys(JSON.parse(store['ui-chrome:tools-chrome'])),['fav']);                 // ⭐ only; 🌐 was not touched
+assert.deepEqual(heard,[['ui-lang','ja','あと5分']]);                                                // 🌐 told the page its language once, with its words
 assert.deepEqual(bindChrome(),[el]);                                                               // bound once
 console.log('ok');
 """
