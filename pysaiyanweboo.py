@@ -65,19 +65,23 @@ export function bindDownloads(root=document){const buttons=[...root.querySelecto
 /** select[data-ui-choice="name"] shows the [data-ui-choice-panel="name"] whose data-ui-choice-value is its value and hides the others (without JS every panel shows). With data-ui-draft the choice is kept like any draft. Returns the bound selects. */
 export function bindChoice(root=document){const fields=[...root.querySelectorAll("select[data-ui-choice]")];for(const field of fields){const panels=[...root.querySelectorAll("[data-ui-choice-panel]")].filter(p=>p.dataset.uiChoicePanel===field.dataset.uiChoice);const sync=()=>{for(const p of panels)p.hidden=p.dataset.uiChoiceValue!==field.value};field.addEventListener("change",sync);field.addEventListener("input",sync);sync()}return fields}
 /* 📦📜 A saved state as text, so a page can go on where it stopped on another device or after its storage is gone (no DOM, no storage: the
-   page decides what its state is). saveText / saveState: any JSON value as one base64url line (copy it, keep it in a file). spellText /
+   page decides what its state is). saveText / saveState: portable JSON as one base64url line (copy it, keep it in a file). spellText /
    spellBytes: a few bytes as a spell to write down and type back (ふっかつのじゅもん): 64 kana, 6 bits each, lines of 5 7 5. bitsPack /
    bitsUnpack: whole numbers packed by a layout into those few bytes (JSON is too long to type). Both texts start with a 16-bit check
    (CRC-16/CCITT-FALSE): one wrong kana or two swapped neighbours never pass. pysaiyanweboo's save_text, save_state, spell_text, spell_bytes,
-   bits_pack and bits_unpack are their twins and read what these write. */
+   bits_pack and bits_unpack are their twins and read what these write. Numbers must fit in JavaScript’s safe range. */
 const KANA="あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわがぎぐげござじずぜぞだぢづでどばびぶべぼ";
 function crc16(bytes){let c=0xFFFF;for(const b of bytes){c^=b<<8;for(let i=0;i<8;i++)c=(c&0x8000?c<<1^0x1021:c<<1)&0xFFFF}return c}
 function checked(bytes){const c=crc16(bytes),out=new Uint8Array(bytes.length+2);out[0]=c>>8;out[1]=c&255;out.set(bytes,2);return out}
 function unchecked(raw,wrong){if(raw.length<2||crc16(raw.subarray(2))!==(raw[0]<<8|raw[1]))throw new Error(wrong);return raw.subarray(2)}
-/** Any JSON value as one base64url line: a 16-bit check, then its compact UTF-8 JSON. */
-export function saveText(state){let text="";for(const b of checked(new TextEncoder().encode(JSON.stringify(state))))text+=String.fromCharCode(b);return btoa(text).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")}
+function portableNumber(_,value){
+ if(typeof value==="number"&&!(value>=-Number.MAX_SAFE_INTEGER&&value<=Number.MAX_SAFE_INTEGER))throw new Error("use text for numbers outside the portable JSON range");
+ return value
+}
+/** Portable JSON as one base64url line: a 16-bit check, then its compact UTF-8 JSON. */
+export function saveText(state){const json=JSON.stringify(state,portableNumber);if(typeof json!=="string")throw new Error("a save must be a JSON value");let text="";for(const b of checked(new TextEncoder().encode(json)))text+=String.fromCharCode(b);return btoa(text).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")}
 /** The value saveText (or save_text) wrote; an Error when the line was cut or changed. Spaces and line breaks in it are ignored. */
-export function saveState(text){const wrong="the save text is cut or changed";try{const raw=atob(String(text).replace(/[ \t\r\n]/g,"").replace(/-/g,"+").replace(/_/g,"/"));return JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(unchecked(Uint8Array.from(raw,c=>c.charCodeAt(0)),wrong)))}catch{throw new Error(wrong)}}
+export function saveState(text){const wrong="the save text is cut or changed";try{const raw=atob(String(text).replace(/[ \t\r\n]/g,"").replace(/-/g,"+").replace(/_/g,"/"));return JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(unchecked(Uint8Array.from(raw,c=>c.charCodeAt(0)),wrong)),portableNumber)}catch{throw new Error(wrong)}}
 /** Bytes (a Uint8Array or an array of 0..255) as a spell: kana in lines of 5 7 5. 12 bytes are 19 kana. */
 export function spellText(data){const bits=[...checked(Uint8Array.from(data))].map(b=>b.toString(2).padStart(8,"0")).join(""),kana=(bits+"0".repeat((6-bits.length%6)%6)).match(/.{6}/g).map(g=>KANA[parseInt(g,2)]).join(""),lines=[];
  for(let i=0;i<kana.length;i+=17)lines.push([kana.slice(i,i+5),kana.slice(i+5,i+12),kana.slice(i+12,i+17)].filter(Boolean).join(" "));return lines.join("\n")}
@@ -1883,21 +1887,7 @@ class GifCamera:
         """Zoom into what is on screen toward ``anchor`` and stay there. ``anchor`` is (x, y) from 0 to 1, a name (``"bottom-right"``) or an arrow
         emoji (``↘️``, ``⬅``, ``🎯`` for the centre; ``ZOOM_ANCHORS``). Every pixel changes in a zoom, so it costs a few frames; it does not zoom back."""
         from PIL import Image
-        if isinstance(anchor, str):
-            name = anchor.replace("\ufe0e", "").replace("\ufe0f", "")
-            anchor = ZOOM_ANCHORS.get(name)
-            anchor = ZOOM_ANCHORS.get(anchor, anchor)
-            if not isinstance(anchor, tuple):
-                raise ValueError(f"not an anchor: {name!r}")
-        source = Image.open(io.BytesIO(self.png())).convert("RGB")
-        width, height = source.size
-        forward = []
-        for i in range(1, steps + 1):
-            t = i / steps
-            grow = 1 + (factor - 1) * t * t * (3 - 2 * t)          # smoothstep, as in Ironmate's png_zoom_gif
-            w, h = max(1, round(width / grow)), max(1, round(height / grow))
-            left, top = round((width - w) * anchor[0]), round((height - h) * anchor[1])
-            forward.append(source.crop((left, top, left + w, top + h)).resize(source.size, Image.Resampling.LANCZOS))
+        forward = _zoom_frames(Image.open(io.BytesIO(self.png())).convert("RGB"), _zoom_anchor(anchor), factor, steps)
         path = [(f, 60) for f in forward[:-1]] + [(forward[-1], hold_ms)]
         t = time.monotonic()
         for frame, ms in path:
@@ -1914,6 +1904,69 @@ class GifCamera:
                 raise TimeoutError(script)
             self.hold(self.frame_ms)
         self.snap()
+
+
+def _zoom_anchor(anchor):
+    """(x, y) from 0 to 1 for an anchor: a pair, a name or an arrow emoji of ``ZOOM_ANCHORS`` (a presentation selector does not matter)."""
+    if isinstance(anchor, str):
+        name = anchor.replace("\ufe0e", "").replace("\ufe0f", "")
+        anchor = ZOOM_ANCHORS.get(name)
+        anchor = ZOOM_ANCHORS.get(anchor, anchor)
+        if not isinstance(anchor, tuple):
+            raise ValueError(f"not an anchor: {name!r}")
+    elif (not isinstance(anchor, (tuple, list)) or len(anchor) != 2
+          or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or not 0 <= v <= 1 for v in anchor)):
+        raise ValueError("an anchor is a name, an arrow or two coordinates from 0 to 1")
+    return tuple(anchor)
+
+
+def _zoom_frames(source, anchor, factor, steps):
+    """``steps`` pictures of ``source`` (a Pillow image) going in toward ``anchor``, the last ``factor`` times as large (smoothstep, as in Ironmate's png_zoom_gif)."""
+    from PIL import Image
+    width, height = source.size
+    forward = []
+    for i in range(1, steps + 1):
+        t = i / steps
+        grow = 1 + (factor - 1) * t * t * (3 - 2 * t)
+        w, h = max(1, round(width / grow)), max(1, round(height / grow))
+        left, top = round((width - w) * anchor[0]), round((height - h) * anchor[1])
+        forward.append(source.crop((left, top, left + w, top + h)).resize(source.size, Image.Resampling.LANCZOS))
+    return forward
+
+
+def zoom_shots(png, *, anchors=("center",), factor=3.0, steps=16, frame_ms=60, hold_ms=400, background=(255, 255, 255)):
+    """A still picture as the shots of a zoom, for ``encode_gif``: the whole picture, into each of ``anchors`` in turn (1 to 16; a pair
+    from 0 to 1, a name or an arrow emoji of ``ZOOM_ANCHORS``) and back out the same way before the next. A frame lasts ``frame_ms``;
+    the whole picture and each peak stay ``hold_ms`` longer (pass ``tail_ms=frame_ms + hold_ms`` to ``encode_gif`` for the last one).
+    A GIF keeps no partial transparency, so the picture is laid on ``background`` first. (Ironmate's png_zoom_gif; ``GifCamera.zoom``
+    is the same zoom on a live page, one way.)"""
+    if isinstance(factor, bool) or not isinstance(factor, (int, float)) or not math.isfinite(factor) or not 1 < factor <= 64:
+        raise ValueError("factor is greater than 1 and at most 64")
+    if type(steps) is not int or not 2 <= steps <= 120:
+        raise ValueError("steps is an integer from 2 to 120")
+    if not isinstance(anchors, (list, tuple)) or not 1 <= len(anchors) <= 16:
+        raise ValueError("anchors holds 1 to 16 anchors")
+    route = [_zoom_anchor(anchor) for anchor in anchors]
+    if len(background) != 3 or any(type(v) is not int or not 0 <= v <= 255 for v in background):
+        raise ValueError("background is three bytes")
+    if any(type(v) is not int or not 0 <= v <= 60000 for v in (frame_ms, hold_ms)) or frame_ms < 10:
+        raise ValueError("frame_ms is 10 to 60000 and hold_ms 0 to 60000")
+    from PIL import Image
+    picture = Image.open(io.BytesIO(png)).convert("RGBA")
+    if picture.width * picture.height * (steps * len(route) + 1) > 32_000_000:
+        raise ValueError("the animation would keep over 32000000 pixels; use a smaller picture or fewer steps")
+    source = Image.alpha_composite(Image.new("RGBA", picture.size, tuple(background) + (255,)), picture).convert("RGB")
+    frames = [source]
+    for anchor in route:
+        forward = [source, *_zoom_frames(source, anchor, factor, steps)]
+        frames += forward[1:] + forward[-2::-1]
+    shots, at = [], 0.0
+    for index, frame in enumerate(frames):
+        out = io.BytesIO()
+        frame.save(out, format="PNG")
+        shots.append((at, out.getvalue()))
+        at += (frame_ms + (hold_ms if index % steps == 0 else 0)) / 1000
+    return shots
 
 
 def encode_gif(shots, *, width=None, tail_ms=1500, min_ms=20, max_ms=2000):
@@ -2924,11 +2977,24 @@ def draft_select(options: tuple[tuple[str, str], ...], *, key: str, id: str, lab
         "<select ", f'<select data-ui-draft="{_draft_key(key)}" ', 1)
 
 
+def _load_portable_save(raw: bytes) -> Any:
+    def number(token: str, parse: Any) -> int | float:
+        value = parse(token)
+        if not -(2**53 - 1) <= value <= 2**53 - 1:
+            raise ValueError("use text for numbers outside the portable JSON range")
+        return value
+
+    return json.loads(raw, parse_int=lambda token: number(token, int),
+                      parse_float=lambda token: number(token, float),
+                      parse_constant=lambda token: number(token, float))
+
+
 def save_text(state: Any) -> str:
-    """📦 Any JSON value as one base64url line to copy or keep in a file: a 16-bit check, then its compact UTF-8 JSON. ``save_state``
+    """📦 Portable JSON as one base64url line to copy or keep in a file: a 16-bit check, then its compact UTF-8 JSON. ``save_state``
     (and records.js's ``saveState``) read it back. With ``spell_text`` and ``bits_pack``: a page's state as text, to go on where it
-    stopped on another device or after its storage is gone."""
+    stopped on another device or after its storage is gone. Use strings for exact numbers outside JavaScript’s safe range."""
     raw = json.dumps(state, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    _load_portable_save(raw)
     return base64.urlsafe_b64encode(binascii.crc_hqx(raw, 0xFFFF).to_bytes(2, "big") + raw).decode("ascii").rstrip("=")
 
 
@@ -2940,7 +3006,7 @@ def save_state(text: str) -> Any:
         raw = base64.b64decode(line + "=" * (-len(line) % 4), altchars=b"-_", validate=True)
         if len(raw) < 2 or binascii.crc_hqx(raw[2:], 0xFFFF) != int.from_bytes(raw[:2], "big"):
             raise ValueError
-        return json.loads(raw[2:].decode("utf-8"))
+        return _load_portable_save(raw[2:].decode("utf-8"))
     except (TypeError, ValueError) as exc:
         raise ValueError("the save text is cut or changed") from exc
 
@@ -15417,6 +15483,476 @@ def image_compare(reference: Any, candidate: Any, *, radius: int = 2, threshold:
             "Aligned_IoU": best[0], "Alignment_dx": best[1], "Alignment_dy": best[2], "Alignment_L1_Pixels": abs(best[1]) + abs(best[2])}
 
 
+# 🗂️ Many images with a status each on one small page (Ironmate's image_digest, first written there): rows and columns are any
+# labels (pages x browsers, cases x devices, slides x themes). The input is ``{"schema": "ironmate-image-digest-input/1", "title",
+# "rows": [...], "cols": [...], "meta": {"build": "...", "link": "https://..."}, "cells": [{"row", "col", "image": "shots/home.png",
+# "status": "pass", "notes": [...]}]}``. Each image becomes a thumbnail in the page itself (a data URI), so the page is one file
+# anyone can open; a status only colours and counts, it is never read from the pixels. Nothing here opens a file: the caller hands
+# the images over.
+IMAGE_DIGEST_SCHEMA = "ironmate-image-digest-input/1"
+_DIGEST_MIN_TILE = (16, 32)
+
+
+def image_thumbnail(image: Any, width: int, height: int) -> tuple[int, int, bytes]:
+    """The image as a ``width`` x ``height`` thumbnail: shrunk to ``width`` (its shape kept, up to about 4 x 4 samples a pixel), then
+    cut at ``height`` or filled with white below. An image of up to 4096 x 4096 pixels; a thumbnail is for finding one's way, not
+    for judging pixels."""
+    if (not isinstance(image, (tuple, list)) or len(image) != 3 or type(image[0]) is not int or type(image[1]) is not int or image[0] < 1 or image[1] < 1
+            or image[0] * image[1] > 4096 * 4096 or not isinstance(image[2], (bytes, bytearray)) or len(image[2]) != image[0] * image[1] * 4):
+        raise ValueError("an image is (width, height, RGBA bytes) of 1 to 16777216 pixels")
+    if any(type(v) is not int or not 1 <= v <= 4096 for v in (width, height)):
+        raise ValueError("a thumbnail is 1 to 4096 pixels a side")
+    w, h, rgba = image
+    scaled = max(1, round(h * width / w))
+    out = bytearray(b"\xff\xff\xff\xff" * (width * height))
+    for ty in range(min(height, scaled)):
+        y0, y1 = ty * h // scaled, max(ty * h // scaled + 1, (ty + 1) * h // scaled)
+        ys = range(y0, y1, max(1, (y1 - y0) // 4))
+        for tx in range(width):
+            x0, x1 = tx * w // width, max(tx * w // width + 1, (tx + 1) * w // width)
+            xs = range(x0, x1, max(1, (x1 - x0) // 4))
+            total, n = [0, 0, 0, 0], len(ys) * len(xs)
+            for y in ys:
+                for x in xs:
+                    i = (y * w + x) * 4
+                    for c in range(4):
+                        total[c] += rgba[i + c]
+            out[(ty * width + tx) * 4:(ty * width + tx) * 4 + 4] = bytes((v + n // 2) // n for v in total)
+    return width, height, bytes(out)
+
+
+def image_digest_validate(spec: Any) -> dict[str, Any]:
+    """The input checked: ``{"title", "rows", "cols", "cells": [{"row", "col", "status", "image", "notes"}], "meta"}``. Rows and columns
+    are distinct labels (1 to 120 characters, no control characters), at most 2000 cells and one a row and column, a status is a
+    short lowercase token (``unknown`` when left out), an image a relative name without ``..``, notes at most 6 kept, ``meta.link``
+    an https URL."""
+    if not isinstance(spec, dict) or spec.get("schema") != IMAGE_DIGEST_SCHEMA:
+        raise ValueError(f"expected schema {IMAGE_DIGEST_SCHEMA}")
+    label = re.compile(r"[^\x00-\x1f\x7f]{1,120}")
+    rows, cols, cells = spec.get("rows"), spec.get("cols"), spec.get("cells")
+    for name, values in (("rows", rows), ("cols", cols)):
+        if not isinstance(values, list) or not values or not all(isinstance(v, str) and label.fullmatch(v) for v in values) or len(set(values)) != len(values):
+            raise ValueError(f"{name} must be distinct nonempty labels")
+    if not isinstance(cells, list) or len(cells) > 2000:
+        raise ValueError("cells must be a list of at most 2000")
+    seen, out = set(), []
+    for cell in cells:
+        if not isinstance(cell, dict) or cell.get("row") not in rows or cell.get("col") not in cols:
+            raise ValueError("each cell needs a listed row and col")
+        key = (cell["row"], cell["col"])
+        if key in seen:
+            raise ValueError(f"two cells for {key}")
+        seen.add(key)
+        status, image, notes = cell.get("status", "unknown"), cell.get("image"), cell.get("notes", [])
+        if not isinstance(status, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,23}", status):
+            raise ValueError(f"status must be a short lowercase token: {status!r}")
+        if image is not None and (not isinstance(image, str) or not image or image.startswith(("/", "\\")) or re.match(r"[A-Za-z]:", image)
+                                  or ".." in re.split(r"[/\\]", image)):
+            raise ValueError(f"image must be a relative path inside the input directory: {image!r}")
+        if not isinstance(notes, list) or not all(isinstance(n, str) and len(n) <= 200 for n in notes):
+            raise ValueError("notes must be short strings")
+        out.append({"row": cell["row"], "col": cell["col"], "status": status, "image": image, "notes": notes[:6]})
+    meta = spec.get("meta", {})
+    if not isinstance(meta, dict) or not all(isinstance(k, str) and isinstance(v, str) and len(v) <= 300 for k, v in meta.items()):
+        raise ValueError("meta must map names to short strings")
+    if meta.get("link") is not None and not re.fullmatch(r'https://[^\s"<>]+', meta["link"]):
+        raise ValueError("meta.link must be an https URL")
+    title = spec.get("title", "Image digest")
+    if not isinstance(title, str) or not label.fullmatch(title):
+        raise ValueError("title must be a short label")
+    return {"title": title, "rows": rows, "cols": cols, "cells": out, "meta": meta}
+
+
+def image_digest_html(data: dict[str, Any], thumbnails: dict[tuple[str, str], bytes], tile: Sequence[int]) -> str:
+    """The page: a table of rows x columns, each cell its thumbnail (``thumbnails[row, col]``, PNG bytes of ``tile`` size), status and
+    notes; a failing cell is tinted, a cell nobody listed says ``not run``. One file: no script, no outside reference."""
+    cells = {(c["row"], c["col"]): c for c in data["cells"]}
+    body = []
+    for row in data["rows"]:
+        tds = [f"<th>{escape(row, quote=False)}</th>"]
+        for col in data["cols"]:
+            cell = cells.get((row, col))
+            if cell is None:
+                tds.append('<td class="missing">not run</td>')
+                continue
+            img = (f'<img src="data:image/png;base64,{base64.b64encode(thumbnails[row, col]).decode("ascii")}" width="{tile[0]}" height="{tile[1]}" alt=""><br>'
+                   if (row, col) in thumbnails else "")
+            notes = "<br>".join(escape(n, quote=False) for n in cell["notes"])
+            tds.append(f'<td class="s-{cell["status"]}">{img}{escape(cell["status"], quote=False)}' + (f"<br><small>{notes}</small>" if notes else "") + "</td>")
+        body.append("<tr>" + "".join(tds) + "</tr>")
+    meta = " · ".join(f"{escape(k, quote=False)} {escape(v, quote=False)}" for k, v in data["meta"].items() if k != "link")
+    link = data["meta"].get("link")
+    return ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<title>{escape(data["title"], quote=False)}</title><style>body{{font:13px system-ui,sans-serif;margin:8px}}'
+            "table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px;vertical-align:top;text-align:center}"
+            "td.s-fail,td.s-error{background:#ffebe9}td.missing{color:#666}small{color:#555}</style>"
+            f'<h1>{escape(data["title"], quote=False)}</h1><p>Thumbnails {tile[0]}x{tile[1]} px' + (f" · {meta}" if meta else "")
+            + (f' · <a href="{escape(link, quote=True)}">link</a>' if link else "") + ". Thumbnails are for orientation, not pixel review.</p>"
+            f'<table><tr><th></th>{"".join(f"<th>{escape(c, quote=False)}</th>" for c in data["cols"])}</tr>{"".join(body)}</table>\n')
+
+
+def image_digest_markdown(data: dict[str, Any], *, marker: str = "<!-- ironmate-image-digest -->") -> str:
+    """The same in a few lines of Markdown, for a pull request comment or a job summary: how many passed, then a row a line with
+    what needs a look (``marker`` first, so a later run can find and replace its own comment)."""
+    def text(value: str) -> str:
+        return re.sub(r"([\\`*_\[\]])", r"\\\1", escape(" ".join(value.split()), quote=False)).replace("|", "&#124;")
+
+    cells = {(c["row"], c["col"]): c for c in data["cells"]}
+    meta, link = ", ".join(f"{k} {v}" for k, v in data["meta"].items() if k != "link"), data["meta"].get("link")
+    lines = [marker, f'### {data["title"]}', "",
+             f'{sum(1 for c in data["cells"] if c["status"] == "pass")}/{len(data["rows"]) * len(data["cols"])} passed' + (f"; {meta}" if meta else "") + "."
+             + (f" [Link]({link})" if link else ""), "", "| Row | Passed | Needs a look |", "| --- | --- | --- |"]
+    for row in data["rows"]:
+        bad = [f"{col} (not run)" if (row, col) not in cells else f'{col} ({", ".join(cells[row, col]["notes"][:2]) or cells[row, col]["status"]})'
+               for col in data["cols"] if (row, col) not in cells or cells[row, col]["status"] != "pass"]
+        lines.append(f'| {text(row)} | {len(data["cols"]) - len(bad)}/{len(data["cols"])} | {text("; ".join(bad) or "-")} |')
+    return "\n".join(lines) + "\n"
+
+
+def image_digest(spec: Any, images: dict[str, Any], *, max_bytes: int = 1_000_000, tile: Sequence[int] = (64, 128)) -> tuple[str, str, dict[str, Any]]:
+    """``(page, summary, info)`` for ``spec``: ``image_digest_html``, ``image_digest_markdown`` and what was done. ``images`` gives each
+    cell's image by its name: PNG bytes (``studio_png_decode``: 8 bits, up to 4 MP) or an image already decoded, ``(width, height,
+    RGBA bytes)`` up to 4096 x 4096. Thumbnails start at ``tile`` and are halved each way (a quarter of the pixels) until the page is
+    at most ``max_bytes`` or they are 16 x 32; ``info`` says the size used and whether it fits."""
+    data = image_digest_validate(spec)
+    if type(max_bytes) is not int or not 20_000 <= max_bytes <= 20_000_000:
+        raise ValueError("max_bytes must be 20000..20000000")
+    if (not isinstance(tile, (tuple, list)) or len(tile) != 2 or not all(type(v) is int for v in tile)
+            or not (_DIGEST_MIN_TILE[0] <= tile[0] <= 640 and _DIGEST_MIN_TILE[1] <= tile[1] <= 1280)):
+        raise ValueError("tile must be within 16..640 x 32..1280 pixels")
+    sizes = [tuple(tile)]
+    while sizes[-1] != _DIGEST_MIN_TILE:
+        sizes.append((max(_DIGEST_MIN_TILE[0], sizes[-1][0] // 2), max(_DIGEST_MIN_TILE[1], sizes[-1][1] // 2)))
+    thumbnails: dict[tuple[int, int], dict[tuple[str, str], bytes]] = {size: {} for size in sizes}
+    made: dict[str, dict[tuple[int, int], bytes]] = {}
+    for cell in data["cells"]:
+        name = cell["image"]
+        if not name:
+            continue
+        if name not in images:
+            raise ValueError(f"{name}: no such image")
+        if name not in made:                                               # the thumbnails are kept, not every full image, across the passes
+            source = images[name]
+            if isinstance(source, (bytes, bytearray)):
+                if len(source) > 32 * 1024 * 1024:
+                    raise ValueError(f"{name}: larger than 32MiB")
+                source = studio_png_decode(bytes(source))
+            made[name] = {size: _rgba_png(*image_thumbnail(source, *size), compression=9) for size in sizes}
+        for size in sizes:
+            thumbnails[size][cell["row"], cell["col"]] = made[name][size]
+    for size in sizes:
+        page = image_digest_html(data, thumbnails[size], size)
+        if len(page.encode("utf-8")) <= max_bytes or size == _DIGEST_MIN_TILE:
+            break
+    statuses = [c["status"] for c in data["cells"]]
+    return page, image_digest_markdown(data), {
+        "schema": "ironmate-image-digest/1", "tile": list(size), "bytes": len(page.encode("utf-8")), "fits": len(page.encode("utf-8")) <= max_bytes,
+        "rows": len(data["rows"]), "cols": len(data["cols"]), "passed": statuses.count("pass"), "statuses": {s: statuses.count(s) for s in sorted(set(statuses))}}
+
+
+# 🖨️ A small, safe part of SVG drawn to pixels with the standard library alone (Ironmate's svg_raster, first written there): enough
+# for dot art and flat diagrams, strict about everything else.
+_SVGR_NS = '{http://www.w3.org/2000/svg}'
+_SVGR_SAMPLES = 4  # per axis for curved shapes and polygons
+_SVGR_NUMBER = re.compile(r'\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)(px)?\s*', re.ASCII)
+_SVGR_TRANSLATE = re.compile(r'\s*translate\(\s*([^,\s)]+)(?:[\s,]+([^,\s)]+))?\s*\)\s*', re.ASCII)
+_SVGR_REASONS = {
+    'path': 'path data (lines/curves/arcs) is not supported',
+    'line': 'strokes are not supported', 'polyline': 'strokes are not supported',
+    'linearGradient': 'gradients are not supported', 'radialGradient': 'gradients are not supported',
+    'pattern': 'patterns are not supported', 'style': 'CSS is not supported',
+    'script': 'scripts are not allowed', 'image': 'embedded/external images are not supported',
+    'use': 'references (<use>) are not supported', 'text': 'text needs fonts and is not supported',
+    'foreignObject': 'foreign content is not supported', 'filter': 'filters are not supported',
+    'mask': 'masks are not supported', 'clipPath': 'clip paths are not supported',
+    'defs': 'definitions are not supported', 'symbol': 'symbols are not supported',
+}
+_SVGR_PAINT = {'fill', 'fill-opacity', 'opacity', 'id', 'stroke'}
+_SVGR_ATTRS = {
+    'rect': {'x', 'y', 'width', 'height', 'rx', 'ry'}, 'circle': {'cx', 'cy', 'r'},
+    'ellipse': {'cx', 'cy', 'rx', 'ry'}, 'polygon': {'points'},
+    'g': {'transform', 'fill', 'fill-opacity', 'id'},
+    'svg': {'width', 'height', 'viewBox', 'version', 'shape-rendering', 'preserveAspectRatio'},
+}
+
+
+class SvgError(ValueError):
+    """The SVG is outside the supported subset or unsafe."""
+
+
+def _svgr_num(value, what):
+    match = _SVGR_NUMBER.fullmatch(value or '')
+    if not match:
+        raise SvgError(f'{what}: unsupported number {value!r} (plain numbers or px only)')
+    return float(match.group(1))
+
+
+def _svgr_color(value):
+    if value is None:
+        return (0, 0, 0)  # SVG default fill is black
+    value = value.strip()
+    if value == 'none':
+        return None
+    if value.startswith('url('):
+        raise SvgError('gradient/pattern fills (url(...)) are not supported')
+    if re.fullmatch(r'#[0-9A-Fa-f]{6}', value):
+        return tuple(int(value[i:i + 2], 16) for i in (1, 3, 5))
+    if re.fullmatch(r'#[0-9A-Fa-f]{3}', value):
+        return tuple(int(c * 2, 16) for c in value[1:])
+    raise SvgError(f'unsupported fill {value!r} (use #rgb, #rrggbb or none)')
+
+
+def _svgr_opacity(value, what):
+    if value is None:
+        return 1.0
+    number = _svgr_num(value, what)
+    if not 0 <= number <= 1:
+        raise SvgError(f'{what} must be between 0 and 1')
+    return number
+
+
+def _svgr_local(tag):
+    if not isinstance(tag, str):
+        raise SvgError('comments/processing instructions inside elements are not supported')
+    if tag.startswith(_SVGR_NS):
+        return tag[len(_SVGR_NS):]
+    if tag.startswith('{'):
+        raise SvgError(f'foreign namespace element {tag!r} is not supported')
+    return tag
+
+
+def _svgr_check(name, element):
+    allowed = _SVGR_ATTRS.get(name, set()) | (_SVGR_PAINT if name in ('rect', 'circle', 'ellipse', 'polygon') else set())
+    for key, value in element.attrib.items():
+        if key.startswith('{'):
+            raise SvgError(f'namespaced attribute {key!r} on <{name}> is not supported')
+        if key not in allowed:
+            reason = 'CSS is not supported' if key in ('style', 'class') else 'not supported'
+            raise SvgError(f'attribute {key!r} on <{name}>: {reason}')
+        if key == 'stroke' and value.strip() != 'none':
+            raise SvgError('strokes are not supported (stroke must be none)')
+        if key in ('rx', 'ry') and name == 'rect' and _svgr_num(value, key):
+            raise SvgError('rounded rect corners (rx/ry) are not supported')
+
+
+def _svgr_shapes(element, dx, dy, fill, fill_opacity, out):
+    for child in element:
+        name = _svgr_local(child.tag)
+        if name in ('title', 'desc'):
+            continue
+        if name in _SVGR_REASONS:
+            raise SvgError(f'<{name}>: {_SVGR_REASONS[name]}')
+        if name not in _SVGR_ATTRS or name == 'svg':
+            raise SvgError(f'unsupported SVG element <{name}>')
+        _svgr_check(name, child)
+        if name == 'g':
+            tx = ty = 0.0
+            if 'transform' in child.attrib:
+                match = _SVGR_TRANSLATE.fullmatch(child.attrib['transform'])
+                if not match:
+                    raise SvgError('only transform="translate(x[,y])" is supported on <g>')
+                tx, ty = _svgr_num(match.group(1), 'translate'), _svgr_num(match.group(2) or '0', 'translate')
+            _svgr_shapes(child, dx + tx, dy + ty, child.attrib.get('fill', fill),
+                    child.attrib.get('fill-opacity', fill_opacity), out)
+            continue
+        rgb = _svgr_color(child.attrib.get('fill', fill))
+        alpha = (_svgr_opacity(child.attrib.get('fill-opacity', fill_opacity), 'fill-opacity')
+                 * _svgr_opacity(child.attrib.get('opacity'), 'opacity'))
+        a = child.attrib
+        if name == 'rect':
+            geom = ('rect', _svgr_num(a.get('x', '0'), 'x') + dx, _svgr_num(a.get('y', '0'), 'y') + dy,
+                    _svgr_num(a.get('width'), 'width'), _svgr_num(a.get('height'), 'height'))
+            if geom[3] < 0 or geom[4] < 0:
+                raise SvgError('negative rect size')
+        elif name == 'circle':
+            r = _svgr_num(a.get('r'), 'r')
+            geom = ('ellipse', _svgr_num(a.get('cx', '0'), 'cx') + dx, _svgr_num(a.get('cy', '0'), 'cy') + dy, r, r)
+        elif name == 'ellipse':
+            geom = ('ellipse', _svgr_num(a.get('cx', '0'), 'cx') + dx, _svgr_num(a.get('cy', '0'), 'cy') + dy,
+                    _svgr_num(a.get('rx'), 'rx'), _svgr_num(a.get('ry'), 'ry'))
+        else:
+            values = [_svgr_num(v, 'points') for v in re.split(r'[\s,]+', a.get('points', '').strip()) if v]
+            if len(values) < 6 or len(values) % 2:
+                raise SvgError('polygon needs at least 3 x,y points')
+            geom = ('polygon', [(values[i] + dx, values[i + 1] + dy) for i in range(0, len(values), 2)])
+        if rgb is not None and alpha > 0:
+            out.append((geom, rgb, alpha))
+
+
+def _svgr_inside(geom, x, y):
+    if geom[0] == 'ellipse':
+        _, cx, cy, rx, ry = geom
+        return rx > 0 and ry > 0 and ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1
+    points, hit = geom[1], False  # even-odd ray casting
+    for (x1, y1), (x2, y2) in zip(points, points[1:] + points[:1]):
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+            hit = not hit
+    return hit
+
+
+def _svgr_coverage(geom, width, height, sx, sy, ox, oy):
+    """{(px, py): fraction} for one shape in pixel space."""
+    cov = {}
+    if geom[0] == 'rect':
+        _, x, y, w, h = geom
+        x0, x1, y0, y1 = (x - ox) * sx, (x + w - ox) * sx, (y - oy) * sy, (y + h - oy) * sy
+        for py in range(max(0, int(y0)), min(height, int(y1) + 1)):
+            fy = min(y1, py + 1) - max(y0, py)
+            for px in range(max(0, int(x0)), min(width, int(x1) + 1)):
+                fx = min(x1, px + 1) - max(x0, px)
+                if fx > 0 and fy > 0:
+                    cov[(px, py)] = fx * fy
+        return cov
+    step = 1 / _SVGR_SAMPLES
+    for py in range(height):
+        for px in range(width):
+            hits = sum(_svgr_inside(geom, (px + (i + 0.5) * step) / sx + ox, (py + (j + 0.5) * step) / sy + oy)
+                       for j in range(_SVGR_SAMPLES) for i in range(_SVGR_SAMPLES))
+            if hits:
+                cov[(px, py)] = hits / _SVGR_SAMPLES ** 2
+    return cov
+
+
+def svg_rasterize(data: Any, width: int | None = None, *, max_bytes: int = 1024 * 1024, max_pixels: int = 1024 * 1024) -> tuple[int, int, bytes]:
+    """A small, safe part of SVG as an image, ``(width, height, RGBA bytes)``: ``<svg>`` with a viewBox or width and height, ``<g>``
+    (translate only; fill and fill-opacity inherited), ``<rect>`` (exact area coverage), ``<circle>``, ``<ellipse>`` and ``<polygon>``
+    (4 x 4 samples a pixel), solid fills (``#rgb``, ``#rrggbb``, ``none``) with fill-opacity and opacity, ``<title>`` and ``<desc>``.
+    Anything else is refused with ``SvgError`` naming the element or attribute (paths, strokes, text, gradients, CSS, scripts, images,
+    references, a DOCTYPE). The size is ``width`` (the height keeps the viewBox's shape) or the viewBox's own, rounded. What
+    ``pixel_grid_svg`` writes is within this part."""
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    if len(data) > max_bytes:
+        raise SvgError(f'SVG exceeds {max_bytes} bytes')
+    lowered = data.lower()
+    if b'<!doctype' in lowered or b'<!entity' in lowered:
+        raise SvgError('DOCTYPE/ENTITY declarations are not allowed')
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError as exc:
+        raise SvgError(f'invalid XML: {exc}') from None
+    if _svgr_local(root.tag) != 'svg':
+        raise SvgError('root element must be <svg>')
+    _svgr_check('svg', root)
+    if 'viewBox' in root.attrib:
+        parts = [_svgr_num(v, 'viewBox') for v in re.split(r'[\s,]+', root.attrib['viewBox'].strip())]
+        if len(parts) != 4:
+            raise SvgError('viewBox needs 4 numbers')
+        ox, oy, vw, vh = parts
+    else:
+        ox = oy = 0.0
+        if 'width' not in root.attrib or 'height' not in root.attrib:
+            raise SvgError('<svg> needs a viewBox or both width and height')
+        vw, vh = _svgr_num(root.attrib.get('width'), 'width'), _svgr_num(root.attrib.get('height'), 'height')
+    if vw <= 0 or vh <= 0:
+        raise SvgError('viewBox/width/height must be positive')
+    out_w = round(vw) if width is None else width
+    if type(out_w) is not int or out_w < 1:
+        raise SvgError('width must be a positive integer')
+    out_h = max(1, round(vh * out_w / vw))
+    if out_w * out_h > max_pixels:
+        raise SvgError(f'raster {out_w}x{out_h} exceeds {max_pixels} pixels')
+    shapes = []
+    _svgr_shapes(root, 0.0, 0.0, None, None, shapes)
+    sx, sy = out_w / vw, out_h / vh
+    acc = [[0.0, 0.0, 0.0, 0.0] for _ in range(out_w * out_h)]  # premultiplied RGBA, 0..1
+    for geom, rgb, alpha in shapes:
+        for (px, py), frac in _svgr_coverage(geom, out_w, out_h, sx, sy, ox, oy).items():
+            a = alpha * min(1.0, frac)
+            cell = acc[py * out_w + px]
+            for k in range(3):
+                cell[k] = rgb[k] / 255 * a + cell[k] * (1 - a)
+            cell[3] = a + cell[3] * (1 - a)
+    out = bytearray()
+    for r, g, b, a in acc:
+        alpha = round(a * 255)
+        out += bytes((round(r / a * 255), round(g / a * 255), round(b / a * 255), alpha)) if alpha else bytes(4)
+    return out_w, out_h, bytes(out)
+
+# 📽️ Several scenes of the image studio as one deck (Ironmate's slide studio and 📱 phone slides, first written there): 1 to 20
+# scenes of one size and a title, kept as JSON, pages added, copied, deleted and moved. The refusals are the page's text
+# (Japanese), as ``StudioError``. ``js/slide-deck.js`` (``slideDeck(core)``) is the same functions for a page. Writing the deck
+# as a PPTX stays with the consumer (Ironmate): nothing here assembles Office XML (docs/lightweight-js.md).
+SLIDE_DECK_SCHEMA = "ironmate-slide-deck/1"
+_SLIDE_DECK_LIMIT = 32 * 1024 * 1024
+
+
+def slide_deck_validate(deck: Any) -> dict[str, Any]:
+    """The deck if it is well formed, as a copy: ``{"schema": "ironmate-slide-deck/1", "title", "slides": [scene, ...]}`` with 1 to 20
+    scenes (``studio_validate``) of one width and height, at most 32 MiB as JSON, a title of at most 200 characters (``Ironmate``
+    when left out). A text box that says nothing about wrapping wraps."""
+    _stu_need(isinstance(deck, dict) and deck.get("schema") == SLIDE_DECK_SCHEMA and isinstance(deck.get("slides"), list)
+              and 1 <= len(deck["slides"]) <= 20, "スライドは1〜20枚です。")
+    size, slides = 0, []
+    for scene in deck["slides"]:
+        size += len(js_json(scene).encode("utf-8", "surrogatepass"))
+        _stu_need(size <= _SLIDE_DECK_LIMIT, "全スライドは32MiB以下にしてください。")
+        checked = studio_validate(scene)
+        for layer in checked["layers"]:
+            if layer["kind"] == "text" and not layer.get("mono") and "wrap" not in layer:
+                layer["wrap"] = True
+        slides.append(checked)
+    _stu_need(all(scene["width"] == slides[0]["width"] and scene["height"] == slides[0]["height"] for scene in slides), "全スライドを同じ幅・高さにしてください。")
+    title = deck["title"] if isinstance(deck.get("title"), str) else "Ironmate"
+    _stu_need(utf16_length(title) <= 200, "資料名は200文字以下です。")
+    return {"schema": SLIDE_DECK_SCHEMA, "title": title, "slides": slides}
+
+
+def slide_deck_text(deck: Any) -> str:
+    """The checked deck as JSON, the file the pages save and open (at most 32 MiB)."""
+    text = js_json(slide_deck_validate(deck))
+    _stu_need(len(text.encode("utf-8", "surrogatepass")) <= _SLIDE_DECK_LIMIT, "全スライドは32MiB以下にしてください。")
+    return text
+
+
+def slide_deck_parse(text: Any) -> dict[str, Any]:
+    """The deck in a saved file (``slide_deck_text``), checked."""
+    _stu_need(isinstance(text, str) and len(text.encode("utf-8", "surrogatepass")) <= _SLIDE_DECK_LIMIT, "全スライドJSONは32MiB以下です。")
+    return slide_deck_validate(studio_parse(text))
+
+
+def slide_template(width: Any = 1280, height: Any = 720, title: str = "スライドのタイトル", body: str = "ここに本文を入力します。") -> dict[str, Any]:
+    """A scene with a title and a body, two text boxes that wrap: a deck from pages of text is
+    ``{"schema": SLIDE_DECK_SCHEMA, "slides": [slide_template(1280, 720, title, body) for title, body in pages]}``."""
+    def text(layer_id: str, value: str, x: Any, y: Any, w: Any, h: Any, size: Any, bold: bool) -> dict[str, Any]:
+        return {"id": layer_id, "kind": "text", "name": layer_id, "x": x, "y": y, "w": w, "h": h, "rotation": 0, "opacity": 1, "text": value,
+                "fill": "#000000", "fontSize": max(4, size), "font": "sans", "mono": False, "bold": bold, "wrap": True}
+    return studio_validate({"schema": STUDIO_SCHEMA, "width": width, "height": height, "background": "#FFFFFF", "layers": [
+        text("title", title, width * 0.075, height * 0.08, width * 0.85, height * 0.16, width * 0.045, True),
+        text("body", body, width * 0.075, height * 0.3, width * 0.85, height * 0.55, width * 0.027, False)]})
+
+
+def slide_deck_edit(deck: Any, action: str, active: int = 0) -> tuple[dict[str, Any], int]:
+    """One page operation, ``(deck, page to show next)``: ``"add"`` (a blank page of the deck's size after page ``active``),
+    ``"duplicate"``, ``"delete"``, ``"up"`` or ``"down"``. The deck comes back checked; a 21st page is refused, the last page is
+    never deleted and the ends do not wrap (the deck and the page stay as they are)."""
+    deck = slide_deck_validate(deck)
+    slides = deck["slides"]
+    _stu_need(type(active) is int and 0 <= active < len(slides), "スライドの位置が不正です。")
+    if action in ("add", "duplicate"):
+        _stu_need(len(slides) < 20, "スライドは最大20枚です。")
+        slides.insert(active + 1, {"schema": STUDIO_SCHEMA, "width": slides[0]["width"], "height": slides[0]["height"], "background": "#FFFFFF", "layers": []}
+                      if action == "add" else studio_clone(slides[active]))
+        return deck, active + 1
+    if action == "delete":
+        if len(slides) > 1:
+            del slides[active]
+        return deck, min(active, len(slides) - 1)
+    _stu_need(action in ("up", "down"), "スライドの操作が不正です。")
+    index = active + (-1 if action == "up" else 1)
+    if not 0 <= index < len(slides):
+        return deck, active
+    slides[active], slides[index] = slides[index], slides[active]
+    return deck, index
+
+
+def slide_layer_native(layer: dict[str, Any]) -> bool:
+    """Whether the layer is a plain shape or text box, which a slide file can keep editable, and not something only a picture can
+    carry: rectangles, ellipses, triangles, text that is not a stamp, arrows with a triangular head."""
+    return (layer.get("kind") in ("rect", "ellipse", "triangle") or (layer.get("kind") == "text" and not layer.get("mono"))
+            or (layer.get("kind") == "arrow" and layer.get("headStyle") != "beginner"))
+
+
 # 🏭 The pages of Ironmate's studio as Ironmate draws them (image studio, browser tools, slide studio, 📱 phone slides), by
 # ``<body data-page="studio">`` / ``"tools"`` / ``"studio slides"`` / ``"phone"``: header and brand, the three-column workspace, the
 # board and its handles, the shelf cards, the inspector, the tool sections, the slide controls and the pinned phone slide. Every
@@ -18592,6 +19128,145 @@ export function pngChunk(type,body){
  const out=new Uint8Array(body.length+12),view=new DataView(out.buffer);
  view.setUint32(0,body.length);out.set(new TextEncoder().encode(type),4);out.set(body,8);view.setUint32(out.length-4,crc32(out.subarray(4,out.length-4)));
  return out}
+"""
+
+
+# 📽️ The slide deck for a page (Ironmate's slide studio and 📱 phone slides): the functions of slide_deck_*, the same values.
+_JS["slide-deck.js"] = '/* web-ui slide-deck: several scenes of the image studio as one deck: checked, kept as JSON, pages added, copied, deleted and moved. slideDeck(core): core is js/imagestudio.js (or the same functions). pysaiyanweboo.py (slide_deck_*) is the reference; this must agree. */\n' + r"""export function slideDeck(C) {
+  const SCHEMA = "ironmate-slide-deck/1",
+    LIMIT = 32 * 1024 * 1024;
+  const encoder = new TextEncoder(),
+    clone = C.clone;
+  function validate(deck) {
+    if (
+      !deck ||
+      deck.schema !== SCHEMA ||
+      !Array.isArray(deck.slides) ||
+      deck.slides.length < 1 ||
+      deck.slides.length > 20
+    )
+      throw Error("スライドは1〜20枚です。");
+    let bytes = 0;
+    const slides = deck.slides.map((scene) => {
+      bytes += encoder.encode(JSON.stringify(scene)).length;
+      if (bytes > LIMIT) throw Error("全スライドは32MiB以下にしてください。");
+      const checked = C.validate(scene);
+      for (const layer of checked.layers)
+        if (layer.kind === "text" && !layer.mono && layer.wrap === undefined)
+          layer.wrap = true;
+      return checked;
+    });
+    if (
+      slides.some(
+        (s) => s.width !== slides[0].width || s.height !== slides[0].height,
+      )
+    )
+      throw Error("全スライドを同じ幅・高さにしてください。");
+    const title = typeof deck.title === "string" ? deck.title : "Ironmate";
+    if (title.length > 200) throw Error("資料名は200文字以下です。");
+    return { schema: SCHEMA, title, slides };
+  }
+  function deckText(deck) {
+    const text = JSON.stringify(validate(deck));
+    if (encoder.encode(text).length > LIMIT)
+      throw Error("全スライドは32MiB以下にしてください。");
+    return text;
+  }
+  function parse(text) {
+    if (typeof text !== "string" || encoder.encode(text).length > LIMIT)
+      throw Error("全スライドJSONは32MiB以下です。");
+    return validate(JSON.parse(text));
+  }
+  function edit(input, action, active = 0) {
+    // One page operation on a deck: "add" (a blank page after this one), "duplicate", "delete", "up", "down".
+    // Returns the checked deck and the page to show next; the last page is never deleted and the ends do not wrap.
+    const deck = validate(input),
+      slides = deck.slides;
+    if (!Number.isInteger(active) || active < 0 || active >= slides.length)
+      throw Error("スライドの位置が不正です。");
+    if (action === "add" || action === "duplicate") {
+      if (slides.length >= 20) throw Error("スライドは最大20枚です。");
+      slides.splice(
+        active + 1,
+        0,
+        action === "add"
+          ? { schema: C.SCHEMA, width: slides[0].width, height: slides[0].height, background: "#FFFFFF", layers: [] }
+          : clone(slides[active]),
+      );
+      return { deck, active: active + 1 };
+    }
+    if (action === "delete") {
+      if (slides.length > 1) slides.splice(active, 1);
+      return { deck, active: Math.min(active, slides.length - 1) };
+    }
+    if (action !== "up" && action !== "down") throw Error("スライドの操作が不正です。");
+    const index = active + (action === "up" ? -1 : 1);
+    if (index < 0 || index >= slides.length) return { deck, active };
+    [slides[active], slides[index]] = [slides[index], slides[active]];
+    return { deck, active: index };
+  }
+  function template(
+    width = 1280,
+    height = 720,
+    title = "スライドのタイトル",
+    body = "ここに本文を入力します。",
+  ) {
+    const text = (id, value, x, y, w, h, size, bold) => ({
+      id,
+      kind: "text",
+      name: id,
+      x,
+      y,
+      w,
+      h,
+      rotation: 0,
+      opacity: 1,
+      text: value,
+      fill: "#000000",
+      fontSize: Math.max(4, size),
+      font: "sans",
+      mono: false,
+      bold,
+      wrap: true,
+    });
+    return C.validate({
+      schema: C.SCHEMA,
+      width,
+      height,
+      background: "#FFFFFF",
+      layers: [
+        text(
+          "title",
+          title,
+          width * 0.075,
+          height * 0.08,
+          width * 0.85,
+          height * 0.16,
+          width * 0.045,
+          true,
+        ),
+        text(
+          "body",
+          body,
+          width * 0.075,
+          height * 0.3,
+          width * 0.85,
+          height * 0.55,
+          width * 0.027,
+          false,
+        ),
+      ],
+    });
+  }
+  function isNative(layer) {
+    return (
+      ["rect", "ellipse", "triangle"].includes(layer.kind) ||
+      (layer.kind === "text" && !layer.mono) ||
+      (layer.kind === "arrow" && layer.headStyle !== "beginner")
+    );
+  }
+  return { SCHEMA, LIMIT, validate, deckText, parse, template, edit, isNative };
+}
 """
 
 _JS["imagestudio.js"] = "/* web-ui imagestudio: the Ironmate image studio in the page (memory only). Scene checks, SVG, history, workspace files and the layers a click places are the functions of pysaiyanweboo.py (studio_*) and give the same text; the editor on top is the page's. Python is the reference; this must agree. Differences: text is measured with the installed fonts here (a fixed 0.65 em / 1 em estimate in Python), words and graphemes follow the same rules as Python (Latin, Hangul, kana and Han; the Japanese dictionary of Intl.Segmenter is not used, so every engine gives the same lines), and the clock hands use fdlibm's sin and cos written out here and in Python (V8's of Node 22), not the engine's Math.sin and Math.cos, which differ in the last bit between engines and versions. */\n" + _CLIPBOARD_JS + _studio_js_constants() + _JS["heatmap-color.js"] + r"""export class StudioError extends Error{}
