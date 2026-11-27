@@ -15892,8 +15892,9 @@ def svg_rasterize(data: Any, width: int | None = None, *, max_bytes: int = 1024 
 
 # 📽️ Several scenes of the image studio as one deck (Ironmate's slide studio and 📱 phone slides, first written there): 1 to 20
 # scenes of one size and a title, kept as JSON, pages added, copied, deleted and moved. The refusals are the page's text
-# (Japanese), as ``StudioError``. ``js/slide-deck.js`` (``slideDeck(core)``) is the same functions for a page. Writing the deck
-# as a PPTX stays with the consumer (Ironmate): nothing here assembles Office XML (docs/lightweight-js.md).
+# (Japanese), as ``StudioError``. ``js/slide-deck.js`` (``slideDeck(core, shell)``) is the same functions for a page. 🏭 This is the
+# ability to build a studio: its writer (``slide_deck_pptx``, ``zip_stored``) is the one place this file assembles Office XML, into
+# a package shell the consumer supplies; every other PPTX here is PptxGenJS's (docs/lightweight-js.md).
 SLIDE_DECK_SCHEMA = "ironmate-slide-deck/1"
 _SLIDE_DECK_LIMIT = 32 * 1024 * 1024
 
@@ -15973,6 +15974,133 @@ def slide_layer_native(layer: dict[str, Any]) -> bool:
     return (layer.get("kind") in ("rect", "ellipse", "triangle") or (layer.get("kind") == "text" and not layer.get("mono"))
             or (layer.get("kind") == "arrow" and layer.get("headStyle") != "beginner"))
 
+
+def zip_stored(files: dict[str, Any]) -> bytes:
+    """A ZIP of ``files`` (name to text or bytes) in their order, stored without compression, UTF-8 names, one fixed date
+    (2000-01-01), so the same files give the same bytes; at most 32 MiB. What a PPTX, a DOCX or an XLSX is packed in."""
+    entries = [(name.encode("utf-8"), data.encode("utf-8") if isinstance(data, str) else data) for name, data in files.items()]
+    _stu_need(all(isinstance(data, (bytes, bytearray)) for _, data in entries), "ZIPデータが不正です。")
+    _stu_need(22 + sum(76 + 2 * len(name) + len(data) for name, data in entries) <= _SLIDE_DECK_LIMIT, "PPTXは32MiB以下にしてください。")
+    date, out, central = (20 << 9) | (1 << 5) | 1, bytearray(), bytearray()
+    for name, data in entries:
+        fields = (0x800, 0, 0, date, zlib.crc32(data), len(data), len(data), len(name), 0)
+        central += struct.pack("<IHHHHHHIIIHHHHHII", 0x02014B50, 20, 20, *fields, 0, 0, 0, 0, len(out)) + name
+        out += struct.pack("<IHHHHHIIIHH", 0x04034B50, 20, *fields) + name + data
+    return bytes(out + central + struct.pack("<IHHHHIIH", 0x06054B50, 0, 0, len(entries), len(entries), len(central), len(out), 0))
+
+
+def slide_deck_pptx(deck: Any, shell: dict[str, str], image_for_layer: Any = None) -> dict[str, Any]:
+    """The deck as a PPTX: ``{"data": bytes, "native", "images", "slides"}``. ``shell`` is the empty package the slides go into, part
+    name to text (content types, presentation, master, layout, theme; Ironmate makes its own with PptxGenJS). Text boxes (Meiryo,
+    or MS Gothic for the mono face; the lines ``studio_text_layout`` makes, so a browser that measures real glyphs may break them
+    elsewhere), rectangles, ellipses, triangles and arrows (a group of shaft and head) stay editable and are counted in ``native``;
+    for any other layer ``image_for_layer(layer, scene)`` gives PNG bytes, and equal pictures are stored once. A whole slide is
+    never one picture."""
+    deck = slide_deck_validate(deck)
+    files = dict(shell)
+    _stu_need(all(isinstance(files.get(part), str) for part in ("[Content_Types].xml", "ppt/presentation.xml", "ppt/_rels/presentation.xml.rels", "docProps/core.xml")),
+              "PPTXの空パッケージが不正です。")
+    a, pres, rel = "http://schemas.openxmlformats.org/drawingml/2006/main", "http://schemas.openxmlformats.org/presentationml/2006/main", "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    declaration = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    unit = 9144000 / max(deck["slides"][0]["width"], deck["slides"][0]["height"])
+
+    def emu(n: Any) -> int:
+        return _math_round(n * unit)
+
+    def xml(value: Any) -> str:
+        text = js_string(value)
+        _stu_need(not any((ord(c) < 32 and ord(c) not in (9, 10, 13)) or 0xD800 <= ord(c) <= 0xDFFF or ord(c) in (0xFFFE, 0xFFFF) for c in text),
+                  "PPTXに保存できない制御文字が含まれています。")
+        return studio_escape(text)
+
+    def nv(shape_id: int, name: Any, tx: bool = False) -> str:
+        return f'<p:nvSpPr><p:cNvPr id="{shape_id}" name="{xml(name)}"/><p:cNvSpPr{" txBox=\"1\"" if tx else ""}/><p:nvPr/></p:nvSpPr>'
+
+    def transform(l: dict[str, Any]) -> str:
+        return f'<a:xfrm rot="{_math_round(l["rotation"] * 60000)}"><a:off x="{emu(l["x"])}" y="{emu(l["y"])}"/><a:ext cx="{emu(l["w"])}" cy="{emu(l["h"])}"/></a:xfrm>'
+
+    def fill(color: str, opacity: Any) -> str:
+        return "<a:noFill/>" if color == "none" else f'<a:solidFill><a:srgbClr val="{color[1:].upper()}"><a:alpha val="{_math_round(opacity * 100000)}"/></a:srgbClr></a:solidFill>'
+
+    def line(l: dict[str, Any]) -> str:
+        return f'<a:ln w="{emu(l["strokeWidth"])}">{fill(l["stroke"], l["opacity"]) if l["strokeWidth"] else "<a:noFill/>"}<a:prstDash val="solid"/></a:ln>'
+
+    media: dict[bytes, str] = {}
+    native = images = 0
+    slide_ids, pres_rels = [], []
+    for number, scene in enumerate(deck["slides"], 1):
+        parts, rels, next_id = [], [f'<Relationship Id="rIdLayout" Type="{rel}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>'], 2
+        for layer in scene["layers"]:
+            l = studio_clone(layer)
+            name = l.get("name") or l["id"]
+            if l["kind"] == "text" and not l.get("mono"):
+                size = _math_round(l["fontSize"] * unit / 127)
+                font = "MS Gothic" if l.get("font") == "mono" else "Meiryo"
+                _stu_need(100 <= size <= 400000, "PPTXの文字サイズが1〜4000ptの範囲を超えています。キャンバスまたは文字サイズを調整してください。")
+                properties = f'<a:rPr lang="ja-JP" sz="{size}" b="{1 if l.get("bold") else 0}"{' i="1"' if l.get("italic") else ""}>{fill(l["fill"], l["opacity"])}<a:latin typeface="{font}"/><a:ea typeface="{font}"/></a:rPr>'
+                paragraphs = "".join(                                    # a typed newline is a paragraph, a measured wrap an editable line break
+                    f'<a:p><a:pPr><a:lnSpc><a:spcPts val="{_math_round(size * 1.3)}"/></a:lnSpc><a:spcBef><a:spcPts val="0"/></a:spcBef><a:spcAft><a:spcPts val="0"/></a:spcAft></a:pPr>'
+                    + f"<a:br>{properties}</a:br>".join(f'<a:r>{properties}<a:t xml:space="preserve">{xml(t)}</a:t></a:r>' for t in lines)
+                    + f'<a:endParaRPr lang="ja-JP" sz="{size}"/></a:p>' for lines in studio_text_layout(l))
+                parts.append(f'<p:sp>{nv(next_id, name, True)}<p:spPr>{transform(l)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>'
+                             f'<p:txBody><a:bodyPr wrap="{"square" if l.get("wrap") else "none"}" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" vertOverflow="overflow"><a:noAutofit/></a:bodyPr>'
+                             f"<a:lstStyle/>{paragraphs}</p:txBody></p:sp>")
+                next_id += 1
+                native += 1
+            elif l["kind"] in ("rect", "ellipse", "triangle"):
+                parts.append(f'<p:sp>{nv(next_id, name)}<p:spPr>{transform(l)}<a:prstGeom prst="{l["kind"]}"><a:avLst/></a:prstGeom>{fill(l["fill"], l["opacity"])}{line(l)}</p:spPr></p:sp>')
+                next_id += 1
+                native += 1
+            elif l["kind"] == "arrow" and l.get("headStyle") != "beginner":
+                points = studio_arrow_geometry(l["w"], l["h"], l.get("headSize", 28), l.get("headPlacement", "tip"))["points"]
+                group_id, shaft_id, head_id = next_id, next_id + 1, next_id + 2
+                next_id += 3
+                group = (f'<a:xfrm rot="{_math_round(l["rotation"] * 60000)}"><a:off x="{emu(l["x"])}" y="{emu(l["y"])}"/><a:ext cx="{emu(l["w"])}" cy="{emu(l["h"])}"/>'
+                         f'<a:chOff x="0" y="0"/><a:chExt cx="{emu(l["w"])}" cy="{emu(l["h"])}"/></a:xfrm>')
+                local = {**l, "x": 0, "y": 0, "rotation": 0}
+                shaft = {**local, "y": l["h"] / 2, "h": 0}
+                custom = (f'<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="{emu(l["w"])}" h="{emu(l["h"])}">'
+                          f'<a:moveTo><a:pt x="{emu(points[0][0])}" y="{emu(points[0][1])}"/></a:moveTo>'
+                          + "".join(f'<a:lnTo><a:pt x="{emu(p[0])}" y="{emu(p[1])}"/></a:lnTo>' for p in points[1:]) + "<a:close/></a:path></a:pathLst></a:custGeom>")
+                parts.append(f'<p:grpSp><p:nvGrpSpPr><p:cNvPr id="{group_id}" name="{xml(name)}"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr>{group}</p:grpSpPr>'
+                             f'<p:sp>{nv(shaft_id, "Arrow shaft")}<p:spPr>{transform(shaft)}<a:prstGeom prst="line"><a:avLst/></a:prstGeom><a:noFill/>{line(l)}</p:spPr></p:sp>'
+                             f'<p:sp>{nv(head_id, "Arrow head")}<p:spPr>{transform(local)}{custom}{fill(l["fill"], l["opacity"])}<a:ln><a:noFill/></a:ln></p:spPr></p:sp></p:grpSp>')
+                native += 2
+            else:
+                _stu_need(callable(image_for_layer), "画像化が必要なレイヤーがあります。ブラウザから書き出してください。")
+                png = image_for_layer(l, scene)
+                _stu_need(isinstance(png, (bytes, bytearray)) and bytes(png[:8]) == b"\x89PNG\r\n\x1a\n", "埋め込み画像はPNGが必要です。")
+                png = bytes(png)
+                if png not in media:
+                    media[png] = f"image{len(media) + 1}.png"
+                    files["ppt/media/" + media[png]] = png
+                images += 1
+                rels.append(f'<Relationship Id="rIdImage{images}" Type="{rel}/image" Target="../media/{media[png]}"/>')
+                parts.append(f'<p:pic><p:nvPicPr><p:cNvPr id="{next_id}" name="{xml(name)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>'
+                             f'<p:blipFill><a:blip r:embed="rIdImage{images}"><a:alphaModFix amt="{_math_round(l["opacity"] * 100000)}"/></a:blip><a:stretch><a:fillRect/></a:stretch></p:blipFill>'
+                             f'<p:spPr>{transform(l)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>')
+                next_id += 1
+        background = "<a:noFill/>" if scene["background"] == "none" else f'<a:solidFill><a:srgbClr val="{scene["background"][1:]}"/></a:solidFill>'
+        files[f"ppt/slides/slide{number}.xml"] = (
+            declaration + f'<p:sld xmlns:a="{a}" xmlns:r="{rel}" xmlns:p="{pres}"><p:cSld name="Slide {number}"><p:bg><p:bgPr>{background}<a:effectLst/></p:bgPr></p:bg>'
+            '<p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/>'
+            f'<a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>{"".join(parts)}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>')
+        files[f"ppt/slides/_rels/slide{number}.xml.rels"] = declaration + f'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{"".join(rels)}</Relationships>'
+        slide_ids.append(f'<p:sldId id="{255 + number}" r:id="rIdBrowserSlide{number}"/>')
+        pres_rels.append(f'<Relationship Id="rIdBrowserSlide{number}" Type="{rel}/slide" Target="slides/slide{number}.xml"/>')
+    first = deck["slides"][0]
+    files["ppt/presentation.xml"] = re.sub(r"<p:sldSz[^>]*/>", lambda _: f'<p:sldSz cx="{emu(first["width"])}" cy="{emu(first["height"])}"/>', re.sub(
+        r"<p:sldIdLst>[\s\S]*?</p:sldIdLst>", lambda _: f'<p:sldIdLst>{"".join(slide_ids)}</p:sldIdLst>', files["ppt/presentation.xml"], count=1), count=1)
+    files["ppt/_rels/presentation.xml.rels"] = re.sub(r'<Relationship\b[^>]*Type="[^"]*/slide"[^>]*/>', "", files["ppt/_rels/presentation.xml.rels"]).replace(
+        "</Relationships>", "".join(pres_rels) + "</Relationships>", 1)
+    overrides = "".join(f'<Override PartName="/ppt/slides/slide{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>'
+                        for i in range(1, len(deck["slides"]) + 1))
+    files["[Content_Types].xml"] = re.sub(r'<Override\b[^>]*PartName="/ppt/slides/[^"]*"[^>]*/>', "", files["[Content_Types].xml"]).replace("</Types>", overrides + "</Types>", 1)
+    title = xml(deck["title"])
+    files["docProps/core.xml"] = re.sub(r"<dc:title>[\s\S]*?</dc:title>", lambda _: f"<dc:title>{title}</dc:title>", files["docProps/core.xml"], count=1)
+    files["docProps/app.xml"] = (declaration + '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Ironmate</Application>'
+                                 f"<Slides>{len(deck['slides'])}</Slides><Notes>0</Notes><HiddenSlides>0</HiddenSlides></Properties>")
+    return {"data": zip_stored(files), "native": native, "images": images, "slides": len(deck["slides"])}
 
 # 🏭 The pages of Ironmate's studio as Ironmate draws them (image studio, browser tools, slide studio, 📱 phone slides), by
 # ``<body data-page="studio">`` / ``"tools"`` / ``"studio slides"`` / ``"phone"``: header and brand, the three-column workspace, the
@@ -19475,7 +19603,7 @@ _JS["pixel-editor.js"] = r"""export function bindPixelEditor({ root, catalog, gr
 
 
 # 📽️ The slide deck for a page (Ironmate's slide studio and 📱 phone slides): the functions of slide_deck_*, the same values.
-_JS["slide-deck.js"] = '/* web-ui slide-deck: several scenes of the image studio as one deck: checked, kept as JSON, pages added, copied, deleted and moved. slideDeck(core): core is js/imagestudio.js (or the same functions). pysaiyanweboo.py (slide_deck_*) is the reference; this must agree. */\n' + r"""export function slideDeck(C) {
+_JS["slide-deck.js"] = '/* web-ui slide-deck: several scenes of the image studio as one deck (checked, kept as JSON, pages added, copied, deleted and moved) and written as a PPTX in the page: text, rectangles, ellipses, triangles and arrows stay editable, anything else is a picture. slideDeck(core, shell): core is js/imagestudio.js (or the same functions), shell the empty package the slides go into (part name to text). pysaiyanweboo.py (slide_deck_*) is the reference; this must agree. */\n' + r"""export function slideDeck(C, shell) {
   const SCHEMA = "ironmate-slide-deck/1",
     LIMIT = 32 * 1024 * 1024;
   const encoder = new TextEncoder(),
@@ -19601,6 +19729,90 @@ _JS["slide-deck.js"] = '/* web-ui slide-deck: several scenes of the image studio
       ],
     });
   }
+  function xml(value) {
+    for (const c of String(value)) {
+      const n = c.codePointAt(0);
+      if (
+        (n < 32 && ![9, 10, 13].includes(n)) ||
+        (n >= 0xd800 && n <= 0xdfff) ||
+        n === 0xfffe ||
+        n === 0xffff
+      )
+        throw Error("PPTXに保存できない制御文字が含まれています。");
+    }
+    return C.escape(value);
+  }
+  const A = "http://schemas.openxmlformats.org/drawingml/2006/main",
+    P = "http://schemas.openxmlformats.org/presentationml/2006/main",
+    R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    REL = "http://schemas.openxmlformats.org/package/2006/relationships";
+  const declaration = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  function crc(bytes) {
+    let c = 0xffffffff;
+    for (const b of bytes) {
+      c ^= b;
+      for (let i = 0; i < 8; i++) c = (c >>> 1) ^ (c & 1 ? 0xedb88320 : 0);
+    }
+    return (c ^ 0xffffffff) >>> 0;
+  }
+  function zip(files, mediaChecksums) {
+    const entries = Object.entries(files).map(([name, data]) => ({
+      name: encoder.encode(name),
+      data: typeof data === "string" ? encoder.encode(data) : data,
+    }));
+    let size = 22;
+    for (const e of entries) {
+      if (!(e.data instanceof Uint8Array)) throw Error("ZIPデータが不正です。");
+      size += 76 + 2 * e.name.length + e.data.length;
+    }
+    if (size > LIMIT) throw Error("PPTXは32MiB以下にしてください。");
+    const out = new Uint8Array(size),
+      v = new DataView(out.buffer);
+    let offset = 0;
+    const central = [];
+    const word = (p, n) => v.setUint16(p, n, true),
+      dword = (p, n) => v.setUint32(p, n, true),
+      date = (20 << 9) | (1 << 5) | 1;
+    for (const e of entries) {
+      const start = offset,
+        sum = mediaChecksums?.get(e.data) ?? crc(e.data);
+      dword(offset, 0x04034b50);
+      word(offset + 4, 20);
+      word(offset + 6, 0x800);
+      word(offset + 8, 0);
+      word(offset + 12, date);
+      dword(offset + 14, sum);
+      dword(offset + 18, e.data.length);
+      dword(offset + 22, e.data.length);
+      word(offset + 26, e.name.length);
+      out.set(e.name, offset + 30);
+      out.set(e.data, offset + 30 + e.name.length);
+      offset += 30 + e.name.length + e.data.length;
+      central.push({ ...e, start, sum });
+    }
+    const cd = offset;
+    for (const e of central) {
+      dword(offset, 0x02014b50);
+      word(offset + 4, 20);
+      word(offset + 6, 20);
+      word(offset + 8, 0x800);
+      word(offset + 10, 0);
+      word(offset + 14, date);
+      dword(offset + 16, e.sum);
+      dword(offset + 20, e.data.length);
+      dword(offset + 24, e.data.length);
+      word(offset + 28, e.name.length);
+      dword(offset + 42, e.start);
+      out.set(e.name, offset + 46);
+      offset += 46 + e.name.length;
+    }
+    dword(offset, 0x06054b50);
+    word(offset + 8, entries.length);
+    word(offset + 10, entries.length);
+    dword(offset + 12, offset - cd);
+    dword(offset + 16, cd);
+    return out;
+  }
   function isNative(layer) {
     return (
       ["rect", "ellipse", "triangle"].includes(layer.kind) ||
@@ -19608,7 +19820,213 @@ _JS["slide-deck.js"] = '/* web-ui slide-deck: several scenes of the image studio
       (layer.kind === "arrow" && layer.headStyle !== "beginner")
     );
   }
-  return { SCHEMA, LIMIT, validate, deckText, parse, template, edit, isNative };
+  async function exportPptx(input, imageForLayer) {
+    const deck = validate(input),
+      files = { ...shell };
+    for (const part of ["[Content_Types].xml", "ppt/presentation.xml", "ppt/_rels/presentation.xml.rels", "docProps/core.xml"])
+      if (typeof files[part] !== "string") throw Error("PPTXの空パッケージが不正です。");
+    const mediaByChecksum = new Map();
+    const mediaChecksums = new Map();
+    let imageNumber = 0,
+      totalNative = 0,
+      totalImages = 0;
+    const unit =
+        9144000 / Math.max(deck.slides[0].width, deck.slides[0].height),
+      emu = (n) => Math.round(n * unit);
+    const slideIds = [],
+      presRels = [];
+    for (let number = 1; number <= deck.slides.length; number++) {
+      const scene = deck.slides[number - 1],
+        parts = [],
+        rels = [
+          `<Relationship Id="rIdLayout" Type="${R}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`,
+        ];
+      let nextId = 2;
+      const nv = (id, name, tx = false) =>
+        `<p:nvSpPr><p:cNvPr id="${id}" name="${xml(name)}"/><p:cNvSpPr${tx ? ' txBox="1"' : ""}/><p:nvPr/></p:nvSpPr>`;
+      const transform = (l) =>
+        `<a:xfrm rot="${Math.round(l.rotation * 60000)}"><a:off x="${emu(l.x)}" y="${emu(l.y)}"/><a:ext cx="${emu(l.w)}" cy="${emu(l.h)}"/></a:xfrm>`;
+      const fill = (color, opacity) =>
+        color === "none"
+          ? "<a:noFill/>"
+          : `<a:solidFill><a:srgbClr val="${color.slice(1).toUpperCase()}"><a:alpha val="${Math.round(opacity * 100000)}"/></a:srgbClr></a:solidFill>`;
+      const line = (l) =>
+        `<a:ln w="${emu(l.strokeWidth)}">${l.strokeWidth ? fill(l.stroke, l.opacity) : "<a:noFill/>"}<a:prstDash val="solid"/></a:ln>`;
+      for (const layer of scene.layers) {
+        const l = clone(layer),
+          name = l.name || l.id;
+        if (l.kind === "text" && !l.mono) {
+          const size = Math.round((l.fontSize * unit) / 127),
+            font = l.font === "mono" ? "MS Gothic" : "Meiryo";
+          if (size < 100 || size > 400000)
+            throw Error(
+              "PPTXの文字サイズが1〜4000ptの範囲を超えています。キャンバスまたは文字サイズを調整してください。",
+            );
+          const properties = `<a:rPr lang="ja-JP" sz="${size}" b="${l.bold ? 1 : 0}"${l.italic ? ' i="1"' : ""}>${fill(l.fill, l.opacity)}<a:latin typeface="${font}"/><a:ea typeface="${font}"/></a:rPr>`;
+          // Explicit input newlines remain paragraphs; measured soft wraps are
+          // editable line breaks. Preserve the source text only in deck JSON.
+          const paragraphs = C.textLayout(l)
+            .map(
+              (lines) =>
+                `<a:p><a:pPr><a:lnSpc><a:spcPts val="${Math.round(size * 1.3)}"/></a:lnSpc><a:spcBef><a:spcPts val="0"/></a:spcBef><a:spcAft><a:spcPts val="0"/></a:spcAft></a:pPr>${lines.map(t => `<a:r>${properties}<a:t xml:space="preserve">${xml(t)}</a:t></a:r>`).join(`<a:br>${properties}</a:br>`)}<a:endParaRPr lang="ja-JP" sz="${size}"/></a:p>`,
+            )
+            .join("");
+          parts.push(
+            `<p:sp>${nv(nextId++, name, true)}<p:spPr>${transform(l)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr wrap="${l.wrap ? "square" : "none"}" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" vertOverflow="overflow"><a:noAutofit/></a:bodyPr><a:lstStyle/>${paragraphs}</p:txBody></p:sp>`,
+          );
+          totalNative++;
+        } else if (["rect", "ellipse", "triangle"].includes(l.kind)) {
+          const kind = {
+            rect: "rect",
+            ellipse: "ellipse",
+            triangle: "triangle",
+          }[l.kind];
+          parts.push(
+            `<p:sp>${nv(nextId++, name)}<p:spPr>${transform(l)}<a:prstGeom prst="${kind}"><a:avLst/></a:prstGeom>${fill(l.fill, l.opacity)}${line(l)}</p:spPr></p:sp>`,
+          );
+          totalNative++;
+        } else if (l.kind === "arrow" && l.headStyle !== "beginner") {
+          const geometry = C.arrowGeometry(
+              l.w,
+              l.h,
+              l.headSize,
+              l.headPlacement,
+            ),
+            groupId = nextId++,
+            shaftId = nextId++,
+            headId = nextId++,
+            points = geometry.points;
+          const gTransform = `<a:xfrm rot="${Math.round(l.rotation * 60000)}"><a:off x="${emu(l.x)}" y="${emu(l.y)}"/><a:ext cx="${emu(l.w)}" cy="${emu(l.h)}"/><a:chOff x="0" y="0"/><a:chExt cx="${emu(l.w)}" cy="${emu(l.h)}"/></a:xfrm>`;
+          const local = { ...l, x: 0, y: 0, rotation: 0 },
+            shaft = { ...local, y: l.h / 2, h: 0 };
+          const custom = `<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="${emu(l.w)}" h="${emu(l.h)}"><a:moveTo><a:pt x="${emu(points[0][0])}" y="${emu(points[0][1])}"/></a:moveTo>${points
+            .slice(1)
+            .map(
+              (p) =>
+                `<a:lnTo><a:pt x="${emu(p[0])}" y="${emu(p[1])}"/></a:lnTo>`,
+            )
+            .join("")}<a:close/></a:path></a:pathLst></a:custGeom>`;
+          parts.push(
+            `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="${groupId}" name="${xml(name)}"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr>${gTransform}</p:grpSpPr><p:sp>${nv(shaftId, "Arrow shaft")}<p:spPr>${transform(shaft)}<a:prstGeom prst="line"><a:avLst/></a:prstGeom><a:noFill/>${line(l)}</p:spPr></p:sp><p:sp>${nv(headId, "Arrow head")}<p:spPr>${transform(local)}${custom}${fill(l.fill, l.opacity)}<a:ln><a:noFill/></a:ln></p:spPr></p:sp></p:grpSp>`,
+          );
+          totalNative += 2;
+        } else {
+          if (typeof imageForLayer !== "function")
+            throw Error(
+              "画像化が必要なレイヤーがあります。ブラウザから書き出してください。",
+            );
+          const bytes = await imageForLayer(l, scene);
+          if (
+            !(bytes instanceof Uint8Array) ||
+            bytes.length < 8 ||
+            ![137, 80, 78, 71, 13, 10, 26, 10].every((b, i) => bytes[i] === b)
+          )
+            throw Error("埋め込み画像はPNGが必要です。");
+          const checksum = crc(bytes);
+          const candidates = mediaByChecksum.get(checksum) || [];
+          let media = candidates.find((name) => {
+            const saved = files["ppt/media/" + name];
+            return saved.length === bytes.length && saved.every((value, i) => value === bytes[i]);
+          });
+          if (!media) {
+            media = `image${++imageNumber}.png`;
+            const saved = new Uint8Array(bytes);
+            files["ppt/media/" + media] = saved;
+            mediaChecksums.set(saved, checksum);
+            candidates.push(media);
+            mediaByChecksum.set(checksum, candidates);
+          }
+          const rid = `rIdImage${totalImages + 1}`;
+          rels.push(
+            `<Relationship Id="${rid}" Type="${R}/image" Target="../media/${media}"/>`,
+          );
+          parts.push(
+            `<p:pic><p:nvPicPr><p:cNvPr id="${nextId++}" name="${xml(name)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rid}"><a:alphaModFix amt="${Math.round(l.opacity * 100000)}"/></a:blip><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${transform(l)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`,
+          );
+          totalImages++;
+        }
+      }
+      files[`ppt/slides/slide${number}.xml`] =
+        declaration +
+        `<p:sld xmlns:a="${A}" xmlns:r="${R}" xmlns:p="${P}"><p:cSld name="Slide ${number}"><p:bg><p:bgPr>${scene.background === "none" ? "<a:noFill/>" : `<a:solidFill><a:srgbClr val="${scene.background.slice(1)}"/></a:solidFill>`}<a:effectLst/></p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>${parts.join("")}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
+      files[`ppt/slides/_rels/slide${number}.xml.rels`] =
+        declaration +
+        `<Relationships xmlns="${REL}">${rels.join("")}</Relationships>`;
+      slideIds.push(
+        `<p:sldId id="${255 + number}" r:id="rIdBrowserSlide${number}"/>`,
+      );
+      presRels.push(
+        `<Relationship Id="rIdBrowserSlide${number}" Type="${R}/slide" Target="slides/slide${number}.xml"/>`,
+      );
+    }
+    files["ppt/presentation.xml"] = files["ppt/presentation.xml"]
+      .replace(
+        /<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/,
+        `<p:sldIdLst>${slideIds.join("")}</p:sldIdLst>`,
+      )
+      .replace(
+        /<p:sldSz[^>]*\/>/,
+        `<p:sldSz cx="${emu(deck.slides[0].width)}" cy="${emu(deck.slides[0].height)}"/>`,
+      );
+    files["ppt/_rels/presentation.xml.rels"] = files[
+      "ppt/_rels/presentation.xml.rels"
+    ]
+      .replace(/<Relationship\b[^>]*Type="[^"]*\/slide"[^>]*\/>/g, "")
+      .replace("</Relationships>", presRels.join("") + "</Relationships>");
+    files["[Content_Types].xml"] = files["[Content_Types].xml"]
+      .replace(/<Override\b[^>]*PartName="\/ppt\/slides\/[^"]*"[^>]*\/>/g, "")
+      .replace(
+        "</Types>",
+        deck.slides
+          .map(
+            (_, i) =>
+              `<Override PartName="/ppt/slides/slide${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`,
+          )
+          .join("") + "</Types>",
+      );
+    const title = xml(deck.title); // text, not a replacement pattern: "$&" stays as written
+    files["docProps/core.xml"] = files["docProps/core.xml"].replace(
+      /<dc:title>[\s\S]*?<\/dc:title>/,
+      () => `<dc:title>${title}</dc:title>`,
+    );
+    files["docProps/app.xml"] =
+      declaration +
+      `<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Ironmate</Application><Slides>${deck.slides.length}</Slides><Notes>0</Notes><HiddenSlides>0</HiddenSlides></Properties>`;
+    return {
+      data: zip(files, mediaChecksums),
+      native: totalNative,
+      images: totalImages,
+      slides: deck.slides.length,
+    };
+  }
+  const bytesFromData = (uri) =>
+    Uint8Array.from(atob(uri.split(",")[1]), (c) => c.charCodeAt(0));
+  async function layerPng(layer, imageSource = (x) => x.src) {
+    // Browser only: PNG bytes for a layer PPTX keeps as a picture (images, clocks, heatmaps, 🔰 arrows).
+    if (layer.kind === "image" && !layer.mono)
+      return bytesFromData(imageSource(layer));
+    const l = { ...layer, x: 0, y: 0, rotation: 0, opacity: 1 },
+      scale = Math.min(2, Math.sqrt(4194304 / (l.w * l.h))),
+      canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(l.w * scale));
+    canvas.height = Math.max(1, Math.round(l.h * scale));
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" height="${canvas.height}" viewBox="0 0 ${l.w} ${l.h}">${C.layerSVG(l, imageSource)}</svg>`;
+    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })),
+      image = new Image();
+    try {
+      image.src = url;
+      await image.decode();
+      canvas.getContext("2d").drawImage(image, 0, 0);
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
+      if (!blob) throw Error("画像レイヤーを出力できませんでした。");
+      return new Uint8Array(await blob.arrayBuffer());
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+  return { SCHEMA, LIMIT, validate, deckText, parse, template, edit, zip, isNative, exportPptx, layerPng };
 }
 """
 
