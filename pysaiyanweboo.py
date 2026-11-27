@@ -21337,7 +21337,7 @@ def _index_page() -> str:
          "html": '<section class="ui-panel" id="demos"><h2>🌍 World</h2><p class="ui-muted">Built on these parts and themes, in the portfolio '
                  '(its 🧰 Tools has the 🤖🔁 stubs).</p>'
                  '<p class="ui-links">' + " · ".join(f'<a href="{demos}{href}">{label}</a>' for label, href in (
-                     ("🌍 World", "world.html"), ("🏫 School", "school.html"), ("🗼 Parallel cities", "cities.html"), ("🎬 Camera", "world-shots.html"))) + "</p></section>"},
+                     ("🌍 World", "world.html"), ("🏫 School", "world.html#school"), ("🗼 Parallel cities", "world.html#tokyo"), ("🎬 Camera", "world.html#camera"))) + "</p></section>"},
         {"id": "guide", "emoji": "🧩", "title": "機能一覧", "text": "Every CLI option and public name, read from the code.",
          "link": "Open the guide", "html": '<section class="ui-panel" id="guide"><h2>🧩 機能一覧</h2><p class="ui-muted">The usage guide lists '
                                            'every option and every public name of pysaiyanweboo.py, read from the code at build time.</p>'

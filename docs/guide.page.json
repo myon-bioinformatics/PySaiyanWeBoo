@@ -181,15 +181,15 @@
                 },
                 {
                   "label": "🏫 スクール",
-                  "href": "https://myon-bioinformatics.github.io/tools/demos/school.html"
+                  "href": "https://myon-bioinformatics.github.io/tools/demos/world.html#school"
                 },
                 {
                   "label": "🗼 パラレルシティ",
-                  "href": "https://myon-bioinformatics.github.io/tools/demos/cities.html"
+                  "href": "https://myon-bioinformatics.github.io/tools/demos/world.html#tokyo"
                 },
                 {
                   "label": "🎬 カメラ",
-                  "href": "https://myon-bioinformatics.github.io/tools/demos/world-shots.html"
+                  "href": "https://myon-bioinformatics.github.io/tools/demos/world.html#camera"
                 }
               ]
             }
