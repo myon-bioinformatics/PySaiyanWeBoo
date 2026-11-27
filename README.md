@@ -119,15 +119,16 @@ its JSON is kept; a browser emulation is not a device (see the platform notes be
 
 Successor tools (`examples/play-studio.html`, `examples/timeline.html`): seeded Counter garden,
 reusable reward stamps, Irony quest, replay/test-input export, and dated appointments sorted
-by explicit UTC instants with IANA zone labels. Composition Studio can turn its current
-progression into notes and play them through an **optional local Tone.js subset**. Pure
-Python remains dependency-free. [Setup, verification, migration inventory and archive gates](docs/flutter-successor-studios.md).
+by explicit UTC instants with IANA zone labels. [Setup and migration inventory](docs/flutter-successor-studios.md).
 
-Composition studio (`examples/composition-studio.html`): chord theory (`scale`, `diatonic_chord`, `convert_progression` for Roman numerals, `chord_tones`,
-`chord_with_inversion`, `transpose_key`, `fifth_neighbor`), metronome timing from elapsed time (`metronome_position`, `beat_micros`, `duration_label`), `tap_tempo`,
-`parse_notes` / `note_bars` and a reproducible `song_seed(seed)`, from flutter_navigation_basic's composition_generator. Its Dart tests are the golden values;
-`composition.js` is checked against Python on every key, mode, chord quality and inversion, 1,500 metronome positions and random progressions, tap trains, notes
-and seeds. Deliberate differences: separators are ASCII whitespace and commas, rounding is half up on integers, and seeds use `mulberry32`.
+Current item (`examples/current-item.html`): `current_items_html` renders an ordered list and
+`setCurrentItem(list, index)` from `current-item.js` marks a zero-based position with `aria-current="step"`.
+Pass `null` to clear it. Use it for a review workflow, a preview queue or the active section of a song.
+The caller supplies the position. Styling is in `current-item.css`.
+
+`studio_document()` and the original Flutter music APIs remain available to existing callers and the
+migration regression suite. The public example gallery uses the current-item demo. The Portfolio's
+[Composition Studio](https://myon-bioinformatics.github.io/tools/browser-tools/#composition) is supplied by Ironmate.
 
 Door-to-Door and emoji transitions (`examples/door.html`): `door_validate` keeps one emoji per page (variation selectors and spaces do not count, so `🗺️` and
 `🗺` collide) and only safe targets (a relative path or an http(s) address); `emoji_path("🏠 → 🗺️ → 🌍 ↔ 🕶️", pages)` expands `A → B` (go) and `A ↔ B` (go and come
