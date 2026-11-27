@@ -81,7 +81,9 @@ Correct choices are public client data: this is a learning game, not an anti-che
 system. Original CounterBattleEffect's damage/heal strip and native timing have
 not been claimed equivalent.
 
-## Optional composition audio
+## Legacy composition audio fixture
+
+The browser suite renders `studio_document()` into its temporary site for this check. The public gallery demonstrates the shared current-item display in a review workflow and a preview queue.
 
 The existing key/mode/progression is converted to explicit arpeggiated notes by
 **Use progression as notes**. **Play notes** uses the current notes, BPM and note
