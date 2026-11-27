@@ -8,7 +8,7 @@ only as an explicit subprocess helper for pytest/CI one-liners.
 """
 from __future__ import annotations
 
-import argparse, ast, base64, colorsys, errno, hashlib, heapq, hmac, http.client, http.server, importlib.util, io, json, math, os, random, re, shlex, shutil, struct, subprocess, sys, time, unicodedata, urllib.error, urllib.request, xml.etree.ElementTree as ET, zlib
+import argparse, ast, base64, binascii, colorsys, errno, hashlib, heapq, hmac, http.client, http.server, importlib.util, io, json, math, os, random, re, shlex, shutil, struct, subprocess, sys, time, unicodedata, urllib.error, urllib.request, xml.etree.ElementTree as ET, zlib
 from collections import Counter, defaultdict; from datetime import date, datetime, timezone; from decimal import Decimal; from html import escape; from pathlib import Path; from typing import Any, Sequence; from urllib.parse import parse_qsl, quote, urlsplit
 
 THEMES = ("modern", "github-like")
@@ -64,6 +64,39 @@ export function downloadText(filename,text,type="application/json"){const a=docu
 export function bindDownloads(root=document){const buttons=[...root.querySelectorAll("[data-ui-download]")];for(const button of buttons){const source=root.querySelector(button.dataset.uiDownloadSource||"#none");if(source)button.addEventListener("click",()=>downloadText(button.dataset.uiDownload,source.textContent))}return buttons}
 /** select[data-ui-choice="name"] shows the [data-ui-choice-panel="name"] whose data-ui-choice-value is its value and hides the others (without JS every panel shows). With data-ui-draft the choice is kept like any draft. Returns the bound selects. */
 export function bindChoice(root=document){const fields=[...root.querySelectorAll("select[data-ui-choice]")];for(const field of fields){const panels=[...root.querySelectorAll("[data-ui-choice-panel]")].filter(p=>p.dataset.uiChoicePanel===field.dataset.uiChoice);const sync=()=>{for(const p of panels)p.hidden=p.dataset.uiChoiceValue!==field.value};field.addEventListener("change",sync);field.addEventListener("input",sync);sync()}return fields}
+/* 📦📜 A saved state as text, so a page can go on where it stopped on another device or after its storage is gone (no DOM, no storage: the
+   page decides what its state is). saveText / saveState: portable JSON as one base64url line (copy it, keep it in a file). spellText /
+   spellBytes: a few bytes as a spell to write down and type back (ふっかつのじゅもん): 64 kana, 6 bits each, lines of 5 7 5. bitsPack /
+   bitsUnpack: whole numbers packed by a layout into those few bytes (JSON is too long to type). Both texts start with a 16-bit check
+   (CRC-16/CCITT-FALSE): one wrong kana or two swapped neighbours never pass. pysaiyanweboo's save_text, save_state, spell_text, spell_bytes,
+   bits_pack and bits_unpack are their twins and read what these write. Numbers must fit in JavaScript’s safe range. */
+const KANA="あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわがぎぐげござじずぜぞだぢづでどばびぶべぼ";
+function crc16(bytes){let c=0xFFFF;for(const b of bytes){c^=b<<8;for(let i=0;i<8;i++)c=(c&0x8000?c<<1^0x1021:c<<1)&0xFFFF}return c}
+function checked(bytes){const c=crc16(bytes),out=new Uint8Array(bytes.length+2);out[0]=c>>8;out[1]=c&255;out.set(bytes,2);return out}
+function unchecked(raw,wrong){if(raw.length<2||crc16(raw.subarray(2))!==(raw[0]<<8|raw[1]))throw new Error(wrong);return raw.subarray(2)}
+function portableNumber(_,value){
+ if(typeof value==="number"&&!(value>=-Number.MAX_SAFE_INTEGER&&value<=Number.MAX_SAFE_INTEGER))throw new Error("use text for numbers outside the portable JSON range");
+ return value
+}
+/** Portable JSON as one base64url line: a 16-bit check, then its compact UTF-8 JSON. */
+export function saveText(state){const json=JSON.stringify(state,portableNumber);if(typeof json!=="string")throw new Error("a save must be a JSON value");let text="";for(const b of checked(new TextEncoder().encode(json)))text+=String.fromCharCode(b);return btoa(text).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")}
+/** The value saveText (or save_text) wrote; an Error when the line was cut or changed. Spaces and line breaks in it are ignored. */
+export function saveState(text){const wrong="the save text is cut or changed";try{const raw=atob(String(text).replace(/[ \t\r\n]/g,"").replace(/-/g,"+").replace(/_/g,"/"));return JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(unchecked(Uint8Array.from(raw,c=>c.charCodeAt(0)),wrong)),portableNumber)}catch{throw new Error(wrong)}}
+/** Bytes (a Uint8Array or an array of 0..255) as a spell: kana in lines of 5 7 5. 12 bytes are 19 kana. */
+export function spellText(data){const bits=[...checked(Uint8Array.from(data))].map(b=>b.toString(2).padStart(8,"0")).join(""),kana=(bits+"0".repeat((6-bits.length%6)%6)).match(/.{6}/g).map(g=>KANA[parseInt(g,2)]).join(""),lines=[];
+ for(let i=0;i<kana.length;i+=17)lines.push([kana.slice(i,i+5),kana.slice(i+5,i+12),kana.slice(i+12,i+17)].filter(Boolean).join(" "));return lines.join("\n")}
+/** The bytes spellText (or spell_text) wrote, as a Uint8Array; spaces and line breaks are ignored and katakana reads as hiragana. A spell that is not one throws Error("じゅもんが ちがいます"). */
+export function spellBytes(text){const wrong="じゅもんが ちがいます",kana=[...String(text)].filter(c=>!" \t\r\n　".includes(c)).map(c=>c>="ァ"&&c<="ヶ"?String.fromCharCode(c.charCodeAt(0)-96):c);if(!kana.length||kana.some(c=>c.length!==1||!KANA.includes(c)))throw new Error(wrong);
+ const bits=kana.map(c=>KANA.indexOf(c).toString(2).padStart(6,"0")).join(""),n=bits.length>>3;if(bits.length-n*8>=6||bits.slice(n*8).includes("1"))throw new Error(wrong);
+ return unchecked(Uint8Array.from({length:n},(_,i)=>parseInt(bits.slice(i*8,i*8+8),2)),wrong)}
+function layoutBits(layout){for(const[name,width]of layout)if(typeof name!=="string"||!Number.isInteger(width)||width<1||width>32)throw new Error("a layout is [name, width in bits (1 to 32)] pairs");if(new Set(layout.map(f=>f[0])).size!==layout.length)throw new Error("a layout names each field once");return layout.reduce((sum,f)=>sum+f[1],0)}
+/** Whole numbers packed by layout ([["version",4],["level",7],["gold",16]]: name and width in bits, first field first), zero-padded to whole bytes. A missing value is 0. */
+export function bitsPack(layout,values={}){const total=layoutBits(layout),names=new Set(layout.map(f=>f[0]));for(const name of Object.keys(values))if(!names.has(name))throw new Error("no field "+name);let bits="";
+ for(const[name,width]of layout){const value=Number(values[name]??0);if(!Number.isInteger(value)||value<0||value>=2**width)throw new Error(name+" does not fit "+width+" bits");bits+=value.toString(2).padStart(width,"0")}
+ bits+="0".repeat((8-total%8)%8);return Uint8Array.from({length:bits.length/8},(_,i)=>parseInt(bits.slice(i*8,i*8+8),2))}
+/** The numbers bitsPack (or bits_pack) packed by the same layout; an Error when the bytes are not that layout's. */
+export function bitsUnpack(layout,data){const total=layoutBits(layout),bits=[...Uint8Array.from(data)].map(b=>b.toString(2).padStart(8,"0")).join("");if(bits.length!==Math.ceil(total/8)*8||bits.slice(total).includes("1"))throw new Error("the bytes are not this layout's");
+ const out={};let at=0;for(const[name,width]of layout){out[name]=parseInt(bits.slice(at,at+width),2);at+=width}return out}
 /** Bind everything inside root; pages mark the board with data-ui-records (or carry a data download) so loading the module is enough. */
 export function mount(root=document,options={}){bindDrafts(root,options);bindChoice(root);bindStatus(root);bindFilter(root);bindRecordsIO(root,options);bindDownloads(root);return root}
 if(typeof document!=="undefined"&&(document.querySelector("[data-ui-records]")||document.querySelector("[data-ui-download]"))){const start=()=>mount(document);if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start,{once:true});else start()}
@@ -2942,6 +2975,101 @@ def draft_select(options: tuple[tuple[str, str], ...], *, key: str, id: str, lab
     """select() whose choice records.js keeps as a browser-local draft under ``key``."""
     return select(options, id=id, label=label, selected=selected).replace(
         "<select ", f'<select data-ui-draft="{_draft_key(key)}" ', 1)
+
+
+def _load_portable_save(raw: bytes) -> Any:
+    def number(token: str, parse: Any) -> int | float:
+        value = parse(token)
+        if not -(2**53 - 1) <= value <= 2**53 - 1:
+            raise ValueError("use text for numbers outside the portable JSON range")
+        return value
+
+    return json.loads(raw, parse_int=lambda token: number(token, int),
+                      parse_float=lambda token: number(token, float),
+                      parse_constant=lambda token: number(token, float))
+
+
+def save_text(state: Any) -> str:
+    """📦 Portable JSON as one base64url line to copy or keep in a file: a 16-bit check, then its compact UTF-8 JSON. ``save_state``
+    (and records.js's ``saveState``) read it back. With ``spell_text`` and ``bits_pack``: a page's state as text, to go on where it
+    stopped on another device or after its storage is gone. Use strings for exact numbers outside JavaScript’s safe range."""
+    raw = json.dumps(state, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    _load_portable_save(raw)
+    return base64.urlsafe_b64encode(binascii.crc_hqx(raw, 0xFFFF).to_bytes(2, "big") + raw).decode("ascii").rstrip("=")
+
+
+def save_state(text: str) -> Any:
+    """📦 The value ``save_text`` (or records.js's ``saveText``) wrote; ValueError when the line was cut or changed. Spaces and line
+    breaks in it are ignored."""
+    try:
+        line = re.sub(r"[ \t\r\n]", "", text)
+        raw = base64.b64decode(line + "=" * (-len(line) % 4), altchars=b"-_", validate=True)
+        if len(raw) < 2 or binascii.crc_hqx(raw[2:], 0xFFFF) != int.from_bytes(raw[:2], "big"):
+            raise ValueError
+        return _load_portable_save(raw[2:].decode("utf-8"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("the save text is cut or changed") from exc
+
+
+def spell_text(data: bytes) -> str:
+    """📜 ``data`` as a spell to write down and type back (ふっかつのじゅもん): a 16-bit check and the bytes as 64 kana, 6 bits each,
+    in lines of 5 7 5 — 12 bytes are 19 kana. The check is CRC-16/CCITT-FALSE: one wrong kana or two swapped neighbours never pass.
+    The kana are records.js's (``spellText`` is the twin); ``spell_bytes`` reads it back and ``bits_pack`` makes the bytes."""
+    kana_of = re.search(r'const KANA="([^"]{64})"', _JS["records.js"])[1]
+    raw = binascii.crc_hqx(bytes(data), 0xFFFF).to_bytes(2, "big") + bytes(data)
+    bits = "".join(f"{byte:08b}" for byte in raw)
+    kana = "".join(kana_of[int(bits[i:i + 6].ljust(6, "0"), 2)] for i in range(0, len(bits), 6))
+    return "\n".join(" ".join(filter(None, (kana[i:i + 5], kana[i + 5:i + 12], kana[i + 12:i + 17]))) for i in range(0, len(kana), 17))
+
+
+def spell_bytes(text: str) -> bytes:
+    """📜 The bytes ``spell_text`` (or records.js's ``spellText``) wrote. Spaces and line breaks are ignored and katakana reads as
+    hiragana; a spell that is not one (a kana off, two swapped, one missing) is ValueError("じゅもんが ちがいます")."""
+    kana_of = re.search(r'const KANA="([^"]{64})"', _JS["records.js"])[1]
+    kana = [chr(ord(c) - 96) if "ァ" <= c <= "ヶ" else c for c in text if c not in " \t\r\n\u3000"]
+    bits = "".join(f"{kana_of.find(c):06b}" if c in kana_of else "x" for c in kana)
+    count = len(bits) // 8
+    raw = bytes(int(bits[i * 8:i * 8 + 8], 2) for i in range(count)) if "x" not in bits else b""
+    if len(raw) < 2 or len(bits) - count * 8 >= 6 or "1" in bits[count * 8:] or binascii.crc_hqx(raw[2:], 0xFFFF) != int.from_bytes(raw[:2], "big"):
+        raise ValueError("じゅもんが ちがいます")
+    return raw[2:]
+
+
+def _layout_bits(layout: Sequence[tuple[str, int]]) -> int:
+    if any(not isinstance(name, str) or type(width) is not int or not 1 <= width <= 32 for name, width in layout):
+        raise ValueError("a layout is (name, width in bits (1 to 32)) pairs")
+    if len({name for name, _ in layout}) != len(layout):
+        raise ValueError("a layout names each field once")
+    return sum(width for _, width in layout)
+
+
+def bits_pack(layout: Sequence[tuple[str, int]], values: dict[str, int]) -> bytes:
+    """🧮 Whole numbers packed by ``layout`` (``[("version", 4), ("level", 7), ("gold", 16)]``: name and width in bits, first field
+    first), zero-padded to whole bytes: what a spell carries, because JSON is too long to type. A missing value is 0; a value that does
+    not fit its width, or a name the layout lacks, is a ValueError. records.js's ``bitsPack`` is the twin."""
+    total = _layout_bits(layout)
+    if unknown := sorted(set(values) - {name for name, _ in layout}):
+        raise ValueError(f"no field {unknown[0]}")
+    bits = ""
+    for name, width in layout:
+        value = values.get(name, 0)
+        if not isinstance(value, int) or not 0 <= value < 1 << width:
+            raise ValueError(f"{name} does not fit {width} bits")
+        bits += f"{int(value):0{width}b}"
+    bits += "0" * (-total % 8)
+    return bytes(int(bits[i:i + 8], 2) for i in range(0, len(bits), 8))
+
+
+def bits_unpack(layout: Sequence[tuple[str, int]], data: bytes) -> dict[str, int]:
+    """🧮 The numbers ``bits_pack`` (or records.js's ``bitsPack``) packed by the same layout; ValueError when the bytes are not that
+    layout's (another length, or padding that is not zero)."""
+    total, bits = _layout_bits(layout), "".join(f"{byte:08b}" for byte in bytes(data))
+    if len(bits) != -(-total // 8) * 8 or "1" in bits[total:]:
+        raise ValueError("the bytes are not this layout's")
+    out, at = {}, 0
+    for name, width in layout:
+        out[name], at = int(bits[at:at + width], 2), at + width
+    return out
 
 
 def records_io(*, export_label: str = "↓ JSON", import_label: str = "↑ JSON", filename: str = "records.json") -> str:

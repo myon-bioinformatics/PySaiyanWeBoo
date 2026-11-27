@@ -863,6 +863,32 @@ print(PSWB.render_document(trusted_html=PSWB.records_board(body), css=PSWB.bundl
 python -S pysaiyanweboo.py --site .   # writes js/records.js next to it
 ```
 
+### 📦📜 A saved state as text (`save_text`, `spell_text`, `bits_pack`)
+
+So a page can go on where it stopped on another device, or after its browser storage is gone. No DOM and no storage: the page decides
+what its state is, these turn it into text and back. Python and records.js can read each other's save text. The checksum covers the original JSON bytes.
+Numbers must be finite and between −(2⁵³−1) and 2⁵³−1. Use strings for larger exact values rather than rounding them in JavaScript.
+
+| | Python | records.js | for |
+|---|---|---|---|
+| 📦 | `save_text(state)` / `save_state(text)` | `saveText` / `saveState` | a portable JSON value as one base64url line (copy it, keep it in a file) |
+| 📜 | `spell_text(data)` / `spell_bytes(text)` | `spellText` / `spellBytes` | a few bytes as a spell to write down and type back (ふっかつのじゅもん): 64 kana, 6 bits each, lines of 5 7 5 |
+| 🧮 | `bits_pack(layout, values)` / `bits_unpack(layout, data)` | `bitsPack` / `bitsUnpack` | whole numbers packed into those few bytes (JSON is too long to type) |
+
+```python
+import pysaiyanweboo as PSWB
+layout = [("version", 4), ("level", 7), ("gold", 16), ("hp", 10), ("mp", 10), ("items", 24), ("flags", 25)]   # 96 bits: 12 bytes
+spell = PSWB.spell_text(PSWB.bits_pack(layout, {"version": 1, "level": 12, "gold": 3456, "hp": 87, "mp": 30, "items": 45, "flags": 126991}))
+# ういむつむ ふあうぐえごあ あかるいび
+# あび                                           19 kana
+PSWB.bits_unpack(layout, PSWB.spell_bytes("ウイムツム ふあうぐえごあ あかるいび あび"))["gold"]   # 3456 (katakana and any spacing read too)
+PSWB.save_state(PSWB.save_text({"schema": "world-save/1", "bag": ["🍠"]}))                    # the whole state, as it was
+```
+
+Both texts start with a 16-bit check (CRC-16/CCITT-FALSE), so a spell with one wrong kana or two swapped neighbours is never read
+(`ValueError("じゅもんが ちがいます")`), nor a save line that was cut. The kana leave out を ん and the small ones; put a version first in
+the layout, so a later layout can still read an old spell.
+
 ## Focused test discovery
 
 See [standard-library discovery commands](TOOLING.md#focused-standard-library-test-discovery) for
