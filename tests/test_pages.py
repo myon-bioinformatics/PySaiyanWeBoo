@@ -6912,7 +6912,17 @@ def test_every_word_the_chrome_brings_is_in_eleven_languages():
     keys = set(re.findall(r'data-tx?="(\w+)"', page + stand_in))
     assert keys >= {"home", "settings", "language", "theme", "own", "blink", "links", "portfolio", "repository", "door", "size"} and keys <= set(ui._CHROME_WORDS)
     module = ui.js_source("chrome.js")
-    assert set(re.search(r"CHROME_TEXT=(\{.*?\});", module)[1] and json.loads(re.search(r"CHROME_TEXT=(\{.*?\});", module)[1])) == set(ui._CHROME_WORDS) - {"about", "about2"}
+    catalogue = json.loads(re.search(r"CHROME_TEXT=(\{.*?\});", module)[1])
+    assert not set(ui._CHROME_WORDS) & set(ui._PAGE_WORDS) and set(catalogue) == (set(ui._CHROME_WORDS) | set(ui._PAGE_WORDS)) - {"about", "about2"}
+    assert all(len(row) == 11 and all(w.strip() for w in row) for row in ui._PAGE_WORDS.values())          # the body's words: eleven languages too
+    for key, row in ui._PAGE_WORDS.items():                                                       # a format keeps its {0} {1} in each language
+        assert {frozenset(re.findall(r"\{\d\}", w)) for w in row} == {frozenset(re.findall(r"\{\d\}", row[0]))}, key
+    assert ui.STEP_STATUSES[0] == ("todo", "調査中") and ui.STEP_LABELS["filter"] == ui.STEP_LABELS["status"] == "状態" and ui.STEP_LABELS["record"] == "再現記録"
+    carried = lambda built: set(json.loads(re.search(r"CHROME_TEXT=(\{.*?\});", built.split("bindChrome")[0].rsplit("const CHROME_LANGS=", 1)[1])[1]))
+    assert carried(page) == set(ui._CHROME_WORDS) - {"about", "about2"}                            # a page carries only the body's words it holds:
+    steps = {"type": "runbook", "books": [{"label": "b", "runbook": {"key": "k/b", "steps": [{"id": "a", "title": "t", "command": "c", "run": True}]}}]}
+    with_book = ui.add_back_nav(ui.page_document({**spec, "blocks": [steps]}), "myon-bioinformatics/xprobe", chrome=True)
+    assert {"record", "state-todo", "copy", "loaded", "run"} <= carried(with_book) - set(ui._CHROME_WORDS) and "feat-name" not in carried(with_book)
     assert ui.chrome_words("ポートフォリオ")["en"] == "Portfolio" and ui.chrome_words("GitHub リポジトリ")["zh"] == "GitHub 仓库"
     assert ui.chrome_words("あと{0}分") is None and ui.chrome_words("xprobe") is None             # a format is not a label; a name is a name
     assert ui.page_language(page) == "ja" and ui.page_language("<html><body><main><p>Pick a template and send.</p><pre>日本語</pre></main></body></html>") == "en"
