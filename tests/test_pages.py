@@ -7901,6 +7901,68 @@ class RecordsBoardTests(unittest.TestCase):
         """records.js in Node against a small DOM stub (RECORDS_JS): filters, drafts and their JSON file."""
         self.assertIn("records.js ok", node_js(RECORDS_JS).stdout)
 
+    def test_a_saved_state_is_text_python_and_javascript_both_read(self):
+        """📦📜 save_text / spell_text / bits_pack and records.js's saveText / spellText / bitsPack write the same text for the same
+        state, each reads the other's, and a spell that is one kana off, or has two neighbours swapped, is never read."""
+        ui, rng = pysaiyanweboo, random.Random(20261127)
+        kana = re.search(r'const KANA="([^"]+)"', ui.js_source("records.js"))[1]
+        self.assertEqual((len(kana), len(set(kana))), (64, 64))
+        self.assertFalse(set(kana) & set("をんぁぃぅぇぉっゃゅょ"))                     # none a typist confuses with its neighbour
+        layout = [("version", 4), ("level", 7), ("gold", 16), ("hp", 10), ("mp", 10), ("items", 24), ("flags", 25)]   # 96 bits: 12 bytes
+        state = {"version": 1, "level": 12, "gold": 3456, "hp": 87, "mp": 30, "items": 45, "flags": 126991}
+        packed = ui.bits_pack(layout, state)
+        spell = ui.spell_text(packed)
+        self.assertEqual((len(packed), spell), (12, "ういむつむ ふあうぐえごあ あかるいび\nあび"))   # 19 kana in lines of 5 7 5
+        self.assertEqual(ui.bits_unpack(layout, ui.spell_bytes(spell)), state)
+        self.assertEqual(ui.spell_bytes("  ウイムツム　ふあうぐえごあ\r\nあかるいび あび\n"), packed)          # katakana and any spacing
+        self.assertEqual((ui.spell_text(b""), ui.spell_bytes("ぼぼび")), ("ぼぼび", b""))
+        self.assertEqual(ui.bits_pack([("a", 1), ("b", 3)], {"a": True}), b"\x80")                # a missing value is 0, a flag is 1
+        letters = spell.replace(" ", "").replace("\n", "")
+        wrong = [letters[:i] + other + letters[i + 1:] for i in range(len(letters)) for other in kana if other != letters[i]]   # every one-kana slip
+        wrong += [letters[:i] + letters[i + 1] + letters[i] + letters[i + 2:] for i in range(len(letters) - 1) if letters[i] != letters[i + 1]]
+        wrong += [letters[:-1], letters + "あ", "", "abc", "ゔ" + letters[1:], "を" + letters[1:]]
+        for text in wrong:
+            with self.assertRaisesRegex(ValueError, "^じゅもんが ちがいます$"):
+                ui.spell_bytes(text)
+        values = [None, 0, -1.5, "", "🍠 やくそう \"x\"", [], {}, {"schema": "world-save/1", "level": 12, "bag": ["🍠", "やくそう"], "flags": {"a": True}}]
+        for value in values:
+            self.assertEqual(ui.save_state(ui.save_text(value)), value)
+        line = ui.save_text(values[-1])
+        self.assertRegex(line, r"^[A-Za-z0-9_-]+$")
+        self.assertEqual(ui.save_state("  " + line[:9] + "\n" + line[9:] + " "), values[-1])
+        for text in (line[:-2], line[:5] + ("A" if line[5] != "A" else "B") + line[6:], "", "!!", line[1:]):
+            with self.assertRaisesRegex(ValueError, "cut or changed"):
+                ui.save_state(text)
+        for bad, error in ((lambda: ui.bits_pack(layout, {"level": 128}), "level does not fit 7 bits"), (lambda: ui.bits_pack(layout, {"lv": 1}), "no field lv"),
+                           (lambda: ui.bits_pack([("a", 0)], {}), "a layout is"), (lambda: ui.bits_pack([("a", 1), ("a", 2)], {}), "names each field once"),
+                           (lambda: ui.bits_unpack(layout, packed + b"\0"), "not this layout's"), (lambda: ui.bits_unpack([("a", 3)], b"\x01"), "not this layout's"),
+                           (lambda: ui.save_text(float("nan")), "")):
+            with self.assertRaisesRegex(ValueError, error):
+                bad()
+        cases = []                                                                # 🎲 random layouts, values and bytes through both languages
+        for _ in range(120):
+            fields = [(f"f{i}", rng.randint(1, 32)) for i in range(rng.randint(1, 9))]
+            numbers = {name: rng.randrange(1 << width) for name, width in fields if rng.random() < .85}
+            data = ui.bits_pack(fields, numbers)
+            extra = rng.randbytes(rng.randint(0, 40))
+            cases.append({"layout": fields, "values": numbers, "bytes": list(data), "spell": ui.spell_text(data), "extra": list(extra),
+                          "extraSpell": ui.spell_text(extra), "save": ui.save_text({"n": numbers, "t": "じゅもん🍠" * rng.randint(0, 3)})})
+        script = r"""import {saveText,saveState,spellText,spellBytes,bitsPack,bitsUnpack} from "./js/records.js";
+const cases=JSON.parse(process.argv[2]),wrong=JSON.parse(process.argv[3]),out=[];
+for(const c of cases){const bytes=bitsPack(c.layout,c.values);
+ out.push({bytes:[...bytes],spell:spellText(bytes),back:bitsUnpack(c.layout,spellBytes(c.spell)),extra:[...spellBytes(c.extraSpell)],extraSpell:spellText(c.extra),
+           state:saveState(c.save),save:saveText(saveState(c.save))})}
+const refused=texts=>texts.filter(t=>{try{spellBytes(t);return false}catch(e){return e.message==="じゅもんが ちがいます"}}).length;
+let cut=0;for(const t of ["","!!",cases[0].save.slice(0,-2),cases[0].save.slice(1)])try{saveState(t)}catch(e){cut+=/cut or changed/.test(e.message)}
+let fit=0;for(const f of [()=>bitsPack([["a",3]],{a:8}),()=>bitsPack([["a",3]],{b:1}),()=>bitsPack([["a",0]],{}),()=>bitsUnpack([["a",3]],[1])])try{f()}catch{fit++}
+console.log(JSON.stringify({out,refused:refused(wrong),cut,fit,flag:[...bitsPack([["a",1],["b",3]],{a:true})],kata:[...spellBytes("  ウイムツム　ふあうぐえごあ\r\nあかるいび あび\n")]}))"""
+        got = json.loads(node_js(script, json.dumps(cases, ensure_ascii=False), json.dumps(wrong, ensure_ascii=False)).stdout)
+        self.assertEqual((got["refused"], got["cut"], got["fit"], got["flag"], got["kata"]), (len(wrong), 4, 4, [0x80], list(packed)))
+        for case, js in zip(cases, got["out"]):
+            self.assertEqual((js["bytes"], js["spell"], js["extra"], js["extraSpell"]), (case["bytes"], case["spell"], case["extra"], case["extraSpell"]))
+            self.assertEqual(js["back"], {name: case["values"].get(name, 0) for name, _ in case["layout"]})
+            self.assertEqual((js["state"], js["save"]), (ui.save_state(case["save"]), case["save"]))            # the same line from both
+
     def test_records_css_uses_multiples_of_eight(self):
         css = ui._CSS["records.css"]
         self.assertTrue(all(int(px) % 8 == 0 for px in re.findall(r"(\d+)px", css)), "pixel sizes are multiples of 8")
