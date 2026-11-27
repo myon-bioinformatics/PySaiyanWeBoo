@@ -7411,9 +7411,30 @@ def _chrome_menu(kind: str, glyph: str, attrs: str, panel: str, hidden: bool = F
             f'<div class="ui-world-panel">{panel}</div></details>')
 
 
+def _chrome_rows(rows: Any, name: str, limit: int = 16, least: int = 1) -> list[dict[str, str]]:
+    """The rows of a panel, each ``{label, href}`` (a link) or ``{label, key}`` (an action: pressing it sends ``ui-chrome-action`` with
+    ``detail.key`` from the chrome, and the page does the rest: save as this format, open that panel)."""
+    if (not isinstance(rows, list) or not least <= len(rows) <= limit
+            or any(not isinstance(r, dict) or set(r) not in ({"label", "href"}, {"label", "key"}) for r in rows)):
+        raise ValueError(f"{name} lists {least}..{limit} {{label, href}} or {{label, key}}")
+    built = []
+    for r in rows:
+        if "key" in r and (not isinstance(r["key"], str) or not _CHROME_TOKEN.fullmatch(r["key"])):
+            raise ValueError(f"{name}: a key is a short lowercase token")
+        built.append({"label": _chrome_text(r["label"], "label", 40), **({"href": _chrome_href(r["href"])} if "href" in r else {"key": r["key"]})})
+    return built
+
+
+def _chrome_rows_html(rows: list[dict[str, str]]) -> str:
+    return ('<ul class="ui-world-rows">' + "".join(
+        f'<li><a href="{escape(r["href"], quote=True)}">{escape(r["label"])}</a></li>' if "href" in r
+        else f'<li><a href="#" role="button" data-chrome-action="{r["key"]}">{escape(r["label"])}</a></li>' for r in rows) + '</ul>') if rows else ""
+
+
 def _chrome_tools(tools_in: Any) -> dict[str, dict[str, Any]]:
-    """Up to 8 emoji of a page's own, key → one feature: ``href`` (the button is a link), ``links`` (a panel of up to 16
-    ``{label, href}``) or ``body`` (a panel of words); ``label``, ``label_en``, ``labels`` (other languages) and ``slot`` (head | side)."""
+    """Up to 8 emoji of a page's own, key → one feature: ``href`` (the button is a link), ``links`` (a panel of up to 16 rows,
+    ``_chrome_rows``: links, or actions the page answers, such as the formats a 💾 saves) or ``body`` (a panel of words); ``label``,
+    ``label_en``, ``labels`` (other languages) and ``slot`` (head | side)."""
     if not isinstance(tools_in, dict) or len(tools_in) > 8:
         raise ValueError("tools maps up to 8 emoji to a feature")
     tools: dict[str, dict[str, Any]] = {}
@@ -7440,10 +7461,7 @@ def _chrome_tools(tools_in: Any) -> dict[str, dict[str, Any]]:
         if "href" in tool:
             built["href"] = _chrome_href(tool["href"])
         elif "links" in tool:
-            links = tool["links"]
-            if not isinstance(links, list) or not 1 <= len(links) <= 16 or any(not isinstance(l, dict) or set(l) != {"label", "href"} for l in links):
-                raise ValueError("tool links lists 1..16 {label, href}")
-            built["links"] = [{"label": _chrome_text(l["label"], "label", 40), "href": _chrome_href(l["href"])} for l in links]
+            built["links"] = _chrome_rows(tool["links"], "tool links")
         else:
             built["body"] = _chrome_text(tool["body"], "body", 400)
         tools[emoji] = built
@@ -7455,14 +7473,14 @@ def _chrome_tool(emoji: str, tool: dict[str, Any]) -> str:
     if "href" in tool:
         return f'<a class="ui-world-tool" href="{escape(tool["href"], quote=True)}" {attrs}>{escape(emoji)}</a>'
     if "links" in tool:
-        panel = '<ul class="ui-world-rows">' + "".join(f'<li><a href="{escape(l["href"], quote=True)}">{escape(l["label"])}</a></li>' for l in tool["links"]) + '</ul>'
+        panel = _chrome_rows_html(tool["links"])
     else:
         panel = f'<p>{escape(tool["body"])}</p>'
     return _chrome_menu("tool", escape(emoji), attrs, panel)
 
 
 def chrome_validate(spec: Any = None) -> dict[str, Any]:
-    """``{"id", "board", "home", "places", "tools"}``, all optional.
+    """``{"id", "board", "home", "places", "tools", "settings", "screen"}``, all optional.
 
     ``id``      names the chrome; ⭐ and 🌐 are kept under it in this browser, so pages sharing an id share them (default ``tools``)
     ``board``   ``{"title", "items": [{"text", "at"?}]}``: a title (up to 24), 1..12 items (up to 120; ``at`` HH:MM gives "in N min")
@@ -7470,10 +7488,12 @@ def chrome_validate(spec: Any = None) -> dict[str, Any]:
     ``places``  rows this page adds to its ☰, each ``{"label", "href"}`` with a ☆ (up to 32); the script lists the page itself (📍)
                 and its sections ahead of them. ☰ is this page's own: moving between pages is the door's (``door_html``)
     ``tools``   emoji of the page's own (``_chrome_tools``)
+    ``settings`` rows the page adds to ⚙️ (up to 8, ``_chrome_rows``): another layout of the same page, a mode
+    ``screen``  rows the page adds to ⋯ (up to 8): what belongs to this screen but not to its main buttons, such as a temporary shelf
     """
     spec = {} if spec is None else spec
-    if not isinstance(spec, dict) or set(spec) - {"id", "board", "home", "places", "tools"}:
-        raise ValueError("a chrome has id, board, home, places and tools")
+    if not isinstance(spec, dict) or set(spec) - {"id", "board", "home", "places", "tools", "settings", "screen"}:
+        raise ValueError("a chrome has id, board, home, places, tools, settings and screen")
     board = spec.get("board")
     if board is not None:
         if not isinstance(board, dict) or set(board) - {"title", "items"} or not isinstance(board.get("items"), list) or not 1 <= len(board["items"]) <= 12:
@@ -7492,7 +7512,8 @@ def chrome_validate(spec: Any = None) -> dict[str, Any]:
         raise ValueError(f"chrome id must be a lowercase token: {chrome_id!r}")
     return {"id": chrome_id, "board": board, "home": None if spec.get("home") is None else _chrome_href(spec["home"]),
             "places": [{"label": _chrome_text(p["label"], "label", 40), "href": _chrome_href(p["href"])} for p in places],
-            "tools": _chrome_tools(spec.get("tools", {}))}
+            "tools": _chrome_tools(spec.get("tools", {})),
+            "settings": _chrome_rows(spec.get("settings", []), "settings", 8, 0), "screen": _chrome_rows(spec.get("screen", []), "screen", 8, 0)}
 
 
 def chrome_html(spec: Any = None) -> str:
@@ -7510,14 +7531,14 @@ def chrome_html(spec: Any = None) -> str:
     settings = ((f'<button type="button" class="ui-world-pause" aria-pressed="false" data-pause="⏯️" data-resume="▶️" {_chrome_said("pause")}>⏯️</button>' if board else "") +
                 f'<label class="ui-world-lang">🌐 <select data-lang {_chrome_said("language")}>' +
                 "".join(f'<option value="{code}" lang="{code}"{" selected" if i == 0 else ""}>{name}</option>' for i, (code, name) in enumerate(CHROME_LANGS)) +
-                '</select></label>')
+                '</select></label>' + _chrome_rows_html(chrome["settings"]))
     head = ((f'<a class="ui-world-home" href="{escape(chrome["home"], quote=True)}" {_chrome_said("home")}>🏠</a>' if chrome["home"] else "") +
             "".join(_chrome_tool(e, t) for e, t in tools.items() if t["slot"] == "head") +
             _chrome_menu("favorites", "⭐", _chrome_said("favorites"), '<p class="ui-world-empty" aria-hidden="true">☆</p><ul class="ui-world-rows ui-world-favs"></ul>', hidden=True) +
             _chrome_menu("settings", "⚙️", _chrome_said("settings"), settings, hidden=True))
     side = (_chrome_menu("spots", "☰", _chrome_said("places"), f'<ul class="ui-world-rows ui-world-spots">{rows}</ul>', hidden=not rows) +
             "".join(_chrome_tool(e, t) for e, t in tools.items() if t["slot"] == "side") +
-            _chrome_menu("more", "⋯", _chrome_said("screen"), move, hidden=True))
+            _chrome_menu("more", "⋯", _chrome_said("screen"), move + _chrome_rows_html(chrome["screen"]), hidden=True))
     shown = ""
     if board:
         def item(e: dict[str, Any], hidden: bool) -> str:           # the line twice, the second copy hidden: the loop has no seam
@@ -16514,6 +16535,8 @@ export function bindChrome(root=document){return[...root.querySelectorAll('[data
  el.addEventListener('click',e=>{const b=e.target.closest('.ui-world-star'),s=e.target.closest('[data-scroll]');
   if(b){const a=b.parentElement.querySelector('a'),k=key(a);fav=fav.some(f=>f.href===k)?fav.filter(f=>f.href!==k):[...fav,{href:k,label:k===here?title:title+' › '+words(a)}].slice(-32);show();save({fav})}
   if(s){shut();scrollTo({top:s.dataset.scroll==='top'?0:document.documentElement.scrollHeight,behavior:'smooth'})}
+  const act=e.target.closest('[data-chrome-action]');
+  if(act){e.preventDefault();el.dispatchEvent(new CustomEvent('ui-chrome-action',{bubbles:true,detail:{key:act.dataset.chromeAction}}))}
   if(e.target.closest('.ui-world-rows a'))shut()});
  show();if(typeof kept.lang==='string'&&kept.lang!=='ja')setLang(kept.lang);
  const pause=el.querySelector('.ui-world-pause');pause?.addEventListener('click',()=>{const on=el.toggleAttribute('data-motion-paused');pause.setAttribute('aria-pressed',String(on));pause.textContent=on?pause.dataset.resume:pause.dataset.pause});
