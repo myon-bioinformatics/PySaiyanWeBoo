@@ -5623,6 +5623,36 @@ _CSS["current-item.css"] = (
     "font-weight:700;text-decoration:underline;text-decoration-color:var(--ui-accent);"
     "text-decoration-thickness:.16em;text-underline-offset:.18em}}\n"
 )
+_JS["async-task.js"] = """/**
+ * Run a browser task with optional deadline. cancel() rejects the pending result,
+ * and the operation can observe the AbortSignal to stop its own work.
+ */
+export function startTask(run, {timeoutMs} = {}) {
+  if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs < 0 || timeoutMs > 2147483647))
+    throw new RangeError("timeoutMs must be a non-negative timer value");
+  const controller = new AbortController();
+  const {signal} = controller;
+  let timer, onAbort, finished = false;
+  const stopped = new Promise((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, {once: true});
+  });
+  if (timeoutMs !== undefined) {
+    timer = setTimeout(() => controller.abort(new DOMException("Task timed out", "TimeoutError")), timeoutMs);
+  }
+  const work = Promise.resolve().then(() => {
+    signal.throwIfAborted();
+    return run(signal);
+  });
+  const promise = Promise.race([stopped, work]).finally(() => {
+    finished = true;
+    clearTimeout(timer);
+    signal.removeEventListener("abort", onAbort);
+  });
+  return {promise, cancel() { if (!finished) controller.abort(); }};
+}
+"""
+
 _JS["current-item.js"] = """export function setCurrentItem(list, index) {
   const next = Number.isInteger(index) ? list.children[index] : undefined;
   for (const item of list.children) {
