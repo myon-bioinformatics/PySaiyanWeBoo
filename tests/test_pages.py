@@ -4547,7 +4547,7 @@ console.log(JSON.stringify(out));
                 guard = re.search(r':where\(\[data-page~="([a-z]+)"\]\)', part)
                 self.assertTrue(guard, f"waits for its page: {part.strip()}")
                 pages.add(guard[1])
-        self.assertEqual(pages, {"studio", "tools", "slides", "phone"})
+        self.assertEqual(pages, {"studio", "tools", "phone"})   # 🖥️ the PC slide studio is retired (Ironmate's one slide editor is "phone")
         picture = {"#e1e8e3", "#e4e9e2", "#f7f9f4", "#fff", "rgba(0,0,0,.16)"}
         self.assertEqual(set(re.findall(r"#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)", flat)), picture)
         for rule in re.findall(r"[^{}]*\{[^{}]*(?:#[0-9a-fA-F]{3,8}\b|rgba?\()[^{}]*\}", flat):
@@ -7998,6 +7998,25 @@ def test_render_document_icons_are_optional_png_links_that_stay_local_or_https()
     for bad in ("javascript:alert(1)", "data:image/png;base64,AAAA", "//evil.example/x.png", "./i.png?x=1", "", "https://u:p@example.test/x.png"):
         with pytest.raises(ValueError):
             ui.render_document("x", favicon=bad)
+
+
+def test_the_labels_switch_flips_emoji_faces_and_short_words_on_one_page():
+    """🖥️ ⇄ 📱 emoji faces by default, short words (as on a PC) after a flip: one body attribute, CSS in the core bundle, the
+    flip remembered and reachable from a header row (key "labels"); rows of controls marked as groups get a light line between."""
+    button = ui.labels_switch_html()
+    assert 'data-ui-labels-switch data-ui-word="📱 絵文字" aria-pressed="false"' in button and button.endswith(">🖥️</button>")
+    assert "&lt;b&gt;" in ui.labels_switch_html(word="<b>") and ui.COMPONENTS["labels-switch"] == {
+        "html": "labels_switch_html", "css": (), "js": ("ui.js",), "mount": "bindLabels();"}
+    js = ui.js_source("ui.js")
+    line = next(l for l in js.splitlines() if l.startswith("export function bindLabels("))
+    for part in ('dataset.uiLabels=v==="words"?"words":"emoji"', 'localStorage.getItem(key)', 'localStorage.setItem(key,v)',
+                 '"ui-chrome-action"', 'e.detail.key==="labels"', '"aria-pressed"'):
+        assert part in line, part
+    assert line.index("localStorage.setItem") > line.index("const flip")              # only a flip is remembered, not the default
+    core = ui.core_css()
+    for rule in ("[data-ui-labels=words] [data-ui-word]{font-size:0}", "[data-ui-word]::after{content:attr(data-ui-word);font-size:14px}",
+                 "[data-ui-group]~[data-ui-group]{border-top:1px dashed var(--ui-border);padding-top:8px}"):
+        assert rule in core and core.index(rule) > core.rindex("@layer components{"), rule   # after the layer: a component's size loses
 
 
 def test_the_curl_panel_and_theme_switch_are_builders_with_the_hooks_their_modules_bind():
