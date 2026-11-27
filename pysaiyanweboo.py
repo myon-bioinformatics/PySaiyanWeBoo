@@ -16062,7 +16062,8 @@ def slide_deck_pptx(deck: Any, shell: dict[str, str], image_for_layer: Any = Non
         return studio_escape(text)
 
     def nv(shape_id: int, name: Any, tx: bool = False) -> str:
-        return f'<p:nvSpPr><p:cNvPr id="{shape_id}" name="{xml(name)}"/><p:cNvSpPr{" txBox=\"1\"" if tx else ""}/><p:nvPr/></p:nvSpPr>'
+        box = ' txBox="1"' if tx else ""             # 🐍 3.11: no quote of the f-string's own kind, no backslash, inside {}
+        return f'<p:nvSpPr><p:cNvPr id="{shape_id}" name="{xml(name)}"/><p:cNvSpPr{box}/><p:nvPr/></p:nvSpPr>'
 
     def transform(l: dict[str, Any]) -> str:
         return f'<a:xfrm rot="{_math_round(l["rotation"] * 60000)}"><a:off x="{emu(l["x"])}" y="{emu(l["y"])}"/><a:ext cx="{emu(l["w"])}" cy="{emu(l["h"])}"/></a:xfrm>'
@@ -16085,7 +16086,8 @@ def slide_deck_pptx(deck: Any, shell: dict[str, str], image_for_layer: Any = Non
                 size = _math_round(l["fontSize"] * unit / 127)
                 font = "MS Gothic" if l.get("font") == "mono" else "Meiryo"
                 _stu_need(100 <= size <= 400000, "PPTXの文字サイズが1〜4000ptの範囲を超えています。キャンバスまたは文字サイズを調整してください。")
-                properties = f'<a:rPr lang="ja-JP" sz="{size}" b="{1 if l.get("bold") else 0}"{' i="1"' if l.get("italic") else ""}>{fill(l["fill"], l["opacity"])}<a:latin typeface="{font}"/><a:ea typeface="{font}"/></a:rPr>'
+                italic = ' i="1"' if l.get("italic") else ""
+                properties = f'<a:rPr lang="ja-JP" sz="{size}" b="{1 if l.get("bold") else 0}"{italic}>{fill(l["fill"], l["opacity"])}<a:latin typeface="{font}"/><a:ea typeface="{font}"/></a:rPr>'
                 paragraphs = "".join(                                    # a typed newline is a paragraph, a measured wrap an editable line break
                     f'<a:p><a:pPr><a:lnSpc><a:spcPts val="{_math_round(size * 1.3)}"/></a:lnSpc><a:spcBef><a:spcPts val="0"/></a:spcBef><a:spcAft><a:spcPts val="0"/></a:spcAft></a:pPr>'
                     + f"<a:br>{properties}</a:br>".join(f'<a:r>{properties}<a:t xml:space="preserve">{xml(t)}</a:t></a:r>' for t in lines)
