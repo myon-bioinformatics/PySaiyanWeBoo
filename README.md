@@ -61,6 +61,10 @@ Current themes:
 Single-file pages: `render_document(css=bundled_css())` (or `python -S pysaiyanweboo.py --css-bundle`) embeds every
 stylesheet and theme, built in memory from the sources in `pysaiyanweboo.py`; nothing is written to the repository. Because all themes ship
 together, `bindTheme()` from `ui.js` switches `data-ui-theme` live, with no stylesheet swap and no reload.
+In the same way `bindLabels()` switches `data-ui-labels` between emoji faces (the default) and short words, as on a PC: a
+control carries both (`data-ui-word="エクスポート"` beside its `📤`), the 💻 To textual ⇄ 📱 To iconic button is `labels_switch_html()` (or a header
+row with `key: "labels"`), and rows marked `data-ui-group` get a light dashed line between them, for groups such as create /
+update / delete. The choice is remembered in the browser.
 From Node, run `node vendor/py_launch.cjs -- pysaiyanweboo.py --css-bundle`.
 
 🌍 The world (`web-ui-world/1`: [🌍 the travel world](https://myon-bioinformatics.github.io/tools/demos/world.html), 🏫 the school, 🗼 the parallel cities, 🎬 the camera page, the catalogue map) and 🤖🔁 the MCP / API stubs
@@ -299,7 +303,7 @@ writes no JavaScript or CSS of its own. Fetch sends one GET per press and never 
 and over HTTP (`tests/integration/pages_browser.py`); `tests/fixtures/source/cases.json` runs through both languages.
 
 `ui.js` (`js_source("ui.js")`) is the shared helper module: `setText`, `prettyJson`, `copyText` (with a fallback where the async
-clipboard is missing), `bindTheme`, `observeLit` (marks on-screen elements with `data-lit`) and `bindLightbox`
+clipboard is missing), `bindTheme`, `bindLabels`, `observeLit` (marks on-screen elements with `data-lit`) and `bindLightbox`
 (click-to-enlarge in a `<dialog>`). Import only what a page needs.
 
 Theme files are presentation-only. Consumers keep the same semantic HTML and
@@ -761,7 +765,7 @@ boundary](docs/python-controls.md).
 
 ### Components from Python, in this repository or another
 
-`COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `coordinates`,
+`COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `labels-switch`, `coordinates`,
 `door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `chat`, `curl`, `showcase`,
 `front`, `repository-diagnostics`, `table`, `steps`, `scroll`, `stage`, `status`, `pager`, `chrome`, `tabs`; `components()` lists them as data), and two calls wrap them:
 
