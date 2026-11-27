@@ -600,6 +600,15 @@ page-layouts.json]` renders it from the shell or Node, so a report script owns o
 puts the way back first (🏠 portfolio · 🐙 GitHub); `add_back_nav(page, "OWNER/REPO")` gives a page built some other way the same nav.
 📲 `--home-screen DIR` (`home_screen(spec, DIR)`) makes the spec's icon into square, opaque `icon-180/192/512.png` and a `manifest.webmanifest` next to the page, and writes the spec back with `home` — the short name, the source's SHA-256 and each size as Base64 (a cache Python reads without decoding again) — so "Add to Home Screen" and shortcuts show the repository's own icon (iOS: `apple-touch-icon` 180 · Android / desktop: the manifest). No Pillow: nearest-neighbour scaling keeps pixel icons crisp.
 
+🧰 With the way back, `--repository` now gives the page the header, side and foot every page of the site carries, so a repository's
+guide looks and moves like the portfolio's pages: 📟 a board that says what the page is (its description, else a line any page can
+carry) and where the links lead, 🫧 the round face that follows the pointer, 🏠 (the first link) and the other links by their emoji,
+⭐ ⚙️, ☰ the page's own sections, ⋯, and as the foot 🚪 the links and 📌 this page with 📦 its size. ⭐ and 🌐 are kept per origin, so
+the guides and the portfolio share them. `add_back_nav(page, back, chrome=True)` and `add_site_chrome(page, links, title="GUIDE")` give
+them to a page built some other way; a page that has them keeps them, and without `chrome` the page is what it was.
+
+![🧰 site chrome on a guide page: the board, 🫧, ☰ the page's sections, 🚪 the foot](docs/evidence/site-chrome.gif)
+
 🧩 `--features FILE` (`add_features(spec, FILE)`, repeatable) puts the full list at the top of the 🧩 機能一覧 tab — one tab, above the hand-written highlights: ⌨️ every argparse command with its help and options (the file runs only up to its first `parse_args`, nothing after it) and 🐍 every name in `__all__` — or, without it, each public function and class — with the first line of its docstring (read without importing). The list comes from the code at build time, so it never misses a command or a function; a hand-written 🧩 機能一覧 that already names everything gets no full list, each file keeps its own sections (titled with its name and 全 N: several `--features` add up in order, a second run replaces only that file's, in place), and a file that cannot start keeps its 🐍 list.
 
 For an explicit inventory, run `--page docs/guide.page.json --features-config docs/guide.features.json` from the checkout root. Give the config a JSON array of source objects. This example includes the root parser, a dispatched command, a wrapper backed by a separate API source, and an API-only source.

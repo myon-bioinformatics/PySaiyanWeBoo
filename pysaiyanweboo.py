@@ -9,7 +9,7 @@ only as an explicit subprocess helper for pytest/CI one-liners.
 from __future__ import annotations
 
 import argparse, ast, base64, binascii, colorsys, errno, hashlib, heapq, hmac, http.client, http.server, importlib.util, io, json, math, os, random, re, shlex, shutil, struct, subprocess, sys, time, unicodedata, urllib.error, urllib.request, xml.etree.ElementTree as ET, zlib
-from collections import Counter, defaultdict; from datetime import date, datetime, timezone; from decimal import Decimal; from html import escape; from pathlib import Path; from typing import Any, Sequence; from urllib.parse import parse_qsl, quote, urlsplit
+from collections import Counter, defaultdict; from datetime import date, datetime, timezone; from decimal import Decimal; from html import escape, unescape; from pathlib import Path; from typing import Any, Sequence; from urllib.parse import parse_qsl, quote, urlsplit
 
 THEMES = ("modern", "github-like")
 # Token-only candidates: their values live in the Python tokens.css source; not in contract v1 yet.
@@ -2266,31 +2266,73 @@ def _blocks(value: Any, depth: int) -> list:
     return value
 
 
-def back_nav_html(back: Any, *, test_id: str | None = None) -> str:
-    """🏠 The way back, before a page's content: ``OWNER/REPO`` gives 🏠 the owner's portfolio (``https://OWNER.github.io/``)
-    · 🐙 the repository on GitHub; or pass a ``links`` block's items (``[{"label", "href"}]``) for another way back. It is
-    marked ``data-ui-back``; ``test_id`` adds ``data-testid`` for a consumer's browser tests."""
+def _back_links(back: Any) -> Any:
+    """``OWNER/REPO`` as its two links (🏠 the owner's portfolio, 🐙 the repository); a list of links as it is."""
     if isinstance(back, str):
         parts = back.split("/")
         if len(parts) != 2 or not all(p and p not in {".", ".."} and all(c.isalnum() or c in "._-" for c in p) for p in parts):
             raise ValueError("the way back is OWNER/REPO or a list of links")
         back = [{"label": "🏠 ポートフォリオ", "href": f"https://{parts[0].lower()}.github.io/"},
                 {"label": "🐙 GitHub リポジトリ", "href": f"https://github.com/{parts[0]}/{parts[1]}"}]
+    return back
+
+
+def back_nav_html(back: Any, *, test_id: str | None = None) -> str:
+    """🏠 The way back, before a page's content: ``OWNER/REPO`` gives 🏠 the owner's portfolio (``https://OWNER.github.io/``)
+    · 🐙 the repository on GitHub; or pass a ``links`` block's items (``[{"label", "href"}]``) for another way back. It is
+    marked ``data-ui-back``; ``test_id`` adds ``data-testid`` for a consumer's browser tests."""
+    back = _back_links(back)
     test = f' data-testid="{escape(_spec_text(test_id, "test id", limit=80, required=True), quote=True)}"' if test_id is not None else ""
     return f'<nav class="ui-back" aria-label="関連リンク" data-ui-back{test}>{_page_block({"type": "links", "items": back}, depth=0)}</nav>'
 
 
-def add_back_nav(page: str, back: Any, *, test_id: str | None = None) -> str:
+def add_back_nav(page: str, back: Any, *, test_id: str | None = None, chrome: bool = False) -> str:
     """🏠 Put ``back_nav_html(back)`` right after the opening ``<main>`` (else ``<body>``) of a built page (a page that
-    already has a way back keeps it). From the shell: ``--page spec.json --repository OWNER/REPO``."""
+    already has a way back keeps it). ``chrome=True`` also gives the page the header, side and foot every page of a site carries
+    (``add_site_chrome`` with the same links). From the shell: ``--page spec.json --repository OWNER/REPO`` (with the chrome)."""
     if "data-ui-back" in page:
         return page
+    nav = back_nav_html(back, test_id=test_id)
     for tag in ("<main", "<body"):
         start = page.find(tag)
         end = page.find(">", start) if start >= 0 else -1
         if end >= 0:
-            return page[:end + 1] + back_nav_html(back, test_id=test_id) + page[end + 1:]
+            page = page[:end + 1] + nav + page[end + 1:]
+            return add_site_chrome(page, _back_links(back)) if chrome else page
     raise ValueError("page has no <main> or <body> to put the way back in")
+
+
+def add_site_chrome(page: str, links: Any, *, title: str = "GUIDE") -> str:
+    """🧰 The header, side and foot every page of a site carries, on a built page (one that has them keeps them). ``links`` are the
+    places it leads to (``[{"label": "🏠 ポートフォリオ", "href": …}, …]``, 1 to 8, each label an emoji and words): the first is 🏠.
+
+    Header: the chrome (``chrome_html``) — 📟 a board named ``title`` that says what the page is (its ``<meta name="description">``,
+    else the muted line under its heading, else a line any page can carry: its title and where 🚪 🏠 lead) and where the links lead,
+    🫧 the round face that follows the pointer, 🏠, the other links by their emoji, ⭐ ⚙️. Side: ☰ the page's own sections, ⋯.
+    Foot: the door (``door_html(foot=True)``) — 🚪 the links and 📌 this page as a pull-down, 📦 the page's size. ⭐ and 🌐 are kept
+    under the chrome's default id, so every page of one origin shares them. A page whose CSP lists its scripts or styles gets the
+    parts' hashes listed (``add_part``)."""
+    if '<div class="ui-door-foot">' in page:
+        return page
+    if not isinstance(links, list) or not 1 <= len(links) <= 8 or any(not isinstance(l, dict) or set(l) != {"label", "href"} for l in links):
+        raise ValueError("links lists 1 to 8 {label, href}")
+    places = [(mark, words or mark, link["href"]) for link in links for mark, _, words in [str(link["label"]).strip().partition(" ")]]
+    heading = re.search(r"<title>(.*?)</title>", page, re.S)
+    name = unescape(heading[1]).strip() if heading else ""
+    said = re.search(r'<meta name="description" content="([^"]*)"', page) or re.search(r'<h1 class="ui-title">[^<]*</h1><p class="ui-muted">([^<]*)</p>', page)
+    about = unescape(said[1]).strip() if said else ""
+    about = about or f"{name or title}：このページの案内。🚪 でほかの場所へ、🏠 で戻れます。"
+    lines = [part if len(part) <= 120 else part[:119] + "…" for part in (p.strip() for p in re.split(r"(?<=[。！？])|(?<=[.!?])\s+", about)) if part][:3]
+    spec = {"home": places[0][2], "tools": {mark: {"label": words, "href": href} for mark, words, href in places[1:]},
+            "board": {"title": title, "items": [{"text": text} for text in lines + [f"{mark} {words}"[:120] for mark, words, _ in places]][:12]}}
+    face, head = component_parts("gaze-avatar"), component_parts("chrome", spec)
+    tools_nav = '<nav class="ui-world-tools">'
+    head["html"] = head["html"].replace(tools_nav, face["html"] + tools_nav, 1)                   # 🫧 after the board
+    page = add_part(page, {"css": face["css"] + ".ui-world-head .ui-gaze{flex:none;margin:0 4px}", "js": face["js"]})
+    page = add_part(page, head, at="top")
+    pages = [{"emoji": mark, "label": words[:40], "href": href} for mark, words, href in places] + [{"emoji": "📌", "label": name[:40] or title, "href": "./"}]
+    door = component_parts("door", {"schema": DOOR_SCHEMA, "k": 0, "pages": pages, "current": "./"}, foot=True, size=True)
+    return stamp_page_size(add_part(page, door))
 
 
 def _unlayer(css: str) -> str:
@@ -21139,7 +21181,7 @@ def main(argv: list[str] | None = None) -> int:
                 for name, data in {**files, args.page.name: (json.dumps(spec, ensure_ascii=False, indent=2) + "\n").encode("utf-8")}.items():
                     (args.home_screen / name).write_bytes(data)
             page = page_document(spec, layouts=layouts)
-            sys.stdout.write(add_back_nav(page, args.repository) if args.repository else page)
+            sys.stdout.write(add_back_nav(page, args.repository, chrome=True) if args.repository else page)
         except (OSError, ValueError, KeyError, TypeError, SyntaxError) as exc:
             parser.error(str(exc))
         return 0
