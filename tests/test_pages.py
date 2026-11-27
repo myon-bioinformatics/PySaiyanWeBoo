@@ -299,7 +299,12 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
         spec = {"schema": "web-ui-page/1", "title": "xprobe ガイド", "description": "単一ファイルのテスト支援。まずは 1 行で。", "blocks": [{"type": "heading", "text": "使い方"}]}
         plain = ui.page_document(spec)
         page = ui.add_back_nav(plain, "myon-bioinformatics/xprobe", chrome=True)
-        self.assertEqual(page, ui.add_site_chrome(ui.add_back_nav(plain, links), links))
+        self.assertEqual(page, ui.add_back_nav(plain, links, chrome=True))
+        self.assertEqual(page, ui.add_back_nav(page, links, chrome=True))
+        self.assertIn('data-ui-back data-testid="guide-back"', ui.add_back_nav(plain, links, chrome=True, test_id="guide-back"))
+        self.assertNotIn('<nav class="ui-back"', page)
+        for link in links:
+            self.assertEqual(len(re.findall(r'<a\b[^>]* href="' + re.escape(link["href"]) + r'"', page)), 1)
         self.assertEqual(ui.add_site_chrome(page, links), page)                                        # a page that has them keeps them
         self.assertEqual(ui.add_back_nav(plain, "myon-bioinformatics/xprobe"), ui.add_back_nav(plain, links))   # without chrome: as it was
         self.assertNotIn("ui-chrome", ui.add_back_nav(plain, links))
@@ -310,7 +315,7 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
         items = [html.unescape(t) for t in re.findall(r'<span class="ui-board-item">([^<]*)</span>', body)]
         self.assertEqual(items, ["単一ファイルのテスト支援。", "まずは 1 行で。", "🏠 ポートフォリオ", "🐙 GitHub リポジトリ"])
         self.assertIn('<strong>GUIDE</strong>', body)
-        self.assertIn('</div><button type="button" class="ui-gaze"', body[:body.index('<nav class="ui-world-tools">')])        # 🫧 after the board
+        self.assertIn('</div><button type="button" class="ui-gaze"', body[:body.index('<nav class="ui-world-tools" aria-label="関連リンク" data-ui-back>')])        # 🫧 after the board
         self.assertIn('<a class="ui-world-home" href="https://myon-bioinformatics.github.io/"', body)
         self.assertRegex(body, r'href="https://github.com/myon-bioinformatics/xprobe"[^>]*>🐙')
         options = re.findall(r'<option value="([^"]*)"[^>]*>([^<]*)</option>', body[body.index('<div class="ui-door-foot">'):])
@@ -330,7 +335,7 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
                 ui.add_site_chrome(plain, bad)
 
     def test_page_cli_puts_the_way_back_first_with_repository(self):
-        """🏠 --page SPEC --repository OWNER/REPO: the nav comes right after <main>, before the title; without it, none."""
+        """🏠 --page SPEC --repository OWNER/REPO: the common header owns the nav before <main>; without it, none."""
         with tempfile.TemporaryDirectory() as tmp:
             spec = Path(tmp) / "guide.page.json"
             spec.write_text(json.dumps({"schema": "web-ui-page/1", "title": "Guide", "blocks": []}), encoding="utf-8")
@@ -340,7 +345,11 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
                 with self.subTest(argv=argv), contextlib.redirect_stdout(out):
                     self.assertEqual(pysaiyanweboo.main(argv), 0)
                 page = out.getvalue()
-                self.assertEqual('<main class="ui-page"><nav class="ui-back"' in page, expect)
+                marker = '<nav class="ui-world-tools" aria-label="関連リンク" data-ui-back>'
+                self.assertEqual(marker in page, expect)
+                self.assertNotIn('<nav class="ui-back"', page)
+                if expect:
+                    self.assertLess(page.index(marker), page.index('<main class="ui-page">'))
                 self.assertEqual(page.count("data-ui-back"), int(expect))
                 self.assertEqual(('<div class="ui-chrome ' in page, '<div class="ui-door-foot">' in page), (expect, expect))   # 🧰 with the way back, the chrome
 

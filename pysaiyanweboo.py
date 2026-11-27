@@ -2288,21 +2288,22 @@ def back_nav_html(back: Any, *, test_id: str | None = None) -> str:
 
 def add_back_nav(page: str, back: Any, *, test_id: str | None = None, chrome: bool = False) -> str:
     """🏠 Put ``back_nav_html(back)`` right after the opening ``<main>`` (else ``<body>``) of a built page (a page that
-    already has a way back keeps it). ``chrome=True`` also gives the page the header, side and foot every page of a site carries
-    (``add_site_chrome`` with the same links). From the shell: ``--page spec.json --repository OWNER/REPO`` (with the chrome)."""
+    already has a way back keeps it). With ``chrome=True``, put the links in the new common header instead of adding a second
+    navigation block. From the shell: ``--page spec.json --repository OWNER/REPO``."""
     if "data-ui-back" in page:
         return page
+    if chrome and '<div class="ui-door-foot">' not in page:
+        return add_site_chrome(page, _back_links(back), _back_nav=True, _test_id=test_id)
     nav = back_nav_html(back, test_id=test_id)
     for tag in ("<main", "<body"):
         start = page.find(tag)
         end = page.find(">", start) if start >= 0 else -1
         if end >= 0:
-            page = page[:end + 1] + nav + page[end + 1:]
-            return add_site_chrome(page, _back_links(back)) if chrome else page
+            return page[:end + 1] + nav + page[end + 1:]
     raise ValueError("page has no <main> or <body> to put the way back in")
 
 
-def add_site_chrome(page: str, links: Any, *, title: str = "GUIDE") -> str:
+def add_site_chrome(page: str, links: Any, *, title: str = "GUIDE", _back_nav: bool = False, _test_id: str | None = None) -> str:
     """🧰 The header, side and foot every page of a site carries, on a built page (one that has them keeps them). ``links`` are the
     places it leads to (``[{"label": "🏠 ポートフォリオ", "href": …}, …]``, 1 to 8, each label an emoji and words): the first is 🏠.
 
@@ -2327,7 +2328,11 @@ def add_site_chrome(page: str, links: Any, *, title: str = "GUIDE") -> str:
             "board": {"title": title, "items": [{"text": text} for text in lines + [f"{mark} {words}"[:120] for mark, words, _ in places]][:12]}}
     face, head = component_parts("gaze-avatar"), component_parts("chrome", spec)
     tools_nav = '<nav class="ui-world-tools">'
-    head["html"] = head["html"].replace(tools_nav, face["html"] + tools_nav, 1)                   # 🫧 after the board
+    guide_nav = tools_nav
+    if _back_nav:
+        test = f' data-testid="{escape(_spec_text(_test_id, "test id", limit=80, required=True), quote=True)}"' if _test_id is not None else ""
+        guide_nav = f'<nav class="ui-world-tools" aria-label="関連リンク" data-ui-back{test}>'
+    head["html"] = head["html"].replace(tools_nav, face["html"] + guide_nav, 1)                   # 🫧 after the board
     page = add_part(page, {"css": face["css"] + ".ui-world-head .ui-gaze{flex:none;margin:0 4px}", "js": face["js"]})
     page = add_part(page, head, at="top")
     pages = [{"emoji": mark, "label": words[:40], "href": href} for mark, words, href in places] + [{"emoji": "📌", "label": name[:40] or title, "href": "./"}]
