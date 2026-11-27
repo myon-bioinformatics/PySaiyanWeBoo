@@ -8004,7 +8004,8 @@ def test_the_labels_switch_flips_emoji_faces_and_short_words_on_one_page():
     """🖥️ ⇄ 📱 emoji faces by default, short words (as on a PC) after a flip: one body attribute, CSS in the core bundle, the
     flip remembered and reachable from a header row (key "labels"); rows of controls marked as groups get a light line between."""
     button = ui.labels_switch_html()
-    assert 'data-ui-labels-switch data-ui-word="📱 絵文字" aria-pressed="false"' in button and button.endswith(">🖥️</button>")
+    assert 'data-ui-labels-switch data-ui-word="📱 To iconic" aria-pressed="false"' in button and button.endswith(">💻</button>")
+    assert 'aria-label="💻 To textual ⇄ 📱 To iconic"' in button
     assert ' id="labels-switch" data-ui-labels-switch' in ui.labels_switch_html(id="labels-switch") and " id=" not in button
     assert "&lt;b&gt;" in ui.labels_switch_html(word="<b>") and ui.COMPONENTS["labels-switch"] == {
         "html": "labels_switch_html", "css": (), "js": ("ui.js",), "mount": "bindLabels();"}

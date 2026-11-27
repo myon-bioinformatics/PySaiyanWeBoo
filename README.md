@@ -62,7 +62,7 @@ Single-file pages: `render_document(css=bundled_css())` (or `python -S pysaiyanw
 stylesheet and theme, built in memory from the sources in `pysaiyanweboo.py`; nothing is written to the repository. Because all themes ship
 together, `bindTheme()` from `ui.js` switches `data-ui-theme` live, with no stylesheet swap and no reload.
 In the same way `bindLabels()` switches `data-ui-labels` between emoji faces (the default) and short words, as on a PC: a
-control carries both (`data-ui-word="エクスポート"` beside its `📤`), the 🖥️ ⇄ 📱 button is `labels_switch_html()` (or a header
+control carries both (`data-ui-word="エクスポート"` beside its `📤`), the 💻 To textual ⇄ 📱 To iconic button is `labels_switch_html()` (or a header
 row with `key: "labels"`), and rows marked `data-ui-group` get a light dashed line between them, for groups such as create /
 update / delete. The choice is remembered in the browser.
 From Node, run `node vendor/py_launch.cjs -- pysaiyanweboo.py --css-bundle`.

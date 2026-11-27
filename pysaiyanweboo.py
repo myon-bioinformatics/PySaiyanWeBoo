@@ -5356,8 +5356,8 @@ def seed_roll_html(css: str = "") -> str:
     return f'<button{klass} type="button" data-ui-seed-roll aria-label="Random seed" title="Random seed">🎲</button>'
 
 
-def labels_switch_html(*, face: str = "🖥️", word: str = "📱 絵文字", label: str = "表示: 絵文字 ⇄ 文字（PC 向け）", id: str = "") -> str:
-    """🖥️ ⇄ 📱 one button ``bindLabels()`` binds: it flips ``<body data-ui-labels>`` between ``emoji`` (the default, the face
+def labels_switch_html(*, face: str = "💻", word: str = "📱 To iconic", label: str = "💻 To textual ⇄ 📱 To iconic", id: str = "") -> str:
+    """💻 ⇄ 📱 one button ``bindLabels()`` binds: it flips ``<body data-ui-labels>`` between ``emoji`` (the default, the face
     shown) and ``words`` (every ``data-ui-word`` element shows its short word, as on a PC). ``word`` is what the button itself
     says while words show, so it reads as the way back. A header row with ``key: "labels"`` does the same; see ``chrome_html``.
 
