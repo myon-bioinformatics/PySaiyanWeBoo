@@ -1118,6 +1118,32 @@ def test_gif_merges_still_frames_and_can_shrink():
     assert image.size == (32, 24) and image.n_frames == 2
 
 
+def test_a_still_picture_zooms_in_and_back_out_for_each_anchor():
+    """🎞 zoom_shots (Ironmate's png_zoom_gif): the whole picture, in toward each anchor, back out the same way, with the stops held."""
+    pytest.importorskip("PIL")
+    from PIL import Image
+    from tools.check_visual_regression import rgb_png
+    png = rgb_png(40, 40, (0, 0, 255), rectangles=[((0, 20, 20, 40), (255, 0, 0)), ((20, 0, 40, 20), (0, 255, 0))])   # red bottom left, green top right
+    shots = pysaiyanweboo.zoom_shots(png, anchors=["↙️", (1, 0)], factor=2, steps=4)
+    assert len(shots) == 1 + 2 * 4 * 2                          # the whole picture, then four in and four out for each anchor
+    frames = [Image.open(io.BytesIO(shot)).convert("RGB") for _, shot in shots]
+    assert frames[0].tobytes() == frames[8].tobytes() == frames[16].tobytes() == Image.open(io.BytesIO(png)).convert("RGB").tobytes()
+    assert frames[4].getpixel((20, 20)) == (255, 0, 0) and frames[12].getpixel((20, 20)) == (0, 255, 0)   # each peak is filled by its corner
+    assert [frames[i].tobytes() for i in (1, 2, 3)] == [frames[i].tobytes() for i in (7, 6, 5)]            # out is in, backwards
+    gaps = [round((b - a) * 1000) for (a, _), (b, _) in zip(shots, shots[1:])]
+    assert gaps == [460, 60, 60, 60, 460, 60, 60, 60] * 2      # the whole picture and each peak stay 400 ms longer
+    image = Image.open(io.BytesIO(pysaiyanweboo.encode_gif(shots, tail_ms=460)))
+    assert image.n_frames == 17 and image.size == (40, 40)
+    clear = pysaiyanweboo.studio_png_encode(2, 2, bytes(16))    # a clear picture lies on the background: a GIF keeps no partial alpha
+    assert Image.open(io.BytesIO(pysaiyanweboo.zoom_shots(clear, steps=2, background=(1, 2, 3))[0][1])).convert("RGB").getpixel((0, 0)) == (1, 2, 3)
+    for bad in ({"factor": 1}, {"factor": True}, {"factor": 65}, {"steps": 1}, {"steps": 2.0}, {"anchors": []}, {"anchors": ["nowhere"]},
+                {"anchors": [(0, 2)]}, {"anchors": "center"}, {"background": (0, 0)}, {"frame_ms": 5}, {"hold_ms": -1}):
+        with pytest.raises(ValueError):
+            pysaiyanweboo.zoom_shots(png, **bad)
+    with pytest.raises(ValueError, match="32000000"):
+        pysaiyanweboo.zoom_shots(rgb_png(800, 800, (0, 0, 0)), steps=120)
+
+
 def test_gif_zoom_goes_in_toward_the_anchor_and_stays_on_the_real_clock():
     pytest.importorskip("PIL")
     from PIL import Image
