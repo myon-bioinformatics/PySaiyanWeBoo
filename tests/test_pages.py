@@ -4104,6 +4104,338 @@ class PatternTests(unittest.TestCase):
         self.assertNotIn("</script", source.lower())
         self.assertNotIn('"""', source)
 
+    @staticmethod
+    def _pixel_grids(seed: int = 20261127, count: int = 40, side: int = 12) -> list[dict]:
+        rng = random.Random(seed)
+        grids = []
+        for _ in range(count):
+            width, height, colors = rng.randint(1, side), rng.randint(1, side), rng.randint(1, 6)
+            grid = {"schema": pysaiyanweboo.PIXEL_GRID_SCHEMA, "width": width, "height": height,
+                    "colors": ["#%08x" % rng.getrandbits(32) if rng.random() < .8 else "#%06X00" % rng.getrandbits(24) for _ in range(colors)],
+                    "pixels": [[rng.randrange(colors) for _ in range(width)] for _ in range(height)]}
+            for key, value in (("mask", "cloud"), ("palette", "C01"), ("effect", None), ("resampling", "nearest"), ("note", "free <text>"), ("palette", "bad token!")):
+                if rng.random() < .35:
+                    grid[key] = value
+            grids.append(grid)
+        return grids
+
+    def test_pixel_grid_checks_resizes_draws_and_describes(self):
+        """🟦 pixel_grid_*: the grid of Ironmate's browser tools; base64_length: the characters a file takes."""
+        ui = pysaiyanweboo
+        grid = {"schema": ui.PIXEL_GRID_SCHEMA, "width": 2, "height": 2, "colors": ["#00000000", "#ff0000ff", "#00FF0080"], "pixels": [[0, 1], [2, 1]],
+                "palette": "C01", "effect": None, "mask": "has space", "note": "free text"}
+        checked = ui.pixel_grid_validate({**grid, "width": 2.0})
+        self.assertEqual(checked, grid); self.assertIsNot(checked["pixels"], grid["pixels"]); self.assertIs(type(checked["width"]), int)
+        self.assertEqual(ui.pixel_grid_svg(grid, 3), '<svg xmlns="http://www.w3.org/2000/svg" width="6" height="6" viewBox="0 0 2 2" shape-rendering="crispEdges">'
+                         '<rect x="1" y="0" width="1" height="1" fill="#ff0000" fill-opacity="1"/><rect x="0" y="1" width="1" height="1" fill="#00FF00" fill-opacity="0.5019607843137255"/>'
+                         '<rect x="1" y="1" width="1" height="1" fill="#ff0000" fill-opacity="1"/></svg>')
+        self.assertEqual(ui.pixel_grid_header(grid), {"schema": ui.PIXEL_GRID_SCHEMA, "width": 2, "height": 2, "colors": grid["colors"], "palette": "C01", "effect": None})
+        wide = ui.pixel_grid_resize(grid, 4, 2)                              # a whole-number enlargement loses nothing
+        self.assertEqual((wide["pixels"], wide["resampling"], list(wide)[-1]), ([[0, 0, 1, 1], [2, 2, 1, 1]], "nearest", "resampling"))
+        self.assertEqual(ui.pixel_grid_resize(wide, 2, 2)["pixels"], grid["pixels"])
+        self.assertEqual(ui.pixel_grid_resize(grid, 1, 1)["pixels"], [[1]])   # the old cell under the new cell's centre
+        png = ui.pixel_grid_png(grid, 3)
+        self.assertEqual(png, ui.pixel_grid_png(grid, 3))                     # the same grid and scale: the same bytes
+        text = b"ironmate\x00" + json.dumps(ui.pixel_grid_header(grid), separators=(",", ":")).encode("ascii")
+        self.assertEqual(png[33:45 + len(text)], struct.pack(">I", len(text)) + b"tEXt" + text + struct.pack(">I", zlib.crc32(b"tEXt" + text)))
+        decoded = ui.studio_png_decode(png)
+        self.assertEqual(decoded[:2], (6, 6))
+        self.assertEqual(bytes(decoded[2][:12]), bytes(12)); self.assertEqual(bytes(decoded[2][12:16]), b"\xff\x00\x00\xff")
+        self.assertEqual(bytes(decoded[2][6 * 4 * 3:6 * 4 * 3 + 4]), b"\x00\xff\x00\x80")
+        self.assertEqual([ui.base64_length(n) for n in (0, 1, 2, 3, 4, 300)], [0, 4, 4, 4, 8, 400])
+        self.assertEqual([ui.base64_length(n) for n in (1, 2, 3, 4, 300)], [len(base64.b64encode(bytes(n))) for n in (1, 2, 3, 4, 300)])
+        self.assertEqual(ui.base64_length(3, True), 4 + len("data:image/png;base64,"))
+        for bad, message in (({**grid, "schema": "x"}, "グリッド"), ({**grid, "width": 257}, "グリッド"), ({**grid, "height": 0}, "グリッド"), ({**grid, "width": True}, "グリッド"),
+                             (None, "グリッド"), ([grid], "グリッド"), ({**grid, "colors": []}, "色表"), ({**grid, "colors": ["#ff0000"]}, "色表"),
+                             ({**grid, "colors": ["#ff0000ff\n"]}, "色表"), ({**grid, "colors": "#ff0000ff"}, "色表"), ({**grid, "pixels": [[0, 1]]}, "色番号"),
+                             ({**grid, "pixels": [[0, 1], [2, 3]]}, "色番号"), ({**grid, "pixels": [[0, 1], [2, 1.5]]}, "色番号"), ({**grid, "pixels": [[0, 1], [2]]}, "色番号")):
+            with self.subTest(bad=repr(bad)[:70]), self.assertRaisesRegex(pysaiyanweboo.StudioError, message):
+                ui.pixel_grid_validate(bad)
+        for call, message in ((lambda: ui.pixel_grid_resize(grid, 0, 2), "幅・高さ"), (lambda: ui.pixel_grid_resize(grid, 2, 257), "幅・高さ"), (lambda: ui.pixel_grid_resize(grid, 2.5, 2), "幅・高さ"),
+                              (lambda: ui.pixel_grid_svg(grid, 17), "倍率は1〜16"), (lambda: ui.pixel_grid_svg(grid, 0), "倍率は1〜16"), (lambda: ui.pixel_grid_png(grid, 65), "倍率は1〜64"),
+                              (lambda: ui.base64_length(-1), "ファイルサイズ"), (lambda: ui.base64_length(1.5), "ファイルサイズ"), (lambda: ui.base64_length(2 ** 53), "ファイルサイズ")):
+            with self.assertRaisesRegex(pysaiyanweboo.StudioError, message):
+                call()
+        for g in self._pixel_grids():                                         # every random grid: the header never carries pixels, free text or a bad token
+            header = ui.pixel_grid_header(g)
+            self.assertLessEqual(set(header), {"schema", "width", "height", "colors", "mask", "palette", "effect", "resampling"})
+            self.assertNotIn("bad token!", header.values())
+            self.assertEqual(ui.pixel_grid_resize(ui.pixel_grid_resize(g, g["width"] * 3, g["height"] * 2), g["width"], g["height"])["pixels"], g["pixels"])
+
+    @unittest.skipUnless(node26(), "Node 26+ is required")
+    def test_pixel_grid_js_gives_what_python_gives(self):
+        """js/pixel-grid.js against pixel_grid_* on 16 random grids: the checked copy, resizes, SVG, the PNG's header chunk; Base64 length; refusals.
+        (Small grids: the cases travel to Node as one argument, which the system caps at 128 KiB.)"""
+        ui, rng, cases = pysaiyanweboo, random.Random(7), []
+        for g in self._pixel_grids(count=16, side=6):
+            w, h, scale = rng.randint(1, 9), rng.randint(1, 9), rng.randint(1, 16)
+            png = ui.pixel_grid_png(g, 1)
+            end = 41 + struct.unpack(">I", png[33:37])[0] + 4
+            cases.append({"grid": g, "valid": ui.pixel_grid_validate(g), "w": w, "h": h, "resized": ui.pixel_grid_resize(g, w, h), "scale": scale, "svg": ui.pixel_grid_svg(g, scale),
+                          "header": ui.pixel_grid_header(g), "chunk": png[33:end].hex()})
+        sizes = [0, 1, 2, 3, 4, 2 ** 31, (2 ** 53 - 1) // 2, *(rng.randrange(10 ** rng.randint(1, 12)) for _ in range(40))]
+        lengths = [[n, ui.base64_length(n), ui.base64_length(n, True)] for n in sizes]
+        bad = [None, [], {"schema": "x"}, {**cases[0]["grid"], "width": 300}, {**cases[0]["grid"], "colors": ["#ff0000"]}, {**cases[0]["grid"], "colors": ["#ff0000ff\n"]},
+               {**cases[0]["grid"], "pixels": []}]
+        script = """
+import assert from "node:assert/strict";
+import { PIXEL_GRID_SCHEMA, pixelGridValidate, pixelGridResize, pixelGridSvg, pixelGridHeader, base64Length, crc32, pngChunk } from "./js/pixel-grid.js";
+const [cases, lengths, bad, schema] = JSON.parse(process.argv[2]);
+assert.equal(PIXEL_GRID_SCHEMA, schema);
+const hex = bytes => [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
+for (const c of cases) {
+  assert.equal(JSON.stringify(pixelGridValidate(c.grid)), JSON.stringify(c.valid));
+  assert.equal(JSON.stringify(pixelGridResize(c.grid, c.w, c.h)), JSON.stringify(c.resized));
+  assert.equal(pixelGridSvg(c.grid, c.scale), c.svg);
+  assert.equal(JSON.stringify(pixelGridHeader(c.grid)), JSON.stringify(c.header));
+  assert.equal(hex(pngChunk("tEXt", new TextEncoder().encode("ironmate\\0" + JSON.stringify(pixelGridHeader(c.grid))))), c.chunk);
+}
+for (const [n, plain, uri] of lengths) { assert.equal(base64Length(n), plain); assert.equal(base64Length(n, true), uri); }
+for (const value of bad) assert.throws(() => pixelGridValidate(value), Error);
+for (const call of [() => pixelGridResize(cases[0].grid, 0, 1), () => pixelGridResize(cases[0].grid, 1, 2.5), () => pixelGridSvg(cases[0].grid, 17), () => base64Length(-1), () => base64Length(2 ** 53)]) assert.throws(call, Error);
+assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
+"""
+        payload = json.dumps([cases, lengths, bad, ui.PIXEL_GRID_SCHEMA])
+        self.assertLess(len(payload.encode("utf-8")), 96 * 1024)
+        node_js(script, payload)
+
+    def test_two_images_are_compared_in_numbers_one_can_work_out_by_hand(self):
+        """🔍 image_error, image_blend, image_foreground, image_edge_energy, image_translate, mask_overlap, image_compare (Ironmate's image_compare and studio_image_quality)."""
+        ui = pysaiyanweboo
+        px = lambda *pixels: b"".join(bytes(p) for p in pixels)
+        red, clear, white, black = (255, 0, 0, 255), (0, 0, 0, 0), (255, 255, 255, 255), (0, 0, 0, 255)
+        a = (2, 2, px(red, clear, clear, clear))                              # one red pixel, top left
+        b = (2, 2, px(clear, red, clear, clear))                              # the same pixel, one to the right
+        self.assertEqual(ui.image_error(a, a), {"rgb_mae": 0.0, "rgb_rmse": 0.0, "alpha_mae": 0.0, "exact_rgba_pixels": 4, "pixels": 4})
+        error = ui.image_error(a, b)                                          # on white: 2 pixels differ, in green and blue, by 255 each
+        self.assertEqual((error["rgb_mae"], error["alpha_mae"], error["exact_rgba_pixels"]), (4 * 255 / 12, 2 * 255 / 4, 2))
+        self.assertAlmostEqual(error["rgb_rmse"], math.sqrt(4 * 255 * 255 / 12))
+        self.assertEqual(ui.image_error((1, 1, px((0, 0, 0, 128))), (1, 1, px(black)), (0, 0, 0))["rgb_mae"], 0.0)   # on black, half-clear black is black
+        self.assertEqual(ui.image_blend(a, b, 0), a); self.assertEqual(ui.image_blend(a, b, 10), b)
+        half = ui.image_blend((1, 1, px(red)), (1, 1, px((0, 0, 255, 255))), 5)
+        self.assertEqual(half, (1, 1, px((128, 0, 128, 255))))
+        self.assertEqual(ui.image_blend((1, 1, px(red)), (1, 1, px(clear)), 5), (1, 1, px((255, 0, 0, 128))))   # a clear pixel has no colour to mix in
+        self.assertEqual(ui.image_foreground((3, 1, px(red, white, (250, 250, 250, 255)))), {0})
+        self.assertEqual(ui.image_foreground((2, 1, px((0, 0, 0, 32), (0, 0, 0, 33)))), {1})                 # 32 away from white is not enough, 33 is
+        self.assertEqual(ui.image_edge_energy((2, 2, px(white, black, white, white))), [765, 765, 0, 0])      # right neighbour, then the one below
+        moved = ui.image_translate(a, 1, 0)
+        self.assertEqual((moved["image"], moved["clipped_nonfill"]), (b, 0))
+        self.assertEqual(ui.image_translate(moved["image"], -1, 0)["image"], a)                               # nothing clipped: back exactly
+        self.assertEqual(ui.image_translate(b, 1, 0)["clipped_nonfill"], 1)
+        self.assertEqual(ui.image_translate(a, 0, 5, white)["image"], (2, 2, px(white) * 4))
+        self.assertEqual(ui.mask_overlap(2, 2, {0}, {0}), {"IoU": 1.0, "Dice": 1.0, "Energy_Dice": None, "Symmetric_Near_Field": 1.0})
+        self.assertEqual(ui.mask_overlap(2, 2, set(), set())["IoU"], 1.0)
+        miss = ui.mask_overlap(2, 2, {0}, {1})                                # no overlap, but the two pixels touch by an edge: a half each way
+        self.assertEqual((miss["IoU"], miss["Dice"], miss["Symmetric_Near_Field"]), (0.0, 0.0, 0.5))
+        self.assertEqual(ui.mask_overlap(2, 2, {0}, {3})["Symmetric_Near_Field"], 0.0)                         # diagonal: not touching
+        self.assertEqual(ui.mask_overlap(2, 2, {0, 1}, {1, 3}, [5, 1, 0, 2])["Energy_Dice"], 2 * 1 / (6 + 3))
+        same = ui.image_compare(a, a)
+        self.assertEqual((same["IoU"], same["RGBA_L1_Similarity"], same["Aligned_IoU"], same["Alignment_L1_Pixels"]), (1.0, 1.0, 1.0, 0))
+        shifted = ui.image_compare(a, b)                                      # the shape is whole, one pixel to the right: said apart, not hidden
+        self.assertEqual((shifted["IoU"], shifted["Aligned_IoU"], shifted["Alignment_dx"], shifted["Alignment_dy"], shifted["Alignment_L1_Pixels"]), (0.0, 1.0, -1, 0, 1))
+        self.assertEqual(shifted["RGBA_L1_Similarity"], 1 - (4 * 255) / (16 * 255))
+        self.assertEqual(ui.image_compare(a, b, radius=0)["Aligned_IoU"], 0.0)
+        decoded = ui.studio_png_decode(ui.pixel_grid_png({"schema": ui.PIXEL_GRID_SCHEMA, "width": 2, "height": 2, "colors": ["#00000000", "#ff0000ff"], "pixels": [[1, 0], [0, 0]]}))
+        self.assertEqual(ui.image_compare(decoded, a)["RGBA_L1_Similarity"], 1.0)                             # a decoded PNG is an image
+        for call, message in ((lambda: ui.image_error(a, (1, 1, px(red))), "same size"), (lambda: ui.image_error((2, 2, b"x"), a), "an image is"),
+                              (lambda: ui.image_error((0, 2, b""), a), "an image is"), (lambda: ui.image_error(a, a, (0, 0, 256)), "background"),
+                              (lambda: ui.image_blend(a, b, 11), "blend needs"), (lambda: ui.image_blend(a, b, 1, 1), "blend needs"),
+                              (lambda: ui.image_translate(a, 0.5, 0), "integer translation"), (lambda: ui.image_translate(a, 1, 0, (0, 0, 0)), "fill"),
+                              (lambda: ui.mask_overlap(2, 2, {4}, set()), "outside grid"), (lambda: ui.mask_overlap(2, 2, {0}, {0}, [1, 2]), "energy"),
+                              (lambda: ui.mask_overlap(0, 2, set(), set()), "a grid has"), (lambda: ui.image_compare(a, b, radius=17), "radius"),
+                              (lambda: ui.image_compare(a, b, threshold=256), "threshold")):
+            with self.assertRaisesRegex(ValueError, message):
+                call()
+        rng = random.Random(11)                                               # random images: what must hold whatever the pixels are
+        for _ in range(20):
+            w, h = rng.randint(1, 6), rng.randint(1, 6)
+            x, y = ((w, h, bytes(rng.choice((0, 255, rng.randrange(256))) for _ in range(w * h * 4))) for _ in range(2))
+            result, back = ui.image_compare(x, y, radius=1), ui.image_compare(y, x, radius=1)
+            self.assertTrue(0 <= result["IoU"] <= result["Aligned_IoU"] <= 1 and 0 <= result["RGBA_L1_Similarity"] <= 1 and 0 <= result["Symmetric_Near_Field"] <= 1)
+            self.assertEqual((result["IoU"], result["Dice"], result["RGBA_L1_Similarity"]), (back["IoU"], back["Dice"], back["RGBA_L1_Similarity"]))
+            self.assertEqual(ui.image_error(x, x)["exact_rgba_pixels"], w * h)
+            self.assertLessEqual(ui.image_error(x, y)["rgb_mae"], ui.image_error(x, y)["rgb_rmse"] + 1e-9)
+
+    def test_many_images_with_a_status_each_become_one_page_and_a_summary(self):
+        """🗂️ image_thumbnail, image_digest_validate, image_digest_html, image_digest_markdown, image_digest (Ironmate's image_digest)."""
+        ui = pysaiyanweboo
+        red, blue = bytes((255, 0, 0, 255)), bytes((0, 0, 255, 255))
+        thumb = ui.image_thumbnail((4, 2, red * 2 + blue * 2 + red * 2 + blue * 2), 2, 3)   # 4 x 2 at width 2 is 2 x 1: the rest is white
+        self.assertEqual(thumb, (2, 3, red + blue + b"\xff" * 16))
+        self.assertEqual(ui.image_thumbnail((2, 2, red + blue + blue + red), 1, 1), (1, 1, bytes((128, 0, 128, 255))))   # the mean of what it covers
+        self.assertEqual(ui.image_thumbnail((1, 4, red * 4), 2, 2)[2], red * 4)                                   # taller than the tile: cut
+        spec = {"schema": ui.IMAGE_DIGEST_SCHEMA, "title": "Screens <1>", "rows": ["home", "list|2"], "cols": ["phone", "desktop"],
+                "meta": {"build": "abc", "link": "https://example.com/run?a=1&b=2"},
+                "cells": [{"row": "home", "col": "phone", "image": "shots/a.png", "status": "pass"},
+                          {"row": "home", "col": "desktop", "image": "shots/b.png", "status": "fail", "notes": ["320px:overlap", "<b>", "3", "4", "5", "6", "7"]},
+                          {"row": "list|2", "col": "phone"}]}
+        data = ui.image_digest_validate(spec)
+        self.assertEqual([c["status"] for c in data["cells"]], ["pass", "fail", "unknown"]); self.assertEqual(len(data["cells"][1]["notes"]), 6)
+        images = {"shots/a.png": ui.studio_png_encode(2, 2, red * 4), "shots/b.png": (3, 1, blue * 3)}             # PNG bytes, or an image already decoded
+        page, summary, info = ui.image_digest(spec, images)
+        self.assertEqual(info, {"schema": "ironmate-image-digest/1", "tile": [64, 128], "bytes": len(page.encode("utf-8")), "fits": True, "rows": 2, "cols": 2,
+                                "passed": 1, "statuses": {"fail": 1, "pass": 1, "unknown": 1}})
+        self.assertTrue(page.startswith("<!doctype html>") and "<title>Screens &lt;1&gt;</title>" in page and "<script" not in page and "http://" not in page)
+        self.assertEqual(page.count('<img src="data:image/png;base64,'), 2); self.assertEqual(page.count('width="64" height="128"'), 2)
+        self.assertIn('<td class="s-fail">', page); self.assertIn('<td class="missing">not run</td>', page); self.assertIn("320px:overlap<br>&lt;b&gt;", page)
+        self.assertIn('<a href="https://example.com/run?a=1&amp;b=2">link</a>', page); self.assertIn("Thumbnails 64x128 px · build abc", page)
+        png = base64.b64decode(re.search(r'base64,([A-Za-z0-9+/=]+)"', page)[1])
+        self.assertEqual(ui.studio_png_decode(png)[:2], (64, 128))
+        self.assertEqual(summary.splitlines(), ["<!-- ironmate-image-digest -->", "### Screens <1>", "", "1/4 passed; build abc. [Link](https://example.com/run?a=1&b=2)", "",
+                                                "| Row | Passed | Needs a look |", "| --- | --- | --- |", "| home | 1/2 | desktop (320px:overlap, &lt;b&gt;) |",
+                                                "| list&#124;2 | 0/2 | phone (unknown); desktop (not run) |"])
+        self.assertEqual(ui.image_digest_markdown(data, marker="<!-- mine -->").splitlines()[0], "<!-- mine -->")
+        noisy = {name: (200, 400, random.Random(i).randbytes(200 * 400 * 4)) for i, name in enumerate(images)}     # noise does not compress: the tiles must shrink
+        small_page, _, small = ui.image_digest(spec, noisy, max_bytes=20_000)
+        self.assertEqual((small["tile"], small["fits"]), ([32, 64], True)); self.assertLessEqual(len(small_page.encode("utf-8")), 20_000)
+        self.assertEqual(ui.image_digest(spec, noisy, max_bytes=20_000, tile=(16, 32))[2]["tile"], [16, 32])
+        for bad, message in (({**spec, "schema": "x"}, "expected schema"), ({**spec, "rows": ["a", "a"]}, "rows must be"), ({**spec, "cols": []}, "cols must be"),
+                             ({**spec, "cells": [{"row": "nope", "col": "phone"}]}, "listed row"), ({**spec, "cells": [spec["cells"][0]] * 2}, "two cells"),
+                             ({**spec, "cells": [{"row": "home", "col": "phone", "status": "Pass"}]}, "status must be"),
+                             ({**spec, "cells": [{"row": "home", "col": "phone", "image": "../x.png"}]}, "relative path"),
+                             ({**spec, "cells": [{"row": "home", "col": "phone", "image": "/etc/x.png"}]}, "relative path"),
+                             ({**spec, "cells": [{"row": "home", "col": "phone", "notes": ["x" * 201]}]}, "notes must be"),
+                             ({**spec, "meta": {"link": "http://example.com"}}, "https URL"), ({**spec, "title": "a\nb"}, "title must be")):
+            with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
+                ui.image_digest_validate(bad)
+        for call, message in ((lambda: ui.image_digest(spec, {}), "no such image"), (lambda: ui.image_digest(spec, images, max_bytes=100), "max_bytes"),
+                              (lambda: ui.image_digest(spec, images, tile=(8, 8)), "tile must be"), (lambda: ui.image_thumbnail((2, 2, b"x"), 2, 2), "an image is"),
+                              (lambda: ui.image_thumbnail((1, 1, red), 0, 2), "thumbnail is")):
+            with self.assertRaisesRegex(ValueError, message):
+                call()
+
+    def test_a_small_safe_part_of_svg_is_drawn_to_pixels_and_the_rest_is_refused(self):
+        """🖨️ svg_rasterize (Ironmate's svg_raster): rectangles by exact area, round shapes by 4 x 4 samples, nothing outside the part."""
+        ui = pysaiyanweboo
+        svg = lambda body, box="0 0 4 2", more="": f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{box}"{more}>{body}</svg>'
+        px = lambda image, x, y: tuple(image[2][(y * image[0] + x) * 4:(y * image[0] + x) * 4 + 4])
+        image = ui.svg_rasterize(svg('<rect x="1" y="1" width="2" height="1" fill="#f00"/>'))
+        self.assertEqual(image[:2], (4, 2))
+        self.assertEqual([px(image, x, 1) for x in range(4)], [(0, 0, 0, 0), (255, 0, 0, 255), (255, 0, 0, 255), (0, 0, 0, 0)])
+        self.assertEqual(image[2][:16], bytes(16))                                               # nothing drawn: clear, not white
+        half = ui.svg_rasterize(svg('<rect x="0.5" y="0" width="1" height="2" fill="#0f0"/>'))  # half of pixel 0 and half of pixel 1
+        self.assertEqual((px(half, 0, 0), px(half, 1, 0)), ((0, 255, 0, 128), (0, 255, 0, 128)))
+        self.assertEqual(px(ui.svg_rasterize(svg('<rect width="4" height="2"/>')), 0, 0), (0, 0, 0, 255))   # no fill is black, as in SVG
+        over = ui.svg_rasterize(svg('<rect width="4" height="2" fill="#fff"/><rect width="4" height="2" fill="#000" fill-opacity="0.5"/>'))
+        self.assertEqual(px(over, 0, 0), (128, 128, 128, 255))                                   # later shapes lie over earlier ones
+        group = ui.svg_rasterize(svg('<g transform="translate(2,1)" fill="#00f"><rect width="1" height="1"/></g><title>t</title>'))
+        self.assertEqual((px(group, 2, 1), px(group, 1, 1)), ((0, 0, 255, 255), (0, 0, 0, 0)))  # a group moves and lends its fill
+        wide = ui.svg_rasterize(svg('<rect width="2" height="2" fill="#abc"/>'), 8)             # twice the size: the shape keeps its half
+        self.assertEqual((wide[:2], px(wide, 3, 3), px(wide, 4, 3)), ((8, 4), (170, 187, 204, 255), (0, 0, 0, 0)))
+        disc = ui.svg_rasterize(svg('<circle cx="4" cy="4" r="4" fill="#f00"/>', "0 0 8 8"))
+        self.assertEqual((px(disc, 4, 4), px(disc, 0, 0)[3] < 64, px(disc, 3, 0)[3] > 128), ((255, 0, 0, 255), True, True))
+        self.assertEqual(disc, ui.svg_rasterize(svg('<ellipse cx="4" cy="4" rx="4" ry="4" fill="#f00"/>', "0 0 8 8")))
+        corner = ui.svg_rasterize(svg('<polygon points="0,0 4,0 0,4" fill="#f00"/>', "0 0 4 4"))
+        self.assertEqual((px(corner, 0, 0), px(corner, 3, 3)), ((255, 0, 0, 255), (0, 0, 0, 0)))
+        grid = {"schema": ui.PIXEL_GRID_SCHEMA, "width": 3, "height": 2, "colors": ["#00000000", "#ff0000ff", "#00ff0080"], "pixels": [[0, 1, 2], [2, 1, 0]]}
+        self.assertEqual(ui.svg_rasterize(ui.pixel_grid_svg(grid)), ui.studio_png_decode(ui.pixel_grid_png(grid)))   # the grid's own SVG comes back as its pixels
+        for body, word in (('<path d="M0 0"/>', "path"), ('<rect width="1" height="1" stroke="#000"/>', "stroke"), ('<text>a</text>', "text"),
+                           ('<rect width="1" height="1" style="fill:red"/>', "CSS"), ('<rect width="1" height="1" fill="red"/>', "fill"),
+                           ('<rect width="1" height="1" rx="1"/>', "rounded"), ('<script/>', "script"), ('<image href="x.png"/>', "image"),
+                           ('<g transform="rotate(3)"/>', "translate"), ('<rect width="-1" height="1"/>', "negative"), ('<polygon points="0,0 1,1"/>', "3")):
+            with self.assertRaisesRegex(ui.SvgError, word, msg=body):
+                ui.svg_rasterize(svg(body))
+        for text, word in (('<!DOCTYPE svg>' + svg(""), "DOCTYPE"), ("<svg", "XML"), ('<html/>', "root"), ('<svg xmlns="http://www.w3.org/2000/svg"/>', "viewBox"),
+                           (svg("", "0 0 0 2"), "positive"), (svg("", "0 0 4"), "4 numbers")):
+            with self.assertRaisesRegex(ui.SvgError, word, msg=text):
+                ui.svg_rasterize(text)
+        with self.assertRaisesRegex(ui.SvgError, "bytes"):
+            ui.svg_rasterize(svg(""), max_bytes=16)
+        with self.assertRaisesRegex(ui.SvgError, "pixels"):
+            ui.svg_rasterize(svg(""), 64, max_pixels=1024)
+        self.assertTrue(issubclass(ui.SvgError, ValueError))
+
+    def test_scenes_become_one_deck_with_page_operations(self):
+        """📽️ slide_deck_validate / _text / _parse / _edit, slide_template, slide_layer_native (Ironmate's slide studio and 📱 phone slides)."""
+        ui = pysaiyanweboo
+        page = ui.slide_template(1280, 720, "Title <>&", "本文\nSecond line")
+        self.assertEqual([(l["id"], l["x"], l["y"], l["w"], l["h"], l["fontSize"], l["bold"], l["wrap"]) for l in page["layers"]],
+                         [("title", 96, 720 * 0.08, 1088, 720 * 0.16, 1280 * 0.045, True, True), ("body", 96, 216, 1088, 720 * 0.55, 1280 * 0.027, False, True)])   # 7.5 % in, 85 % wide
+        deck = {"schema": ui.SLIDE_DECK_SCHEMA, "slides": [page]}
+        checked = ui.slide_deck_validate(deck)
+        self.assertEqual((checked["title"], list(checked)), ("Ironmate", ["schema", "title", "slides"]))   # a deck without a title gets one
+        plain = {**page, "layers": [{k: v for k, v in page["layers"][0].items() if k != "wrap"}]}
+        self.assertIs(ui.slide_deck_validate({**deck, "slides": [plain]})["slides"][0]["layers"][0]["wrap"], True)   # a text box wraps unless it says otherwise
+        self.assertEqual(ui.slide_deck_parse(ui.slide_deck_text(deck)), checked)                           # the saved file opens as the same deck
+        two, at = ui.slide_deck_edit(deck, "add")                                                          # a blank page of the same size after this one
+        self.assertEqual((at, [len(scene["layers"]) for scene in two["slides"]], two["slides"][1]["width"], two["slides"][1]["background"]), (1, [2, 0], 1280, "#FFFFFF"))
+        three, at = ui.slide_deck_edit(two, "duplicate", 0)
+        self.assertEqual((at, [len(scene["layers"]) for scene in three["slides"]]), (1, [2, 2, 0]))
+        self.assertEqual([len(x["layers"]) for x in ui.slide_deck_edit(three, "down", 1)[0]["slides"]], [2, 0, 2]); self.assertEqual(ui.slide_deck_edit(three, "down", 1)[1], 2)
+        self.assertEqual(ui.slide_deck_edit(three, "up", 2), ({**three, "slides": [three["slides"][0], three["slides"][2], three["slides"][1]]}, 1))
+        self.assertEqual(ui.slide_deck_edit(three, "up", 0), (three, 0)); self.assertEqual(ui.slide_deck_edit(three, "down", 2), (three, 2))   # the ends do not wrap
+        self.assertEqual(ui.slide_deck_edit(three, "delete", 2)[1], 1); self.assertEqual(ui.slide_deck_edit(checked, "delete", 0), (checked, 0))  # the last page stays
+        self.assertEqual(len(deck["slides"]), 1)                                                           # the deck handed in is never changed
+        shape = lambda kind, **more: {"id": kind, "kind": kind, "x": 128, "y": 64, "w": 256, "h": 128, "rotation": 90, "opacity": 0.5, "fill": "#ff8800", "stroke": "#000000", "strokeWidth": 2, **more}
+        picture = ui.studio_image_layer("data:image/png;base64," + base64.b64encode(ui.studio_png_encode(1, 1, bytes(4))).decode(), 1, 1, "pic", name="Photo")
+        self.assertEqual([ui.slide_layer_native(l) for l in (shape("rect"), shape("arrow"), shape("arrow", headStyle="beginner"), page["layers"][0], {**page["layers"][0], "mono": True}, picture)],
+                         [True, True, False, True, False, False])
+        twenty = {**deck, "slides": [page] * 20}
+        for call, message in ((lambda: ui.slide_deck_validate({**deck, "slides": []}), "1〜20枚"), (lambda: ui.slide_deck_validate({**deck, "slides": [page] * 21}), "1〜20枚"),
+                              (lambda: ui.slide_deck_validate({**deck, "schema": "x"}), "1〜20枚"), (lambda: ui.slide_deck_validate(None), "1〜20枚"),
+                              (lambda: ui.slide_deck_validate({**deck, "slides": [page, ui.slide_template(800, 600)]}), "同じ幅・高さ"),
+                              (lambda: ui.slide_deck_validate({**deck, "title": "x" * 201}), "200文字"), (lambda: ui.slide_deck_parse(b"{}"), "32MiB"),
+                              (lambda: ui.slide_deck_edit(twenty, "add"), "最大20枚"), (lambda: ui.slide_deck_edit(twenty, "duplicate"), "最大20枚"),
+                              (lambda: ui.slide_deck_edit(deck, "shuffle"), "操作"), (lambda: ui.slide_deck_edit(deck, "add", 1), "位置"), (lambda: ui.slide_deck_edit(deck, "add", True), "位置")):
+            with self.assertRaisesRegex(ui.StudioError, message):
+                call()
+
+    @unittest.skipUnless(node26(), "Node 26+ is required")
+    def test_slide_deck_module_writes_what_python_writes(self):
+        """js/slide-deck.js on js/imagestudio.js against slide_deck_* on 12 random decks: the saved text, which layers stay shapes, every page operation, the refusals."""
+        ui, rng = pysaiyanweboo, random.Random(20261127)
+        num = lambda a, b: rng.choice([rng.randint(int(a), int(b)), round(rng.uniform(a, b), rng.randint(0, 6))])
+        color = lambda: rng.choice(["#000000", "#ff8800", "#18A7A1"])
+        png = ui.studio_png_encode(1, 1, bytes(4))
+
+        def layer(i: int) -> dict:
+            kind = rng.choice(["text", "text", "rect", "ellipse", "triangle", "arrow", "image"])
+            made = {"id": f"l{i}", "kind": kind, "x": num(-50, 1280), "y": num(-50, 720), "w": num(8, 1280), "h": num(8, 720), "rotation": num(-360, 360), "opacity": num(0, 1)}
+            if kind == "text":
+                made.update(text=rng.choice(["Title <>&", "本文\nSecond line", "long " * 30, "日本語の長い文章をここに書いて折り返しを確かめます。", "", "😀👨‍👩‍👧"]), fill=color(),
+                            fontSize=num(16, 200), font=rng.choice(["sans", "mono"]), mono=rng.random() < .15, bold=rng.random() < .5, **({"wrap": rng.random() < .6} if rng.random() < .7 else {}))
+            elif kind == "image":
+                made = {**ui.studio_image_layer("data:image/png;base64," + base64.b64encode(png).decode(), 1, 1, f"l{i}"), "rotation": num(-360, 360), "opacity": num(0, 1)}
+            else:
+                made.update(fill=rng.choice([color(), "none"]), stroke=color(), strokeWidth=rng.choice([0, num(0, 64)]),
+                            **({"headStyle": rng.choice(["triangle", "beginner"]), "headSize": num(4, 120), "headPlacement": rng.choice(["tip", "middle"])} if kind == "arrow" and rng.random() < .6 else {}))
+            return made
+
+        decks = [{"schema": ui.SLIDE_DECK_SCHEMA, "title": rng.choice(["My deck", "資料 <1> & $& $$"]),
+                  "slides": [{"schema": ui.STUDIO_SCHEMA, "width": 1280, "height": 720, "background": rng.choice(["#FFFFFF", "none"]), "layers": [layer(i) for i in range(rng.randint(0, 4))]}
+                             for _ in range(rng.randint(1, 3))]} for _ in range(12)]
+        bad = [{"schema": "x"}, {**decks[0], "slides": []}, {**decks[0], "title": "x" * 201}, {**decks[0], "title": "bad\x01"}, {**decks[0], "slides": [decks[0]["slides"][0], ui.slide_template(800, 600)]}]
+        steps = [(rng.randrange(12), rng.choice(["add", "duplicate", "delete", "up", "down", "shuffle"]), rng.choice([0, 0, 1, 2, -1, 1.5])) for _ in range(40)]
+
+        def attempt(call) -> object:
+            try:
+                return call()
+            except ui.StudioError as error:
+                return {"error": str(error)}
+
+        def written(deck: dict) -> object:
+            return {"text": ui.slide_deck_text(deck), "native": [[ui.slide_layer_native(l) for l in scene["layers"]] for scene in deck["slides"]]}
+
+        expected = {"decks": [attempt(lambda: written(deck)) for deck in decks + bad],
+                    "steps": [attempt(lambda: (lambda deck, at: {"text": ui.js_json(deck), "at": at})(*ui.slide_deck_edit(decks[i], action, at))) for i, action, at in steps],
+                    "templates": [ui.js_json(ui.slide_template(*size)) for size in ((), (800, 600, "T", "B"), (1920, 1080, "題 <&>", "本文\n2"))]}
+        payload = json.dumps({"decks": decks + bad, "steps": steps})
+        self.assertLess(len(payload), 96 * 1024)                                                         # one command-line argument
+        done = node_js("""
+import { slideDeck } from "./js/slide-deck.js";
+globalThis.document={ querySelector:()=>null };
+const core=await import("./js/imagestudio.js");
+delete globalThis.document;
+const input=JSON.parse(process.argv[2]), D=slideDeck(core);
+const attempt=call=>{ try { return call(); } catch(error) { return { error:error.message }; } };
+const out={ decks:[], steps:[], templates:[[],[800,600,"T","B"],[1920,1080,"題 <&>","本文\\n2"]].map(size=>JSON.stringify(D.template(...size))) };
+for(const deck of input.decks) out.decks.push(attempt(()=>({ text:D.deckText(deck), native:deck.slides.map(scene=>scene.layers.map(D.isNative)) })));
+for(const [i, action, at] of input.steps) out.steps.push(attempt(()=>{ const made=D.edit(input.decks[i], action, at); return { text:JSON.stringify(made.deck), at:made.active }; }));
+console.log(JSON.stringify(out));
+""", payload)
+        self.assertEqual(json.loads(done.stdout), expected)
+        self.assertTrue(any("text" in deck for deck in expected["decks"]) and any("error" in step for step in expected["steps"]))
+
     def test_studio_pages_sheet_waits_for_its_page_and_draws_with_the_theme_only(self):
         """🏭 studio-pages.css (Ironmate's studio pages): every selector waits for a ``data-page`` (nothing happens on another
         page), and every colour is a theme token but the picture's own (transparency checker, the white slide and its shadow)."""
@@ -6429,6 +6761,10 @@ def test_the_chrome_refuses(spec, word):
 def test_the_chrome_sheet_is_plain_and_its_module_asks_the_network_for_nothing():
     css, js = ui.css_source("chrome.css"), ui.js_source("chrome.js")
     assert "@layer" not in css and ".ui-chrome .ui-world-side{" in css and "@keyframes ui-board-scroll{" in css
+    selectors = [part for head in re.findall(r"(?:^|(?<=[{}]))([^{}@]+)(?=\{)", css) if head not in ("from", "to")
+                 for part in re.sub(r"\((?:[^()]|\([^()]*\))*\)", "()", head.replace(":where(.ui-chrome)", "§")).split(",")]   # commas inside :has(…) stay
+    assert selectors and all(s.startswith(("§", ".ui-chrome")) for s in selectors), [s for s in selectors if not s.startswith(("§", ".ui-chrome"))]
+    assert ":where(.ui-chrome).ui-world-head{" in css                         # the root is .ui-chrome.ui-world-head: no space there
     for map_only in (".ui-floor", ".ui-spot", ".ui-player", ".ui-sheet{", ".ui-world-view", ".ui-world-dpad", ".ui-prop"):
         assert map_only not in css, map_only
     for word in ("fetch(", "XMLHttpRequest", "sendBeacon", "WebSocket", "sessionStorage", "indexedDB", "cookie", "import("):

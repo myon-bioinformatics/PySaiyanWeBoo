@@ -531,11 +531,11 @@ def test_parent_workflow_references_use_reviewed_rollout_commit():
 
 
 def test_the_only_committed_html_is_the_front_page():
-    """HTML is built from Python, not committed: index.html is the one page in git (the cities review page moved to the portfolio with the world)."""
+    """HTML is built from Python, not committed: index.html is the one page in git; pages.yml builds examples/ at deploy time."""
     tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "*.html"], capture_output=True, text=True)
     if tracked.returncode == 0 and tracked.stdout:   # a checkout; an sdist has no index to ask
         assert tracked.stdout.split() == ["index.html"]
-    assert "build" not in yaml.safe_load((ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8"))["jobs"]["deploy"]["with"]
+    assert yaml.safe_load((ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8"))["jobs"]["deploy"]["with"]["build"] == "python3 -S pysaiyanweboo.py --site ."
 
 
 # ═══ 🧪 junit evidence ════════════════════════════════════════════════════════════════════════════════════
