@@ -5356,14 +5356,16 @@ def seed_roll_html(css: str = "") -> str:
     return f'<button{klass} type="button" data-ui-seed-roll aria-label="Random seed" title="Random seed">🎲</button>'
 
 
-def labels_switch_html(*, face: str = "🖥️", word: str = "📱 絵文字", label: str = "表示: 絵文字 ⇄ 文字（PC 向け）") -> str:
+def labels_switch_html(*, face: str = "🖥️", word: str = "📱 絵文字", label: str = "表示: 絵文字 ⇄ 文字（PC 向け）", id: str = "") -> str:
     """🖥️ ⇄ 📱 one button ``bindLabels()`` binds: it flips ``<body data-ui-labels>`` between ``emoji`` (the default, the face
     shown) and ``words`` (every ``data-ui-word`` element shows its short word, as on a PC). ``word`` is what the button itself
     says while words show, so it reads as the way back. A header row with ``key: "labels"`` does the same; see ``chrome_html``.
 
     Mark a control for it with ``data-ui-word="短い言葉"`` beside its emoji face, and a row of controls with
-    ``data-ui-group="create"`` (any name): the groups after the first get a light dashed line above them."""
-    return (f'<button type="button" class="ui-button" data-ui-labels-switch data-ui-word="{escape(word)}" '
+    ``data-ui-group="create"`` (any name): the groups after the first get a light dashed line above them. ``id`` lets a host whose
+    header carries the same switch (a ``labels`` row) hide this one."""
+    ident = f' id="{escape(id)}"' if id else ""
+    return (f'<button type="button" class="ui-button"{ident} data-ui-labels-switch data-ui-word="{escape(word)}" '
             f'aria-pressed="false" aria-label="{escape(label)}" title="{escape(label)}">{escape(face)}</button>')
 
 
@@ -16429,6 +16431,7 @@ body:where([data-page~="phone"]){margin:0;background:var(--ui-bg)}
 :where([data-page~="phone"]) .phone-tools{flex:1 1 328px;min-width:0;display:flex;flex-direction:column;gap:8px}
 :where([data-page~="phone"]) .phone-row{display:flex;flex-wrap:wrap;gap:8px}
 :where([data-page~="phone"]) .phone-tools button,:where([data-page~="phone"]) .phone-tools .button{min-width:48px;min-height:48px;padding:0 8px;font-size:24px;line-height:1;touch-action:manipulation}
+:where([data-page~="phone"]) .phone-tools select{min-height:48px;font-size:16px}
 :where([data-page~="phone"]) .phone-tools button:disabled{opacity:.32}
 :where([data-page~="phone"]) .phone-status{flex:1 1 128px;margin:0;align-self:center;min-height:24px;font-size:16px;overflow-wrap:anywhere}
 :where([data-page~="phone"]) .phone-status[data-error=true]{color:var(--ui-danger)}
