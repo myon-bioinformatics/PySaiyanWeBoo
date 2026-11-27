@@ -126,6 +126,11 @@ Current item (`examples/current-item.html`): `current_items_html` renders an ord
 Pass `null` to clear it. Use it for a review workflow, a preview queue or the active section of a song.
 The caller supplies the position. Styling is in `current-item.css`.
 
+`startTask(run, {timeoutMs})` from `async-task.js` runs an operation with an `AbortSignal`.
+The returned `promise` settles on completion, cancellation (`AbortError`) or expiration (`TimeoutError`).
+Call `cancel()` when replacing a request or leaving the page. The operation can check its signal
+between steps when the browser API it calls cannot itself be interrupted.
+
 `studio_document()` and the original Flutter music APIs remain available to existing callers and the
 migration regression suite. The public example gallery uses the current-item demo. The Portfolio's
 [Composition Studio](https://myon-bioinformatics.github.io/tools/browser-tools/#composition) is supplied by Ironmate.
