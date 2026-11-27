@@ -8014,7 +8014,7 @@ def test_the_labels_switch_flips_emoji_faces_and_short_words_on_one_page():
         assert part in line, part
     assert line.index("localStorage.setItem") > line.index("const flip")              # only a flip is remembered, not the default
     core = ui.core_css()
-    for rule in ("[data-ui-labels=words] [data-ui-word]{font-size:0}", "[data-ui-word]::after{content:attr(data-ui-word);font-size:14px}",
+    for rule in ("body[data-ui-labels=words] [data-ui-word]{font-size:0}", "[data-ui-word]::after{content:attr(data-ui-word);font-size:14px}",
                  "[data-ui-group]~[data-ui-group]{border-top:1px dashed var(--ui-border);padding-top:8px}"):
         assert rule in core and core.index(rule) > core.rindex("@layer components{"), rule   # after the layer: a component's size loses
 
