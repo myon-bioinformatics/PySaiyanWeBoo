@@ -6592,15 +6592,13 @@ def test_every_css_class_is_referenced_by_markup_scripts_or_generators():
     assert not unused, f"CSS classes nothing refers to: {unused}"
 
 
-def test_css_variables_are_defined_generated_or_a_listed_gap():
+def test_css_variables_are_defined_or_generated():
     css = {name: _css_text(name) for name in _css_sources()}
     defined = {name for text in css.values() for name in re.findall(r"(--ui-[a-z0-9-]+)\s*:", text)}
     used = {name for text in css.values() for name in re.findall(r"var\((--ui-[a-z0-9-]+)", text)}
     # layout presets (tools/layout_presets.py) set the matrix ones; dial.js sets --ui-dial-angle on each dial; the stylesheets carry the fallbacks.
     generated = {"--ui-matrix-col", "--ui-matrix-gap", "--ui-matrix-pad", "--ui-dial-angle"}
-    # repository-diagnostics.css falls back to fixed colors; there is no token for them yet.
-    known_gaps = {"--ui-surface", "--ui-text"}
-    assert used - defined - generated <= known_gaps, sorted(used - defined - generated - known_gaps)
+    assert used - defined - generated == set(), sorted(used - defined - generated)   # 🎨 the diagnostics card too (--ui-panel / --ui-fg)
     # Defined but unused here or in any consumer checked on 2026-11-03; drop it after a deprecation window.
     dead_tokens = {"--ui-space"}
     tokens = set(re.findall(r"(--ui-[a-z0-9-]+)\s*:", css["tokens.css"]))
