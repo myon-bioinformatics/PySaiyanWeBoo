@@ -230,6 +230,11 @@ markup; that stays in the consumer repository (Ironmate, for example). Diagram
 layouts and visual styles also stay in the consumer spec. This repository only
 provides the allowlist entry, the spec helper, and the arrow geometry below.
 
+One part is set apart as the ability to build a studio: `slide_deck_pptx` (and the same writer in `js/slide-deck.js`)
+writes a deck of image-studio scenes as slides into a package shell the consumer supplies, and `zip_stored` packs it.
+That writer is the only place the library assembles Office XML; it patches nothing PptxGenJS wrote, and the shell
+(content types, master, layout, theme) stays the consumer's (Ironmate generates its own with PptxGenJS).
+
 ```sh
 python -S -c 'from pysaiyanweboo import pptx_connector, pptx_presentation, render_document, remote_scripts; spec={"fileName":"flow.pptx","layout":"LAYOUT_WIDE","slides":[{"items":[{"id":"a","kind":"text","text":"A","x":0.5,"y":1.5,"w":2.2,"h":0.8,"options":{"shape":"roundRect","align":"center","valign":"middle"}},{"id":"b","kind":"text","text":"B","x":4.0,"y":1.5,"w":2.2,"h":0.8,"options":{"shape":"roundRect","align":"center","valign":"middle"}},{"id":"c","kind":"text","text":"C","x":2.2,"y":3.4,"w":2.2,"h":0.8},pptx_connector("a","b"),pptx_connector("b","c"),{"kind":"table","rows":[["Step","Note"],["1","Generic"]],"x":7.0,"y":1.5,"w":5.0,"h":1.2}]}]}; print(render_document(trusted_html=pptx_presentation(spec), remote_scripts=remote_scripts("pptxgenjs")))' > deck.html
 ```
