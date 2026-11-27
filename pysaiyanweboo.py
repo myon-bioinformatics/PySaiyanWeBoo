@@ -15741,6 +15741,90 @@ def svg_rasterize(data: Any, width: int | None = None, *, max_bytes: int = 1024 
         out += bytes((round(r / a * 255), round(g / a * 255), round(b / a * 255), alpha)) if alpha else bytes(4)
     return out_w, out_h, bytes(out)
 
+# 📽️ Several scenes of the image studio as one deck (Ironmate's slide studio and 📱 phone slides, first written there): 1 to 20
+# scenes of one size and a title, kept as JSON, pages added, copied, deleted and moved. The refusals are the page's text
+# (Japanese), as ``StudioError``. ``js/slide-deck.js`` (``slideDeck(core)``) is the same functions for a page. Writing the deck
+# as a PPTX stays with the consumer (Ironmate): nothing here assembles Office XML (docs/lightweight-js.md).
+SLIDE_DECK_SCHEMA = "ironmate-slide-deck/1"
+_SLIDE_DECK_LIMIT = 32 * 1024 * 1024
+
+
+def slide_deck_validate(deck: Any) -> dict[str, Any]:
+    """The deck if it is well formed, as a copy: ``{"schema": "ironmate-slide-deck/1", "title", "slides": [scene, ...]}`` with 1 to 20
+    scenes (``studio_validate``) of one width and height, at most 32 MiB as JSON, a title of at most 200 characters (``Ironmate``
+    when left out). A text box that says nothing about wrapping wraps."""
+    _stu_need(isinstance(deck, dict) and deck.get("schema") == SLIDE_DECK_SCHEMA and isinstance(deck.get("slides"), list)
+              and 1 <= len(deck["slides"]) <= 20, "スライドは1〜20枚です。")
+    size, slides = 0, []
+    for scene in deck["slides"]:
+        size += len(js_json(scene).encode("utf-8", "surrogatepass"))
+        _stu_need(size <= _SLIDE_DECK_LIMIT, "全スライドは32MiB以下にしてください。")
+        checked = studio_validate(scene)
+        for layer in checked["layers"]:
+            if layer["kind"] == "text" and not layer.get("mono") and "wrap" not in layer:
+                layer["wrap"] = True
+        slides.append(checked)
+    _stu_need(all(scene["width"] == slides[0]["width"] and scene["height"] == slides[0]["height"] for scene in slides), "全スライドを同じ幅・高さにしてください。")
+    title = deck["title"] if isinstance(deck.get("title"), str) else "Ironmate"
+    _stu_need(utf16_length(title) <= 200, "資料名は200文字以下です。")
+    return {"schema": SLIDE_DECK_SCHEMA, "title": title, "slides": slides}
+
+
+def slide_deck_text(deck: Any) -> str:
+    """The checked deck as JSON, the file the pages save and open (at most 32 MiB)."""
+    text = js_json(slide_deck_validate(deck))
+    _stu_need(len(text.encode("utf-8", "surrogatepass")) <= _SLIDE_DECK_LIMIT, "全スライドは32MiB以下にしてください。")
+    return text
+
+
+def slide_deck_parse(text: Any) -> dict[str, Any]:
+    """The deck in a saved file (``slide_deck_text``), checked."""
+    _stu_need(isinstance(text, str) and len(text.encode("utf-8", "surrogatepass")) <= _SLIDE_DECK_LIMIT, "全スライドJSONは32MiB以下です。")
+    return slide_deck_validate(studio_parse(text))
+
+
+def slide_template(width: Any = 1280, height: Any = 720, title: str = "スライドのタイトル", body: str = "ここに本文を入力します。") -> dict[str, Any]:
+    """A scene with a title and a body, two text boxes that wrap: a deck from pages of text is
+    ``{"schema": SLIDE_DECK_SCHEMA, "slides": [slide_template(1280, 720, title, body) for title, body in pages]}``."""
+    def text(layer_id: str, value: str, x: Any, y: Any, w: Any, h: Any, size: Any, bold: bool) -> dict[str, Any]:
+        return {"id": layer_id, "kind": "text", "name": layer_id, "x": x, "y": y, "w": w, "h": h, "rotation": 0, "opacity": 1, "text": value,
+                "fill": "#000000", "fontSize": max(4, size), "font": "sans", "mono": False, "bold": bold, "wrap": True}
+    return studio_validate({"schema": STUDIO_SCHEMA, "width": width, "height": height, "background": "#FFFFFF", "layers": [
+        text("title", title, width * 0.075, height * 0.08, width * 0.85, height * 0.16, width * 0.045, True),
+        text("body", body, width * 0.075, height * 0.3, width * 0.85, height * 0.55, width * 0.027, False)]})
+
+
+def slide_deck_edit(deck: Any, action: str, active: int = 0) -> tuple[dict[str, Any], int]:
+    """One page operation, ``(deck, page to show next)``: ``"add"`` (a blank page of the deck's size after page ``active``),
+    ``"duplicate"``, ``"delete"``, ``"up"`` or ``"down"``. The deck comes back checked; a 21st page is refused, the last page is
+    never deleted and the ends do not wrap (the deck and the page stay as they are)."""
+    deck = slide_deck_validate(deck)
+    slides = deck["slides"]
+    _stu_need(type(active) is int and 0 <= active < len(slides), "スライドの位置が不正です。")
+    if action in ("add", "duplicate"):
+        _stu_need(len(slides) < 20, "スライドは最大20枚です。")
+        slides.insert(active + 1, {"schema": STUDIO_SCHEMA, "width": slides[0]["width"], "height": slides[0]["height"], "background": "#FFFFFF", "layers": []}
+                      if action == "add" else studio_clone(slides[active]))
+        return deck, active + 1
+    if action == "delete":
+        if len(slides) > 1:
+            del slides[active]
+        return deck, min(active, len(slides) - 1)
+    _stu_need(action in ("up", "down"), "スライドの操作が不正です。")
+    index = active + (-1 if action == "up" else 1)
+    if not 0 <= index < len(slides):
+        return deck, active
+    slides[active], slides[index] = slides[index], slides[active]
+    return deck, index
+
+
+def slide_layer_native(layer: dict[str, Any]) -> bool:
+    """Whether the layer is a plain shape or text box, which a slide file can keep editable, and not something only a picture can
+    carry: rectangles, ellipses, triangles, text that is not a stamp, arrows with a triangular head."""
+    return (layer.get("kind") in ("rect", "ellipse", "triangle") or (layer.get("kind") == "text" and not layer.get("mono"))
+            or (layer.get("kind") == "arrow" and layer.get("headStyle") != "beginner"))
+
+
 # 🏭 The pages of Ironmate's studio as Ironmate draws them (image studio, browser tools, slide studio, 📱 phone slides), by
 # ``<body data-page="studio">`` / ``"tools"`` / ``"studio slides"`` / ``"phone"``: header and brand, the three-column workspace, the
 # board and its handles, the shelf cards, the inspector, the tool sections, the slide controls and the pinned phone slide. Every
@@ -18916,6 +19000,145 @@ export function pngChunk(type,body){
  const out=new Uint8Array(body.length+12),view=new DataView(out.buffer);
  view.setUint32(0,body.length);out.set(new TextEncoder().encode(type),4);out.set(body,8);view.setUint32(out.length-4,crc32(out.subarray(4,out.length-4)));
  return out}
+"""
+
+
+# 📽️ The slide deck for a page (Ironmate's slide studio and 📱 phone slides): the functions of slide_deck_*, the same values.
+_JS["slide-deck.js"] = '/* web-ui slide-deck: several scenes of the image studio as one deck: checked, kept as JSON, pages added, copied, deleted and moved. slideDeck(core): core is js/imagestudio.js (or the same functions). pysaiyanweboo.py (slide_deck_*) is the reference; this must agree. */\n' + r"""export function slideDeck(C) {
+  const SCHEMA = "ironmate-slide-deck/1",
+    LIMIT = 32 * 1024 * 1024;
+  const encoder = new TextEncoder(),
+    clone = C.clone;
+  function validate(deck) {
+    if (
+      !deck ||
+      deck.schema !== SCHEMA ||
+      !Array.isArray(deck.slides) ||
+      deck.slides.length < 1 ||
+      deck.slides.length > 20
+    )
+      throw Error("スライドは1〜20枚です。");
+    let bytes = 0;
+    const slides = deck.slides.map((scene) => {
+      bytes += encoder.encode(JSON.stringify(scene)).length;
+      if (bytes > LIMIT) throw Error("全スライドは32MiB以下にしてください。");
+      const checked = C.validate(scene);
+      for (const layer of checked.layers)
+        if (layer.kind === "text" && !layer.mono && layer.wrap === undefined)
+          layer.wrap = true;
+      return checked;
+    });
+    if (
+      slides.some(
+        (s) => s.width !== slides[0].width || s.height !== slides[0].height,
+      )
+    )
+      throw Error("全スライドを同じ幅・高さにしてください。");
+    const title = typeof deck.title === "string" ? deck.title : "Ironmate";
+    if (title.length > 200) throw Error("資料名は200文字以下です。");
+    return { schema: SCHEMA, title, slides };
+  }
+  function deckText(deck) {
+    const text = JSON.stringify(validate(deck));
+    if (encoder.encode(text).length > LIMIT)
+      throw Error("全スライドは32MiB以下にしてください。");
+    return text;
+  }
+  function parse(text) {
+    if (typeof text !== "string" || encoder.encode(text).length > LIMIT)
+      throw Error("全スライドJSONは32MiB以下です。");
+    return validate(JSON.parse(text));
+  }
+  function edit(input, action, active = 0) {
+    // One page operation on a deck: "add" (a blank page after this one), "duplicate", "delete", "up", "down".
+    // Returns the checked deck and the page to show next; the last page is never deleted and the ends do not wrap.
+    const deck = validate(input),
+      slides = deck.slides;
+    if (!Number.isInteger(active) || active < 0 || active >= slides.length)
+      throw Error("スライドの位置が不正です。");
+    if (action === "add" || action === "duplicate") {
+      if (slides.length >= 20) throw Error("スライドは最大20枚です。");
+      slides.splice(
+        active + 1,
+        0,
+        action === "add"
+          ? { schema: C.SCHEMA, width: slides[0].width, height: slides[0].height, background: "#FFFFFF", layers: [] }
+          : clone(slides[active]),
+      );
+      return { deck, active: active + 1 };
+    }
+    if (action === "delete") {
+      if (slides.length > 1) slides.splice(active, 1);
+      return { deck, active: Math.min(active, slides.length - 1) };
+    }
+    if (action !== "up" && action !== "down") throw Error("スライドの操作が不正です。");
+    const index = active + (action === "up" ? -1 : 1);
+    if (index < 0 || index >= slides.length) return { deck, active };
+    [slides[active], slides[index]] = [slides[index], slides[active]];
+    return { deck, active: index };
+  }
+  function template(
+    width = 1280,
+    height = 720,
+    title = "スライドのタイトル",
+    body = "ここに本文を入力します。",
+  ) {
+    const text = (id, value, x, y, w, h, size, bold) => ({
+      id,
+      kind: "text",
+      name: id,
+      x,
+      y,
+      w,
+      h,
+      rotation: 0,
+      opacity: 1,
+      text: value,
+      fill: "#000000",
+      fontSize: Math.max(4, size),
+      font: "sans",
+      mono: false,
+      bold,
+      wrap: true,
+    });
+    return C.validate({
+      schema: C.SCHEMA,
+      width,
+      height,
+      background: "#FFFFFF",
+      layers: [
+        text(
+          "title",
+          title,
+          width * 0.075,
+          height * 0.08,
+          width * 0.85,
+          height * 0.16,
+          width * 0.045,
+          true,
+        ),
+        text(
+          "body",
+          body,
+          width * 0.075,
+          height * 0.3,
+          width * 0.85,
+          height * 0.55,
+          width * 0.027,
+          false,
+        ),
+      ],
+    });
+  }
+  function isNative(layer) {
+    return (
+      ["rect", "ellipse", "triangle"].includes(layer.kind) ||
+      (layer.kind === "text" && !layer.mono) ||
+      (layer.kind === "arrow" && layer.headStyle !== "beginner")
+    );
+  }
+  return { SCHEMA, LIMIT, validate, deckText, parse, template, edit, isNative };
+}
 """
 
 _JS["imagestudio.js"] = "/* web-ui imagestudio: the Ironmate image studio in the page (memory only). Scene checks, SVG, history, workspace files and the layers a click places are the functions of pysaiyanweboo.py (studio_*) and give the same text; the editor on top is the page's. Python is the reference; this must agree. Differences: text is measured with the installed fonts here (a fixed 0.65 em / 1 em estimate in Python), words and graphemes follow the same rules as Python (Latin, Hangul, kana and Han; the Japanese dictionary of Intl.Segmenter is not used, so every engine gives the same lines), and the clock hands use fdlibm's sin and cos written out here and in Python (V8's of Node 22), not the engine's Math.sin and Math.cos, which differ in the last bit between engines and versions. */\n" + _CLIPBOARD_JS + _studio_js_constants() + _JS["heatmap-color.js"] + r"""export class StudioError extends Error{}

@@ -4345,6 +4345,97 @@ assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
             ui.svg_rasterize(svg(""), 64, max_pixels=1024)
         self.assertTrue(issubclass(ui.SvgError, ValueError))
 
+    def test_scenes_become_one_deck_with_page_operations(self):
+        """📽️ slide_deck_validate / _text / _parse / _edit, slide_template, slide_layer_native (Ironmate's slide studio and 📱 phone slides)."""
+        ui = pysaiyanweboo
+        page = ui.slide_template(1280, 720, "Title <>&", "本文\nSecond line")
+        self.assertEqual([(l["id"], l["x"], l["y"], l["w"], l["h"], l["fontSize"], l["bold"], l["wrap"]) for l in page["layers"]],
+                         [("title", 96, 720 * 0.08, 1088, 720 * 0.16, 1280 * 0.045, True, True), ("body", 96, 216, 1088, 720 * 0.55, 1280 * 0.027, False, True)])   # 7.5 % in, 85 % wide
+        deck = {"schema": ui.SLIDE_DECK_SCHEMA, "slides": [page]}
+        checked = ui.slide_deck_validate(deck)
+        self.assertEqual((checked["title"], list(checked)), ("Ironmate", ["schema", "title", "slides"]))   # a deck without a title gets one
+        plain = {**page, "layers": [{k: v for k, v in page["layers"][0].items() if k != "wrap"}]}
+        self.assertIs(ui.slide_deck_validate({**deck, "slides": [plain]})["slides"][0]["layers"][0]["wrap"], True)   # a text box wraps unless it says otherwise
+        self.assertEqual(ui.slide_deck_parse(ui.slide_deck_text(deck)), checked)                           # the saved file opens as the same deck
+        two, at = ui.slide_deck_edit(deck, "add")                                                          # a blank page of the same size after this one
+        self.assertEqual((at, [len(scene["layers"]) for scene in two["slides"]], two["slides"][1]["width"], two["slides"][1]["background"]), (1, [2, 0], 1280, "#FFFFFF"))
+        three, at = ui.slide_deck_edit(two, "duplicate", 0)
+        self.assertEqual((at, [len(scene["layers"]) for scene in three["slides"]]), (1, [2, 2, 0]))
+        self.assertEqual([len(x["layers"]) for x in ui.slide_deck_edit(three, "down", 1)[0]["slides"]], [2, 0, 2]); self.assertEqual(ui.slide_deck_edit(three, "down", 1)[1], 2)
+        self.assertEqual(ui.slide_deck_edit(three, "up", 2), ({**three, "slides": [three["slides"][0], three["slides"][2], three["slides"][1]]}, 1))
+        self.assertEqual(ui.slide_deck_edit(three, "up", 0), (three, 0)); self.assertEqual(ui.slide_deck_edit(three, "down", 2), (three, 2))   # the ends do not wrap
+        self.assertEqual(ui.slide_deck_edit(three, "delete", 2)[1], 1); self.assertEqual(ui.slide_deck_edit(checked, "delete", 0), (checked, 0))  # the last page stays
+        self.assertEqual(len(deck["slides"]), 1)                                                           # the deck handed in is never changed
+        shape = lambda kind, **more: {"id": kind, "kind": kind, "x": 128, "y": 64, "w": 256, "h": 128, "rotation": 90, "opacity": 0.5, "fill": "#ff8800", "stroke": "#000000", "strokeWidth": 2, **more}
+        picture = ui.studio_image_layer("data:image/png;base64," + base64.b64encode(ui.studio_png_encode(1, 1, bytes(4))).decode(), 1, 1, "pic", name="Photo")
+        self.assertEqual([ui.slide_layer_native(l) for l in (shape("rect"), shape("arrow"), shape("arrow", headStyle="beginner"), page["layers"][0], {**page["layers"][0], "mono": True}, picture)],
+                         [True, True, False, True, False, False])
+        twenty = {**deck, "slides": [page] * 20}
+        for call, message in ((lambda: ui.slide_deck_validate({**deck, "slides": []}), "1〜20枚"), (lambda: ui.slide_deck_validate({**deck, "slides": [page] * 21}), "1〜20枚"),
+                              (lambda: ui.slide_deck_validate({**deck, "schema": "x"}), "1〜20枚"), (lambda: ui.slide_deck_validate(None), "1〜20枚"),
+                              (lambda: ui.slide_deck_validate({**deck, "slides": [page, ui.slide_template(800, 600)]}), "同じ幅・高さ"),
+                              (lambda: ui.slide_deck_validate({**deck, "title": "x" * 201}), "200文字"), (lambda: ui.slide_deck_parse(b"{}"), "32MiB"),
+                              (lambda: ui.slide_deck_edit(twenty, "add"), "最大20枚"), (lambda: ui.slide_deck_edit(twenty, "duplicate"), "最大20枚"),
+                              (lambda: ui.slide_deck_edit(deck, "shuffle"), "操作"), (lambda: ui.slide_deck_edit(deck, "add", 1), "位置"), (lambda: ui.slide_deck_edit(deck, "add", True), "位置")):
+            with self.assertRaisesRegex(ui.StudioError, message):
+                call()
+
+    @unittest.skipUnless(node26(), "Node 26+ is required")
+    def test_slide_deck_module_writes_what_python_writes(self):
+        """js/slide-deck.js on js/imagestudio.js against slide_deck_* on 12 random decks: the saved text, which layers stay shapes, every page operation, the refusals."""
+        ui, rng = pysaiyanweboo, random.Random(20261127)
+        num = lambda a, b: rng.choice([rng.randint(int(a), int(b)), round(rng.uniform(a, b), rng.randint(0, 6))])
+        color = lambda: rng.choice(["#000000", "#ff8800", "#18A7A1"])
+        png = ui.studio_png_encode(1, 1, bytes(4))
+
+        def layer(i: int) -> dict:
+            kind = rng.choice(["text", "text", "rect", "ellipse", "triangle", "arrow", "image"])
+            made = {"id": f"l{i}", "kind": kind, "x": num(-50, 1280), "y": num(-50, 720), "w": num(8, 1280), "h": num(8, 720), "rotation": num(-360, 360), "opacity": num(0, 1)}
+            if kind == "text":
+                made.update(text=rng.choice(["Title <>&", "本文\nSecond line", "long " * 30, "日本語の長い文章をここに書いて折り返しを確かめます。", "", "😀👨‍👩‍👧"]), fill=color(),
+                            fontSize=num(16, 200), font=rng.choice(["sans", "mono"]), mono=rng.random() < .15, bold=rng.random() < .5, **({"wrap": rng.random() < .6} if rng.random() < .7 else {}))
+            elif kind == "image":
+                made = {**ui.studio_image_layer("data:image/png;base64," + base64.b64encode(png).decode(), 1, 1, f"l{i}"), "rotation": num(-360, 360), "opacity": num(0, 1)}
+            else:
+                made.update(fill=rng.choice([color(), "none"]), stroke=color(), strokeWidth=rng.choice([0, num(0, 64)]),
+                            **({"headStyle": rng.choice(["triangle", "beginner"]), "headSize": num(4, 120), "headPlacement": rng.choice(["tip", "middle"])} if kind == "arrow" and rng.random() < .6 else {}))
+            return made
+
+        decks = [{"schema": ui.SLIDE_DECK_SCHEMA, "title": rng.choice(["My deck", "資料 <1> & $& $$"]),
+                  "slides": [{"schema": ui.STUDIO_SCHEMA, "width": 1280, "height": 720, "background": rng.choice(["#FFFFFF", "none"]), "layers": [layer(i) for i in range(rng.randint(0, 4))]}
+                             for _ in range(rng.randint(1, 3))]} for _ in range(12)]
+        bad = [{"schema": "x"}, {**decks[0], "slides": []}, {**decks[0], "title": "x" * 201}, {**decks[0], "title": "bad\x01"}, {**decks[0], "slides": [decks[0]["slides"][0], ui.slide_template(800, 600)]}]
+        steps = [(rng.randrange(12), rng.choice(["add", "duplicate", "delete", "up", "down", "shuffle"]), rng.choice([0, 0, 1, 2, -1, 1.5])) for _ in range(40)]
+
+        def attempt(call) -> object:
+            try:
+                return call()
+            except ui.StudioError as error:
+                return {"error": str(error)}
+
+        def written(deck: dict) -> object:
+            return {"text": ui.slide_deck_text(deck), "native": [[ui.slide_layer_native(l) for l in scene["layers"]] for scene in deck["slides"]]}
+
+        expected = {"decks": [attempt(lambda: written(deck)) for deck in decks + bad],
+                    "steps": [attempt(lambda: (lambda deck, at: {"text": ui.js_json(deck), "at": at})(*ui.slide_deck_edit(decks[i], action, at))) for i, action, at in steps],
+                    "templates": [ui.js_json(ui.slide_template(*size)) for size in ((), (800, 600, "T", "B"), (1920, 1080, "題 <&>", "本文\n2"))]}
+        payload = json.dumps({"decks": decks + bad, "steps": steps})
+        self.assertLess(len(payload), 96 * 1024)                                                         # one command-line argument
+        done = node_js("""
+import { slideDeck } from "./js/slide-deck.js";
+globalThis.document={ querySelector:()=>null };
+const core=await import("./js/imagestudio.js");
+delete globalThis.document;
+const input=JSON.parse(process.argv[2]), D=slideDeck(core);
+const attempt=call=>{ try { return call(); } catch(error) { return { error:error.message }; } };
+const out={ decks:[], steps:[], templates:[[],[800,600,"T","B"],[1920,1080,"題 <&>","本文\\n2"]].map(size=>JSON.stringify(D.template(...size))) };
+for(const deck of input.decks) out.decks.push(attempt(()=>({ text:D.deckText(deck), native:deck.slides.map(scene=>scene.layers.map(D.isNative)) })));
+for(const [i, action, at] of input.steps) out.steps.push(attempt(()=>{ const made=D.edit(input.decks[i], action, at); return { text:JSON.stringify(made.deck), at:made.active }; }));
+console.log(JSON.stringify(out));
+""", payload)
+        self.assertEqual(json.loads(done.stdout), expected)
+        self.assertTrue(any("text" in deck for deck in expected["decks"]) and any("error" in step for step in expected["steps"]))
+
     def test_studio_pages_sheet_waits_for_its_page_and_draws_with_the_theme_only(self):
         """🏭 studio-pages.css (Ironmate's studio pages): every selector waits for a ``data-page`` (nothing happens on another
         page), and every colour is a theme token but the picture's own (transparency checker, the white slide and its shadow)."""
