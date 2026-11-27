@@ -610,11 +610,19 @@ puts the way back first (🏠 portfolio · 🐙 GitHub); `add_back_nav(page, "OW
 🧰 With the way back, `--repository` now gives the page the header, side and foot every page of the site carries, so a repository's
 guide looks and moves like the portfolio's pages: 📟 a board that says what the page is (its description, else a line any page can
 carry) and where the links lead, 🫧 the round face that follows the pointer, 🏠 (the first link) and the other links by their emoji,
-⭐ ⚙️, ☰ the page's own sections, ⋯, and as the foot 🚪 the links and 📌 this page with 📦 its size. ⭐ and 🌐 are kept per origin, so
+⭐ ⚙️, ☰ the page's own sections, ⋯, and as the foot 🚪 the links and 📌 this page with 📦 its size. ⭐, 🌐 and 🎨 are kept per origin, so
 the guides and the portfolio share them. `add_back_nav(page, back, chrome=True)` and `add_site_chrome(page, links, title="GUIDE")` give
 them to a page built some other way; a page that has them keeps them, and without `chrome` the page is what it was.
 
+⚙️ holds what every page shares: ⏯️ stop the board, 🌐 the language (11), 🎨 the colors (the page's own, or one of the themes for
+every page of the origin), then the rows a page adds (another layout, a mode). 🌐 changes every word these parts put on the page —
+the chrome's tooltips, the board's "in N min", 🫧, the foot's 🚪 and 📦, the way back's ポートフォリオ and GitHub リポジトリ (a catalogue
+word, `chrome_words`) and the stand-in line of a page that says nothing of itself — while the page's own words stay as written and
+`<html lang>` says their language (`page_language`). A door relabels its pull-down; a page of its own hears `ui-lang` on `document`.
+The browser test switches all eleven languages and fails on any word of these parts left behind.
+
 ![🧰 site chrome on a guide page: the board, 🫧, ☰ the page's sections, 🚪 the foot](docs/evidence/site-chrome.gif)
+![🌐 ⚙️ open, language by language: the board, 🎨, the door's 📌 (current) follow](docs/evidence/site-chrome-languages.gif)
 
 🧩 `--features FILE` (`add_features(spec, FILE)`, repeatable) puts the full list at the top of the 🧩 機能一覧 tab — one tab, above the hand-written highlights: ⌨️ every argparse command with its help and options (the file runs only up to its first `parse_args`, nothing after it) and 🐍 every name in `__all__` — or, without it, each public function and class — with the first line of its docstring (read without importing). The list comes from the code at build time, so it never misses a command or a function; a hand-written 🧩 機能一覧 that already names everything gets no full list, each file keeps its own sections (titled with its name and 全 N: several `--features` add up in order, a second run replaces only that file's, in place), and a file that cannot start keeps its 🐍 list.
 
@@ -781,7 +789,7 @@ its scripts or styles without `'unsafe-inline'` gets the two hashes added to tha
 
 | | |
 |---|---|
-| 🧰 `chrome` | `chrome_html({"id", "board", "home", "places", "tools", "settings", "screen"})`: the header and side of a page that is not a world. 📟 a board (title, a scrolling line, the clock `hh:mm:ss`, "in N min"), 🏠, ⭐ starred places of every page that shares the id, ⚙️ (⏯️ stops the board, 🌐 the icons' words in 11 languages), ☰ this page (itself 📍, its `h2`, the rows it gives), ⋯ (⬆️ ⬇️) and up to 8 emoji of the page's own (`href`, `links`, `body`, in the head or the side). A row is `{label, href}` or `{label, key}`: a key row is an action, the chrome sends `ui-chrome-action` (`detail.key`) and the page answers, so one 💾 can offer every format it saves; `settings` and `screen` are rows the page adds to ⚙️ (another layout, a mode) and ⋯ (a temporary shelf). ⭐ and 🌐 are kept in this browser; nothing is sent |
+| 🧰 `chrome` | `chrome_html({"id", "lang", "board", "home", "places", "tools", "settings", "screen"})`: the header and side of a page that is not a world. 📟 a board (title, a scrolling line, the clock `hh:mm:ss`, "in N min"), 🏠, ⭐ starred places of every page that shares the id, ⚙️ (⏯️ stops the board, 🌐 every word the chrome brings in 11 languages, 🎨 the colors), ☰ this page (itself 📍, its `h2`, the rows it gives), ⋯ (⬆️ ⬇️) and up to 8 emoji of the page's own (`href`, `links`, `body`, in the head or the side). A row is `{label, href}` or `{label, key}`: a key row is an action, the chrome sends `ui-chrome-action` (`detail.key`) and the page answers, so one 💾 can offer every format it saves; `settings` and `screen` are rows the page adds to ⚙️ (another layout, a mode) and ⋯ (a temporary shelf). ⭐ and 🌐 are kept in this browser; nothing is sent |
 | 🗂️ `tabs` | `tabs_html([(label, html), …], id="profile")`: 2..8 tabs with no script (radio inputs and labels). A panel's animations start each time it is shown, so a bar can grow on its own when its tab opens. The page spec's `tabs` block is the same markup; a page that links its own sheets adds `tabs_css()` |
 
 ```python
