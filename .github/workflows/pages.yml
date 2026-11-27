@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   deploy:
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@dccd07ea5c9820764e99d77251e9490afa77fe6e
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@a71fa423f7e0357398abf8a00743cbe6b6bfc670
     with:
       artifact_path: .
       # 📚 index.html stays the front page (the UI); the usage guide with the full 🧩 機能一覧 goes under guide/

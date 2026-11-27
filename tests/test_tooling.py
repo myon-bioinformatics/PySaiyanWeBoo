@@ -512,7 +512,7 @@ PARENT = "myon-bioinformatics/myon-bioinformatics"
 
 
 def test_parent_workflow_references_use_reviewed_rollout_commit():
-    parent_workflow_pin = "dccd07ea5c9820764e99d77251e9490afa77fe6e"
+    parent_workflow_pin = "a71fa423f7e0357398abf8a00743cbe6b6bfc670"
     pins = []
     for path in sorted((ROOT / ".github/workflows").glob("*")):
         if path.suffix not in (".yml", ".yaml"):
@@ -649,7 +649,7 @@ def _assert_contract(workflow):
     assert collector["if"] == "(always()) && needs.changes.outputs.product_changed == 'true'"
     assert collector.get("continue-on-error", False) is False
     assert collector["uses"] == ("myon-bioinformatics/myon-bioinformatics/.github/workflows/"
-                                 "reusable-junit-identity.yml@dccd07ea5c9820764e99d77251e9490afa77fe6e")
+                                 "reusable-junit-identity.yml@a71fa423f7e0357398abf8a00743cbe6b6bfc670")
     reports = json.loads(collector["with"]["expected-reports"])
     assert isinstance(reports, list) and len(reports) == 2
     assert set(reports) == {
