@@ -1465,6 +1465,7 @@ def test_renderer_escapes_dynamic_content():
 
 def test_renderer_has_responsive_component_css():
     assert ".repo-diagnostics" in CSS
+    assert "background:var(--ui-panel,#fff);color:var(--ui-fg,#222)" in CSS   # 🎨 follows the page theme (terminal too)
     assert "@media(max-width:30rem)" in CSS
     assert "font-variant-numeric:tabular-nums" in CSS
 
