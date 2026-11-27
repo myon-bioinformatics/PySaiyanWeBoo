@@ -20,6 +20,8 @@ import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+import unicodedata
+import zipfile
 import zlib
 from html.parser import HTMLParser
 from pathlib import Path
@@ -290,8 +292,51 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
         self.assertNotIn("data-ui-back", pysaiyanweboo.front_html("<p>view</p>", ROOM, title="T"))
         self.assertEqual(pysaiyanweboo.example_pages()["index.html"].count("data-ui-back"), 1)
 
+    def test_site_chrome_gives_a_built_page_the_header_side_and_foot_once(self):
+        """🧰 add_site_chrome (and add_back_nav(chrome=True), --page --repository): the board says what the page is and where the links
+        lead, 🫧 follows it, 🏠 is the first link and each other link its emoji, 🚪 lists the links and 📌 this page with 📦 its size."""
+        ui = pysaiyanweboo
+        links = [{"label": "🏠 ポートフォリオ", "href": "https://myon-bioinformatics.github.io/"}, {"label": "🐙 GitHub リポジトリ", "href": "https://github.com/myon-bioinformatics/xprobe"}]
+        spec = {"schema": "web-ui-page/1", "title": "xprobe ガイド", "description": "単一ファイルのテスト支援。まずは 1 行で。", "blocks": [{"type": "heading", "text": "使い方"}]}
+        plain = ui.page_document(spec)
+        page = ui.add_back_nav(plain, "myon-bioinformatics/xprobe", chrome=True)
+        self.assertEqual(page, ui.add_back_nav(plain, links, chrome=True))
+        self.assertEqual(page, ui.add_back_nav(page, links, chrome=True))
+        self.assertIn('data-ui-back data-testid="guide-back"', ui.add_back_nav(plain, links, chrome=True, test_id="guide-back"))
+        self.assertNotIn('<nav class="ui-back"', page)
+        for link in links:
+            self.assertEqual(len(re.findall(r'<a\b[^>]* href="' + re.escape(link["href"]) + r'"', page)), 1)
+        self.assertEqual(ui.add_site_chrome(page, links), page)                                        # a page that has them keeps them
+        self.assertEqual(ui.add_back_nav(plain, "myon-bioinformatics/xprobe"), ui.add_back_nav(plain, links))   # without chrome: as it was
+        self.assertNotIn("ui-chrome", ui.add_back_nav(plain, links))
+        body = page[page.index("<body"):]
+        self.assertEqual([body.count(part) for part in ('<div class="ui-chrome ', '<button type="button" class="ui-gaze"', '<div class="ui-door-foot">', 'data-ui-back')], [1, 1, 1, 1])
+        self.assertLess(body.index('<div class="ui-chrome '), body.index('<main class="ui-page">'))    # the header first, the foot last
+        self.assertLess(body.index("</main>"), body.index('<div class="ui-door-foot">'))
+        items = [html.unescape(t) for t in re.findall(r'<span class="ui-board-item">([^<]*)</span>', body)]
+        self.assertEqual(items, ["単一ファイルのテスト支援。", "まずは 1 行で。", "🏠 ポートフォリオ", "🐙 GitHub リポジトリ"])
+        self.assertIn('<strong>GUIDE</strong>', body)
+        self.assertIn('</div><button type="button" class="ui-gaze"', body[:body.index('<nav class="ui-world-tools" aria-label="関連リンク" data-ui-back>')])        # 🫧 after the board
+        self.assertIn('<a class="ui-world-home" href="https://myon-bioinformatics.github.io/"', body)
+        self.assertRegex(body, r'href="https://github.com/myon-bioinformatics/xprobe"[^>]*>🐙')
+        options = re.findall(r'<option value="([^"]*)"[^>]*>([^<]*)</option>', body[body.index('<div class="ui-door-foot">'):])
+        self.assertEqual([(href, html.unescape(label).replace(" (current)", "")) for href, label in options],
+                         [("https://myon-bioinformatics.github.io/", "🏠 ポートフォリオ"), ("https://github.com/myon-bioinformatics/xprobe", "🐙 GitHub リポジトリ"), ("./", "📌 xprobe ガイド")])
+        self.assertRegex(body, rf'📦 {len(page.encode("utf-8")) / 1024:.0f} KB')
+        bare = ui.add_site_chrome("<!doctype html><html><head><title>T &amp; U</title></head><body><main><p>x</p></main></body></html>", links[:1], title="DOCS")
+        said = [html.unescape(t) for t in re.findall(r'<span class="ui-board-item">([^<]*)</span>', bare)]
+        self.assertEqual(said, ["T & U：このページの案内。", "🚪 でほかの場所へ、🏠 で戻れます。", "🏠 ポートフォリオ"])              # 📟 nothing of its own to say: a line any page can
+        self.assertIn('<strong>DOCS</strong>', bare)
+        csp = "<!doctype html><html><head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'sha256-x'; style-src 'sha256-y'\"><title>T</title></head><body><main></main></body></html>"
+        policy = re.search(r'Content-Security-Policy" content="([^"]*)"', ui.add_site_chrome(csp, links))[1]
+        self.assertGreater(policy.count("'sha256-"), 4)                                                # the parts' hashes join the page's, nothing wider
+        self.assertNotIn("unsafe-inline", policy)
+        for bad in ([], [{"label": "x"}], "o/r", [{"label": "🏠 a", "href": "./"}] * 9):
+            with self.subTest(bad=str(bad)[:20]), self.assertRaisesRegex(ValueError, "links lists 1 to 8"):
+                ui.add_site_chrome(plain, bad)
+
     def test_page_cli_puts_the_way_back_first_with_repository(self):
-        """🏠 --page SPEC --repository OWNER/REPO: the nav comes right after <main>, before the title; without it, none."""
+        """🏠 --page SPEC --repository OWNER/REPO: the common header owns the nav before <main>; without it, none."""
         with tempfile.TemporaryDirectory() as tmp:
             spec = Path(tmp) / "guide.page.json"
             spec.write_text(json.dumps({"schema": "web-ui-page/1", "title": "Guide", "blocks": []}), encoding="utf-8")
@@ -301,8 +346,13 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
                 with self.subTest(argv=argv), contextlib.redirect_stdout(out):
                     self.assertEqual(pysaiyanweboo.main(argv), 0)
                 page = out.getvalue()
-                self.assertEqual('<main class="ui-page"><nav class="ui-back"' in page, expect)
+                marker = '<nav class="ui-world-tools" aria-label="関連リンク" data-ui-back>'
+                self.assertEqual(marker in page, expect)
+                self.assertNotIn('<nav class="ui-back"', page)
+                if expect:
+                    self.assertLess(page.index(marker), page.index('<main class="ui-page">'))
                 self.assertEqual(page.count("data-ui-back"), int(expect))
+                self.assertEqual(('<div class="ui-chrome ' in page, '<div class="ui-door-foot">' in page), (expect, expect))   # 🧰 with the way back, the chrome
 
 
 class BundledCssTests(unittest.TestCase):
@@ -4345,8 +4395,16 @@ assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
             ui.svg_rasterize(svg(""), 64, max_pixels=1024)
         self.assertTrue(issubclass(ui.SvgError, ValueError))
 
-    def test_scenes_become_one_deck_with_page_operations(self):
-        """📽️ slide_deck_validate / _text / _parse / _edit, slide_template, slide_layer_native (Ironmate's slide studio and 📱 phone slides)."""
+    @staticmethod
+    def _slide_shell() -> dict:
+        """The least package the slides go into: the parts the writer rewrites, with one slide of its own to be replaced."""
+        return {"[Content_Types].xml": '<Types><Override PartName="/ppt/slides/slide1.xml" ContentType="x"/><Override PartName="/ppt/presentation.xml" ContentType="p"/></Types>',
+                "ppt/presentation.xml": '<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId9"/></p:sldIdLst><p:sldSz cx="1" cy="1" type="screen4x3"/></p:presentation>',
+                "ppt/_rels/presentation.xml.rels": '<Relationships><Relationship Id="rId9" Type="http://x/slide" Target="slides/slide1.xml"/><Relationship Id="rId1" Type="http://x/slideMaster" Target="m.xml"/></Relationships>',
+                "docProps/core.xml": "<cp:coreProperties><dc:title>old</dc:title></cp:coreProperties>", "ppt/slides/slide1.xml": "<old/>"}
+
+    def test_scenes_become_one_deck_with_page_operations_and_an_editable_pptx(self):
+        """📽️ slide_deck_validate / _text / _parse / _edit, slide_template, slide_layer_native, zip_stored, slide_deck_pptx (Ironmate's slide studio)."""
         ui = pysaiyanweboo
         page = ui.slide_template(1280, 720, "Title <>&", "本文\nSecond line")
         self.assertEqual([(l["id"], l["x"], l["y"], l["w"], l["h"], l["fontSize"], l["bold"], l["wrap"]) for l in page["layers"]],
@@ -4370,19 +4428,56 @@ assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
         picture = ui.studio_image_layer("data:image/png;base64," + base64.b64encode(ui.studio_png_encode(1, 1, bytes(4))).decode(), 1, 1, "pic", name="Photo")
         self.assertEqual([ui.slide_layer_native(l) for l in (shape("rect"), shape("arrow"), shape("arrow", headStyle="beginner"), page["layers"][0], {**page["layers"][0], "mono": True}, picture)],
                          [True, True, False, True, False, False])
+        scene = {**page, "layers": [page["layers"][0], page["layers"][1], shape("rect"), shape("arrow"), picture, {**picture, "id": "pic2"}]}
+        png = ui.studio_png_encode(1, 1, bytes(4))
+        made = ui.slide_deck_pptx({"schema": ui.SLIDE_DECK_SCHEMA, "title": "A$$B $& <1>", "slides": [scene, {**page, "layers": [picture]}]}, self._slide_shell(), lambda layer, scene: png)
+        self.assertEqual({k: made[k] for k in ("native", "images", "slides")}, {"native": 5, "images": 3, "slides": 2})   # an arrow is a shaft and a head
+        with zipfile.ZipFile(io.BytesIO(made["data"])) as package:
+            self.assertIsNone(package.testzip())
+            self.assertEqual([i.compress_type for i in package.infolist()], [zipfile.ZIP_STORED] * len(package.namelist()))
+            self.assertEqual(package.namelist(), ["[Content_Types].xml", "ppt/presentation.xml", "ppt/_rels/presentation.xml.rels", "docProps/core.xml", "ppt/slides/slide1.xml",
+                                                  "ppt/media/image1.png", "ppt/slides/_rels/slide1.xml.rels", "ppt/slides/slide2.xml", "ppt/slides/_rels/slide2.xml.rels", "docProps/app.xml"])
+            self.assertEqual(package.read("ppt/media/image1.png"), png)                                    # equal pictures are stored once
+            read = lambda name: package.read(name).decode("utf-8")
+            slide, second = ET.fromstring(read("ppt/slides/slide1.xml")), read("ppt/slides/slide2.xml")
+            self.assertIn('<p:sldIdLst><p:sldId id="256" r:id="rIdBrowserSlide1"/><p:sldId id="257" r:id="rIdBrowserSlide2"/></p:sldIdLst><p:sldSz cx="9144000" cy="5143500"/>', read("ppt/presentation.xml"))
+            self.assertEqual(read("ppt/_rels/presentation.xml.rels").count("/slide\""), 2); self.assertIn('Id="rId1"', read("ppt/_rels/presentation.xml.rels"))
+            self.assertEqual(read("[Content_Types].xml").count("/ppt/slides/slide"), 2); self.assertIn("<dc:title>A$$B $&amp; &lt;1&gt;</dc:title>", read("docProps/core.xml"))
+            self.assertIn("<Slides>2</Slides>", read("docProps/app.xml")); self.assertIn('r:embed="rIdImage3"', second)
+            self.assertIn('Id="rIdImage3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"', read("ppt/slides/_rels/slide2.xml.rels"))
+        ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main", "p": "http://schemas.openxmlformats.org/presentationml/2006/main"}
+        self.assertEqual([t.text for t in slide.findall(".//a:t", ns)], ["Title <>&", "本文", "Second line"])   # a typed newline is a paragraph
+        self.assertEqual(len(slide.findall(".//p:txBody/a:p", ns)), 3); self.assertEqual(len(slide.findall(".//p:pic", ns)), 2)
+        title = slide.find(".//p:sp/p:txBody/a:p/a:r/a:rPr", ns)                                           # 57.6 px of 1280 across 10 inches is 32.4 pt
+        self.assertEqual((title.get("sz"), title.get("b"), title.find("a:latin", ns).get("typeface")), ("3240", "1", "Meiryo"))
+        self.assertIsNone(title.get("i"))                                                                  # italic is written only when a text box has it
+        slanted = ui.slide_deck_pptx({**deck, "slides": [{**page, "layers": [{**page["layers"][1], "italic": True}]}]}, self._slide_shell())["data"]
+        self.assertIn(b'b="0" i="1">', slanted)
+        rect = slide.findall("p:cSld/p:spTree/p:sp", ns)[2].find("p:spPr", ns)                             # 1 px is 7143.75 EMU: 128 px is 914400, a tenth of the slide
+        self.assertEqual((rect.find("a:xfrm", ns).get("rot"), rect.find("a:xfrm/a:off", ns).attrib, rect.find("a:xfrm/a:ext", ns).attrib),
+                         ("5400000", {"x": "914400", "y": "457200"}, {"cx": "1828800", "cy": "914400"}))
+        self.assertEqual((rect.find("a:solidFill/a:srgbClr", ns).get("val"), rect.find("a:solidFill/a:srgbClr/a:alpha", ns).get("val"), rect.find("a:ln", ns).get("w")), ("FF8800", "50000", "14288"))
+        group = slide.find(".//p:grpSp", ns)
+        self.assertEqual(([sp.find("p:nvSpPr/p:cNvPr", ns).get("name") for sp in group.findall("p:sp", ns)], len(group.findall(".//a:custGeom//a:lnTo", ns))), (["Arrow shaft", "Arrow head"], 2))
+        self.assertEqual(ui.slide_deck_pptx(deck, self._slide_shell())["native"], 2)                       # nothing to draw: no picture maker needed
         twenty = {**deck, "slides": [page] * 20}
         for call, message in ((lambda: ui.slide_deck_validate({**deck, "slides": []}), "1〜20枚"), (lambda: ui.slide_deck_validate({**deck, "slides": [page] * 21}), "1〜20枚"),
                               (lambda: ui.slide_deck_validate({**deck, "schema": "x"}), "1〜20枚"), (lambda: ui.slide_deck_validate(None), "1〜20枚"),
                               (lambda: ui.slide_deck_validate({**deck, "slides": [page, ui.slide_template(800, 600)]}), "同じ幅・高さ"),
                               (lambda: ui.slide_deck_validate({**deck, "title": "x" * 201}), "200文字"), (lambda: ui.slide_deck_parse(b"{}"), "32MiB"),
                               (lambda: ui.slide_deck_edit(twenty, "add"), "最大20枚"), (lambda: ui.slide_deck_edit(twenty, "duplicate"), "最大20枚"),
-                              (lambda: ui.slide_deck_edit(deck, "shuffle"), "操作"), (lambda: ui.slide_deck_edit(deck, "add", 1), "位置"), (lambda: ui.slide_deck_edit(deck, "add", True), "位置")):
+                              (lambda: ui.slide_deck_edit(deck, "shuffle"), "操作"), (lambda: ui.slide_deck_edit(deck, "add", 1), "位置"), (lambda: ui.slide_deck_edit(deck, "add", True), "位置"),
+                              (lambda: ui.slide_deck_pptx({**deck, "slides": [scene]}, self._slide_shell()), "画像化"),
+                              (lambda: ui.slide_deck_pptx({**deck, "slides": [scene]}, self._slide_shell(), lambda layer, scene: b"GIF89a.."), "PNG"),
+                              (lambda: ui.slide_deck_pptx({**deck, "title": "bad\x01"}, self._slide_shell()), "制御文字"),
+                              (lambda: ui.slide_deck_pptx({**deck, "slides": [{**ui.slide_template(4096, 64), "layers": [{**page["layers"][0], "fontSize": 4}]}]}, self._slide_shell()), "文字サイズ"),
+                              (lambda: ui.slide_deck_pptx(deck, {}), "空パッケージ"), (lambda: ui.zip_stored({"a": 1}), "ZIP")):
             with self.assertRaisesRegex(ui.StudioError, message):
                 call()
 
     @unittest.skipUnless(node26(), "Node 26+ is required")
     def test_slide_deck_module_writes_what_python_writes(self):
-        """js/slide-deck.js on js/imagestudio.js against slide_deck_* on 12 random decks: the saved text, which layers stay shapes, every page operation, the refusals."""
+        """js/slide-deck.js on js/imagestudio.js against slide_deck_* on 12 random decks: the saved text, the PPTX byte for byte, every page operation, the refusals."""
         ui, rng = pysaiyanweboo, random.Random(20261127)
         num = lambda a, b: rng.choice([rng.randint(int(a), int(b)), round(rng.uniform(a, b), rng.randint(0, 6))])
         color = lambda: rng.choice(["#000000", "#ff8800", "#18A7A1"])
@@ -4393,7 +4488,8 @@ assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
             made = {"id": f"l{i}", "kind": kind, "x": num(-50, 1280), "y": num(-50, 720), "w": num(8, 1280), "h": num(8, 720), "rotation": num(-360, 360), "opacity": num(0, 1)}
             if kind == "text":
                 made.update(text=rng.choice(["Title <>&", "本文\nSecond line", "long " * 30, "日本語の長い文章をここに書いて折り返しを確かめます。", "", "😀👨‍👩‍👧"]), fill=color(),
-                            fontSize=num(16, 200), font=rng.choice(["sans", "mono"]), mono=rng.random() < .15, bold=rng.random() < .5, **({"wrap": rng.random() < .6} if rng.random() < .7 else {}))
+                            fontSize=num(16, 200), font=rng.choice(["sans", "mono"]), mono=rng.random() < .15, bold=rng.random() < .5, **({"wrap": rng.random() < .6} if rng.random() < .7 else {}),
+                            **({"italic": rng.random() < .7} if rng.random() < .5 else {}))
             elif kind == "image":
                 made = {**ui.studio_image_layer("data:image/png;base64," + base64.b64encode(png).decode(), 1, 1, f"l{i}"), "rotation": num(-360, 360), "opacity": num(0, 1)}
             else:
@@ -4414,27 +4510,30 @@ assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
                 return {"error": str(error)}
 
         def written(deck: dict) -> object:
-            return {"text": ui.slide_deck_text(deck), "native": [[ui.slide_layer_native(l) for l in scene["layers"]] for scene in deck["slides"]]}
+            made = ui.slide_deck_pptx(deck, self._slide_shell(), lambda layer, scene: png)
+            return {"text": ui.slide_deck_text(deck), "sha": hashlib.sha256(made["data"]).hexdigest(), "native": made["native"], "images": made["images"]}
 
         expected = {"decks": [attempt(lambda: written(deck)) for deck in decks + bad],
                     "steps": [attempt(lambda: (lambda deck, at: {"text": ui.js_json(deck), "at": at})(*ui.slide_deck_edit(decks[i], action, at))) for i, action, at in steps],
                     "templates": [ui.js_json(ui.slide_template(*size)) for size in ((), (800, 600, "T", "B"), (1920, 1080, "題 <&>", "本文\n2"))]}
-        payload = json.dumps({"decks": decks + bad, "steps": steps})
+        payload = json.dumps({"decks": decks + bad, "steps": steps, "shell": self._slide_shell(), "png": base64.b64encode(png).decode()})
         self.assertLess(len(payload), 96 * 1024)                                                         # one command-line argument
         done = node_js("""
+import { createHash } from "node:crypto";
 import { slideDeck } from "./js/slide-deck.js";
 globalThis.document={ querySelector:()=>null };
 const core=await import("./js/imagestudio.js");
 delete globalThis.document;
-const input=JSON.parse(process.argv[2]), D=slideDeck(core);
-const attempt=call=>{ try { return call(); } catch(error) { return { error:error.message }; } };
+const input=JSON.parse(process.argv[2]), D=slideDeck(core, input.shell), png=Uint8Array.from(atob(input.png), c=>c.charCodeAt(0));
+const attempt=async call=>{ try { return await call(); } catch(error) { return { error:error.message }; } };
 const out={ decks:[], steps:[], templates:[[],[800,600,"T","B"],[1920,1080,"題 <&>","本文\\n2"]].map(size=>JSON.stringify(D.template(...size))) };
-for(const deck of input.decks) out.decks.push(attempt(()=>({ text:D.deckText(deck), native:deck.slides.map(scene=>scene.layers.map(D.isNative)) })));
-for(const [i, action, at] of input.steps) out.steps.push(attempt(()=>{ const made=D.edit(input.decks[i], action, at); return { text:JSON.stringify(made.deck), at:made.active }; }));
+for(const deck of input.decks) out.decks.push(await attempt(async()=>{ const made=await D.exportPptx(deck, ()=>png);
+  return { text:D.deckText(deck), sha:createHash("sha256").update(made.data).digest("hex"), native:made.native, images:made.images }; }));
+for(const [i, action, at] of input.steps) out.steps.push(await attempt(()=>{ const made=D.edit(input.decks[i], action, at); return { text:JSON.stringify(made.deck), at:made.active }; }));
 console.log(JSON.stringify(out));
 """, payload)
         self.assertEqual(json.loads(done.stdout), expected)
-        self.assertTrue(any("text" in deck for deck in expected["decks"]) and any("error" in step for step in expected["steps"]))
+        self.assertTrue(any("sha" in deck for deck in expected["decks"]) and any("error" in step for step in expected["steps"]))
 
     def test_studio_pages_sheet_waits_for_its_page_and_draws_with_the_theme_only(self):
         """🏭 studio-pages.css (Ironmate's studio pages): every selector waits for a ``data-page`` (nothing happens on another
@@ -8113,7 +8212,7 @@ class RecordsBoardTests(unittest.TestCase):
         """📦📜 save_text / spell_text / bits_pack and records.js's saveText / spellText / bitsPack write the same text for the same
         state, each reads the other's, and a spell that is one kana off, or has two neighbours swapped, is never read."""
         ui, rng = pysaiyanweboo, random.Random(20261127)
-        kana = re.search(r'const KANA="([^"]+)"', ui.js_source("records.js"))[1]
+        kana = re.search(r'const KANA="([^"]+)"', ui.js_source("records.js"))[1][:64]             # a spell of 64 draws from the first 64
         self.assertEqual((len(kana), len(set(kana))), (64, 64))
         self.assertFalse(set(kana) & set("をんぁぃぅぇぉっゃゅょ"))                     # none a typist confuses with its neighbour
         layout = [("version", 4), ("level", 7), ("gold", 16), ("hp", 10), ("mp", 10), ("items", 24), ("flags", 25)]   # 96 bits: 12 bytes
@@ -8170,6 +8269,73 @@ console.log(JSON.stringify({out,refused:refused(wrong),cut,fit,flag:[...bitsPack
             self.assertEqual((js["bytes"], js["spell"], js["extra"], js["extraSpell"]), (case["bytes"], case["spell"], case["extra"], case["extraSpell"]))
             self.assertEqual(js["back"], {name: case["values"].get(name, 0) for name, _ in case["layout"]})
             self.assertEqual((js["state"], js["save"]), (ui.save_state(case["save"]), case["save"]))            # the same line from both
+
+    def test_a_spell_draws_from_64_128_or_4096_characters(self):
+        """📜 kinds: a spell of 64 stays what it was (a spell written before still reads); 128 adds を ん, katakana and A–Z; 4096 adds JIS
+        kanji. Python and records.js write the same spell and read each other's, a spell of 128 with one character off or two neighbours
+        swapped is never read, and a long JSON saved as kanji is a fraction of its base64url line."""
+        rng = random.Random(20261127)
+        kana = re.search(r'const KANA="([^"]+)"', ui.js_source("records.js"))[1]
+        full = ui._spell_kinds(4096)
+        self.assertEqual((len(kana), len(set(full)), ui._spell_kinds(64), ui._spell_kinds(128)), (128, 4096, kana[:64], kana))
+        self.assertEqual(kana[:64], "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわがぎぐげござじずぜぞだぢづでどばびぶべぼ")   # 64: as it was
+        self.assertTrue(kana[64:66] == "をん" and all("ァ" <= c <= "ヶ" or "A" <= c <= "Z" for c in kana[66:]) and not set(kana) & set("ウカキセヘモヤリヲン"))   # no katakana a hiragana looks like
+        self.assertEqual((full[128:136], full[-1]), ("亜唖娃阿哀愛挨姶", "昊"))                 # JIS X 0208 in its own order: level 1, then level 2
+        self.assertTrue(all(len(c.encode("utf-16-le")) == 2 and unicodedata.normalize("NFKC", c) == c for c in full))   # one unit each, and pasting keeps them
+        with self.assertRaisesRegex(ValueError, "kinds is 64, 128 or 4096"):
+            ui.spell_text(b"", 256)
+        layout = [("version", 4), ("level", 7), ("gold", 16), ("hp", 10), ("mp", 10), ("items", 24), ("flags", 25)]
+        state = {"version": 1, "level": 12, "gold": 3456, "hp": 87, "mp": 30, "items": 45, "flags": 126991}
+        packed = ui.bits_pack(layout, state)
+        spells = {kinds: ui.spell_text(packed, kinds) for kinds in (64, 128, 4096)}
+        self.assertEqual(spells, {64: "ういむつむ ふあうぐえごあ あかるいび\nあび", 128: "けヨだあに ヨSああぬをみ あびちのを", 4096: "越碍わ擢あ ホみた唖搭"})   # 19, 17, 10
+        for kinds, spell in spells.items():
+            self.assertEqual(ui.bits_unpack(layout, ui.spell_bytes(spell, kinds)), state)
+        self.assertEqual([ui.spell_bytes(ui.spell_text(b"", kinds), kinds) for kinds in (64, 128, 4096)], [b"", b"", b""])
+        letters, chars = spells[128].replace(" ", ""), kana
+        wrong = [letters[:i] + other + letters[i + 1:] for i in range(len(letters)) for other in chars if other != letters[i]]   # every one-character slip
+        wrong += [letters[:i] + letters[i + 1] + letters[i] + letters[i + 2:] for i in range(len(letters) - 1) if letters[i] != letters[i + 1]]
+        for size in range(48):                                                    # … and a slip at each place, and each swap, of spells of every length
+            other = ui.spell_text(rng.randbytes(size), 128).replace(" ", "").replace("\n", "")
+            wrong += [other[:i] + rng.choice(chars.replace(other[i], "")) + other[i + 1:] for i in range(len(other))]
+            wrong += [other[:i] + other[i + 1] + other[i] + other[i + 2:] for i in range(len(other) - 1) if other[i] != other[i + 1]]
+        wrong += [letters[:-1], letters + "あ", "", "abc", "ウ" + letters[1:], "亜" + letters[1:], spells[64].replace(" ", "").replace("\n", "")]
+        for text in wrong:
+            with self.assertRaisesRegex(ValueError, "^じゅもんが ちがいます$"):
+                ui.spell_bytes(text, 128)
+        for text, kinds in ((spells[128], 64), (spells[4096], 128), (spells[4096][:-1], 4096)):   # read as the kinds it was written in
+            with self.assertRaisesRegex(ValueError, "じゅもんが ちがいます"):
+                ui.spell_bytes(text, kinds)
+        values = [None, 0, -1.5, "", "🍠 やくそう \"x\"", [], {}, {"schema": "world-save/1", "level": 12, "bag": ["🍠", "やくそう"] * 40, "flags": {"a": True}}]
+        for value in values:
+            for kinds in (64, 128, 4096):
+                self.assertEqual(ui.save_state(ui.save_text(value, kinds), kinds), value)
+        line, kanji = ui.save_text(values[-1]), ui.save_text(values[-1], 4096)
+        self.assertLess(len(re.sub(r"\s", "", kanji)), len(line) // 8)                            # 🈶 deflated, and 12 bits a character against 6
+        self.assertEqual(ui.spell_bytes(ui.save_text({"a": 1}, 128), 128), b'\0{"a":1}')          # too short to deflate: kept as it is
+        for text, kinds in ((kanji[:-1], 4096), (kanji, 128), (line, 4096), (ui.spell_text(b'\2{}', 128), 128), (ui.spell_text(b"\1not deflate", 128), 128), (ui.spell_text(b"", 4096), 4096)):
+            with self.assertRaisesRegex(ValueError, "cut or changed"):
+                ui.save_state(text, kinds)
+        cases = []                                                                # 🎲 random bytes and states through both languages
+        for index in range(60):
+            kinds, data = (64, 128, 4096)[index % 3], rng.randbytes(rng.randint(0, 40))
+            saved = {"n": [rng.randrange(1 << 40) for _ in range(rng.randint(0, 6))], "t": "じゅもん🍠" * rng.randint(0, 12)}
+            cases.append({"kinds": kinds, "bytes": list(data), "spell": ui.spell_text(data, kinds), "state": saved, "save": ui.save_text(saved, kinds)})
+        wrong = rng.sample(wrong[:-7], 300) + wrong[-7:]                          # Node takes a sample (an argument has a size)
+        script = r"""import {saveText,saveState,spellText,spellBytes} from "./js/records.js";
+const cases=JSON.parse(process.argv[2]),wrong=JSON.parse(process.argv[3]),out=[];
+for(const c of cases)out.push({spell:spellText(c.bytes,c.kinds),bytes:[...spellBytes(c.spell,c.kinds)],state:await saveState(c.save,c.kinds),save:await saveText(c.state,c.kinds)});
+const refused=wrong.filter(t=>{try{spellBytes(t,128);return false}catch(e){return e.message==="じゅもんが ちがいます"}}).length;
+let cut=0;for(const [t,kinds] of [[cases[2].save.slice(0,-1),4096],[cases[2].save,128],[spellText([2,123,125],128),128],[spellText([1,9,9,9],128),128],[spellText([],4096),4096]])
+ try{await saveState(t,kinds)}catch(e){cut+=/cut or changed/.test(e.message)}
+let fit=0;for(const f of [()=>spellText([],256),()=>spellBytes("あ",32)])try{f()}catch(e){fit+=/kinds is 64, 128 or 4096/.test(e.message)}
+const line=saveText({a:1});
+console.log(JSON.stringify({out,refused,cut,fit,sync:[typeof line,saveState(line)],promise:saveText({a:1},64) instanceof Promise}))"""
+        got = json.loads(node_js(script, json.dumps(cases, ensure_ascii=False), json.dumps(wrong, ensure_ascii=False)).stdout)
+        self.assertEqual((got["refused"], got["cut"], got["fit"], got["sync"], got["promise"]), (len(wrong), 5, 2, ["string", {"a": 1}], True))   # the line stays synchronous
+        for case, js in zip(cases, got["out"]):
+            self.assertEqual((js["spell"], js["bytes"], js["state"]), (case["spell"], case["bytes"], case["state"]))    # the same spell; JavaScript reads Python's
+            self.assertEqual(ui.save_state(js["save"], case["kinds"]), case["state"])                                  # and Python JavaScript's
 
     def test_portable_save_refuses_numeric_rounding(self):
         import base64

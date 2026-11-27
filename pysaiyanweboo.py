@@ -9,7 +9,7 @@ only as an explicit subprocess helper for pytest/CI one-liners.
 from __future__ import annotations
 
 import argparse, ast, base64, binascii, colorsys, errno, hashlib, heapq, hmac, http.client, http.server, importlib.util, io, json, math, os, random, re, shlex, shutil, struct, subprocess, sys, time, unicodedata, urllib.error, urllib.request, xml.etree.ElementTree as ET, zlib
-from collections import Counter, defaultdict; from datetime import date, datetime, timezone; from decimal import Decimal; from html import escape; from pathlib import Path; from typing import Any, Sequence; from urllib.parse import parse_qsl, quote, urlsplit
+from collections import Counter, defaultdict; from datetime import date, datetime, timezone; from decimal import Decimal; from html import escape, unescape; from pathlib import Path; from typing import Any, Sequence; from urllib.parse import parse_qsl, quote, urlsplit
 
 THEMES = ("modern", "github-like")
 # Token-only candidates: their values live in the Python tokens.css source; not in contract v1 yet.
@@ -65,12 +65,20 @@ export function bindDownloads(root=document){const buttons=[...root.querySelecto
 /** select[data-ui-choice="name"] shows the [data-ui-choice-panel="name"] whose data-ui-choice-value is its value and hides the others (without JS every panel shows). With data-ui-draft the choice is kept like any draft. Returns the bound selects. */
 export function bindChoice(root=document){const fields=[...root.querySelectorAll("select[data-ui-choice]")];for(const field of fields){const panels=[...root.querySelectorAll("[data-ui-choice-panel]")].filter(p=>p.dataset.uiChoicePanel===field.dataset.uiChoice);const sync=()=>{for(const p of panels)p.hidden=p.dataset.uiChoiceValue!==field.value};field.addEventListener("change",sync);field.addEventListener("input",sync);sync()}return fields}
 /* 📦📜 A saved state as text, so a page can go on where it stopped on another device or after its storage is gone (no DOM, no storage: the
-   page decides what its state is). saveText / saveState: portable JSON as one base64url line (copy it, keep it in a file). spellText /
-   spellBytes: a few bytes as a spell to write down and type back (ふっかつのじゅもん): 64 kana, 6 bits each, lines of 5 7 5. bitsPack /
-   bitsUnpack: whole numbers packed by a layout into those few bytes (JSON is too long to type). Both texts start with a 16-bit check
-   (CRC-16/CCITT-FALSE): one wrong kana or two swapped neighbours never pass. pysaiyanweboo's save_text, save_state, spell_text, spell_bytes,
-   bits_pack and bits_unpack are their twins and read what these write. Numbers must fit in JavaScript’s safe range. */
-const KANA="あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわがぎぐげござじずぜぞだぢづでどばびぶべぼ";
+   page decides what its state is). saveText / saveState: portable JSON as one base64url line (copy it, keep it in a file) — or, with
+   kinds, deflated when that is shorter and written as a spell (a Promise then: browsers deflate asynchronously). spellText / spellBytes:
+   bytes as a spell (ふっかつのじゅもん) in lines of 5 7 5, of kinds 64 (hiragana, 6 bits a character: to write down and type back), 128
+   (with を ん, katakana and A–Z: 7 bits) or 4096 (with JIS kanji: 12 bits, half the characters of base64 — to paste, not to type). Each
+   kind holds the one before. bitsPack / bitsUnpack: whole numbers packed by a layout into a few bytes (JSON is too long to type). Every
+   text carries a 16-bit check (CRC-16/CCITT-FALSE; the line and a spell of 64 start with it, a spell of 128 or 4096 ends its bytes with
+   it, then a 1): in a spell of 64 or 128, one wrong character or two swapped neighbours never pass; any other change passes once in
+   65,536. pysaiyanweboo's save_text, save_state, spell_text, spell_bytes, bits_pack and bits_unpack are their twins and read what these
+   write. Numbers must fit in JavaScript’s safe range. */
+const KANA="あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわがぎぐげござじずぜぞだぢづでどばびぶべぼをんアイエオクケコサシスソタチツテトナニヌネノハヒフホマミムメユヨラルレロワABCDEFGHIJKLMNOPQRSTUVWXYZ";
+let KANJI="";
+/** The characters of a spell of kinds 64, 128 or 4096: KANA's first 64 (hiragana), all of it (を ん, the katakana no hiragana looks like, A–Z), or it and the first 3968 JIS X 0208 kanji in their own (EUC-JP) order — in every Japanese font, and no table to carry. */
+function spellKinds(kinds){if(kinds===64||kinds===128)return KANA.slice(0,kinds);if(kinds!==4096)throw new Error("kinds is 64, 128 or 4096");
+ if(!KANJI){const jis=new TextDecoder("euc-jp",{fatal:true});let found="";for(let row=16;row<85;row++)for(let cell=1;cell<95;cell++)try{found+=jis.decode(Uint8Array.of(160+row,160+cell))}catch{}KANJI=found.slice(0,3968)}return KANA+KANJI}
 function crc16(bytes){let c=0xFFFF;for(const b of bytes){c^=b<<8;for(let i=0;i<8;i++)c=(c&0x8000?c<<1^0x1021:c<<1)&0xFFFF}return c}
 function checked(bytes){const c=crc16(bytes),out=new Uint8Array(bytes.length+2);out[0]=c>>8;out[1]=c&255;out.set(bytes,2);return out}
 function unchecked(raw,wrong){if(raw.length<2||crc16(raw.subarray(2))!==(raw[0]<<8|raw[1]))throw new Error(wrong);return raw.subarray(2)}
@@ -78,17 +86,28 @@ function portableNumber(_,value){
  if(typeof value==="number"&&!(value>=-Number.MAX_SAFE_INTEGER&&value<=Number.MAX_SAFE_INTEGER))throw new Error("use text for numbers outside the portable JSON range");
  return value
 }
-/** Portable JSON as one base64url line: a 16-bit check, then its compact UTF-8 JSON. */
-export function saveText(state){const json=JSON.stringify(state,portableNumber);if(typeof json!=="string")throw new Error("a save must be a JSON value");let text="";for(const b of checked(new TextEncoder().encode(json)))text+=String.fromCharCode(b);return btoa(text).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")}
-/** The value saveText (or save_text) wrote; an Error when the line was cut or changed. Spaces and line breaks in it are ignored. */
-export function saveState(text){const wrong="the save text is cut or changed";try{const raw=atob(String(text).replace(/[ \t\r\n]/g,"").replace(/-/g,"+").replace(/_/g,"/"));return JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(unchecked(Uint8Array.from(raw,c=>c.charCodeAt(0)),wrong)),portableNumber)}catch{throw new Error(wrong)}}
-/** Bytes (a Uint8Array or an array of 0..255) as a spell: kana in lines of 5 7 5. 12 bytes are 19 kana. */
-export function spellText(data){const bits=[...checked(Uint8Array.from(data))].map(b=>b.toString(2).padStart(8,"0")).join(""),kana=(bits+"0".repeat((6-bits.length%6)%6)).match(/.{6}/g).map(g=>KANA[parseInt(g,2)]).join(""),lines=[];
- for(let i=0;i<kana.length;i+=17)lines.push([kana.slice(i,i+5),kana.slice(i+5,i+12),kana.slice(i+12,i+17)].filter(Boolean).join(" "));return lines.join("\n")}
-/** The bytes spellText (or spell_text) wrote, as a Uint8Array; spaces and line breaks are ignored and katakana reads as hiragana. A spell that is not one throws Error("じゅもんが ちがいます"). */
-export function spellBytes(text){const wrong="じゅもんが ちがいます",kana=[...String(text)].filter(c=>!" \t\r\n　".includes(c)).map(c=>c>="ァ"&&c<="ヶ"?String.fromCharCode(c.charCodeAt(0)-96):c);if(!kana.length||kana.some(c=>c.length!==1||!KANA.includes(c)))throw new Error(wrong);
- const bits=kana.map(c=>KANA.indexOf(c).toString(2).padStart(6,"0")).join(""),n=bits.length>>3;if(bits.length-n*8>=6||bits.slice(n*8).includes("1"))throw new Error(wrong);
- return unchecked(Uint8Array.from({length:n},(_,i)=>parseInt(bits.slice(i*8,i*8+8),2)),wrong)}
+async function through(bytes,stream){return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer())}
+/** Portable JSON as one base64url line: a 16-bit check, then its compact UTF-8 JSON. With kinds (64, 128 or 4096) a Promise of a spell instead: 0 and the JSON, or 1 and it deflated when that is shorter. */
+export function saveText(state,kinds){const bytes=()=>{const json=JSON.stringify(state,portableNumber);if(typeof json!=="string")throw new Error("a save must be a JSON value");return new TextEncoder().encode(json)};
+ if(kinds)return (async()=>{const raw=bytes(),small=await through(raw,new CompressionStream("deflate")),body=small.length<raw.length?small:raw,out=new Uint8Array(body.length+1);out[0]=body===small?1:0;out.set(body,1);return spellText(out,kinds)})();
+ let text="";for(const b of checked(bytes()))text+=String.fromCharCode(b);return btoa(text).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")}
+/** The value saveText (or save_text) wrote, with the same kinds (a Promise then); an Error when the text was cut or changed. Spaces and line breaks in it are ignored. */
+export function saveState(text,kinds){const wrong="the save text is cut or changed",parse=raw=>JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(raw),portableNumber);
+ if(kinds)return (async()=>{try{const bytes=spellBytes(text,kinds);if(!bytes.length||bytes[0]>1)throw 0;return parse(bytes[0]?await through(bytes.subarray(1),new DecompressionStream("deflate")):bytes.subarray(1))}catch{throw new Error(wrong)}})();
+ try{const raw=atob(String(text).replace(/[ \t\r\n]/g,"").replace(/-/g,"+").replace(/_/g,"/"));return parse(unchecked(Uint8Array.from(raw,c=>c.charCodeAt(0)),wrong))}catch{throw new Error(wrong)}}
+/** Bytes (a Uint8Array or an array of 0..255) as a spell of kinds 64 (the default), 128 or 4096, in lines of 5 7 5. 12 bytes are 19, 17 or 10 characters. */
+export function spellText(data,kinds=64){const chars=spellKinds(kinds),width=Math.log2(kinds),bytes=Uint8Array.from(data),byte=b=>b.toString(2).padStart(8,"0");let bits="";
+ if(kinds===64)for(const b of checked(bytes))bits+=byte(b);                                                  // 64: the check, the bytes
+ else{for(const b of bytes)bits+=byte(b);bits+=crc16(bytes).toString(2).padStart(16,"0")+"1"}                // 128, 4096: the bytes, the check, a 1 (so their end is known)
+ bits+="0".repeat((width-bits.length%width)%width);let text="";for(let i=0;i<bits.length;i+=width)text+=chars[parseInt(bits.slice(i,i+width),2)];const lines=[];
+ for(let i=0;i<text.length;i+=17)lines.push([text.slice(i,i+5),text.slice(i+5,i+12),text.slice(i+12,i+17)].filter(Boolean).join(" "));return lines.join("\n")}
+/** The bytes spellText (or spell_text) wrote with the same kinds, as a Uint8Array; spaces and line breaks are ignored, and in a spell of 64 katakana reads as hiragana. A spell that is not one throws Error("じゅもんが ちがいます"). */
+export function spellBytes(text,kinds=64){const wrong="じゅもんが ちがいます",chars=spellKinds(kinds),width=Math.log2(kinds),at=new Map([...chars].map((c,i)=>[c,i]));let bits="";
+ for(let c of String(text)){if(" \t\r\n　".includes(c))continue;if(kinds===64&&c>="ァ"&&c<="ヶ")c=String.fromCharCode(c.charCodeAt(0)-96);if(!at.has(c))throw new Error(wrong);bits+=at.get(c).toString(2).padStart(width,"0")}
+ const bytes=n=>Uint8Array.from({length:n},(_,i)=>parseInt(bits.slice(i*8,i*8+8),2));
+ if(kinds===64){const n=bits.length>>3;if(!bits.length||bits.length-n*8>=6||bits.slice(n*8).includes("1"))throw new Error(wrong);return unchecked(bytes(n),wrong)}
+ const end=bits.lastIndexOf("1");if(end<16||bits.length-end>width||end%8)throw new Error(wrong);
+ const raw=bytes(end/8),n=raw.length-2;if(crc16(raw.subarray(0,n))!==(raw[n]<<8|raw[n+1]))throw new Error(wrong);return raw.subarray(0,n)}
 function layoutBits(layout){for(const[name,width]of layout)if(typeof name!=="string"||!Number.isInteger(width)||width<1||width>32)throw new Error("a layout is [name, width in bits (1 to 32)] pairs");if(new Set(layout.map(f=>f[0])).size!==layout.length)throw new Error("a layout names each field once");return layout.reduce((sum,f)=>sum+f[1],0)}
 /** Whole numbers packed by layout ([["version",4],["level",7],["gold",16]]: name and width in bits, first field first), zero-padded to whole bytes. A missing value is 0. */
 export function bitsPack(layout,values={}){const total=layoutBits(layout),names=new Set(layout.map(f=>f[0]));for(const name of Object.keys(values))if(!names.has(name))throw new Error("no field "+name);let bits="";
@@ -2247,31 +2266,78 @@ def _blocks(value: Any, depth: int) -> list:
     return value
 
 
-def back_nav_html(back: Any, *, test_id: str | None = None) -> str:
-    """🏠 The way back, before a page's content: ``OWNER/REPO`` gives 🏠 the owner's portfolio (``https://OWNER.github.io/``)
-    · 🐙 the repository on GitHub; or pass a ``links`` block's items (``[{"label", "href"}]``) for another way back. It is
-    marked ``data-ui-back``; ``test_id`` adds ``data-testid`` for a consumer's browser tests."""
+def _back_links(back: Any) -> Any:
+    """``OWNER/REPO`` as its two links (🏠 the owner's portfolio, 🐙 the repository); a list of links as it is."""
     if isinstance(back, str):
         parts = back.split("/")
         if len(parts) != 2 or not all(p and p not in {".", ".."} and all(c.isalnum() or c in "._-" for c in p) for p in parts):
             raise ValueError("the way back is OWNER/REPO or a list of links")
         back = [{"label": "🏠 ポートフォリオ", "href": f"https://{parts[0].lower()}.github.io/"},
                 {"label": "🐙 GitHub リポジトリ", "href": f"https://github.com/{parts[0]}/{parts[1]}"}]
+    return back
+
+
+def back_nav_html(back: Any, *, test_id: str | None = None) -> str:
+    """🏠 The way back, before a page's content: ``OWNER/REPO`` gives 🏠 the owner's portfolio (``https://OWNER.github.io/``)
+    · 🐙 the repository on GitHub; or pass a ``links`` block's items (``[{"label", "href"}]``) for another way back. It is
+    marked ``data-ui-back``; ``test_id`` adds ``data-testid`` for a consumer's browser tests."""
+    back = _back_links(back)
     test = f' data-testid="{escape(_spec_text(test_id, "test id", limit=80, required=True), quote=True)}"' if test_id is not None else ""
     return f'<nav class="ui-back" aria-label="関連リンク" data-ui-back{test}>{_page_block({"type": "links", "items": back}, depth=0)}</nav>'
 
 
-def add_back_nav(page: str, back: Any, *, test_id: str | None = None) -> str:
+def add_back_nav(page: str, back: Any, *, test_id: str | None = None, chrome: bool = False) -> str:
     """🏠 Put ``back_nav_html(back)`` right after the opening ``<main>`` (else ``<body>``) of a built page (a page that
-    already has a way back keeps it). From the shell: ``--page spec.json --repository OWNER/REPO``."""
+    already has a way back keeps it). With ``chrome=True``, put the links in the new common header instead of adding a second
+    navigation block. From the shell: ``--page spec.json --repository OWNER/REPO``."""
     if "data-ui-back" in page:
         return page
+    if chrome and '<div class="ui-door-foot">' not in page:
+        return add_site_chrome(page, _back_links(back), _back_nav=True, _test_id=test_id)
+    nav = back_nav_html(back, test_id=test_id)
     for tag in ("<main", "<body"):
         start = page.find(tag)
         end = page.find(">", start) if start >= 0 else -1
         if end >= 0:
-            return page[:end + 1] + back_nav_html(back, test_id=test_id) + page[end + 1:]
+            return page[:end + 1] + nav + page[end + 1:]
     raise ValueError("page has no <main> or <body> to put the way back in")
+
+
+def add_site_chrome(page: str, links: Any, *, title: str = "GUIDE", _back_nav: bool = False, _test_id: str | None = None) -> str:
+    """🧰 The header, side and foot every page of a site carries, on a built page (one that has them keeps them). ``links`` are the
+    places it leads to (``[{"label": "🏠 ポートフォリオ", "href": …}, …]``, 1 to 8, each label an emoji and words): the first is 🏠.
+
+    Header: the chrome (``chrome_html``) — 📟 a board named ``title`` that says what the page is (its ``<meta name="description">``,
+    else the muted line under its heading, else a line any page can carry: its title and where 🚪 🏠 lead) and where the links lead,
+    🫧 the round face that follows the pointer, 🏠, the other links by their emoji, ⭐ ⚙️. Side: ☰ the page's own sections, ⋯.
+    Foot: the door (``door_html(foot=True)``) — 🚪 the links and 📌 this page as a pull-down, 📦 the page's size. ⭐ and 🌐 are kept
+    under the chrome's default id, so every page of one origin shares them. A page whose CSP lists its scripts or styles gets the
+    parts' hashes listed (``add_part``)."""
+    if '<div class="ui-door-foot">' in page:
+        return page
+    if not isinstance(links, list) or not 1 <= len(links) <= 8 or any(not isinstance(l, dict) or set(l) != {"label", "href"} for l in links):
+        raise ValueError("links lists 1 to 8 {label, href}")
+    places = [(mark, words or mark, link["href"]) for link in links for mark, _, words in [str(link["label"]).strip().partition(" ")]]
+    heading = re.search(r"<title>(.*?)</title>", page, re.S)
+    name = unescape(heading[1]).strip() if heading else ""
+    said = re.search(r'<meta name="description" content="([^"]*)"', page) or re.search(r'<h1 class="ui-title">[^<]*</h1><p class="ui-muted">([^<]*)</p>', page)
+    about = unescape(said[1]).strip() if said else ""
+    about = about or f"{name or title}：このページの案内。🚪 でほかの場所へ、🏠 で戻れます。"
+    lines = [part if len(part) <= 120 else part[:119] + "…" for part in (p.strip() for p in re.split(r"(?<=[。！？])|(?<=[.!?])\s+", about)) if part][:3]
+    spec = {"home": places[0][2], "tools": {mark: {"label": words, "href": href} for mark, words, href in places[1:]},
+            "board": {"title": title, "items": [{"text": text} for text in lines + [f"{mark} {words}"[:120] for mark, words, _ in places]][:12]}}
+    face, head = component_parts("gaze-avatar"), component_parts("chrome", spec)
+    tools_nav = '<nav class="ui-world-tools">'
+    guide_nav = tools_nav
+    if _back_nav:
+        test = f' data-testid="{escape(_spec_text(_test_id, "test id", limit=80, required=True), quote=True)}"' if _test_id is not None else ""
+        guide_nav = f'<nav class="ui-world-tools" aria-label="関連リンク" data-ui-back{test}>'
+    head["html"] = head["html"].replace(tools_nav, face["html"] + guide_nav, 1)                   # 🫧 after the board
+    page = add_part(page, {"css": face["css"] + ".ui-world-head .ui-gaze{flex:none;margin:0 4px}", "js": face["js"]})
+    page = add_part(page, head, at="top")
+    pages = [{"emoji": mark, "label": words[:40], "href": href} for mark, words, href in places] + [{"emoji": "📌", "label": name[:40] or title, "href": "./"}]
+    door = component_parts("door", {"schema": DOOR_SCHEMA, "k": 0, "pages": pages, "current": "./"}, foot=True, size=True)
+    return stamp_page_size(add_part(page, door))
 
 
 def _unlayer(css: str) -> str:
@@ -2989,50 +3055,79 @@ def _load_portable_save(raw: bytes) -> Any:
                       parse_constant=lambda token: number(token, float))
 
 
-def save_text(state: Any) -> str:
-    """📦 Portable JSON as one base64url line to copy or keep in a file: a 16-bit check, then its compact UTF-8 JSON. ``save_state``
-    (and records.js's ``saveState``) read it back. With ``spell_text`` and ``bits_pack``: a page's state as text, to go on where it
-    stopped on another device or after its storage is gone. Use strings for exact numbers outside JavaScript’s safe range."""
+def save_text(state: Any, kinds: int | None = None) -> str:
+    """📦 Portable JSON as one base64url line to copy or keep in a file: a 16-bit check, then its compact UTF-8 JSON. With ``kinds``
+    (64, 128 or 4096) a spell instead (``spell_text``): 0 and the JSON, or 1 and it deflated when that is shorter — as kanji (4096) a
+    long JSON is a fraction of the line's characters, to paste into notes or let the browser remember. ``save_state`` (and records.js's
+    ``saveState``) read it back. So a page can go on where it stopped on another device or after its storage is gone. Use strings for
+    exact numbers outside JavaScript’s safe range."""
     raw = json.dumps(state, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
     _load_portable_save(raw)
+    if kinds:
+        small = zlib.compress(raw, 9)
+        return spell_text(b"\1" + small if len(small) < len(raw) else b"\0" + raw, kinds)
     return base64.urlsafe_b64encode(binascii.crc_hqx(raw, 0xFFFF).to_bytes(2, "big") + raw).decode("ascii").rstrip("=")
 
 
-def save_state(text: str) -> Any:
-    """📦 The value ``save_text`` (or records.js's ``saveText``) wrote; ValueError when the line was cut or changed. Spaces and line
-    breaks in it are ignored."""
+def save_state(text: str, kinds: int | None = None) -> Any:
+    """📦 The value ``save_text`` (or records.js's ``saveText``) wrote with the same ``kinds``; ValueError when the text was cut or
+    changed. Spaces and line breaks in it are ignored."""
     try:
+        if kinds:
+            data = spell_bytes(text, kinds)
+            if data[:1] not in (b"\0", b"\1"):
+                raise ValueError
+            return _load_portable_save((zlib.decompress(data[1:]) if data[0] else data[1:]).decode("utf-8"))
         line = re.sub(r"[ \t\r\n]", "", text)
         raw = base64.b64decode(line + "=" * (-len(line) % 4), altchars=b"-_", validate=True)
         if len(raw) < 2 or binascii.crc_hqx(raw[2:], 0xFFFF) != int.from_bytes(raw[:2], "big"):
             raise ValueError
         return _load_portable_save(raw[2:].decode("utf-8"))
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, zlib.error) as exc:
         raise ValueError("the save text is cut or changed") from exc
 
 
-def spell_text(data: bytes) -> str:
-    """📜 ``data`` as a spell to write down and type back (ふっかつのじゅもん): a 16-bit check and the bytes as 64 kana, 6 bits each,
-    in lines of 5 7 5 — 12 bytes are 19 kana. The check is CRC-16/CCITT-FALSE: one wrong kana or two swapped neighbours never pass.
-    The kana are records.js's (``spellText`` is the twin); ``spell_bytes`` reads it back and ``bits_pack`` makes the bytes."""
-    kana_of = re.search(r'const KANA="([^"]{64})"', _JS["records.js"])[1]
-    raw = binascii.crc_hqx(bytes(data), 0xFFFF).to_bytes(2, "big") + bytes(data)
-    bits = "".join(f"{byte:08b}" for byte in raw)
-    kana = "".join(kana_of[int(bits[i:i + 6].ljust(6, "0"), 2)] for i in range(0, len(bits), 6))
-    return "\n".join(" ".join(filter(None, (kana[i:i + 5], kana[i + 5:i + 12], kana[i + 12:i + 17]))) for i in range(0, len(kana), 17))
+def _spell_kinds(kinds: int) -> str:
+    """The characters of a spell of ``kinds`` 64, 128 or 4096, each kind holding the one before: records.js's KANA (its first 64 are
+    hiragana; then を ん, the katakana no hiragana looks like, and A–Z), then the first 3968 JIS X 0208 kanji in their own (EUC-JP)
+    order — in every Japanese font, and no table to carry."""
+    kana = re.search(r'const KANA="([^"]{128})"', _JS["records.js"])[1]
+    if kinds in (64, 128):
+        return kana[:kinds]
+    if kinds != 4096:
+        raise ValueError("kinds is 64, 128 or 4096")
+    return kana + "".join(bytes((160 + row, 160 + cell)).decode("euc_jp", "ignore") for row in range(16, 85) for cell in range(1, 95))[:3968]
 
 
-def spell_bytes(text: str) -> bytes:
-    """📜 The bytes ``spell_text`` (or records.js's ``spellText``) wrote. Spaces and line breaks are ignored and katakana reads as
-    hiragana; a spell that is not one (a kana off, two swapped, one missing) is ValueError("じゅもんが ちがいます")."""
-    kana_of = re.search(r'const KANA="([^"]{64})"', _JS["records.js"])[1]
-    kana = [chr(ord(c) - 96) if "ァ" <= c <= "ヶ" else c for c in text if c not in " \t\r\n\u3000"]
-    bits = "".join(f"{kana_of.find(c):06b}" if c in kana_of else "x" for c in kana)
-    count = len(bits) // 8
-    raw = bytes(int(bits[i * 8:i * 8 + 8], 2) for i in range(count)) if "x" not in bits else b""
-    if len(raw) < 2 or len(bits) - count * 8 >= 6 or "1" in bits[count * 8:] or binascii.crc_hqx(raw[2:], 0xFFFF) != int.from_bytes(raw[:2], "big"):
+def spell_text(data: bytes, kinds: int = 64) -> str:
+    """📜 ``data`` as a spell (ふっかつのじゅもん) in lines of 5 7 5. ``kinds`` is how many characters it draws from: 64 (hiragana, 6
+    bits each: to write down and type back), 128 (with を ん, katakana and A–Z: 7 bits) or 4096 (with JIS kanji, 12 bits: half the
+    characters of base64 — to paste, not to type); 12 bytes are 19, 17 or 10 characters. A spell of 64 is a 16-bit check and the
+    bytes; one of 128 or 4096 is the bytes, the check and a 1 (so their end is known). The check is CRC-16/CCITT-FALSE: in a spell of
+    64 or 128, one wrong character or two swapped neighbours never pass; any other change passes once in 65,536. records.js's
+    ``spellText`` is the twin; ``spell_bytes`` reads it back and ``bits_pack`` makes the bytes."""
+    chars, width, data = _spell_kinds(kinds), kinds.bit_length() - 1, bytes(data)
+    check = binascii.crc_hqx(data, 0xFFFF).to_bytes(2, "big")
+    bits = "".join(f"{byte:08b}" for byte in (check + data if kinds == 64 else data + check)) + ("" if kinds == 64 else "1")
+    text = "".join(chars[int(bits[i:i + width].ljust(width, "0"), 2)] for i in range(0, len(bits), width))
+    return "\n".join(" ".join(filter(None, (text[i:i + 5], text[i + 5:i + 12], text[i + 12:i + 17]))) for i in range(0, len(text), 17))
+
+
+def spell_bytes(text: str, kinds: int = 64) -> bytes:
+    """📜 The bytes ``spell_text`` (or records.js's ``spellText``) wrote with the same ``kinds``. Spaces and line breaks are ignored,
+    and in a spell of 64 katakana reads as hiragana; a spell that is not one (a character off, two swapped, one missing) is
+    ValueError("じゅもんが ちがいます")."""
+    chars, width = _spell_kinds(kinds), kinds.bit_length() - 1
+    at = {char: f"{index:0{width}b}" for index, char in enumerate(chars)}
+    letters = [chr(ord(c) - 96) if kinds == 64 and "ァ" <= c <= "ヶ" else c for c in text if c not in " \t\r\n\u3000"]
+    bits = "".join(at.get(c, "x") for c in letters)
+    end = len(bits) // 8 * 8 if kinds == 64 else bits.rfind("1")        # 64: whole bytes, then less than a character of zeros; else up to the 1
+    spare = bits[end:] if kinds == 64 else bits[end + 1:]
+    raw = bytes(int(bits[i:i + 8], 2) for i in range(0, end, 8)) if "x" not in bits and end >= 16 and end % 8 == 0 and len(spare) < width and "1" not in spare else b""
+    data, check = (raw[2:], raw[:2]) if kinds == 64 else (raw[:-2], raw[-2:])
+    if len(raw) < 2 or binascii.crc_hqx(data, 0xFFFF) != int.from_bytes(check, "big"):
         raise ValueError("じゅもんが ちがいます")
-    return raw[2:]
+    return data
 
 
 def _layout_bits(layout: Sequence[tuple[str, int]]) -> int:
@@ -15953,8 +16048,9 @@ def svg_rasterize(data: Any, width: int | None = None, *, max_bytes: int = 1024 
 
 # 📽️ Several scenes of the image studio as one deck (Ironmate's slide studio and 📱 phone slides, first written there): 1 to 20
 # scenes of one size and a title, kept as JSON, pages added, copied, deleted and moved. The refusals are the page's text
-# (Japanese), as ``StudioError``. ``js/slide-deck.js`` (``slideDeck(core)``) is the same functions for a page. Writing the deck
-# as a PPTX stays with the consumer (Ironmate): nothing here assembles Office XML (docs/lightweight-js.md).
+# (Japanese), as ``StudioError``. ``js/slide-deck.js`` (``slideDeck(core, shell)``) is the same functions for a page. 🏭 This is the
+# ability to build a studio: its writer (``slide_deck_pptx``, ``zip_stored``) is the one place this file assembles Office XML, into
+# a package shell the consumer supplies; every other PPTX here is PptxGenJS's (docs/lightweight-js.md).
 SLIDE_DECK_SCHEMA = "ironmate-slide-deck/1"
 _SLIDE_DECK_LIMIT = 32 * 1024 * 1024
 
@@ -16034,6 +16130,135 @@ def slide_layer_native(layer: dict[str, Any]) -> bool:
     return (layer.get("kind") in ("rect", "ellipse", "triangle") or (layer.get("kind") == "text" and not layer.get("mono"))
             or (layer.get("kind") == "arrow" and layer.get("headStyle") != "beginner"))
 
+
+def zip_stored(files: dict[str, Any]) -> bytes:
+    """A ZIP of ``files`` (name to text or bytes) in their order, stored without compression, UTF-8 names, one fixed date
+    (2000-01-01), so the same files give the same bytes; at most 32 MiB. What a PPTX, a DOCX or an XLSX is packed in."""
+    entries = [(name.encode("utf-8"), data.encode("utf-8") if isinstance(data, str) else data) for name, data in files.items()]
+    _stu_need(all(isinstance(data, (bytes, bytearray)) for _, data in entries), "ZIPデータが不正です。")
+    _stu_need(22 + sum(76 + 2 * len(name) + len(data) for name, data in entries) <= _SLIDE_DECK_LIMIT, "PPTXは32MiB以下にしてください。")
+    date, out, central = (20 << 9) | (1 << 5) | 1, bytearray(), bytearray()
+    for name, data in entries:
+        fields = (0x800, 0, 0, date, zlib.crc32(data), len(data), len(data), len(name), 0)
+        central += struct.pack("<IHHHHHHIIIHHHHHII", 0x02014B50, 20, 20, *fields, 0, 0, 0, 0, len(out)) + name
+        out += struct.pack("<IHHHHHIIIHH", 0x04034B50, 20, *fields) + name + data
+    return bytes(out + central + struct.pack("<IHHHHIIH", 0x06054B50, 0, 0, len(entries), len(entries), len(central), len(out), 0))
+
+
+def slide_deck_pptx(deck: Any, shell: dict[str, str], image_for_layer: Any = None) -> dict[str, Any]:
+    """The deck as a PPTX: ``{"data": bytes, "native", "images", "slides"}``. ``shell`` is the empty package the slides go into, part
+    name to text (content types, presentation, master, layout, theme; Ironmate makes its own with PptxGenJS). Text boxes (Meiryo,
+    or MS Gothic for the mono face; the lines ``studio_text_layout`` makes, so a browser that measures real glyphs may break them
+    elsewhere), rectangles, ellipses, triangles and arrows (a group of shaft and head) stay editable and are counted in ``native``;
+    for any other layer ``image_for_layer(layer, scene)`` gives PNG bytes, and equal pictures are stored once. A whole slide is
+    never one picture."""
+    deck = slide_deck_validate(deck)
+    files = dict(shell)
+    _stu_need(all(isinstance(files.get(part), str) for part in ("[Content_Types].xml", "ppt/presentation.xml", "ppt/_rels/presentation.xml.rels", "docProps/core.xml")),
+              "PPTXの空パッケージが不正です。")
+    a, pres, rel = "http://schemas.openxmlformats.org/drawingml/2006/main", "http://schemas.openxmlformats.org/presentationml/2006/main", "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    declaration = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    unit = 9144000 / max(deck["slides"][0]["width"], deck["slides"][0]["height"])
+
+    def emu(n: Any) -> int:
+        return _math_round(n * unit)
+
+    def xml(value: Any) -> str:
+        text = js_string(value)
+        _stu_need(not any((ord(c) < 32 and ord(c) not in (9, 10, 13)) or 0xD800 <= ord(c) <= 0xDFFF or ord(c) in (0xFFFE, 0xFFFF) for c in text),
+                  "PPTXに保存できない制御文字が含まれています。")
+        return studio_escape(text)
+
+    def nv(shape_id: int, name: Any, tx: bool = False) -> str:
+        box = ' txBox="1"' if tx else ""             # 🐍 3.11: no quote of the f-string's own kind, no backslash, inside {}
+        return f'<p:nvSpPr><p:cNvPr id="{shape_id}" name="{xml(name)}"/><p:cNvSpPr{box}/><p:nvPr/></p:nvSpPr>'
+
+    def transform(l: dict[str, Any]) -> str:
+        return f'<a:xfrm rot="{_math_round(l["rotation"] * 60000)}"><a:off x="{emu(l["x"])}" y="{emu(l["y"])}"/><a:ext cx="{emu(l["w"])}" cy="{emu(l["h"])}"/></a:xfrm>'
+
+    def fill(color: str, opacity: Any) -> str:
+        return "<a:noFill/>" if color == "none" else f'<a:solidFill><a:srgbClr val="{color[1:].upper()}"><a:alpha val="{_math_round(opacity * 100000)}"/></a:srgbClr></a:solidFill>'
+
+    def line(l: dict[str, Any]) -> str:
+        return f'<a:ln w="{emu(l["strokeWidth"])}">{fill(l["stroke"], l["opacity"]) if l["strokeWidth"] else "<a:noFill/>"}<a:prstDash val="solid"/></a:ln>'
+
+    media: dict[bytes, str] = {}
+    native = images = 0
+    slide_ids, pres_rels = [], []
+    for number, scene in enumerate(deck["slides"], 1):
+        parts, rels, next_id = [], [f'<Relationship Id="rIdLayout" Type="{rel}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>'], 2
+        for layer in scene["layers"]:
+            l = studio_clone(layer)
+            name = l.get("name") or l["id"]
+            if l["kind"] == "text" and not l.get("mono"):
+                size = _math_round(l["fontSize"] * unit / 127)
+                font = "MS Gothic" if l.get("font") == "mono" else "Meiryo"
+                _stu_need(100 <= size <= 400000, "PPTXの文字サイズが1〜4000ptの範囲を超えています。キャンバスまたは文字サイズを調整してください。")
+                italic = ' i="1"' if l.get("italic") else ""
+                properties = f'<a:rPr lang="ja-JP" sz="{size}" b="{1 if l.get("bold") else 0}"{italic}>{fill(l["fill"], l["opacity"])}<a:latin typeface="{font}"/><a:ea typeface="{font}"/></a:rPr>'
+                paragraphs = "".join(                                    # a typed newline is a paragraph, a measured wrap an editable line break
+                    f'<a:p><a:pPr><a:lnSpc><a:spcPts val="{_math_round(size * 1.3)}"/></a:lnSpc><a:spcBef><a:spcPts val="0"/></a:spcBef><a:spcAft><a:spcPts val="0"/></a:spcAft></a:pPr>'
+                    + f"<a:br>{properties}</a:br>".join(f'<a:r>{properties}<a:t xml:space="preserve">{xml(t)}</a:t></a:r>' for t in lines)
+                    + f'<a:endParaRPr lang="ja-JP" sz="{size}"/></a:p>' for lines in studio_text_layout(l))
+                parts.append(f'<p:sp>{nv(next_id, name, True)}<p:spPr>{transform(l)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>'
+                             f'<p:txBody><a:bodyPr wrap="{"square" if l.get("wrap") else "none"}" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" vertOverflow="overflow"><a:noAutofit/></a:bodyPr>'
+                             f"<a:lstStyle/>{paragraphs}</p:txBody></p:sp>")
+                next_id += 1
+                native += 1
+            elif l["kind"] in ("rect", "ellipse", "triangle"):
+                parts.append(f'<p:sp>{nv(next_id, name)}<p:spPr>{transform(l)}<a:prstGeom prst="{l["kind"]}"><a:avLst/></a:prstGeom>{fill(l["fill"], l["opacity"])}{line(l)}</p:spPr></p:sp>')
+                next_id += 1
+                native += 1
+            elif l["kind"] == "arrow" and l.get("headStyle") != "beginner":
+                points = studio_arrow_geometry(l["w"], l["h"], l.get("headSize", 28), l.get("headPlacement", "tip"))["points"]
+                group_id, shaft_id, head_id = next_id, next_id + 1, next_id + 2
+                next_id += 3
+                group = (f'<a:xfrm rot="{_math_round(l["rotation"] * 60000)}"><a:off x="{emu(l["x"])}" y="{emu(l["y"])}"/><a:ext cx="{emu(l["w"])}" cy="{emu(l["h"])}"/>'
+                         f'<a:chOff x="0" y="0"/><a:chExt cx="{emu(l["w"])}" cy="{emu(l["h"])}"/></a:xfrm>')
+                local = {**l, "x": 0, "y": 0, "rotation": 0}
+                shaft = {**local, "y": l["h"] / 2, "h": 0}
+                custom = (f'<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="{emu(l["w"])}" h="{emu(l["h"])}">'
+                          f'<a:moveTo><a:pt x="{emu(points[0][0])}" y="{emu(points[0][1])}"/></a:moveTo>'
+                          + "".join(f'<a:lnTo><a:pt x="{emu(p[0])}" y="{emu(p[1])}"/></a:lnTo>' for p in points[1:]) + "<a:close/></a:path></a:pathLst></a:custGeom>")
+                parts.append(f'<p:grpSp><p:nvGrpSpPr><p:cNvPr id="{group_id}" name="{xml(name)}"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr>{group}</p:grpSpPr>'
+                             f'<p:sp>{nv(shaft_id, "Arrow shaft")}<p:spPr>{transform(shaft)}<a:prstGeom prst="line"><a:avLst/></a:prstGeom><a:noFill/>{line(l)}</p:spPr></p:sp>'
+                             f'<p:sp>{nv(head_id, "Arrow head")}<p:spPr>{transform(local)}{custom}{fill(l["fill"], l["opacity"])}<a:ln><a:noFill/></a:ln></p:spPr></p:sp></p:grpSp>')
+                native += 2
+            else:
+                _stu_need(callable(image_for_layer), "画像化が必要なレイヤーがあります。ブラウザから書き出してください。")
+                png = image_for_layer(l, scene)
+                _stu_need(isinstance(png, (bytes, bytearray)) and bytes(png[:8]) == b"\x89PNG\r\n\x1a\n", "埋め込み画像はPNGが必要です。")
+                png = bytes(png)
+                if png not in media:
+                    media[png] = f"image{len(media) + 1}.png"
+                    files["ppt/media/" + media[png]] = png
+                images += 1
+                rels.append(f'<Relationship Id="rIdImage{images}" Type="{rel}/image" Target="../media/{media[png]}"/>')
+                parts.append(f'<p:pic><p:nvPicPr><p:cNvPr id="{next_id}" name="{xml(name)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>'
+                             f'<p:blipFill><a:blip r:embed="rIdImage{images}"><a:alphaModFix amt="{_math_round(l["opacity"] * 100000)}"/></a:blip><a:stretch><a:fillRect/></a:stretch></p:blipFill>'
+                             f'<p:spPr>{transform(l)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>')
+                next_id += 1
+        background = "<a:noFill/>" if scene["background"] == "none" else f'<a:solidFill><a:srgbClr val="{scene["background"][1:]}"/></a:solidFill>'
+        files[f"ppt/slides/slide{number}.xml"] = (
+            declaration + f'<p:sld xmlns:a="{a}" xmlns:r="{rel}" xmlns:p="{pres}"><p:cSld name="Slide {number}"><p:bg><p:bgPr>{background}<a:effectLst/></p:bgPr></p:bg>'
+            '<p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/>'
+            f'<a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>{"".join(parts)}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>')
+        files[f"ppt/slides/_rels/slide{number}.xml.rels"] = declaration + f'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{"".join(rels)}</Relationships>'
+        slide_ids.append(f'<p:sldId id="{255 + number}" r:id="rIdBrowserSlide{number}"/>')
+        pres_rels.append(f'<Relationship Id="rIdBrowserSlide{number}" Type="{rel}/slide" Target="slides/slide{number}.xml"/>')
+    first = deck["slides"][0]
+    files["ppt/presentation.xml"] = re.sub(r"<p:sldSz[^>]*/>", lambda _: f'<p:sldSz cx="{emu(first["width"])}" cy="{emu(first["height"])}"/>', re.sub(
+        r"<p:sldIdLst>[\s\S]*?</p:sldIdLst>", lambda _: f'<p:sldIdLst>{"".join(slide_ids)}</p:sldIdLst>', files["ppt/presentation.xml"], count=1), count=1)
+    files["ppt/_rels/presentation.xml.rels"] = re.sub(r'<Relationship\b[^>]*Type="[^"]*/slide"[^>]*/>', "", files["ppt/_rels/presentation.xml.rels"]).replace(
+        "</Relationships>", "".join(pres_rels) + "</Relationships>", 1)
+    overrides = "".join(f'<Override PartName="/ppt/slides/slide{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>'
+                        for i in range(1, len(deck["slides"]) + 1))
+    files["[Content_Types].xml"] = re.sub(r'<Override\b[^>]*PartName="/ppt/slides/[^"]*"[^>]*/>', "", files["[Content_Types].xml"]).replace("</Types>", overrides + "</Types>", 1)
+    title = xml(deck["title"])
+    files["docProps/core.xml"] = re.sub(r"<dc:title>[\s\S]*?</dc:title>", lambda _: f"<dc:title>{title}</dc:title>", files["docProps/core.xml"], count=1)
+    files["docProps/app.xml"] = (declaration + '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Ironmate</Application>'
+                                 f"<Slides>{len(deck['slides'])}</Slides><Notes>0</Notes><HiddenSlides>0</HiddenSlides></Properties>")
+    return {"data": zip_stored(files), "native": native, "images": images, "slides": len(deck["slides"])}
 
 # 🏭 The pages of Ironmate's studio as Ironmate draws them (image studio, browser tools, slide studio, 📱 phone slides), by
 # ``<body data-page="studio">`` / ``"tools"`` / ``"studio slides"`` / ``"phone"``: header and brand, the three-column workspace, the
@@ -19536,7 +19761,7 @@ _JS["pixel-editor.js"] = r"""export function bindPixelEditor({ root, catalog, gr
 
 
 # 📽️ The slide deck for a page (Ironmate's slide studio and 📱 phone slides): the functions of slide_deck_*, the same values.
-_JS["slide-deck.js"] = '/* web-ui slide-deck: several scenes of the image studio as one deck: checked, kept as JSON, pages added, copied, deleted and moved. slideDeck(core): core is js/imagestudio.js (or the same functions). pysaiyanweboo.py (slide_deck_*) is the reference; this must agree. */\n' + r"""export function slideDeck(C) {
+_JS["slide-deck.js"] = '/* web-ui slide-deck: several scenes of the image studio as one deck (checked, kept as JSON, pages added, copied, deleted and moved) and written as a PPTX in the page: text, rectangles, ellipses, triangles and arrows stay editable, anything else is a picture. slideDeck(core, shell): core is js/imagestudio.js (or the same functions), shell the empty package the slides go into (part name to text). pysaiyanweboo.py (slide_deck_*) is the reference; this must agree. */\n' + r"""export function slideDeck(C, shell) {
   const SCHEMA = "ironmate-slide-deck/1",
     LIMIT = 32 * 1024 * 1024;
   const encoder = new TextEncoder(),
@@ -19662,6 +19887,90 @@ _JS["slide-deck.js"] = '/* web-ui slide-deck: several scenes of the image studio
       ],
     });
   }
+  function xml(value) {
+    for (const c of String(value)) {
+      const n = c.codePointAt(0);
+      if (
+        (n < 32 && ![9, 10, 13].includes(n)) ||
+        (n >= 0xd800 && n <= 0xdfff) ||
+        n === 0xfffe ||
+        n === 0xffff
+      )
+        throw Error("PPTXに保存できない制御文字が含まれています。");
+    }
+    return C.escape(value);
+  }
+  const A = "http://schemas.openxmlformats.org/drawingml/2006/main",
+    P = "http://schemas.openxmlformats.org/presentationml/2006/main",
+    R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    REL = "http://schemas.openxmlformats.org/package/2006/relationships";
+  const declaration = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  function crc(bytes) {
+    let c = 0xffffffff;
+    for (const b of bytes) {
+      c ^= b;
+      for (let i = 0; i < 8; i++) c = (c >>> 1) ^ (c & 1 ? 0xedb88320 : 0);
+    }
+    return (c ^ 0xffffffff) >>> 0;
+  }
+  function zip(files, mediaChecksums) {
+    const entries = Object.entries(files).map(([name, data]) => ({
+      name: encoder.encode(name),
+      data: typeof data === "string" ? encoder.encode(data) : data,
+    }));
+    let size = 22;
+    for (const e of entries) {
+      if (!(e.data instanceof Uint8Array)) throw Error("ZIPデータが不正です。");
+      size += 76 + 2 * e.name.length + e.data.length;
+    }
+    if (size > LIMIT) throw Error("PPTXは32MiB以下にしてください。");
+    const out = new Uint8Array(size),
+      v = new DataView(out.buffer);
+    let offset = 0;
+    const central = [];
+    const word = (p, n) => v.setUint16(p, n, true),
+      dword = (p, n) => v.setUint32(p, n, true),
+      date = (20 << 9) | (1 << 5) | 1;
+    for (const e of entries) {
+      const start = offset,
+        sum = mediaChecksums?.get(e.data) ?? crc(e.data);
+      dword(offset, 0x04034b50);
+      word(offset + 4, 20);
+      word(offset + 6, 0x800);
+      word(offset + 8, 0);
+      word(offset + 12, date);
+      dword(offset + 14, sum);
+      dword(offset + 18, e.data.length);
+      dword(offset + 22, e.data.length);
+      word(offset + 26, e.name.length);
+      out.set(e.name, offset + 30);
+      out.set(e.data, offset + 30 + e.name.length);
+      offset += 30 + e.name.length + e.data.length;
+      central.push({ ...e, start, sum });
+    }
+    const cd = offset;
+    for (const e of central) {
+      dword(offset, 0x02014b50);
+      word(offset + 4, 20);
+      word(offset + 6, 20);
+      word(offset + 8, 0x800);
+      word(offset + 10, 0);
+      word(offset + 14, date);
+      dword(offset + 16, e.sum);
+      dword(offset + 20, e.data.length);
+      dword(offset + 24, e.data.length);
+      word(offset + 28, e.name.length);
+      dword(offset + 42, e.start);
+      out.set(e.name, offset + 46);
+      offset += 46 + e.name.length;
+    }
+    dword(offset, 0x06054b50);
+    word(offset + 8, entries.length);
+    word(offset + 10, entries.length);
+    dword(offset + 12, offset - cd);
+    dword(offset + 16, cd);
+    return out;
+  }
   function isNative(layer) {
     return (
       ["rect", "ellipse", "triangle"].includes(layer.kind) ||
@@ -19669,7 +19978,213 @@ _JS["slide-deck.js"] = '/* web-ui slide-deck: several scenes of the image studio
       (layer.kind === "arrow" && layer.headStyle !== "beginner")
     );
   }
-  return { SCHEMA, LIMIT, validate, deckText, parse, template, edit, isNative };
+  async function exportPptx(input, imageForLayer) {
+    const deck = validate(input),
+      files = { ...shell };
+    for (const part of ["[Content_Types].xml", "ppt/presentation.xml", "ppt/_rels/presentation.xml.rels", "docProps/core.xml"])
+      if (typeof files[part] !== "string") throw Error("PPTXの空パッケージが不正です。");
+    const mediaByChecksum = new Map();
+    const mediaChecksums = new Map();
+    let imageNumber = 0,
+      totalNative = 0,
+      totalImages = 0;
+    const unit =
+        9144000 / Math.max(deck.slides[0].width, deck.slides[0].height),
+      emu = (n) => Math.round(n * unit);
+    const slideIds = [],
+      presRels = [];
+    for (let number = 1; number <= deck.slides.length; number++) {
+      const scene = deck.slides[number - 1],
+        parts = [],
+        rels = [
+          `<Relationship Id="rIdLayout" Type="${R}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`,
+        ];
+      let nextId = 2;
+      const nv = (id, name, tx = false) =>
+        `<p:nvSpPr><p:cNvPr id="${id}" name="${xml(name)}"/><p:cNvSpPr${tx ? ' txBox="1"' : ""}/><p:nvPr/></p:nvSpPr>`;
+      const transform = (l) =>
+        `<a:xfrm rot="${Math.round(l.rotation * 60000)}"><a:off x="${emu(l.x)}" y="${emu(l.y)}"/><a:ext cx="${emu(l.w)}" cy="${emu(l.h)}"/></a:xfrm>`;
+      const fill = (color, opacity) =>
+        color === "none"
+          ? "<a:noFill/>"
+          : `<a:solidFill><a:srgbClr val="${color.slice(1).toUpperCase()}"><a:alpha val="${Math.round(opacity * 100000)}"/></a:srgbClr></a:solidFill>`;
+      const line = (l) =>
+        `<a:ln w="${emu(l.strokeWidth)}">${l.strokeWidth ? fill(l.stroke, l.opacity) : "<a:noFill/>"}<a:prstDash val="solid"/></a:ln>`;
+      for (const layer of scene.layers) {
+        const l = clone(layer),
+          name = l.name || l.id;
+        if (l.kind === "text" && !l.mono) {
+          const size = Math.round((l.fontSize * unit) / 127),
+            font = l.font === "mono" ? "MS Gothic" : "Meiryo";
+          if (size < 100 || size > 400000)
+            throw Error(
+              "PPTXの文字サイズが1〜4000ptの範囲を超えています。キャンバスまたは文字サイズを調整してください。",
+            );
+          const properties = `<a:rPr lang="ja-JP" sz="${size}" b="${l.bold ? 1 : 0}"${l.italic ? ' i="1"' : ""}>${fill(l.fill, l.opacity)}<a:latin typeface="${font}"/><a:ea typeface="${font}"/></a:rPr>`;
+          // Explicit input newlines remain paragraphs; measured soft wraps are
+          // editable line breaks. Preserve the source text only in deck JSON.
+          const paragraphs = C.textLayout(l)
+            .map(
+              (lines) =>
+                `<a:p><a:pPr><a:lnSpc><a:spcPts val="${Math.round(size * 1.3)}"/></a:lnSpc><a:spcBef><a:spcPts val="0"/></a:spcBef><a:spcAft><a:spcPts val="0"/></a:spcAft></a:pPr>${lines.map(t => `<a:r>${properties}<a:t xml:space="preserve">${xml(t)}</a:t></a:r>`).join(`<a:br>${properties}</a:br>`)}<a:endParaRPr lang="ja-JP" sz="${size}"/></a:p>`,
+            )
+            .join("");
+          parts.push(
+            `<p:sp>${nv(nextId++, name, true)}<p:spPr>${transform(l)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr wrap="${l.wrap ? "square" : "none"}" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" vertOverflow="overflow"><a:noAutofit/></a:bodyPr><a:lstStyle/>${paragraphs}</p:txBody></p:sp>`,
+          );
+          totalNative++;
+        } else if (["rect", "ellipse", "triangle"].includes(l.kind)) {
+          const kind = {
+            rect: "rect",
+            ellipse: "ellipse",
+            triangle: "triangle",
+          }[l.kind];
+          parts.push(
+            `<p:sp>${nv(nextId++, name)}<p:spPr>${transform(l)}<a:prstGeom prst="${kind}"><a:avLst/></a:prstGeom>${fill(l.fill, l.opacity)}${line(l)}</p:spPr></p:sp>`,
+          );
+          totalNative++;
+        } else if (l.kind === "arrow" && l.headStyle !== "beginner") {
+          const geometry = C.arrowGeometry(
+              l.w,
+              l.h,
+              l.headSize,
+              l.headPlacement,
+            ),
+            groupId = nextId++,
+            shaftId = nextId++,
+            headId = nextId++,
+            points = geometry.points;
+          const gTransform = `<a:xfrm rot="${Math.round(l.rotation * 60000)}"><a:off x="${emu(l.x)}" y="${emu(l.y)}"/><a:ext cx="${emu(l.w)}" cy="${emu(l.h)}"/><a:chOff x="0" y="0"/><a:chExt cx="${emu(l.w)}" cy="${emu(l.h)}"/></a:xfrm>`;
+          const local = { ...l, x: 0, y: 0, rotation: 0 },
+            shaft = { ...local, y: l.h / 2, h: 0 };
+          const custom = `<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="${emu(l.w)}" h="${emu(l.h)}"><a:moveTo><a:pt x="${emu(points[0][0])}" y="${emu(points[0][1])}"/></a:moveTo>${points
+            .slice(1)
+            .map(
+              (p) =>
+                `<a:lnTo><a:pt x="${emu(p[0])}" y="${emu(p[1])}"/></a:lnTo>`,
+            )
+            .join("")}<a:close/></a:path></a:pathLst></a:custGeom>`;
+          parts.push(
+            `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="${groupId}" name="${xml(name)}"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr>${gTransform}</p:grpSpPr><p:sp>${nv(shaftId, "Arrow shaft")}<p:spPr>${transform(shaft)}<a:prstGeom prst="line"><a:avLst/></a:prstGeom><a:noFill/>${line(l)}</p:spPr></p:sp><p:sp>${nv(headId, "Arrow head")}<p:spPr>${transform(local)}${custom}${fill(l.fill, l.opacity)}<a:ln><a:noFill/></a:ln></p:spPr></p:sp></p:grpSp>`,
+          );
+          totalNative += 2;
+        } else {
+          if (typeof imageForLayer !== "function")
+            throw Error(
+              "画像化が必要なレイヤーがあります。ブラウザから書き出してください。",
+            );
+          const bytes = await imageForLayer(l, scene);
+          if (
+            !(bytes instanceof Uint8Array) ||
+            bytes.length < 8 ||
+            ![137, 80, 78, 71, 13, 10, 26, 10].every((b, i) => bytes[i] === b)
+          )
+            throw Error("埋め込み画像はPNGが必要です。");
+          const checksum = crc(bytes);
+          const candidates = mediaByChecksum.get(checksum) || [];
+          let media = candidates.find((name) => {
+            const saved = files["ppt/media/" + name];
+            return saved.length === bytes.length && saved.every((value, i) => value === bytes[i]);
+          });
+          if (!media) {
+            media = `image${++imageNumber}.png`;
+            const saved = new Uint8Array(bytes);
+            files["ppt/media/" + media] = saved;
+            mediaChecksums.set(saved, checksum);
+            candidates.push(media);
+            mediaByChecksum.set(checksum, candidates);
+          }
+          const rid = `rIdImage${totalImages + 1}`;
+          rels.push(
+            `<Relationship Id="${rid}" Type="${R}/image" Target="../media/${media}"/>`,
+          );
+          parts.push(
+            `<p:pic><p:nvPicPr><p:cNvPr id="${nextId++}" name="${xml(name)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rid}"><a:alphaModFix amt="${Math.round(l.opacity * 100000)}"/></a:blip><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${transform(l)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`,
+          );
+          totalImages++;
+        }
+      }
+      files[`ppt/slides/slide${number}.xml`] =
+        declaration +
+        `<p:sld xmlns:a="${A}" xmlns:r="${R}" xmlns:p="${P}"><p:cSld name="Slide ${number}"><p:bg><p:bgPr>${scene.background === "none" ? "<a:noFill/>" : `<a:solidFill><a:srgbClr val="${scene.background.slice(1)}"/></a:solidFill>`}<a:effectLst/></p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>${parts.join("")}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
+      files[`ppt/slides/_rels/slide${number}.xml.rels`] =
+        declaration +
+        `<Relationships xmlns="${REL}">${rels.join("")}</Relationships>`;
+      slideIds.push(
+        `<p:sldId id="${255 + number}" r:id="rIdBrowserSlide${number}"/>`,
+      );
+      presRels.push(
+        `<Relationship Id="rIdBrowserSlide${number}" Type="${R}/slide" Target="slides/slide${number}.xml"/>`,
+      );
+    }
+    files["ppt/presentation.xml"] = files["ppt/presentation.xml"]
+      .replace(
+        /<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/,
+        `<p:sldIdLst>${slideIds.join("")}</p:sldIdLst>`,
+      )
+      .replace(
+        /<p:sldSz[^>]*\/>/,
+        `<p:sldSz cx="${emu(deck.slides[0].width)}" cy="${emu(deck.slides[0].height)}"/>`,
+      );
+    files["ppt/_rels/presentation.xml.rels"] = files[
+      "ppt/_rels/presentation.xml.rels"
+    ]
+      .replace(/<Relationship\b[^>]*Type="[^"]*\/slide"[^>]*\/>/g, "")
+      .replace("</Relationships>", presRels.join("") + "</Relationships>");
+    files["[Content_Types].xml"] = files["[Content_Types].xml"]
+      .replace(/<Override\b[^>]*PartName="\/ppt\/slides\/[^"]*"[^>]*\/>/g, "")
+      .replace(
+        "</Types>",
+        deck.slides
+          .map(
+            (_, i) =>
+              `<Override PartName="/ppt/slides/slide${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`,
+          )
+          .join("") + "</Types>",
+      );
+    const title = xml(deck.title); // text, not a replacement pattern: "$&" stays as written
+    files["docProps/core.xml"] = files["docProps/core.xml"].replace(
+      /<dc:title>[\s\S]*?<\/dc:title>/,
+      () => `<dc:title>${title}</dc:title>`,
+    );
+    files["docProps/app.xml"] =
+      declaration +
+      `<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Ironmate</Application><Slides>${deck.slides.length}</Slides><Notes>0</Notes><HiddenSlides>0</HiddenSlides></Properties>`;
+    return {
+      data: zip(files, mediaChecksums),
+      native: totalNative,
+      images: totalImages,
+      slides: deck.slides.length,
+    };
+  }
+  const bytesFromData = (uri) =>
+    Uint8Array.from(atob(uri.split(",")[1]), (c) => c.charCodeAt(0));
+  async function layerPng(layer, imageSource = (x) => x.src) {
+    // Browser only: PNG bytes for a layer PPTX keeps as a picture (images, clocks, heatmaps, 🔰 arrows).
+    if (layer.kind === "image" && !layer.mono)
+      return bytesFromData(imageSource(layer));
+    const l = { ...layer, x: 0, y: 0, rotation: 0, opacity: 1 },
+      scale = Math.min(2, Math.sqrt(4194304 / (l.w * l.h))),
+      canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(l.w * scale));
+    canvas.height = Math.max(1, Math.round(l.h * scale));
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" height="${canvas.height}" viewBox="0 0 ${l.w} ${l.h}">${C.layerSVG(l, imageSource)}</svg>`;
+    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })),
+      image = new Image();
+    try {
+      image.src = url;
+      await image.decode();
+      canvas.getContext("2d").drawImage(image, 0, 0);
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
+      if (!blob) throw Error("画像レイヤーを出力できませんでした。");
+      return new Uint8Array(await blob.arrayBuffer());
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+  return { SCHEMA, LIMIT, validate, deckText, parse, template, edit, zip, isNative, exportPptx, layerPng };
 }
 """
 
@@ -21179,7 +21694,7 @@ def main(argv: list[str] | None = None) -> int:
                 for name, data in {**files, args.page.name: (json.dumps(spec, ensure_ascii=False, indent=2) + "\n").encode("utf-8")}.items():
                     (args.home_screen / name).write_bytes(data)
             page = page_document(spec, layouts=layouts)
-            sys.stdout.write(add_back_nav(page, args.repository) if args.repository else page)
+            sys.stdout.write(add_back_nav(page, args.repository, chrome=True) if args.repository else page)
         except (OSError, ValueError, KeyError, TypeError, SyntaxError) as exc:
             parser.error(str(exc))
         return 0

@@ -1601,6 +1601,60 @@ class ChatBrowserTests(unittest.TestCase):
             server.shutdown()
 
 
+class SiteChromeBrowserTests(unittest.TestCase):
+    """🧰 add_back_nav(chrome=True) on a guide page (what --page --repository writes): the board runs its clock, 🫧 follows the pointer,
+    ☰ lists the page's own sections, 🚪 leads to the links, and nothing scrolls sideways on a phone. ``PSWB_GIFS`` keeps site-chrome.gif."""
+
+    def test_a_guide_page_carries_the_header_side_and_foot(self):
+        from pysaiyanweboo import add_back_nav, page_document
+        spec = {"schema": "web-ui-page/1", "title": "xprobe ガイド", "description": "単一ファイルのテスト支援。まずは 1 行で。",
+                "blocks": [{"type": "heading", "text": "はじめに"}, {"type": "text", "text": "pip も設定もいりません。"},
+                           {"type": "heading", "text": "使い方"}, {"type": "output", "text": "python xprobe.py --help"}]}
+        server, origin = serve_pages({'index.html': add_back_nav(page_document(spec), "myon-bioinformatics/xprobe", chrome=True)})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={'width': 392, 'height': 760})
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.on('console', lambda message: errors.append(message.text) if message.type == 'error' else None)
+                    page.goto(origin + '/index.html')
+                    cam = ui.GifCamera(page)
+                    board = page.locator('.ui-chrome .ui-board')
+                    expect(board.locator('strong')).to_have_text('GUIDE')
+                    expect(board.locator('[data-clock]')).to_have_text(re.compile(r'^\d\d:\d\d:\d\d$'))
+                    expect(board.locator('.ui-board-item:not([aria-hidden])')).to_have_text(['単一ファイルのテスト支援。', 'まずは 1 行で。', '🏠 ポートフォリオ', '🐙 GitHub リポジトリ'])
+                    face = page.locator('.ui-chrome .ui-gaze')
+                    expect(face).to_be_visible()
+                    page.mouse.move(40, 600)
+                    cam.hold(300)
+                    left = face.evaluate("e => e.style.getPropertyValue('--gaze-x')")
+                    page.mouse.move(380, 20)
+                    cam.hold(300)
+                    self.assertNotEqual(face.evaluate("e => e.style.getPropertyValue('--gaze-x')"), left)      # 🫧 it looks where the pointer went
+                    expect(page.locator('.ui-chrome a.ui-world-home')).to_have_attribute('href', 'https://myon-bioinformatics.github.io/')
+                    page.locator('.ui-world-side [data-menu="spots"] > summary, .ui-world-side [data-menu="spots"] > button').first.click()
+                    expect(page.locator('.ui-world-spots a').filter(has_text='使い方')).to_be_visible()             # ☰ the page's own sections
+                    cam.hold(500)
+                    page.keyboard.press('Escape')
+                    door = page.locator('.ui-door-foot select')
+                    self.assertEqual(door.locator('option').all_text_contents()[:2], ['🏠 ポートフォリオ', '🐙 GitHub リポジトリ'])
+                    expect(page.locator('.ui-door-foot .ui-door-size')).to_have_text(re.compile(r'^📦 \d+ KB$'))
+                    page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                    cam.hold(500)
+                    self.assertFalse(page.evaluate('document.documentElement.scrollWidth > innerWidth + 1'))    # nothing sideways on a phone
+                    self.assertEqual(errors, [])
+                    gif = ui.encode_gif(cam.shots)
+                    self.assertTrue(gif.startswith(b'GIF89a'))
+                    if os.environ.get('PSWB_GIFS'):
+                        ui.gif_targets_from(os.environ['PSWB_GIFS'], ['site-chrome'])['site-chrome'].write_bytes(gif)
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
+
 class ChatShareBrowserTests(unittest.TestCase):
     """🔗 chat_html(share=True): a page opened with #message sends it once the bot is in (not before), and 🔗 on your bubble copies
     the link (clipboard and address bar) with a ui-chat-link event. ``PSWB_GIFS`` keeps component-chat-share.gif."""
