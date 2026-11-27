@@ -2343,6 +2343,7 @@ def add_site_chrome(page: str, links: Any, *, title: str = "GUIDE", _back_nav: b
     spec = {"lang": lang, "home": places[0][2], "tools": {mark: {"label": words, "href": href} for mark, words, href in places[1:]},
             "board": {"title": title, "items": (lines + [{"text": f"{mark} {words}"[:120]} for mark, words, _ in places])[:12]}}
     face, head = component_parts("gaze-avatar", label=_CHROME_WORDS["blink"][0]), component_parts("chrome", spec)
+    head["js"] = head["js"].replace(_chrome_catalogue(), _chrome_catalogue(page), 1)                # 🌐 only the body's words this page holds
     face["html"] = face["html"].replace(' aria-label="', ' data-t="blink" aria-label="', 1)
     tools_nav = '<nav class="ui-world-tools">'
     guide_nav = tools_nav
@@ -2615,10 +2616,10 @@ def _features_api(source: str, *, namespaces: bool = False) -> tuple[str, list[l
             listed = [e.value for e in value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
             names = (names or []) + listed if isinstance(node, ast.AugAssign) else listed
     if names is None:
-        label = "_ 以外の公開名"
+        label = "feat-public"
         names = [n for n, (kind, _) in defs.items() if not n.startswith("_") and kind != "📦"]
     else:
-        label = "__all__"
+        label = "feat-all"
     rows = []
     for name in dict.fromkeys(names):
         kind, doc = defs.get(name, ("↪️", ""))
@@ -2697,14 +2698,14 @@ def _feature_cli_section(cli: dict, prog: str, *, qualify: bool) -> dict:
 
         rows = [[name, cell(text, opts, aliases)] for name, text, opts, aliases in cli["commands"]]
         if cli["options"]:
-            rows.insert(0, ["（共通）", cell("", cli["options"], [])])
-        return {"type": "section", "title": f"⌨️ {prog} · 全 {len(cli['commands'])} コマンド",
-                "blocks": [{"type": "table", "headers": ["⌨️ コマンド", "📝 説明 · ⚙️ オプション"], "rows": rows}]}
+            rows.insert(0, [_PAGE_WORDS["feat-shared"][0], cell("", cli["options"], [])])
+        return {"type": "section", "title": _PAGE_WORDS["feat-commands"][0].format(prog, len(cli["commands"])),
+                "blocks": [{"type": "table", "headers": [_PAGE_WORDS["feat-command"][0], _PAGE_WORDS["feat-about-options"][0]], "rows": rows}]}
     if cli["options"]:
-        return {"type": "section", "title": f"⌨️ {prog} · 全 {len(cli['options'])} オプション",
-                "blocks": [{"type": "table", "headers": ["⚙️ オプション", "📝 説明"],
+        return {"type": "section", "title": _PAGE_WORDS["feat-options"][0].format(prog, len(cli["options"])),
+                "blocks": [{"type": "table", "headers": [_PAGE_WORDS["feat-option"][0], _PAGE_WORDS["feat-about"][0]],
                             "rows": [[full, text] for full, text, _ in cli["options"]]}]}
-    return {"type": "section", "title": f"⌨️ {prog} · 引数なし", "blocks": []}
+    return {"type": "section", "title": _PAGE_WORDS["feat-none"][0].format(prog), "blocks": []}
 
 
 def _feature_module(path: Path, *, timeout: float, cli_argv: list[list[str]] | None = None,
@@ -2723,8 +2724,8 @@ def _feature_module(path: Path, *, timeout: float, cli_argv: list[list[str]] | N
                      [short.split()[0] for _, _, short in cli["options"]])
     if rows:
         module = f"Python · {display}" if qualify else display
-        sections.append({"type": "section", "title": f"🐍 {module} · 全 {len(rows)} 個（{label}）",
-                         "blocks": [{"type": "table", "headers": ["🐍 名前（🔧 関数 · 🧱 クラス · 📦 値 · ↪️ 取り込み）", "📝 説明"], "rows": rows}]})
+        sections.append({"type": "section", "title": _PAGE_WORDS[label][0].format(module, len(rows)),
+                         "blocks": [{"type": "table", "headers": [_PAGE_WORDS["feat-name"][0], _PAGE_WORDS["feat-about"][0]], "rows": rows}]})
         names.extend(row[0].split(" ", 1)[1].removesuffix("()") for row in rows)
     return sections, names
 
@@ -2760,7 +2761,7 @@ def _put_features(spec: Any, sections: list[dict], *, names: list[str] | None = 
     labels = [str(t.get("label", "")) if isinstance(t, dict) else "" for t in every]
     hand = next((i for i, label in enumerate(labels) if "機能" in label), None)
     if hand is None:
-        every.append({"label": "🧩 機能一覧", "blocks": sections})
+        every.append({"label": _PAGE_WORDS["guide-features"][0], "blocks": sections})
         return spec
     tab = every[hand]
     if names is not None and not any("_feature_source" in b for b in tab.get("blocks", []) if isinstance(b, dict)):
@@ -3035,7 +3036,68 @@ def data_table(columns: tuple[str, ...], rows, *, id: str, caption: str | None =
                  row_ids=row_ids, row_statuses=row_statuses)
 
 
-def filter_input(table_id: str, *, id: str = "filter", label: str = "絞り込み",
+# 🌐 The words this module writes into a page's own body (a runbook's labels and states, the 🧩 full list's titles and headers, the
+# tabs and headings every guide shares), in the chrome's eleven languages (ja en fr es pt ar zh ru id de sw). The chrome's 🌐 finds them
+# in the page by their words (a {0} {1} format by its shape) and writes them in the visitor's language; the page's own words stay.
+_PAGE_WORDS = {
+    # a runbook (steps_html): STEP_LABELS is the first column of the keys without a dash
+    "expect": ("期待される出力", "Expected output", "Sortie attendue", "Salida esperada", "Saída esperada", "المخرجات المتوقعة", "预期输出", "Ожидаемый вывод", "Keluaran yang diharapkan", "Erwartete Ausgabe", "Matokeo yanayotarajiwa"),
+    "needs": ("前提条件", "Prerequisites", "Prérequis", "Requisitos previos", "Pré-requisitos", "المتطلبات المسبقة", "先决条件", "Предварительные условия", "Prasyarat", "Voraussetzungen", "Mahitaji ya awali"),
+    "trouble": ("失敗時の確認", "If it fails", "En cas d'échec", "Si falla", "Se falhar", "عند الفشل", "失败时检查", "Если не получилось", "Jika gagal", "Wenn es fehlschlägt", "Ikishindikana"),
+    "seen": ("失敗例", "Failure example", "Exemple d'échec", "Ejemplo de fallo", "Exemplo de falha", "مثال على الفشل", "失败示例", "Пример сбоя", "Contoh kegagalan", "Fehlerbeispiel", "Mfano wa kushindwa"),
+    "check": ("確認ポイント", "What to check", "Points à vérifier", "Qué revisar", "O que verificar", "ما يجب التحقق منه", "检查要点", "Что проверить", "Yang perlu diperiksa", "Was zu prüfen ist", "Cha kukagua"),
+    "fix": ("対処", "Fix", "Solution", "Solución", "Solução", "الحل", "处理方法", "Решение", "Solusi", "Abhilfe", "Suluhisho"),
+    "record": ("再現記録", "Your record", "Votre relevé", "Tu registro", "Seu registro", "سجلك", "复现记录", "Ваша запись", "Catatan Anda", "Ihr Protokoll", "Rekodi yako"),
+    "status": ("状態", "Status", "Statut", "Estado", "Estado", "الحالة", "状态", "Статус", "Keadaan", "Zustand", "Hali"),
+    "date": ("検証日", "Date checked", "Date de vérification", "Fecha de verificación", "Data da verificação", "تاريخ التحقق", "验证日期", "Дата проверки", "Tanggal pemeriksaan", "Prüfdatum", "Tarehe ya ukaguzi"),
+    "actual": ("実際の出力・終了コード", "Actual output and exit code", "Sortie réelle et code de sortie", "Salida real y código de salida", "Saída real e código de saída", "المخرجات الفعلية ورمز الخروج", "实际输出与退出码", "Фактический вывод и код выхода", "Keluaran aktual dan kode keluar", "Tatsächliche Ausgabe und Exit-Code", "Matokeo halisi na msimbo wa kutoka"),
+    "note": ("環境・バージョン・備考", "Environment, version, notes", "Environnement, version, notes", "Entorno, versión, notas", "Ambiente, versão, notas", "البيئة والإصدار والملاحظات", "环境、版本、备注", "Окружение, версия, заметки", "Lingkungan, versi, catatan", "Umgebung, Version, Notizen", "Mazingira, toleo, maelezo"),
+    "copy": ("コピー", "Copy", "Copier", "Copiar", "Copiar", "نسخ", "复制", "Копировать", "Salin", "Kopieren", "Nakili"),
+    "copied": ("コピー済み", "Copied", "Copié", "Copiado", "Copiado", "تم النسخ", "已复制", "Скопировано", "Tersalin", "Kopiert", "Imenakiliwa"),
+    "copy_failed": ("コピーできませんでした", "Could not copy", "Copie impossible", "No se pudo copiar", "Não foi possível copiar", "تعذر النسخ", "无法复制", "Не удалось скопировать", "Gagal menyalin", "Kopieren fehlgeschlagen", "Imeshindwa kunakili"),
+    "search": ("検索", "Search", "Rechercher", "Buscar", "Pesquisar", "بحث", "搜索", "Поиск", "Cari", "Suchen", "Tafuta"),
+    "all": ("すべて", "All", "Tous", "Todos", "Todos", "الكل", "全部", "Все", "Semua", "Alle", "Zote"),
+    "export": ("記録を JSON で保存", "Save records as JSON", "Enregistrer en JSON", "Guardar registros en JSON", "Salvar registros em JSON", "حفظ السجلات بصيغة JSON", "将记录保存为 JSON", "Сохранить записи в JSON", "Simpan catatan sebagai JSON", "Protokolle als JSON speichern", "Hifadhi rekodi kama JSON"),
+    "import": ("記録を読み込む", "Load records", "Charger des relevés", "Cargar registros", "Carregar registros", "تحميل السجلات", "载入记录", "Загрузить записи", "Muat catatan", "Protokolle laden", "Pakia rekodi"),
+    "loaded": ("記録を読み込みました。", "Records loaded.", "Relevés chargés.", "Registros cargados.", "Registros carregados.", "تم تحميل السجلات.", "已载入记录。", "Записи загружены.", "Catatan dimuat.", "Protokolle geladen.", "Rekodi zimepakiwa."),
+    "stale": ("別の版の記録を読み込み、状態を戻しました。", "Loaded records of another version; their states were reset.", "Relevés d'une autre version chargés ; états réinitialisés.", "Registros de otra versión cargados; estados restablecidos.", "Registros de outra versão carregados; estados redefinidos.", "تم تحميل سجلات من إصدار آخر وإعادة تعيين حالاتها.", "已载入其他版本的记录，状态已重置。", "Загружены записи другой версии; статусы сброшены.", "Catatan versi lain dimuat; statusnya diatur ulang.", "Protokolle einer anderen Version geladen; Status zurückgesetzt.", "Rekodi za toleo jingine zimepakiwa; hali zimerejeshwa."),
+    "bad": ("記録を読み込めません。このページから保存した JSON を選んでください。", "Cannot read these records. Choose a JSON saved from this page.", "Impossible de lire ces relevés. Choisissez un JSON enregistré depuis cette page.", "No se pueden leer los registros. Elige un JSON guardado desde esta página.", "Não foi possível ler os registros. Escolha um JSON salvo nesta página.", "تعذرت قراءة السجلات. اختر ملف JSON محفوظًا من هذه الصفحة.", "无法读取记录。请选择从本页保存的 JSON。", "Не удалось прочитать записи. Выберите JSON, сохранённый с этой страницы.", "Catatan tidak dapat dibaca. Pilih JSON yang disimpan dari halaman ini.", "Protokolle nicht lesbar. Wählen Sie ein von dieser Seite gespeichertes JSON.", "Rekodi hazisomeki. Chagua JSON iliyohifadhiwa kutoka ukurasa huu."),
+    "empty": ("該当する手順はありません。", "No matching steps.", "Aucune étape correspondante.", "No hay pasos que coincidan.", "Nenhuma etapa correspondente.", "لا توجد خطوات مطابقة.", "没有符合的步骤。", "Подходящих шагов нет.", "Tidak ada langkah yang cocok.", "Keine passenden Schritte.", "Hakuna hatua zinazolingana."),
+    "choice": ("実行方法", "How to run", "Comment exécuter", "Cómo ejecutar", "Como executar", "طريقة التشغيل", "运行方式", "Способ запуска", "Cara menjalankan", "Ausführungsart", "Jinsi ya kuendesha"),
+    "env": ("環境", "Environment", "Environnement", "Entorno", "Ambiente", "البيئة", "环境", "Окружение", "Lingkungan", "Umgebung", "Mazingira"),
+    "run": ("🤖 CI で実行する手順", "🤖 Run in CI", "🤖 Exécuté par la CI", "🤖 Se ejecuta en CI", "🤖 Executado na CI", "🤖 يُشغَّل في CI", "🤖 由 CI 运行", "🤖 Выполняется в CI", "🤖 Dijalankan di CI", "🤖 Läuft in der CI", "🤖 Huendeshwa kwenye CI"),
+    "ran": ("🤖 CI で実行した結果", "🤖 What CI ran", "🤖 Résultat de la CI", "🤖 Resultado en CI", "🤖 Resultado na CI", "🤖 نتيجة التشغيل في CI", "🤖 CI 运行结果", "🤖 Результат в CI", "🤖 Hasil di CI", "🤖 Ergebnis der CI", "🤖 Matokeo ya CI"),
+    # a step's states (STEP_STATUSES), then other words of a page's body
+    "state-todo": ("調査中", "Investigating", "En examen", "Investigando", "Investigando", "قيد الفحص", "调查中", "Изучается", "Diselidiki", "In Prüfung", "Inachunguzwa"),
+    "state-doing": ("着手中", "In progress", "En cours", "En curso", "Em andamento", "قيد التنفيذ", "进行中", "В работе", "Dikerjakan", "In Arbeit", "Inaendelea"),
+    "state-pass": ("完了", "Done", "Terminé", "Hecho", "Concluído", "مكتمل", "完成", "Готово", "Selesai", "Erledigt", "Imekamilika"),
+    "state-hold": ("保留", "On hold", "En attente", "En espera", "Em espera", "معلّق", "搁置", "Отложено", "Ditunda", "Zurückgestellt", "Imesitishwa"),
+    "state-block": ("ブロッカー", "Blocker", "Bloquant", "Bloqueante", "Bloqueio", "عائق", "阻塞", "Блокер", "Penghambat", "Blockade", "Kizuizi"),
+    "filter-box": ("絞り込み", "Filter", "Filtrer", "Filtrar", "Filtrar", "تصفية", "筛选", "Фильтр", "Saring", "Filtern", "Chuja"),
+    "save-json": ("JSON を保存 ↓", "Save JSON ↓", "Enregistrer le JSON ↓", "Guardar JSON ↓", "Salvar JSON ↓", "حفظ JSON ↓", "保存 JSON ↓", "Сохранить JSON ↓", "Simpan JSON ↓", "JSON speichern ↓", "Hifadhi JSON ↓"),
+    # 🧩 the full list (add_features): {0} the file, {1} how many
+    "feat-commands": ("⌨️ {0} · 全 {1} コマンド", "⌨️ {0} · {1} commands", "⌨️ {0} · {1} commandes", "⌨️ {0} · {1} comandos", "⌨️ {0} · {1} comandos", "⌨️ {0} · {1} أوامر", "⌨️ {0} · 共 {1} 个命令", "⌨️ {0} · команд: {1}", "⌨️ {0} · {1} perintah", "⌨️ {0} · {1} Befehle", "⌨️ {0} · amri {1}"),
+    "feat-options": ("⌨️ {0} · 全 {1} オプション", "⌨️ {0} · {1} options", "⌨️ {0} · {1} options", "⌨️ {0} · {1} opciones", "⌨️ {0} · {1} opções", "⌨️ {0} · {1} خيارات", "⌨️ {0} · 共 {1} 个选项", "⌨️ {0} · параметров: {1}", "⌨️ {0} · {1} opsi", "⌨️ {0} · {1} Optionen", "⌨️ {0} · chaguo {1}"),
+    "feat-none": ("⌨️ {0} · 引数なし", "⌨️ {0} · no arguments", "⌨️ {0} · aucun argument", "⌨️ {0} · sin argumentos", "⌨️ {0} · sem argumentos", "⌨️ {0} · بلا وسائط", "⌨️ {0} · 无参数", "⌨️ {0} · без аргументов", "⌨️ {0} · tanpa argumen", "⌨️ {0} · keine Argumente", "⌨️ {0} · hakuna hoja"),
+    "feat-public": ("🐍 {0} · 全 {1} 個（_ 以外の公開名）", "🐍 {0} · {1} public names (not _)", "🐍 {0} · {1} noms publics (hors _)", "🐍 {0} · {1} nombres públicos (sin _)", "🐍 {0} · {1} nomes públicos (sem _)", "🐍 {0} · {1} أسماء عامة (بلا _)", "🐍 {0} · 共 {1} 个公开名称（非 _）", "🐍 {0} · публичных имён: {1} (без _)", "🐍 {0} · {1} nama publik (tanpa _)", "🐍 {0} · {1} öffentliche Namen (ohne _)", "🐍 {0} · majina ya umma {1} (bila _)"),
+    "feat-all": ("🐍 {0} · 全 {1} 個（__all__）", "🐍 {0} · {1} names (__all__)", "🐍 {0} · {1} noms (__all__)", "🐍 {0} · {1} nombres (__all__)", "🐍 {0} · {1} nomes (__all__)", "🐍 {0} · {1} أسماء (__all__)", "🐍 {0} · 共 {1} 个（__all__）", "🐍 {0} · имён: {1} (__all__)", "🐍 {0} · {1} nama (__all__)", "🐍 {0} · {1} Namen (__all__)", "🐍 {0} · majina {1} (__all__)"),
+    "feat-shared": ("（共通）", "(shared)", "(commun)", "(común)", "(comum)", "(مشترك)", "（通用）", "(общее)", "(umum)", "(gemeinsam)", "(ya pamoja)"),
+    "feat-command": ("⌨️ コマンド", "⌨️ Command", "⌨️ Commande", "⌨️ Comando", "⌨️ Comando", "⌨️ الأمر", "⌨️ 命令", "⌨️ Команда", "⌨️ Perintah", "⌨️ Befehl", "⌨️ Amri"),
+    "feat-about-options": ("📝 説明 · ⚙️ オプション", "📝 Description · ⚙️ Options", "📝 Description · ⚙️ Options", "📝 Descripción · ⚙️ Opciones", "📝 Descrição · ⚙️ Opções", "📝 الوصف · ⚙️ الخيارات", "📝 说明 · ⚙️ 选项", "📝 Описание · ⚙️ Параметры", "📝 Deskripsi · ⚙️ Opsi", "📝 Beschreibung · ⚙️ Optionen", "📝 Maelezo · ⚙️ Chaguo"),
+    "feat-option": ("⚙️ オプション", "⚙️ Option", "⚙️ Option", "⚙️ Opción", "⚙️ Opção", "⚙️ الخيار", "⚙️ 选项", "⚙️ Параметр", "⚙️ Opsi", "⚙️ Option", "⚙️ Chaguo"),
+    "feat-about": ("📝 説明", "📝 Description", "📝 Description", "📝 Descripción", "📝 Descrição", "📝 الوصف", "📝 说明", "📝 Описание", "📝 Deskripsi", "📝 Beschreibung", "📝 Maelezo"),
+    "feat-name": ("🐍 名前（🔧 関数 · 🧱 クラス · 📦 値 · ↪️ 取り込み）", "🐍 Name (🔧 function · 🧱 class · 📦 value · ↪️ import)", "🐍 Nom (🔧 fonction · 🧱 classe · 📦 valeur · ↪️ import)", "🐍 Nombre (🔧 función · 🧱 clase · 📦 valor · ↪️ importación)", "🐍 Nome (🔧 função · 🧱 classe · 📦 valor · ↪️ importação)", "🐍 الاسم (🔧 دالة · 🧱 صنف · 📦 قيمة · ↪️ استيراد)", "🐍 名称（🔧 函数 · 🧱 类 · 📦 值 · ↪️ 导入）", "🐍 Имя (🔧 функция · 🧱 класс · 📦 значение · ↪️ импорт)", "🐍 Nama (🔧 fungsi · 🧱 kelas · 📦 nilai · ↪️ impor)", "🐍 Name (🔧 Funktion · 🧱 Klasse · 📦 Wert · ↪️ Import)", "🐍 Jina (🔧 kitendaji · 🧱 darasa · 📦 thamani · ↪️ kuingiza)"),
+    # the tabs and headings every repository's guide shares
+    "guide-features": ("🧩 機能一覧", "🧩 Features", "🧩 Fonctionnalités", "🧩 Funciones", "🧩 Recursos", "🧩 الميزات", "🧩 功能一览", "🧩 Возможности", "🧩 Fitur", "🧩 Funktionen", "🧩 Vipengele"),
+    "guide-verify": ("🔬 検証ガイド", "🔬 Verification guide", "🔬 Guide de vérification", "🔬 Guía de verificación", "🔬 Guia de verificação", "🔬 دليل التحقق", "🔬 验证指南", "🔬 Руководство по проверке", "🔬 Panduan verifikasi", "🔬 Prüfanleitung", "🔬 Mwongozo wa uthibitishaji"),
+    "guide-gif": ("🎞 GIF デモ", "🎞 GIF demo", "🎞 Démo GIF", "🎞 Demo en GIF", "🎞 Demonstração em GIF", "🎞 عرض GIF", "🎞 GIF 演示", "🎞 GIF-демо", "🎞 Demo GIF", "🎞 GIF-Demo", "🎞 Onyesho la GIF"),
+    "guide-links": ("🔗 リンク", "🔗 Links", "🔗 Liens", "🔗 Enlaces", "🔗 Ligações", "🔗 روابط", "🔗 链接", "🔗 Ссылки", "🔗 Tautan", "🔗 Verweise", "🔗 Viungo"),
+    "guide-get": ("📥 取得", "📥 Get it", "📥 Obtenir", "📥 Obtener", "📥 Obter", "📥 الحصول عليه", "📥 获取", "📥 Получить", "📥 Dapatkan", "📥 Holen", "📥 Pata"),
+    "guide-run": ("▶️ 実行", "▶️ Run", "▶️ Exécuter", "▶️ Ejecutar", "▶️ Executar", "▶️ تشغيل", "▶️ 运行", "▶️ Запуск", "▶️ Jalankan", "▶️ Ausführen", "▶️ Endesha"),
+    "guide-python": ("🐍 Python から呼ぶ", "🐍 Call from Python", "🐍 Appeler depuis Python", "🐍 Llamar desde Python", "🐍 Chamar do Python", "🐍 الاستدعاء من Python", "🐍 从 Python 调用", "🐍 Вызов из Python", "🐍 Panggil dari Python", "🐍 Aus Python aufrufen", "🐍 Ita kutoka Python"),
+}
+
+def filter_input(table_id: str, *, id: str = "filter", label: str = _PAGE_WORDS["filter-box"][0],
                  count_id: str | None = None) -> str:
     """Search box that records.js binds to ``#table_id``; ``count_id`` names an element that shows the row count."""
     target = _element_id(table_id)
@@ -3209,13 +3271,8 @@ def records_board(trusted_html: str, *, id: str = "records", source: str | None 
 
 
 NOTICE_TONES = ("info", "warn", "block")
-STEP_STATUSES = (("todo", "調査中"), ("doing", "着手中"), ("pass", "完了"), ("hold", "保留"), ("block", "ブロッカー"))   # a step's state; the first is where every step starts
-STEP_LABELS = {"expect": "期待される出力", "needs": "前提条件", "trouble": "失敗時の確認", "seen": "失敗例", "check": "確認ポイント", "fix": "対処",
-               "record": "再現記録", "status": "状態", "date": "検証日", "actual": "実際の出力・終了コード", "note": "環境・バージョン・備考",
-               "copy": "コピー", "copied": "コピー済み", "copy_failed": "コピーできませんでした", "search": "検索", "filter": "状態", "all": "すべて",
-               "export": "記録を JSON で保存", "import": "記録を読み込む", "loaded": "記録を読み込みました。", "stale": "別の版の記録を読み込み、状態を戻しました。",
-               "bad": "記録を読み込めません。このページから保存した JSON を選んでください。", "empty": "該当する手順はありません。",
-               "choice": "実行方法", "env": "環境", "run": "🤖 CI で実行する手順", "ran": "🤖 CI で実行した結果"}
+STEP_STATUSES = tuple((token, _PAGE_WORDS["state-" + token][0]) for token in ("todo", "doing", "pass", "hold", "block"))   # a step's state; the first is where every step starts
+STEP_LABELS = {**{key: row[0] for key, row in _PAGE_WORDS.items() if "-" not in key}, "filter": _PAGE_WORDS["status"][0]}
 
 
 def notice(text: str, *, tone: str = "info", title: str | None = None) -> str:
@@ -3256,7 +3313,7 @@ def page_heading(title: str, *, eyebrow: str | None = None, lead: str | None = N
     return '<header class="ui-heading"><div>' + "".join(parts) + "</div>" + aside + "</header>"
 
 
-def download_json(data: Any, *, id: str, filename: str, label: str = "JSON を保存 ↓") -> str:
+def download_json(data: Any, *, id: str, filename: str, label: str = _PAGE_WORDS["save-json"][0]) -> str:
     """A button that saves ``data`` (anything ``json.dumps`` takes) as ``filename``: the data travels inside the page as
     ``<script type="application/json">`` (every ``<`` written as ``\\u003c``, so it can neither close the tag nor open a comment)
     and records.js downloads it.
@@ -16987,8 +17044,20 @@ _CSS["chrome.css"] = (
     ".ui-chrome .ui-world-side .ui-world-panel{top:50%;right:72px;transform:translateY(-50%);width:min(320px,calc(100vw - 88px));max-height:min(80vh,480px)}"
     "}"
 )
+def _chrome_catalogue(page: str | None = None) -> str:
+    """🌐 chrome.js's CHROME_TEXT: the chrome's words (the stand-in line is built in Python) and the words this module writes into a page's
+    body (``_PAGE_WORDS``); given a ``page``, only the body's words it holds (a format by its shape), so a page carries what it says."""
+    def held(word: str) -> bool:
+        if "{0}" not in word:
+            return word in page or escape(word, quote=False) in page
+        return re.search(re.sub(r"\\\{\d\\\}", ".+?", re.escape(word)), page) is not None
+    words = {**{k: v for k, v in _CHROME_WORDS.items() if k not in ("about", "about2")},
+             **{k: v for k, v in _PAGE_WORDS.items() if page is None or held(v[0])}}
+    return json.dumps({k: list(v) for k, v in words.items()}, ensure_ascii=False, separators=(",", ":"))
+
+
 _JS["chrome.js"] = ("const CHROME_LANGS=" + json.dumps([code for code, _ in CHROME_LANGS], separators=(",", ":")) + ",CHROME_TEXT=" +
-                    json.dumps({k: list(v) for k, v in _CHROME_WORDS.items() if k not in ("about", "about2")}, ensure_ascii=False, separators=(",", ":")) + ";\n" +   # the stand-in line is built in Python
+                    _chrome_catalogue() + ";\n" +
                     "// 🎨 ⚙️'s colors: ui.js's bindTheme, the same lines (one choice, web-ui-theme, for every page of this origin)\n" +
                     re.search(r"^export function bindTheme\(.*$", _JS["ui.js"], re.M)[0] + "\n" + r"""
 // 🌐 One catalogue word in a language ({0} filled in; a word missing there is the English one).
@@ -17012,10 +17081,21 @@ function bindMenus(el){const menus=[...el.querySelectorAll('.ui-world-menu')];fo
 const stored=slot=>{const load=()=>{try{const v=JSON.parse(localStorage.getItem(slot));return v&&typeof v==='object'?v:{}}catch(e){return{}}};return[load,part=>{try{localStorage.setItem(slot,JSON.stringify({...load(),...part}))}catch(e){}}]};
 // 🌐 The words in one of eleven languages: aria-labels and tooltips (data-t names a catalogue word, data-labels carries a part's own
 // words) and text (data-tx, data-texts the same way; dir=auto, so Arabic reads right to left in its place). ``mine`` keeps a node of
-// another chrome or a world out.
+// another chrome or a world out. Then every other text and label that is a catalogue word in any language (a format by its shape,
+// its {0} {1} kept) turns into this language: the words this module wrote into the page's body (a runbook, 🧩 the full list, the
+// tabs every guide shares), whenever they were written. Code, a form's typing and translate=no stay as they are.
+const WORD=new Map(),FORMS=[],SAID=['aria-label','title','placeholder','alt','data-ui-copied','data-ui-copy-failed','data-ui-msg-loaded','data-ui-msg-stale','data-ui-msg-bad'];
+for(const[key,row]of Object.entries(CHROME_TEXT))for(const w of row){const at=[...w.matchAll(/\{(\d)\}/g)].map(m=>+m[1]);
+ if(at.length)FORMS.push([key,at,new RegExp('^'+w.replace(/[.*+?^$()|[\]\\]/g,'\\$&').replace(/\{\d\}/g,'(.+?)')+'$')]);else if(!WORD.has(w))WORD.set(w,key)}
+const sayWord=(lang,text)=>{const t=text.trim();if(!t)return null;if(WORD.has(t))return text.replace(t,()=>chromeWord(lang,WORD.get(t)));
+ for(const[key,at,re]of FORMS){const m=t.match(re);if(m){const a=[];at.forEach((n,i)=>{a[n]=m[i+1]});return text.replace(t,()=>chromeWord(lang,key,...a))}}return null};
 const sayIn=(root,lang,mine=()=>true)=>{const pick=m=>m[lang]||m.en||m.ja;for(const n of root.querySelectorAll('[data-t],[data-labels],[data-tx],[data-texts]')){if(!mine(n))continue;
  if(n.dataset.t||n.dataset.labels){const w=n.dataset.labels?pick(JSON.parse(n.dataset.labels)):chromeWord(lang,n.dataset.t);n.setAttribute('aria-label',w);if(n.hasAttribute('title')||n.matches('button'))n.setAttribute('title',w)}
- if(n.dataset.tx||n.dataset.texts){n.textContent=n.dataset.texts?pick(JSON.parse(n.dataset.texts)):chromeWord(lang,n.dataset.tx);n.dir='auto'}}};
+ if(n.dataset.tx||n.dataset.texts){n.textContent=n.dataset.texts?pick(JSON.parse(n.dataset.texts)):chromeWord(lang,n.dataset.tx);n.dir='auto'}}
+ const keep=n=>!mine(n)||n.closest('script,style,pre,code,textarea,[contenteditable],[translate=no],[data-tx],[data-texts]');
+ if(root.createTreeWalker||root.ownerDocument?.createTreeWalker){const doc=root.createTreeWalker?root:root.ownerDocument,walk=doc.createTreeWalker(root.body??root,4);
+  for(let t;(t=walk.nextNode());){const p=t.parentElement;if(!p||keep(p))continue;const w=sayWord(lang,t.nodeValue);if(w!==null&&w!==t.nodeValue)t.nodeValue=w}}
+ for(const n of root.querySelectorAll(SAID.map(a=>'['+a+']').join(','))){if(keep(n)||n.dataset.t||n.dataset.labels)continue;for(const a of SAID){const v=n.getAttribute(a);if(v===null)continue;const w=sayWord(lang,v);if(w!==null&&w!==v)n.setAttribute(a,w)}}};
 // 🧰 The chrome of a tool page: the board, the menus and 🌐 of a world's shell, with no map.
 // ☰ is this page: itself (📍), its sections (the h2 of <main>) and the rows it gave, each with a ☆. ⭐ lists the starred places of
 // every page sharing the chrome's id (a place is its path and fragment on this site), so they follow you from tool to tool, as 🌐
@@ -17026,6 +17106,7 @@ export function bindChrome(root=document){return[...root.querySelectorAll('[data
  // and a page of its own hears ``ui-lang`` on document ({lang, word(key, …)}).
  const mine=n=>{const c=n.closest('[data-ui-chrome],[data-ui-world]');return!c||c===el},
   say=r=>sayIn(r,lang,mine),setLang=to=>{if(!CHROME_LANGS.includes(to))return;lang=to;el.lang=to;if(sel)sel.value=to;say(document);
+   for(const a of el.querySelectorAll('[data-head]')){const h=document.getElementById(a.dataset.head);if(h)a.lastChild.textContent=h.textContent.trim().slice(0,40)}   // ☰ says the sections as they read now
    for(const f of document.querySelectorAll('.ui-door-foot'))if(mine(f))f.lang=to;
    for(const d of document.querySelectorAll('[data-ui-door]'))if(mine(d)){d.dataset.lang=to;d.dataset.here=chromeWord(to,'current');d.dataset.words=JSON.stringify(Object.fromEntries(Object.entries(CHROME_TEXT).map(([k,row])=>[row[0],chromeWord(to,k)])));d.dispatchEvent(new CustomEvent('ui-lang'))}
    document.dispatchEvent(new CustomEvent('ui-lang',{detail:{lang:to,word:(key,...a)=>chromeWord(to,key,...a)}}))};
@@ -17034,7 +17115,7 @@ export function bindChrome(root=document){return[...root.querySelectorAll('[data
  const here=page(location.pathname),title=(document.title.trim()||here).slice(0,40),key=a=>a.origin===location.origin?page(a.pathname)+a.hash:a.href,
   row=(href,text,mark='')=>{const li=document.createElement('li'),a=document.createElement('a'),arrow=document.createElement('span'),b=document.createElement('button');a.href=href;arrow.className='ui-world-arrow';arrow.setAttribute('aria-hidden','true');arrow.textContent=mark;a.append(arrow,text);b.type='button';b.className='ui-world-star';b.dataset.t='star';li.append(a,b);return li},
   spots=el.querySelector('.ui-world-spots'),favs=el.querySelector('.ui-world-favs'),heads=[...document.querySelectorAll('main h2')].filter(h=>!el.contains(h)&&h.textContent.trim());
- spots.prepend(row('#',title,'📍'),...heads.map((h,i)=>{if(!h.id)h.id=el.id+'-part-'+(i+1);return row('#'+h.id,h.textContent.trim().slice(0,40))}));
+ spots.prepend(row('#',title,'📍'),...heads.map((h,i)=>{if(!h.id)h.id=el.id+'-part-'+(i+1);const li=row('#'+h.id,h.textContent.trim().slice(0,40));li.querySelector('a').dataset.head=h.id;return li}));
  spots.querySelector('a').setAttribute('aria-current','page');
  let fav=(Array.isArray(kept.fav)?kept.fav:[]).filter(f=>f&&typeof f.label==='string'&&typeof f.href==='string'&&/^(\/(?!\/)|https:\/\/)/.test(f.href)).slice(-32);
  const words=a=>a.lastChild.textContent,show=()=>{for(const a of spots.querySelectorAll('a')){const on=fav.some(f=>f.href===key(a)),b=a.parentElement.querySelector('.ui-world-star');b.setAttribute('aria-pressed',String(on));b.textContent=on?'★':'☆'}

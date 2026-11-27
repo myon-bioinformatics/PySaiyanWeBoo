@@ -1727,6 +1727,70 @@ class SiteChromeBrowserTests(unittest.TestCase):
         finally:
             server.shutdown()
 
+    def test_every_word_this_module_writes_into_a_guide_follows_every_language(self):
+        """🌐 The body too: a guide with the tabs every guide shares, a runbook (labels, states, 🤖, copy) and 🧩 the full list
+        (titles, headers, ☰'s copies of them) reads in each of the eleven languages, and no Japanese is left but the page's own words,
+        the module's (docstrings, help), the code and the language names. Copying says so in the language."""
+        from pysaiyanweboo import CHROME_LANGS, add_back_nav, add_features, page_document
+        tmp = Path(tempfile.mkdtemp())
+        module = tmp / 'tiny.py'
+        module.write_text('"""小さな道具。"""\nimport argparse\n\n\ndef greet(name):\n    """あいさつする。"""\n    return name\n\n\n'
+                          'if __name__ == "__main__":\n    p = argparse.ArgumentParser(description="あいさつ")\n    p.add_argument("--name", help="名前")\n    p.parse_args()\n', encoding='utf-8')
+        step = {"id": "help", "title": "❓ ヘルプ", "command": "python tiny.py --help", "expect": "usage: が出る", "needs": "🐍 Python",
+                "trouble": {"seen": "見つからない", "check": "場所", "fix": "置き直す"}, "run": True}
+        spec = {"schema": "web-ui-page/1", "title": "tiny ガイド", "description": "小さな道具の使い方。",
+                "blocks": [{"type": "tabs", "id": "guide", "tabs": [
+                    {"label": "🧩 機能一覧", "blocks": [{"type": "section", "title": "▶️ 実行", "blocks": [{"type": "output", "text": "python tiny.py"}]}]},
+                    {"label": "🔬 検証ガイド", "blocks": [{"type": "runbook", "id": "verify", "books": [{"label": "🐍 python", "runbook": {"key": "tiny/python", "steps": [step]}}]}]},
+                    {"label": "🎞 GIF デモ", "blocks": [{"type": "text", "text": "まだありません。"}]}]},
+                    {"type": "section", "title": "🔗 リンク", "blocks": [{"type": "text", "text": "リポジトリへ。"}]}]}
+        page = add_back_nav(page_document(add_features(spec, module)), "myon-bioinformatics/tiny", chrome=True)
+        jp = re.compile(r'[぀-ヿ㐀-鿿]+')
+        own = set(jp.findall(json.dumps(spec, ensure_ascii=False) + module.read_text(encoding='utf-8')))
+        ends = {name for _, name in CHROME_LANGS}                                                    # 日本語 and 中文 are names
+        SAID = """() => { const out = [], walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+            for (let t; (t = walk.nextNode());) { const p = t.parentElement; if (!p.closest('script,style,pre,[aria-hidden=true]')) out.push(t.nodeValue) }
+            for (const n of document.querySelectorAll('*')) for (const a of ['aria-label','title','placeholder','alt','data-ui-copied','data-ui-copy-failed','data-ui-msg-loaded','data-ui-msg-stale','data-ui-msg-bad'])
+                if (n.hasAttribute(a)) out.push(n.getAttribute(a));
+            return out }"""
+        server, origin = serve_pages({'index.html': page})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page_ = browser.new_page(viewport={'width': 392, 'height': 760})
+                    errors = []
+                    page_.on('pageerror', lambda error: errors.append(str(error)))
+                    page_.goto(origin + '/index.html')
+                    page_.wait_for_selector('.ui-chrome[data-js]')
+                    before = page_.evaluate(SAID)
+                    self.assertIn('再現記録', ' '.join(before))                                       # the runbook is there, in Japanese
+                    left = {}
+                    for code, _ in CHROME_LANGS[1:]:
+                        page_.evaluate("c => { const s = document.querySelector('.ui-chrome [data-lang]'); s.value = c; s.dispatchEvent(new Event('change')) }", code)
+                        words = page_.evaluate(SAID)
+                        stray = sorted({w for s_ in words if s_.strip() not in ends for w in jp.findall(s_) if w not in own and not (code == 'zh' and not re.search(r'[぀-ヿ]', w))})
+                        if stray:
+                            left[code] = stray
+                    self.assertEqual(left, {})                                                        # nothing this module wrote stayed in Japanese
+                    page_.evaluate("() => { const s = document.querySelector('.ui-chrome [data-lang]'); s.value = 'en'; s.dispatchEvent(new Event('change')) }")
+                    tab = page_.locator('label.ui-tab', has_text='Verification guide')
+                    expect(tab).to_have_count(1)
+                    tab.click()
+                    copy = page_.locator('.ui-step [data-ui-copy]').first
+                    expect(copy).to_have_text('Copy')
+                    copy.click()
+                    expect(copy).to_have_text(re.compile(r'^(Copied|Could not copy)$'))              # the message it shows is the language's
+                    expect(page_.locator('.ui-step [data-ui-status-tag]').first).to_have_text('Investigating')
+                    page_.evaluate("() => { const s = document.querySelector('.ui-chrome [data-lang]'); s.value = 'ja'; s.dispatchEvent(new Event('change')) }")
+                    expect(page_.locator('label.ui-tab', has_text='🔬 検証ガイド')).to_have_count(1)   # and back
+                    self.assertEqual(errors, [])
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+            shutil.rmtree(tmp, ignore_errors=True)
+
     def test_settings_colors_follow_from_page_to_page(self):
         """🎨 ⚙️'s colors: a theme recolours the page (its tokens on <body>), the next page of the origin opens in it, and "this page's
         own" gives the page back its theme (a guide's is auto)."""

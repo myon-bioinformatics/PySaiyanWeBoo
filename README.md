@@ -617,9 +617,13 @@ them to a page built some other way; a page that has them keeps them, and withou
 ⚙️ holds what every page shares: ⏯️ stop the board, 🌐 the language (11), 🎨 the colors (the page's own, or one of the themes for
 every page of the origin), then the rows a page adds (another layout, a mode). 🌐 changes every word these parts put on the page —
 the chrome's tooltips, the board's "in N min", 🫧, the foot's 🚪 and 📦, the way back's ポートフォリオ and GitHub リポジトリ (a catalogue
-word, `chrome_words`) and the stand-in line of a page that says nothing of itself — while the page's own words stay as written and
-`<html lang>` says their language (`page_language`). A door relabels its pull-down; a page of its own hears `ui-lang` on `document`.
-The browser test switches all eleven languages and fails on any word of these parts left behind.
+word, `chrome_words`) and the stand-in line of a page that says nothing of itself — and every word this module writes into the page's
+own body, found by its words (a format such as `⌨️ x.py · 全 3 コマンド` by its shape): a runbook's labels, states, 🤖 and copy messages,
+🧩 the full list's titles and headers, and the tabs and headings every guide shares (🧩 機能一覧 🔬 検証ガイド 🎞 GIF デモ 🔗 リンク 📥 取得
+▶️ 実行 🐍 Python から呼ぶ). A page carries only the words it holds. The page's own words stay as written (the browser's own translate
+reads them) and `<html lang>` says their language (`page_language`). A door relabels its pull-down; a page of its own hears `ui-lang`
+on `document`. The browser tests switch all eleven languages and fail on any word of these parts left behind, on the chrome and on a
+guide with a runbook and the full list.
 
 ![🧰 site chrome on a guide page: the board, 🫧, ☰ the page's sections, 🚪 the foot](docs/evidence/site-chrome.gif)
 ![🌐 ⚙️ open, language by language: the board, 🎨, the door's 📌 (current) follow](docs/evidence/site-chrome-languages.gif)
