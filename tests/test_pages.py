@@ -6753,10 +6753,32 @@ def test_the_chrome_is_a_header_and_a_side_for_a_page_that_is_not_a_world():
     ({"tools": {"x": {"href": "./"}}}, "emoji"), ({"tools": {"🗼": {"href": "./", "body": "x"}}}, "exactly one of"),
     ({"tools": {"🗼": {"links": []}}}, "links"), ({"tools": {"🗼": {"body": "x", "slot": "foot"}}}, "slot"),
     ({"tools": {"🗼": {"body": "x", "labels": {"ja": "x"}}}}, "labels"),
+    ({"tools": {"🗼": {"links": [{"label": "x", "key": "Save As"}]}}}, "a key is"), ({"tools": {"🗼": {"links": [{"label": "x", "key": "a", "href": "./"}]}}}, "tool links"),
+    ({"settings": [{"label": "x"}]}, "settings lists"), ({"settings": [{"label": "x", "href": "./"}] * 9}, "settings lists"),
+    ({"screen": [{"label": "x", "href": "javascript:1"}]}, "href"), ({"screen": {"label": "x", "key": "a"}}, "screen lists"),
 ])
 def test_the_chrome_refuses(spec, word):
     with pytest.raises(ValueError, match=re.escape(word)):
         ui.chrome_validate(spec)
+
+
+def test_the_chrome_takes_actions_and_rows_for_settings_and_this_screen():
+    """💾 one emoji, the choices in its panel: a row is a link or an action the page answers; ⚙️ and ⋯ take the page's rows too."""
+    spec = {"id": "studio", "tools": {"💾": {"label": "保存", "label_en": "Save", "links": [{"label": "🖼 PNG <1x>", "key": "png"}, {"label": "📦 JSON", "key": "json"}, {"label": "Docs", "href": "./docs/"}]}},
+            "settings": [{"label": "📱 スマホ版", "href": "./phone/"}], "screen": [{"label": "📋 シェルフ", "key": "shelf"}]}
+    checked = ui.chrome_validate(spec)
+    assert checked["tools"]["💾"]["links"] == [{"label": "🖼 PNG <1x>", "key": "png"}, {"label": "📦 JSON", "key": "json"}, {"label": "Docs", "href": "./docs/"}]
+    assert (checked["settings"], checked["screen"]) == ([{"label": "📱 スマホ版", "href": "./phone/"}], [{"label": "📋 シェルフ", "key": "shelf"}])
+    html = ui.chrome_html(spec)
+    assert re.findall(r'<a href="#" role="button" data-chrome-action="([a-z]+)">([^<]*)</a>', html) == [("png", "🖼 PNG &lt;1x&gt;"), ("json", "📦 JSON"), ("shelf", "📋 シェルフ")]
+    settings = html[html.index("⚙️"):html.index("☰")]                     # the page's rows follow the chrome's own in ⚙️, and ⬆️ ⬇️ in ⋯
+    assert settings.index("data-lang") < settings.index('<a href="./phone/">📱 スマホ版</a>')
+    more = html[html.index("⋯"):]
+    assert more.index('data-scroll="bottom"') < more.index('data-chrome-action="shelf"')
+    plain = ui.chrome_validate({})
+    assert (plain["settings"], plain["screen"]) == ([], []) and "data-chrome-action" not in ui.chrome_html({})
+    module = ui.js_source("chrome.js")                                     # the page hears the key; the chrome does nothing else with it
+    assert "new CustomEvent('ui-chrome-action',{bubbles:true,detail:{key:act.dataset.chromeAction}})" in module and "e.preventDefault()" in module
 
 
 def test_the_chrome_sheet_is_plain_and_its_module_asks_the_network_for_nothing():

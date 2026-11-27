@@ -84,7 +84,8 @@ body:where([data-page~="studio"]){font-size:13px;line-height:1.5;margin:0}
 :where([data-page~="studio"]) .brand span{font-weight:400;font-size:10px;display:block;letter-spacing:3px;margin:5px 0 0;color:var(--ui-muted)}
 :where([data-page~="studio"]) .brand img{flex:none;image-rendering:pixelated}
 :where([data-page~="studio"]) .top-actions{display:flex;flex-wrap:wrap;gap:7px}
-:where([data-page~="studio"]) .top-actions>a{color:var(--ui-accent);align-self:center;padding:7px 3px;text-underline-offset:3px}
+:where([data-page~="studio"]) .top-actions summary{cursor:pointer;padding:7px}
+:where([data-page~="studio"]) .top-actions details a{color:var(--ui-accent);align-self:center;padding:7px 3px;text-underline-offset:3px}
 :where([data-page~="studio"]) button,:where([data-page~="studio"]) .button{display:inline-flex;align-items:center;justify-content:center;gap:5px;text-decoration:none;min-height:38px;padding:10px 12px}
 :where([data-page~="studio"]) .button{font:inherit;cursor:pointer;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);border-radius:var(--ui-radius)}
 :where([data-page~="studio"]) button:hover,:where([data-page~="studio"]) .button:hover{border-color:var(--ui-accent);background:color-mix(in srgb,var(--ui-accent) 12%,var(--ui-panel))}
@@ -189,6 +190,8 @@ body:where([data-page~="tools"]){font-size:15px;line-height:1.65;margin:0}
 :where([data-page~="tools"]) .preview{display:flex;flex-direction:column;gap:16px;justify-content:center;align-items:stretch}
 :where([data-page~="tools"]) .preview canvas{display:block;width:min(100%,480px);height:auto;image-rendering:pixelated;margin:auto;border:1px solid var(--ui-border);background:repeating-conic-gradient(#e1e8e3 0% 25%,#fff 0% 50%) 0 0/20px 20px;cursor:crosshair;touch-action:manipulation}
 :where([data-page~="tools"]) textarea{width:100%;font-size:11px;overflow-wrap:anywhere}
+:where([data-page~="studio"]) #pixel-editor .workspace{display:block;padding:0}
+:where([data-page~="studio"]) #pixel-editor #grid{width:min(100%,320px);height:auto;image-rendering:pixelated;cursor:crosshair}
 :where([data-page~="tools"]) #grid-info{font-size:13px;color:var(--ui-muted)}
 :where([data-page~="tools"]) #message{border-left:3px solid var(--ui-accent);padding:8px 16px;min-height:42px;background:color-mix(in srgb,var(--ui-accent) 12%,var(--ui-panel))}
 :where([data-page~="tools"]) #message[data-error=true]{border-color:var(--ui-danger);color:var(--ui-danger)}

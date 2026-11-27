@@ -7587,9 +7587,30 @@ def _chrome_menu(kind: str, glyph: str, attrs: str, panel: str, hidden: bool = F
             f'<div class="ui-world-panel">{panel}</div></details>')
 
 
+def _chrome_rows(rows: Any, name: str, limit: int = 16, least: int = 1) -> list[dict[str, str]]:
+    """The rows of a panel, each ``{label, href}`` (a link) or ``{label, key}`` (an action: pressing it sends ``ui-chrome-action`` with
+    ``detail.key`` from the chrome, and the page does the rest: save as this format, open that panel)."""
+    if (not isinstance(rows, list) or not least <= len(rows) <= limit
+            or any(not isinstance(r, dict) or set(r) not in ({"label", "href"}, {"label", "key"}) for r in rows)):
+        raise ValueError(f"{name} lists {least}..{limit} {{label, href}} or {{label, key}}")
+    built = []
+    for r in rows:
+        if "key" in r and (not isinstance(r["key"], str) or not _CHROME_TOKEN.fullmatch(r["key"])):
+            raise ValueError(f"{name}: a key is a short lowercase token")
+        built.append({"label": _chrome_text(r["label"], "label", 40), **({"href": _chrome_href(r["href"])} if "href" in r else {"key": r["key"]})})
+    return built
+
+
+def _chrome_rows_html(rows: list[dict[str, str]]) -> str:
+    return ('<ul class="ui-world-rows">' + "".join(
+        f'<li><a href="{escape(r["href"], quote=True)}">{escape(r["label"])}</a></li>' if "href" in r
+        else f'<li><a href="#" role="button" data-chrome-action="{r["key"]}">{escape(r["label"])}</a></li>' for r in rows) + '</ul>') if rows else ""
+
+
 def _chrome_tools(tools_in: Any) -> dict[str, dict[str, Any]]:
-    """Up to 8 emoji of a page's own, key → one feature: ``href`` (the button is a link), ``links`` (a panel of up to 16
-    ``{label, href}``) or ``body`` (a panel of words); ``label``, ``label_en``, ``labels`` (other languages) and ``slot`` (head | side)."""
+    """Up to 8 emoji of a page's own, key → one feature: ``href`` (the button is a link), ``links`` (a panel of up to 16 rows,
+    ``_chrome_rows``: links, or actions the page answers, such as the formats a 💾 saves) or ``body`` (a panel of words); ``label``,
+    ``label_en``, ``labels`` (other languages) and ``slot`` (head | side)."""
     if not isinstance(tools_in, dict) or len(tools_in) > 8:
         raise ValueError("tools maps up to 8 emoji to a feature")
     tools: dict[str, dict[str, Any]] = {}
@@ -7616,10 +7637,7 @@ def _chrome_tools(tools_in: Any) -> dict[str, dict[str, Any]]:
         if "href" in tool:
             built["href"] = _chrome_href(tool["href"])
         elif "links" in tool:
-            links = tool["links"]
-            if not isinstance(links, list) or not 1 <= len(links) <= 16 or any(not isinstance(l, dict) or set(l) != {"label", "href"} for l in links):
-                raise ValueError("tool links lists 1..16 {label, href}")
-            built["links"] = [{"label": _chrome_text(l["label"], "label", 40), "href": _chrome_href(l["href"])} for l in links]
+            built["links"] = _chrome_rows(tool["links"], "tool links")
         else:
             built["body"] = _chrome_text(tool["body"], "body", 400)
         tools[emoji] = built
@@ -7631,14 +7649,14 @@ def _chrome_tool(emoji: str, tool: dict[str, Any]) -> str:
     if "href" in tool:
         return f'<a class="ui-world-tool" href="{escape(tool["href"], quote=True)}" {attrs}>{escape(emoji)}</a>'
     if "links" in tool:
-        panel = '<ul class="ui-world-rows">' + "".join(f'<li><a href="{escape(l["href"], quote=True)}">{escape(l["label"])}</a></li>' for l in tool["links"]) + '</ul>'
+        panel = _chrome_rows_html(tool["links"])
     else:
         panel = f'<p>{escape(tool["body"])}</p>'
     return _chrome_menu("tool", escape(emoji), attrs, panel)
 
 
 def chrome_validate(spec: Any = None) -> dict[str, Any]:
-    """``{"id", "board", "home", "places", "tools"}``, all optional.
+    """``{"id", "board", "home", "places", "tools", "settings", "screen"}``, all optional.
 
     ``id``      names the chrome; ⭐ and 🌐 are kept under it in this browser, so pages sharing an id share them (default ``tools``)
     ``board``   ``{"title", "items": [{"text", "at"?}]}``: a title (up to 24), 1..12 items (up to 120; ``at`` HH:MM gives "in N min")
@@ -7646,10 +7664,12 @@ def chrome_validate(spec: Any = None) -> dict[str, Any]:
     ``places``  rows this page adds to its ☰, each ``{"label", "href"}`` with a ☆ (up to 32); the script lists the page itself (📍)
                 and its sections ahead of them. ☰ is this page's own: moving between pages is the door's (``door_html``)
     ``tools``   emoji of the page's own (``_chrome_tools``)
+    ``settings`` rows the page adds to ⚙️ (up to 8, ``_chrome_rows``): another layout of the same page, a mode
+    ``screen``  rows the page adds to ⋯ (up to 8): what belongs to this screen but not to its main buttons, such as a temporary shelf
     """
     spec = {} if spec is None else spec
-    if not isinstance(spec, dict) or set(spec) - {"id", "board", "home", "places", "tools"}:
-        raise ValueError("a chrome has id, board, home, places and tools")
+    if not isinstance(spec, dict) or set(spec) - {"id", "board", "home", "places", "tools", "settings", "screen"}:
+        raise ValueError("a chrome has id, board, home, places, tools, settings and screen")
     board = spec.get("board")
     if board is not None:
         if not isinstance(board, dict) or set(board) - {"title", "items"} or not isinstance(board.get("items"), list) or not 1 <= len(board["items"]) <= 12:
@@ -7668,7 +7688,8 @@ def chrome_validate(spec: Any = None) -> dict[str, Any]:
         raise ValueError(f"chrome id must be a lowercase token: {chrome_id!r}")
     return {"id": chrome_id, "board": board, "home": None if spec.get("home") is None else _chrome_href(spec["home"]),
             "places": [{"label": _chrome_text(p["label"], "label", 40), "href": _chrome_href(p["href"])} for p in places],
-            "tools": _chrome_tools(spec.get("tools", {}))}
+            "tools": _chrome_tools(spec.get("tools", {})),
+            "settings": _chrome_rows(spec.get("settings", []), "settings", 8, 0), "screen": _chrome_rows(spec.get("screen", []), "screen", 8, 0)}
 
 
 def chrome_html(spec: Any = None) -> str:
@@ -7686,14 +7707,14 @@ def chrome_html(spec: Any = None) -> str:
     settings = ((f'<button type="button" class="ui-world-pause" aria-pressed="false" data-pause="⏯️" data-resume="▶️" {_chrome_said("pause")}>⏯️</button>' if board else "") +
                 f'<label class="ui-world-lang">🌐 <select data-lang {_chrome_said("language")}>' +
                 "".join(f'<option value="{code}" lang="{code}"{" selected" if i == 0 else ""}>{name}</option>' for i, (code, name) in enumerate(CHROME_LANGS)) +
-                '</select></label>')
+                '</select></label>' + _chrome_rows_html(chrome["settings"]))
     head = ((f'<a class="ui-world-home" href="{escape(chrome["home"], quote=True)}" {_chrome_said("home")}>🏠</a>' if chrome["home"] else "") +
             "".join(_chrome_tool(e, t) for e, t in tools.items() if t["slot"] == "head") +
             _chrome_menu("favorites", "⭐", _chrome_said("favorites"), '<p class="ui-world-empty" aria-hidden="true">☆</p><ul class="ui-world-rows ui-world-favs"></ul>', hidden=True) +
             _chrome_menu("settings", "⚙️", _chrome_said("settings"), settings, hidden=True))
     side = (_chrome_menu("spots", "☰", _chrome_said("places"), f'<ul class="ui-world-rows ui-world-spots">{rows}</ul>', hidden=not rows) +
             "".join(_chrome_tool(e, t) for e, t in tools.items() if t["slot"] == "side") +
-            _chrome_menu("more", "⋯", _chrome_said("screen"), move, hidden=True))
+            _chrome_menu("more", "⋯", _chrome_said("screen"), move + _chrome_rows_html(chrome["screen"]), hidden=True))
     shown = ""
     if board:
         def item(e: dict[str, Any], hidden: bool) -> str:           # the line twice, the second copy hidden: the loop has no seam
@@ -16015,7 +16036,8 @@ body:where([data-page~="studio"]){font-size:13px;line-height:1.5;margin:0}
 :where([data-page~="studio"]) .brand span{font-weight:400;font-size:10px;display:block;letter-spacing:3px;margin:5px 0 0;color:var(--ui-muted)}
 :where([data-page~="studio"]) .brand img{flex:none;image-rendering:pixelated}
 :where([data-page~="studio"]) .top-actions{display:flex;flex-wrap:wrap;gap:7px}
-:where([data-page~="studio"]) .top-actions>a{color:var(--ui-accent);align-self:center;padding:7px 3px;text-underline-offset:3px}
+:where([data-page~="studio"]) .top-actions summary{cursor:pointer;padding:7px}
+:where([data-page~="studio"]) .top-actions details a{color:var(--ui-accent);align-self:center;padding:7px 3px;text-underline-offset:3px}
 :where([data-page~="studio"]) button,:where([data-page~="studio"]) .button{display:inline-flex;align-items:center;justify-content:center;gap:5px;text-decoration:none;min-height:38px;padding:10px 12px}
 :where([data-page~="studio"]) .button{font:inherit;cursor:pointer;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);border-radius:var(--ui-radius)}
 :where([data-page~="studio"]) button:hover,:where([data-page~="studio"]) .button:hover{border-color:var(--ui-accent);background:color-mix(in srgb,var(--ui-accent) 12%,var(--ui-panel))}
@@ -16120,6 +16142,8 @@ body:where([data-page~="tools"]){font-size:15px;line-height:1.65;margin:0}
 :where([data-page~="tools"]) .preview{display:flex;flex-direction:column;gap:16px;justify-content:center;align-items:stretch}
 :where([data-page~="tools"]) .preview canvas{display:block;width:min(100%,480px);height:auto;image-rendering:pixelated;margin:auto;border:1px solid var(--ui-border);background:repeating-conic-gradient(#e1e8e3 0% 25%,#fff 0% 50%) 0 0/20px 20px;cursor:crosshair;touch-action:manipulation}
 :where([data-page~="tools"]) textarea{width:100%;font-size:11px;overflow-wrap:anywhere}
+:where([data-page~="studio"]) #pixel-editor .workspace{display:block;padding:0}
+:where([data-page~="studio"]) #pixel-editor #grid{width:min(100%,320px);height:auto;image-rendering:pixelated;cursor:crosshair}
 :where([data-page~="tools"]) #grid-info{font-size:13px;color:var(--ui-muted)}
 :where([data-page~="tools"]) #message{border-left:3px solid var(--ui-accent);padding:8px 16px;min-height:42px;background:color-mix(in srgb,var(--ui-accent) 12%,var(--ui-panel))}
 :where([data-page~="tools"]) #message[data-error=true]{border-color:var(--ui-danger);color:var(--ui-danger)}
@@ -16690,6 +16714,8 @@ export function bindChrome(root=document){return[...root.querySelectorAll('[data
  el.addEventListener('click',e=>{const b=e.target.closest('.ui-world-star'),s=e.target.closest('[data-scroll]');
   if(b){const a=b.parentElement.querySelector('a'),k=key(a);fav=fav.some(f=>f.href===k)?fav.filter(f=>f.href!==k):[...fav,{href:k,label:k===here?title:title+' › '+words(a)}].slice(-32);show();save({fav})}
   if(s){shut();scrollTo({top:s.dataset.scroll==='top'?0:document.documentElement.scrollHeight,behavior:'smooth'})}
+  const act=e.target.closest('[data-chrome-action]');
+  if(act){e.preventDefault();el.dispatchEvent(new CustomEvent('ui-chrome-action',{bubbles:true,detail:{key:act.dataset.chromeAction}}))}
   if(e.target.closest('.ui-world-rows a'))shut()});
  show();if(typeof kept.lang==='string'&&kept.lang!=='ja')setLang(kept.lang);
  const pause=el.querySelector('.ui-world-pause');pause?.addEventListener('click',()=>{const on=el.toggleAttribute('data-motion-paused');pause.setAttribute('aria-pressed',String(on));pause.textContent=on?pause.dataset.resume:pause.dataset.pause});
@@ -19176,6 +19202,323 @@ export function pngChunk(type,body){
  const out=new Uint8Array(body.length+12),view=new DataView(out.buffer);
  view.setUint32(0,body.length);out.set(new TextEncoder().encode(type),4);out.set(body,8);view.setUint32(out.length-4,crc32(out.subarray(4,out.length-4)));
  return out}
+"""
+
+
+def pixel_editor_html() -> str:
+    """Markup for one dot-art editor, bound by js/pixel-editor.js with a caller-supplied preset catalog."""
+    return r"""      <section id="pixels">
+        <div class="section-heading">
+          <h2>ドット絵</h2>
+        </div>
+        <div class="workspace">
+          <div class="controls">
+            <label>形<select id="mask"></select></label>
+            <div class="pair">
+              <label>元サイズ<select id="size"></select></label
+              ><label>加工<select id="effect"></select></label>
+            </div>
+            <label>配色ID<select id="palette"></select></label
+            ><button id="generate" class="primary">プリセットから生成</button>
+            <p class="hint">
+              形・サイズ・加工・配色を選んで生成します。
+            </p>
+            <label class="file"
+              >グリッドJSONを開く<input
+                id="grid-file"
+                type="file"
+                accept=".json,application/json"
+            /></label>
+            <div class="pair">
+              <label
+                >幅<input
+                  id="width"
+                  type="number"
+                  min="1"
+                  max="256"
+                  value="32" /></label
+              ><label
+                >高さ<input
+                  id="height"
+                  type="number"
+                  min="1"
+                  max="256"
+                  value="32"
+              /></label>
+            </div>
+            <button id="resize">最近傍でサイズ変更</button>
+            <p class="hint">
+              縮小では細部が失われます。配色変更は5役割のグリッドのみ。
+            </p>
+            <button id="recolor">選択した配色IDを適用</button>
+            <div class="pair">
+              <label>描く色番号<select id="ink"></select></label
+              ><label
+                >出力倍率<select id="scale">
+                  <option>1</option>
+                  <option>2</option>
+                  <option selected>8</option>
+                  <option>16</option>
+                </select></label
+              >
+            </div>
+            <button id="undo-grid">ひとつ戻す</button>
+          </div>
+          <div class="preview">
+            <canvas
+              id="grid"
+              width="32"
+              height="32"
+              aria-label="ドット絵。クリックすると選択した色番号で描画"
+              tabindex="0"
+            ></canvas>
+            <p id="grid-info"></p>
+            <div class="exports">
+              <button id="grid-json">JSON保存</button
+              ><button id="grid-svg">SVG</button
+              ><button id="grid-png">PNG</button
+              ><button id="grid-base64">Base64</button>
+            </div>
+            <label
+              >PNG data URI<textarea
+                id="base64-output"
+                rows="3"
+                readonly
+              ></textarea>
+            </label>
+            <p class="hint">
+              JSONは色番号を、PNGは色表と寸法を保持します。
+            </p>
+          </div>
+        </div>
+      </section>"""
+
+
+_JS["pixel-editor.js"] = r"""export function bindPixelEditor({ root, catalog, gridTools: C, save, pngPayload, status }) {
+  const $ = id => root.querySelector("#" + id);
+  let grid, previous = null;
+  const action = (id, fn) => $(id).addEventListener("click", () =>
+    Promise.resolve().then(fn).catch(error => status(error.message, true))
+  );
+  const choose = (id, items) => {
+    $(id).replaceChildren(
+      ...items.map(([value, text]) => new Option(text, value)),
+    );
+  };
+  choose(
+    "mask",
+    catalog.masks.map((x) => [
+      x,
+      {
+        triangle: "三角",
+        diamond: "ひし形",
+        cloud: "雲",
+        circle: "丸",
+        rock: "岩",
+      }[x],
+    ]),
+  );
+  $("mask").value = "cloud";
+  choose(
+    "size",
+    catalog.sizes.map((x) => [x, `${x} × ${x}`]),
+  );
+  $("size").value = 32;
+  choose(
+    "effect",
+    catalog.effects.map((x) => [
+      x,
+      {
+        normal: "通常",
+        shadow: "影",
+        highlight: "ハイライト",
+        outline: "輪郭",
+      }[x],
+    ]),
+  );
+  choose(
+    "palette",
+    Object.keys(catalog.palettes).map((x) => [
+      x,
+      `${x} / ${catalog.labels[x]}`,
+    ]),
+  );
+  function draw() {
+    const canvas = $("grid");
+    canvas.width = grid.width;
+    canvas.height = grid.height;
+    const ctx = canvas.getContext("2d"),
+      data = ctx.createImageData(grid.width, grid.height);
+    grid.pixels.forEach((row, y) =>
+      row.forEach((i, x) => {
+        const color = grid.colors[i];
+        for (let k = 0; k < 4; k++)
+          data.data[(y * grid.width + x) * 4 + k] = parseInt(
+            color.slice(1 + k * 2, 3 + k * 2),
+            16,
+          );
+      }),
+    );
+    ctx.putImageData(data, 0, 0);
+    // CSS scales the canvas; the backing pixels remain the original grid.
+    $("width").value = grid.width;
+    $("height").value = grid.height;
+    $("grid-info").textContent =
+      `${grid.width} × ${grid.height} cells · ${grid.colors.length} colors`;
+    choose(
+      "ink",
+      grid.colors.map((c, i) => [i, `${i} / ${c}`]),
+    );
+    $("ink").value = Math.min(1, grid.colors.length - 1);
+    $("base64-output").value = "";
+  }
+  function update(value) {
+    const next = C.canonical(value);
+    previous = grid;
+    grid = next;
+    draw();
+  }
+  function generate() {
+    const mask = $("mask").value,
+      effect = $("effect").value,
+      size = Number($("size").value),
+      palette = $("palette").value;
+    const rows = catalog.grids[`${mask}/${effect}/${size}`];
+    update({
+      schema: "ironmate-pixel-grid/1",
+      mask,
+      effect,
+      palette,
+      width: size,
+      height: size,
+      colors: catalog.palettes[palette],
+      pixels: rows.map((r) => Array.from(r, Number)),
+      resampling: "procedural_mask",
+    });
+    status(
+      "Python版のプリセットから生成しました。クリックで色番号を編集できます。",
+    );
+  }
+  async function png() {
+    const scale = Number($("scale").value),
+      g = C.canonical(grid),
+      width = g.width * scale,
+      height = g.height * scale;
+    // Direct RGBA encoding preserves hidden RGB in transparent cells, unlike Canvas exports.
+    if (!globalThis.CompressionStream)
+      throw Error(
+        "PNG出力にはCompressionStream対応ブラウザが必要です。JSON / SVG保存を利用できます。",
+      );
+    const bytes = new Uint8Array(height * (1 + 4 * width));
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++) {
+        const color =
+          g.colors[g.pixels[Math.floor(y / scale)][Math.floor(x / scale)]];
+        for (let k = 0; k < 4; k++)
+          bytes[y * (width * 4 + 1) + 1 + x * 4 + k] = parseInt(
+            color.slice(1 + 2 * k, 3 + 2 * k),
+            16,
+          );
+      }
+    const compressed = await new Response(
+      new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate")),
+    ).arrayBuffer();
+    const ihdr = new Uint8Array(13),
+      view = new DataView(ihdr.buffer);
+    view.setUint32(0, width);
+    view.setUint32(4, height);
+    ihdr[8] = 8;
+    ihdr[9] = 6;
+    const metadata =
+      "ironmate\0" +
+      JSON.stringify(C.pngHeader(g)).replace(
+        /[\u007f-\uffff]/g,
+        (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"),
+      );
+    return new Blob(
+      [
+        new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+        C.pngChunk("IHDR", ihdr),
+        C.pngChunk("tEXt", new TextEncoder().encode(metadata)),
+        C.pngChunk("IDAT", new Uint8Array(compressed)),
+        C.pngChunk("IEND", new Uint8Array()),
+      ],
+      { type: "image/png" },
+    );
+  }
+  action("generate", generate);
+  action("resize", () => {
+    update(C.resize(grid, Number($("width").value), Number($("height").value)));
+    status("最近傍でサイズ変更しました。縮小は不可逆です。");
+  });
+  action("recolor", () => {
+    if (grid.colors.length > 5)
+      throw Error("配色IDの置換は5役割までのグリッドに対応します。");
+    update({
+      ...grid,
+      palette: $("palette").value,
+      colors: catalog.palettes[$("palette").value],
+    });
+    status("色番号を保持して配色を変更しました。");
+  });
+  action("undo-grid", () => {
+    if (previous) {
+      [grid, previous] = [previous, grid];
+      draw();
+      status("ひとつ前の状態に戻しました。");
+    }
+  });
+  action("grid-json", () =>
+    save("ironmate-grid.json", JSON.stringify(grid, null, 2), "application/json"),
+  );
+  action("grid-svg", () =>
+    save("ironmate-grid.svg", C.svg(grid, Number($("scale").value)), "image/svg+xml"),
+  );
+  action("grid-png", async () =>
+    save("ironmate-grid.png", await png(), "image/png"),
+  );
+  action("grid-base64", async () => {
+    const blob = await png(),
+      bytes = new Uint8Array(await blob.arrayBuffer());
+    $("base64-output").value = pngPayload(bytes).dataUri;
+    status(
+      `PNG ${blob.size.toLocaleString()} bytes / data URI ${C.base64Length(blob.size, true).toLocaleString()}文字。選択してコピーできます。`,
+    );
+  });
+  $("grid").addEventListener("click", (e) => {
+    const bounds = e.currentTarget.getBoundingClientRect(),
+      x = Math.min(
+        grid.width - 1,
+        Math.floor(((e.clientX - bounds.left) * grid.width) / bounds.width),
+      ),
+      y = Math.min(
+        grid.height - 1,
+        Math.floor(((e.clientY - bounds.top) * grid.height) / bounds.height),
+      ),
+      ink = $("ink").value;
+    const next = C.canonical(grid);
+    next.pixels[y][x] = Number(ink);
+    next.resampling = "edited";
+    update(next);
+    $("ink").value = ink;
+    status("セルを編集しました。");
+  });
+  $("grid-file").addEventListener("change", async (e) => {
+    try {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (file.size > 4 * 1024 * 1024) throw Error("JSONは4MiB以下です。");
+      update(JSON.parse(await file.text()));
+      status("グリッドJSONを読み込みました。");
+    } catch (err) {
+      status(err.message, true);
+    } finally {
+      e.target.value = "";
+    }
+  });
+  generate();
+  return { get grid() { return C.canonical(grid); }, png };
+}
 """
 
 
