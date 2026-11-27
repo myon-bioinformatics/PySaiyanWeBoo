@@ -5702,7 +5702,67 @@ _CSS["pager.css"] = "@layer components{" + PAGER_CSS + "}"
 
 # --- Repository diagnostics: the page ascii_artist, markdown and mcp-toolcall-lab each wrote by hand, as one builder ----------------------
 # --- Components as a Python wrapper: one name gives the HTML builder, the stylesheet and the module, for pages here and in other repositories ---
+def current_items_html(items: list[str] | tuple[str, ...], *, index: int | None = None,
+                       label: str = "Steps", id: str | None = None) -> str:
+    """Render an ordered list using the caller's contents and current position."""
+    identifier = f' id="{escape(id, quote=True)}"' if id else ""
+    rows = []
+    for i, item in enumerate(items):
+        current = ' aria-current="step"' if i == index else ""
+        rows.append(f'<li{current}>{escape(item)}</li>')
+    return f'<ol class="ui-current-items"{identifier} aria-label="{escape(label, quote=True)}">{"".join(rows)}</ol>'
+
+
+_CSS["current-item.css"] = (
+    "@layer components{.ui-current-items > [aria-current=step]{"
+    "font-weight:700;text-decoration:underline;text-decoration-color:var(--ui-accent);"
+    "text-decoration-thickness:.16em;text-underline-offset:.18em}}\n"
+)
+_JS["async-task.js"] = """/**
+ * Run a browser task with optional deadline. cancel() rejects the pending result,
+ * and the operation can observe the AbortSignal to stop its own work.
+ */
+export function startTask(run, {timeoutMs} = {}) {
+  if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs < 0 || timeoutMs > 2147483647))
+    throw new RangeError("timeoutMs must be a non-negative timer value");
+  const controller = new AbortController();
+  const {signal} = controller;
+  let timer, onAbort, finished = false;
+  const stopped = new Promise((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, {once: true});
+  });
+  if (timeoutMs !== undefined) {
+    timer = setTimeout(() => controller.abort(new DOMException("Task timed out", "TimeoutError")), timeoutMs);
+  }
+  const work = Promise.resolve().then(() => {
+    signal.throwIfAborted();
+    return run(signal);
+  });
+  const promise = Promise.race([stopped, work]).finally(() => {
+    finished = true;
+    clearTimeout(timer);
+    signal.removeEventListener("abort", onAbort);
+  });
+  return {promise, cancel() { if (!finished) controller.abort(); }};
+}
+"""
+
+_JS["current-item.js"] = """export function setCurrentItem(list, index) {
+  const next = Number.isInteger(index) ? list.children[index] : undefined;
+  for (const item of list.children) {
+    if (item === next) {
+      if (item.getAttribute("aria-current") !== "step") item.setAttribute("aria-current", "step");
+    } else if (item.hasAttribute("aria-current")) {
+      item.removeAttribute("aria-current");
+    }
+  }
+}
+"""
+
+
 COMPONENTS: dict[str, dict[str, Any]] = {
+    "current-item": {"html": "current_items_html", "css": ("current-item.css",), "js": ("current-item.js",)},
     # name: html builder, stylesheets (a css_source name, or a builder in _COMPONENT_CSS), module names (js_source), "mount" when the module
     # does not bind itself on load, "spec" when the builder wants a checked spec, and "classic" for a classic script (not an ES module).
     # Specs and keyword arguments pass through to the builder.
@@ -7095,8 +7155,9 @@ BTK_ADAPTERS: dict[str, dict[str, Any]] = {
                                "click": {"target": "#shelf [data-shelf-add]", "observe": "#shelf [data-shelf-status]", "attribute": "textContent", "before": "Nothing on the shelf yet.", "after": "Nothing to add."}},
     "web-ui-door": {"page": "door.html", "elements": ["#door h2", "#door label[for=\"door-select\"]", "#door [data-door-draw]"],
                     "click": {"target": "#door [data-door-draw]", "observe": "#door", "attribute": "data-door-draws", "before": "0", "after": "1"}},
-    "web-ui-composition-studio": {"page": "composition-studio.html", "elements": ["#studio h2", "#studio-bpm", "#studio [data-run]", "#studio [data-tap]"],
-                                  "click": {"target": "#studio [data-run]", "observe": "#studio [data-run]", "attribute": "aria-pressed", "before": "false", "after": "true"}},
+    "web-ui-current-item": {"page": "current-item.html", "elements": ["#process-steps", "#next-step", "#clear-step"],
+                            "click": {"target": "#next-step", "observe": "#process-steps > li:nth-child(2)",
+                                      "attribute": "aria-current", "before": None, "after": "step"}},
     "web-ui-coordinates": {"page": "coordinates.html", "elements": ["#coord h2", "#coord-lat", "#coord-lon", "#coord-url", "#coord [data-use-url]"],
                            "click": {"target": "#coord [data-use-url]", "observe": "#coord [data-status]", "attribute": "textContent", "before": "Valid.",
                                      "after": "Could not find latitude/longitude in that Maps URL."}},
@@ -16375,7 +16436,8 @@ body:where([data-page~="phone"]){margin:0;background:var(--ui-bg)}
 :where([data-page~="phone"]) .phone-tools button:disabled{opacity:.32}
 :where([data-page~="phone"]) .phone-status{flex:1 1 128px;margin:0;align-self:center;min-height:24px;font-size:16px;overflow-wrap:anywhere}
 :where([data-page~="phone"]) .phone-status[data-error=true]{color:var(--ui-danger)}
-@media(orientation:landscape) and (max-height:560px){:where([data-page~="phone"]) .phone{flex-direction:row;max-width:none}:where([data-page~="phone"]) .ui-stage{max-width:72vw}:where([data-page~="phone"]) .phone-deck{flex-direction:column;flex-wrap:nowrap}:where([data-page~="phone"]) .phone-tools,:where([data-page~="phone"]) .phone-status{flex:none}}
+@media(orientation:landscape) and (max-height:560px),(min-width:960px){:where([data-page~="phone"]) .phone{flex-direction:row;max-width:none}:where([data-page~="phone"]) .ui-stage{max-width:72vw;--ui-stage-room:100dvh}:where([data-page~="phone"]) .phone-deck{flex-direction:column;flex-wrap:nowrap}:where([data-page~="phone"]) .phone-tools,:where([data-page~="phone"]) .phone-status{flex:none}}
+@media(min-width:960px){:where([data-page~="phone"]) .ui-stage{max-width:calc(100vw - 376px)}}
 """
 
 def imagestudio_html() -> str:
@@ -20872,7 +20934,7 @@ def _example_cards(base: str = "./") -> str:
             '<article class="ui-card"><h2>App shell</h2><p><a href=\"' + base + 'showcase.html\">Showcase</a>: header, rail or bottom bar, sections.</p></article>'
             '<article class="ui-card"><h2>Clipboard shelf</h2><p><a href=\"' + base + 'clipboard-shelf.html\">Shelf and prompt workbench</a>: paste, filter, copy a bundle.</p></article>'
             '<article class="ui-card"><h2>Door-to-Door</h2><p><a href=\"' + base + 'door.html\">Pull-down and emoji transitions</a>: A → B, A ↔ B.</p></article>'
-            '<article class="ui-card"><h2>Composition studio</h2><p><a href=\"' + base + 'composition-studio.html\">Metronome, chords, notes, song seed</a>.</p></article>'
+            '<article class="ui-card"><h2>Current item</h2><p><a href=\"' + base + 'current-item.html\">Highlight the current step in a list</a>.</p></article>'
             '<article class="ui-card"><h2>Play studio</h2><p><a href=\"' + base + 'play-studio.html\">Counter garden and Irony quest</a>.</p></article>'
             '<article class="ui-card"><h2>Timeline</h2><p><a href=\"' + base + 'timeline.html\">Dated events in UTC order</a>.</p></article>'
             '<article class="ui-card"><h2>Coordinates</h2><p><a href=\"' + base + 'coordinates.html\">Check a point, read a Maps URL, frame an area</a>.</p></article>'
@@ -20883,6 +20945,33 @@ def _example_cards(base: str = "./") -> str:
             '<article class="ui-card"><h2>792 patterns</h2><p><a href=\"' + base + 'patterns.html\">The flutter_navigation_basic catalogue and the processing behind it: filter, sort, page, validate, convert, workflow</a>.</p></article>'
             '<article class="ui-card"><h2>198 screens</h2><p><a href=\"' + base + 'screens.html\">The Hub and every numbered screen of flutter_navigation_basic in eleven languages, and its native examples: counters, drag to reorder or swap, insert, select, a sum in a Web Worker</a>.</p></article>'
             '<article class="ui-card"><h2>Image studio</h2><p><a href=\"' + base + 'image-studio.html\">Layer shapes, text, photos and heatmaps; export SVG, PNG or Base64; keep the history</a>.</p></article></section>')
+
+
+def current_item_document() -> str:
+    """Show the current item in a review workflow and a preview queue."""
+    steps = current_items_html(("Prepare", "Verify", "Publish"), index=0, id="process-steps")
+    preview = current_items_html(("Introduction", "Overview", "Introduction"), label="Preview", id="preview-items")
+    body = ('<main class="ui-page ui-elements"><h1>Current item</h1>'
+            '<section class="ui-panel"><h2>Review workflow</h2>' + steps
+            + '<button id="next-step" type="button">Next step</button> '
+            '<button id="clear-step" type="button">Clear current step</button></section>'
+            '<section class="ui-panel"><h2>Preview queue</h2>' + preview
+            + '<button id="next-preview" type="button">Next preview</button></section></main>')
+    script = _JS["current-item.js"] + """
+for (const [listId, buttonId, initial] of [["process-steps", "next-step", 0], ["preview-items", "next-preview", -1]]) {
+  const list = document.getElementById(listId);
+  let index = initial;
+  document.getElementById(buttonId).onclick = () => {
+    index = (index + 1) % list.children.length;
+    setCurrentItem(list, index);
+  };
+  if (listId === "process-steps") document.getElementById("clear-step").onclick = () => {
+    index = -1;
+    setCurrentItem(list, null);
+  };
+}
+"""
+    return render_document(trusted_html=body + module_script(script), title="Current item", css=bundled_css())
 
 
 def example_pages() -> dict[str, str]:
@@ -20912,7 +21001,9 @@ def example_pages() -> dict[str, str]:
         "examples/clipboard-shelf.html": shelf_document(),
         "examples/coordinates.html": coordinates_document(),
         "examples/photo-studio.html": photo_document(),
+        # Keep direct access to the standalone metronome; it is not a gallery card.
         "examples/composition-studio.html": studio_document(),
+        "examples/current-item.html": current_item_document(),
         "examples/play-studio.html": play_document(),
         "examples/timeline.html": timeline_document(),
         "examples/door.html": door_document(EXAMPLES["door"]),

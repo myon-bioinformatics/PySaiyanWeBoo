@@ -15,6 +15,8 @@ class SuccessorBrowser(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp=tempfile.TemporaryDirectory()
         u.write_site(cls.tmp.name)
+        fixture = Path(cls.tmp.name) / 'examples' / '_composition-fixture.html'
+        fixture.write_text(u.studio_document(), encoding='utf-8')
         assets=ROOT/'build/site/vendor'  # successor-studios.yml builds it there
         if not (assets/'tone-studio.min.js').is_file():
             raise RuntimeError('Build the optional audio asset before this acceptance suite')
@@ -99,13 +101,31 @@ class SuccessorBrowser(unittest.TestCase):
         self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'),320)
         page.close()
 
+    def test_current_item_review_and_preview(self):
+        page = self.browser.new_page(viewport={'width': 390, 'height': 844})
+        try:
+            page.goto(self.origin + '/examples/current-item.html')
+            steps = page.locator('#process-steps li')
+            preview = page.locator('#preview-items li')
+            expect(steps.nth(0)).to_have_attribute('aria-current', 'step')
+            page.locator('#next-step').click()
+            expect(steps.nth(1)).to_have_attribute('aria-current', 'step')
+            page.locator('#clear-step').click()
+            expect(page.locator('#process-steps [aria-current]')).to_have_count(0)
+            for _ in range(3):
+                page.locator('#next-preview').click()
+            expect(preview.nth(2)).to_have_attribute('aria-current', 'step')
+            expect(page.locator('#preview-items [aria-current]')).to_have_count(1)
+        finally:
+            page.close()
+
     def test_composition_notes_optional_audio_load_stop_and_real_signal(self):
         page=self.browser.new_page(viewport={'width':390,'height':844})
         errors=[];requests=[]
         page.on('pageerror',lambda e:errors.append(str(e)))
         page.on('console',lambda m:print('audio console:',m.type,m.text) if m.type in ('warning','error') else None)
         page.on('request',lambda r:requests.append(r.url))
-        page.goto(self.origin+'/examples/composition-studio.html')
+        page.goto(self.origin+'/examples/_composition-fixture.html')
         self.assertFalse(any('tone-studio.min.js' in r for r in requests))
         page.locator('[data-notes]').fill('not-a-note')
         page.locator('[data-audio-play]').click()
