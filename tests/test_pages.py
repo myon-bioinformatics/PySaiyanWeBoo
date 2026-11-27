@@ -20,6 +20,7 @@ import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+import unicodedata
 import zlib
 from html.parser import HTMLParser
 from pathlib import Path
@@ -8085,7 +8086,7 @@ class RecordsBoardTests(unittest.TestCase):
         """📦📜 save_text / spell_text / bits_pack and records.js's saveText / spellText / bitsPack write the same text for the same
         state, each reads the other's, and a spell that is one kana off, or has two neighbours swapped, is never read."""
         ui, rng = pysaiyanweboo, random.Random(20261127)
-        kana = re.search(r'const KANA="([^"]+)"', ui.js_source("records.js"))[1]
+        kana = re.search(r'const KANA="([^"]+)"', ui.js_source("records.js"))[1][:64]             # a spell of 64 draws from the first 64
         self.assertEqual((len(kana), len(set(kana))), (64, 64))
         self.assertFalse(set(kana) & set("をんぁぃぅぇぉっゃゅょ"))                     # none a typist confuses with its neighbour
         layout = [("version", 4), ("level", 7), ("gold", 16), ("hp", 10), ("mp", 10), ("items", 24), ("flags", 25)]   # 96 bits: 12 bytes
@@ -8142,6 +8143,73 @@ console.log(JSON.stringify({out,refused:refused(wrong),cut,fit,flag:[...bitsPack
             self.assertEqual((js["bytes"], js["spell"], js["extra"], js["extraSpell"]), (case["bytes"], case["spell"], case["extra"], case["extraSpell"]))
             self.assertEqual(js["back"], {name: case["values"].get(name, 0) for name, _ in case["layout"]})
             self.assertEqual((js["state"], js["save"]), (ui.save_state(case["save"]), case["save"]))            # the same line from both
+
+    def test_a_spell_draws_from_64_128_or_4096_characters(self):
+        """📜 kinds: a spell of 64 stays what it was (a spell written before still reads); 128 adds を ん, katakana and A–Z; 4096 adds JIS
+        kanji. Python and records.js write the same spell and read each other's, a spell of 128 with one character off or two neighbours
+        swapped is never read, and a long JSON saved as kanji is a fraction of its base64url line."""
+        rng = random.Random(20261127)
+        kana = re.search(r'const KANA="([^"]+)"', ui.js_source("records.js"))[1]
+        full = ui._spell_kinds(4096)
+        self.assertEqual((len(kana), len(set(full)), ui._spell_kinds(64), ui._spell_kinds(128)), (128, 4096, kana[:64], kana))
+        self.assertEqual(kana[:64], "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわがぎぐげござじずぜぞだぢづでどばびぶべぼ")   # 64: as it was
+        self.assertTrue(kana[64:66] == "をん" and all("ァ" <= c <= "ヶ" or "A" <= c <= "Z" for c in kana[66:]) and not set(kana) & set("ウカキセヘモヤリヲン"))   # no katakana a hiragana looks like
+        self.assertEqual((full[128:136], full[-1]), ("亜唖娃阿哀愛挨姶", "昊"))                 # JIS X 0208 in its own order: level 1, then level 2
+        self.assertTrue(all(len(c.encode("utf-16-le")) == 2 and unicodedata.normalize("NFKC", c) == c for c in full))   # one unit each, and pasting keeps them
+        with self.assertRaisesRegex(ValueError, "kinds is 64, 128 or 4096"):
+            ui.spell_text(b"", 256)
+        layout = [("version", 4), ("level", 7), ("gold", 16), ("hp", 10), ("mp", 10), ("items", 24), ("flags", 25)]
+        state = {"version": 1, "level": 12, "gold": 3456, "hp": 87, "mp": 30, "items": 45, "flags": 126991}
+        packed = ui.bits_pack(layout, state)
+        spells = {kinds: ui.spell_text(packed, kinds) for kinds in (64, 128, 4096)}
+        self.assertEqual(spells, {64: "ういむつむ ふあうぐえごあ あかるいび\nあび", 128: "けヨだあに ヨSああぬをみ あびちのを", 4096: "越碍わ擢あ ホみた唖搭"})   # 19, 17, 10
+        for kinds, spell in spells.items():
+            self.assertEqual(ui.bits_unpack(layout, ui.spell_bytes(spell, kinds)), state)
+        self.assertEqual([ui.spell_bytes(ui.spell_text(b"", kinds), kinds) for kinds in (64, 128, 4096)], [b"", b"", b""])
+        letters, chars = spells[128].replace(" ", ""), kana
+        wrong = [letters[:i] + other + letters[i + 1:] for i in range(len(letters)) for other in chars if other != letters[i]]   # every one-character slip
+        wrong += [letters[:i] + letters[i + 1] + letters[i] + letters[i + 2:] for i in range(len(letters) - 1) if letters[i] != letters[i + 1]]
+        for size in range(48):                                                    # … and a slip at each place, and each swap, of spells of every length
+            other = ui.spell_text(rng.randbytes(size), 128).replace(" ", "").replace("\n", "")
+            wrong += [other[:i] + rng.choice(chars.replace(other[i], "")) + other[i + 1:] for i in range(len(other))]
+            wrong += [other[:i] + other[i + 1] + other[i] + other[i + 2:] for i in range(len(other) - 1) if other[i] != other[i + 1]]
+        wrong += [letters[:-1], letters + "あ", "", "abc", "ウ" + letters[1:], "亜" + letters[1:], spells[64].replace(" ", "").replace("\n", "")]
+        for text in wrong:
+            with self.assertRaisesRegex(ValueError, "^じゅもんが ちがいます$"):
+                ui.spell_bytes(text, 128)
+        for text, kinds in ((spells[128], 64), (spells[4096], 128), (spells[4096][:-1], 4096)):   # read as the kinds it was written in
+            with self.assertRaisesRegex(ValueError, "じゅもんが ちがいます"):
+                ui.spell_bytes(text, kinds)
+        values = [None, 0, -1.5, "", "🍠 やくそう \"x\"", [], {}, {"schema": "world-save/1", "level": 12, "bag": ["🍠", "やくそう"] * 40, "flags": {"a": True}}]
+        for value in values:
+            for kinds in (64, 128, 4096):
+                self.assertEqual(ui.save_state(ui.save_text(value, kinds), kinds), value)
+        line, kanji = ui.save_text(values[-1]), ui.save_text(values[-1], 4096)
+        self.assertLess(len(re.sub(r"\s", "", kanji)), len(line) // 8)                            # 🈶 deflated, and 12 bits a character against 6
+        self.assertEqual(ui.spell_bytes(ui.save_text({"a": 1}, 128), 128), b'\0{"a":1}')          # too short to deflate: kept as it is
+        for text, kinds in ((kanji[:-1], 4096), (kanji, 128), (line, 4096), (ui.spell_text(b'\2{}', 128), 128), (ui.spell_text(b"\1not deflate", 128), 128), (ui.spell_text(b"", 4096), 4096)):
+            with self.assertRaisesRegex(ValueError, "cut or changed"):
+                ui.save_state(text, kinds)
+        cases = []                                                                # 🎲 random bytes and states through both languages
+        for index in range(60):
+            kinds, data = (64, 128, 4096)[index % 3], rng.randbytes(rng.randint(0, 40))
+            saved = {"n": [rng.randrange(1 << 40) for _ in range(rng.randint(0, 6))], "t": "じゅもん🍠" * rng.randint(0, 12)}
+            cases.append({"kinds": kinds, "bytes": list(data), "spell": ui.spell_text(data, kinds), "state": saved, "save": ui.save_text(saved, kinds)})
+        wrong = rng.sample(wrong[:-7], 300) + wrong[-7:]                          # Node takes a sample (an argument has a size)
+        script = r"""import {saveText,saveState,spellText,spellBytes} from "./js/records.js";
+const cases=JSON.parse(process.argv[2]),wrong=JSON.parse(process.argv[3]),out=[];
+for(const c of cases)out.push({spell:spellText(c.bytes,c.kinds),bytes:[...spellBytes(c.spell,c.kinds)],state:await saveState(c.save,c.kinds),save:await saveText(c.state,c.kinds)});
+const refused=wrong.filter(t=>{try{spellBytes(t,128);return false}catch(e){return e.message==="じゅもんが ちがいます"}}).length;
+let cut=0;for(const [t,kinds] of [[cases[2].save.slice(0,-1),4096],[cases[2].save,128],[spellText([2,123,125],128),128],[spellText([1,9,9,9],128),128],[spellText([],4096),4096]])
+ try{await saveState(t,kinds)}catch(e){cut+=/cut or changed/.test(e.message)}
+let fit=0;for(const f of [()=>spellText([],256),()=>spellBytes("あ",32)])try{f()}catch(e){fit+=/kinds is 64, 128 or 4096/.test(e.message)}
+const line=saveText({a:1});
+console.log(JSON.stringify({out,refused,cut,fit,sync:[typeof line,saveState(line)],promise:saveText({a:1},64) instanceof Promise}))"""
+        got = json.loads(node_js(script, json.dumps(cases, ensure_ascii=False), json.dumps(wrong, ensure_ascii=False)).stdout)
+        self.assertEqual((got["refused"], got["cut"], got["fit"], got["sync"], got["promise"]), (len(wrong), 5, 2, ["string", {"a": 1}], True))   # the line stays synchronous
+        for case, js in zip(cases, got["out"]):
+            self.assertEqual((js["spell"], js["bytes"], js["state"]), (case["spell"], case["bytes"], case["state"]))    # the same spell; JavaScript reads Python's
+            self.assertEqual(ui.save_state(js["save"], case["kinds"]), case["state"])                                  # and Python JavaScript's
 
     def test_portable_save_refuses_numeric_rounding(self):
         import base64

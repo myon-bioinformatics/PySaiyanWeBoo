@@ -889,6 +889,32 @@ Both texts start with a 16-bit check (CRC-16/CCITT-FALSE), so a spell with one w
 (`ValueError("じゅもんが ちがいます")`), nor a save line that was cut. The kana leave out を ん and the small ones; put a version first in
 the layout, so a later layout can still read an old spell.
 
+**📜 kinds: 64, 128 or 4096 characters.** `spell_text(data, kinds)` / `spell_bytes(text, kinds)` (`spellText` / `spellBytes`) draw from
+one of three sets, each holding the one before. 64 is the spell above and stays as it is, so a spell written before still reads.
+
+| `kinds` | characters | a character carries | 12 bytes | an 11.7 KB JSON | for |
+|---|---|---|---|---|---|
+| — (the line) | A–Z a–z 0–9 - _ | 6 bits, 1 byte | — | 15,570 | files, URLs (the fewest bytes for short states) |
+| 64 | hiragana | 6 bits, 3 bytes | 19 | 4,616 | writing down and typing back |
+| 128 | + を ん, katakana, A–Z | 7 bits | 17 | 3,957 | a little shorter to read |
+| 4096 | + JIS kanji | 12 bits, 3 bytes | 10 | 2,309 | pasting: notes, a user dictionary, the browser's storage |
+
+```python
+data = PSWB.spell_bytes(spell)   # the 12 bytes of the spell above
+PSWB.spell_text(data, 128)     # けヨだあに ヨSああぬをみ あびちのを             17 characters
+PSWB.spell_text(data, 4096)    # 越碍わ擢あ ホみた唖搭                           10
+text = PSWB.save_text({"schema": "world-save/1", "bag": ["🍠"] * 40}, 4096)   # the whole state as kanji: its JSON, deflated when that is shorter
+PSWB.save_state(text, 4096)                                                   # … as it was
+```
+
+`save_text(state, kinds)` / `save_state(text, kinds)` write the state as such a spell: 0 and the JSON, or 1 and it deflated — which is
+what makes a long JSON short (the line itself is not deflated, and stays as it was). In records.js `saveText(state, kinds)` and
+`saveState(text, kinds)` are then Promises (browsers deflate asynchronously); without `kinds` they return at once, as before. The 128
+add を ん, the katakana no hiragana looks like (no ウ カ キ セ ヘ モ ヤ リ ヲ ン) and A–Z; the 4096 add the first 3968 JIS X 0208 kanji in
+their own order, which every Japanese font has (no table: both languages make them from EUC-JP). A spell of 128 or 4096 is the bytes,
+the check and a 1, so its end is known: one wrong character or two swapped neighbours never pass in 128 either; any other change
+(and any in 4096, which is for pasting) passes once in 65,536. Not for secrets: whoever has the text has the state.
+
 ## Focused test discovery
 
 See [standard-library discovery commands](TOOLING.md#focused-standard-library-test-discovery) for

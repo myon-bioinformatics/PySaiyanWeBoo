@@ -65,12 +65,20 @@ export function bindDownloads(root=document){const buttons=[...root.querySelecto
 /** select[data-ui-choice="name"] shows the [data-ui-choice-panel="name"] whose data-ui-choice-value is its value and hides the others (without JS every panel shows). With data-ui-draft the choice is kept like any draft. Returns the bound selects. */
 export function bindChoice(root=document){const fields=[...root.querySelectorAll("select[data-ui-choice]")];for(const field of fields){const panels=[...root.querySelectorAll("[data-ui-choice-panel]")].filter(p=>p.dataset.uiChoicePanel===field.dataset.uiChoice);const sync=()=>{for(const p of panels)p.hidden=p.dataset.uiChoiceValue!==field.value};field.addEventListener("change",sync);field.addEventListener("input",sync);sync()}return fields}
 /* 📦📜 A saved state as text, so a page can go on where it stopped on another device or after its storage is gone (no DOM, no storage: the
-   page decides what its state is). saveText / saveState: portable JSON as one base64url line (copy it, keep it in a file). spellText /
-   spellBytes: a few bytes as a spell to write down and type back (ふっかつのじゅもん): 64 kana, 6 bits each, lines of 5 7 5. bitsPack /
-   bitsUnpack: whole numbers packed by a layout into those few bytes (JSON is too long to type). Both texts start with a 16-bit check
-   (CRC-16/CCITT-FALSE): one wrong kana or two swapped neighbours never pass. pysaiyanweboo's save_text, save_state, spell_text, spell_bytes,
-   bits_pack and bits_unpack are their twins and read what these write. Numbers must fit in JavaScript’s safe range. */
-const KANA="あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわがぎぐげござじずぜぞだぢづでどばびぶべぼ";
+   page decides what its state is). saveText / saveState: portable JSON as one base64url line (copy it, keep it in a file) — or, with
+   kinds, deflated when that is shorter and written as a spell (a Promise then: browsers deflate asynchronously). spellText / spellBytes:
+   bytes as a spell (ふっかつのじゅもん) in lines of 5 7 5, of kinds 64 (hiragana, 6 bits a character: to write down and type back), 128
+   (with を ん, katakana and A–Z: 7 bits) or 4096 (with JIS kanji: 12 bits, half the characters of base64 — to paste, not to type). Each
+   kind holds the one before. bitsPack / bitsUnpack: whole numbers packed by a layout into a few bytes (JSON is too long to type). Every
+   text carries a 16-bit check (CRC-16/CCITT-FALSE; the line and a spell of 64 start with it, a spell of 128 or 4096 ends its bytes with
+   it, then a 1): in a spell of 64 or 128, one wrong character or two swapped neighbours never pass; any other change passes once in
+   65,536. pysaiyanweboo's save_text, save_state, spell_text, spell_bytes, bits_pack and bits_unpack are their twins and read what these
+   write. Numbers must fit in JavaScript’s safe range. */
+const KANA="あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわがぎぐげござじずぜぞだぢづでどばびぶべぼをんアイエオクケコサシスソタチツテトナニヌネノハヒフホマミムメユヨラルレロワABCDEFGHIJKLMNOPQRSTUVWXYZ";
+let KANJI="";
+/** The characters of a spell of kinds 64, 128 or 4096: KANA's first 64 (hiragana), all of it (を ん, the katakana no hiragana looks like, A–Z), or it and the first 3968 JIS X 0208 kanji in their own (EUC-JP) order — in every Japanese font, and no table to carry. */
+function spellKinds(kinds){if(kinds===64||kinds===128)return KANA.slice(0,kinds);if(kinds!==4096)throw new Error("kinds is 64, 128 or 4096");
+ if(!KANJI){const jis=new TextDecoder("euc-jp",{fatal:true});let found="";for(let row=16;row<85;row++)for(let cell=1;cell<95;cell++)try{found+=jis.decode(Uint8Array.of(160+row,160+cell))}catch{}KANJI=found.slice(0,3968)}return KANA+KANJI}
 function crc16(bytes){let c=0xFFFF;for(const b of bytes){c^=b<<8;for(let i=0;i<8;i++)c=(c&0x8000?c<<1^0x1021:c<<1)&0xFFFF}return c}
 function checked(bytes){const c=crc16(bytes),out=new Uint8Array(bytes.length+2);out[0]=c>>8;out[1]=c&255;out.set(bytes,2);return out}
 function unchecked(raw,wrong){if(raw.length<2||crc16(raw.subarray(2))!==(raw[0]<<8|raw[1]))throw new Error(wrong);return raw.subarray(2)}
@@ -78,17 +86,28 @@ function portableNumber(_,value){
  if(typeof value==="number"&&!(value>=-Number.MAX_SAFE_INTEGER&&value<=Number.MAX_SAFE_INTEGER))throw new Error("use text for numbers outside the portable JSON range");
  return value
 }
-/** Portable JSON as one base64url line: a 16-bit check, then its compact UTF-8 JSON. */
-export function saveText(state){const json=JSON.stringify(state,portableNumber);if(typeof json!=="string")throw new Error("a save must be a JSON value");let text="";for(const b of checked(new TextEncoder().encode(json)))text+=String.fromCharCode(b);return btoa(text).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")}
-/** The value saveText (or save_text) wrote; an Error when the line was cut or changed. Spaces and line breaks in it are ignored. */
-export function saveState(text){const wrong="the save text is cut or changed";try{const raw=atob(String(text).replace(/[ \t\r\n]/g,"").replace(/-/g,"+").replace(/_/g,"/"));return JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(unchecked(Uint8Array.from(raw,c=>c.charCodeAt(0)),wrong)),portableNumber)}catch{throw new Error(wrong)}}
-/** Bytes (a Uint8Array or an array of 0..255) as a spell: kana in lines of 5 7 5. 12 bytes are 19 kana. */
-export function spellText(data){const bits=[...checked(Uint8Array.from(data))].map(b=>b.toString(2).padStart(8,"0")).join(""),kana=(bits+"0".repeat((6-bits.length%6)%6)).match(/.{6}/g).map(g=>KANA[parseInt(g,2)]).join(""),lines=[];
- for(let i=0;i<kana.length;i+=17)lines.push([kana.slice(i,i+5),kana.slice(i+5,i+12),kana.slice(i+12,i+17)].filter(Boolean).join(" "));return lines.join("\n")}
-/** The bytes spellText (or spell_text) wrote, as a Uint8Array; spaces and line breaks are ignored and katakana reads as hiragana. A spell that is not one throws Error("じゅもんが ちがいます"). */
-export function spellBytes(text){const wrong="じゅもんが ちがいます",kana=[...String(text)].filter(c=>!" \t\r\n　".includes(c)).map(c=>c>="ァ"&&c<="ヶ"?String.fromCharCode(c.charCodeAt(0)-96):c);if(!kana.length||kana.some(c=>c.length!==1||!KANA.includes(c)))throw new Error(wrong);
- const bits=kana.map(c=>KANA.indexOf(c).toString(2).padStart(6,"0")).join(""),n=bits.length>>3;if(bits.length-n*8>=6||bits.slice(n*8).includes("1"))throw new Error(wrong);
- return unchecked(Uint8Array.from({length:n},(_,i)=>parseInt(bits.slice(i*8,i*8+8),2)),wrong)}
+async function through(bytes,stream){return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer())}
+/** Portable JSON as one base64url line: a 16-bit check, then its compact UTF-8 JSON. With kinds (64, 128 or 4096) a Promise of a spell instead: 0 and the JSON, or 1 and it deflated when that is shorter. */
+export function saveText(state,kinds){const bytes=()=>{const json=JSON.stringify(state,portableNumber);if(typeof json!=="string")throw new Error("a save must be a JSON value");return new TextEncoder().encode(json)};
+ if(kinds)return (async()=>{const raw=bytes(),small=await through(raw,new CompressionStream("deflate")),body=small.length<raw.length?small:raw,out=new Uint8Array(body.length+1);out[0]=body===small?1:0;out.set(body,1);return spellText(out,kinds)})();
+ let text="";for(const b of checked(bytes()))text+=String.fromCharCode(b);return btoa(text).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")}
+/** The value saveText (or save_text) wrote, with the same kinds (a Promise then); an Error when the text was cut or changed. Spaces and line breaks in it are ignored. */
+export function saveState(text,kinds){const wrong="the save text is cut or changed",parse=raw=>JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(raw),portableNumber);
+ if(kinds)return (async()=>{try{const bytes=spellBytes(text,kinds);if(!bytes.length||bytes[0]>1)throw 0;return parse(bytes[0]?await through(bytes.subarray(1),new DecompressionStream("deflate")):bytes.subarray(1))}catch{throw new Error(wrong)}})();
+ try{const raw=atob(String(text).replace(/[ \t\r\n]/g,"").replace(/-/g,"+").replace(/_/g,"/"));return parse(unchecked(Uint8Array.from(raw,c=>c.charCodeAt(0)),wrong))}catch{throw new Error(wrong)}}
+/** Bytes (a Uint8Array or an array of 0..255) as a spell of kinds 64 (the default), 128 or 4096, in lines of 5 7 5. 12 bytes are 19, 17 or 10 characters. */
+export function spellText(data,kinds=64){const chars=spellKinds(kinds),width=Math.log2(kinds),bytes=Uint8Array.from(data),byte=b=>b.toString(2).padStart(8,"0");let bits="";
+ if(kinds===64)for(const b of checked(bytes))bits+=byte(b);                                                  // 64: the check, the bytes
+ else{for(const b of bytes)bits+=byte(b);bits+=crc16(bytes).toString(2).padStart(16,"0")+"1"}                // 128, 4096: the bytes, the check, a 1 (so their end is known)
+ bits+="0".repeat((width-bits.length%width)%width);let text="";for(let i=0;i<bits.length;i+=width)text+=chars[parseInt(bits.slice(i,i+width),2)];const lines=[];
+ for(let i=0;i<text.length;i+=17)lines.push([text.slice(i,i+5),text.slice(i+5,i+12),text.slice(i+12,i+17)].filter(Boolean).join(" "));return lines.join("\n")}
+/** The bytes spellText (or spell_text) wrote with the same kinds, as a Uint8Array; spaces and line breaks are ignored, and in a spell of 64 katakana reads as hiragana. A spell that is not one throws Error("じゅもんが ちがいます"). */
+export function spellBytes(text,kinds=64){const wrong="じゅもんが ちがいます",chars=spellKinds(kinds),width=Math.log2(kinds),at=new Map([...chars].map((c,i)=>[c,i]));let bits="";
+ for(let c of String(text)){if(" \t\r\n　".includes(c))continue;if(kinds===64&&c>="ァ"&&c<="ヶ")c=String.fromCharCode(c.charCodeAt(0)-96);if(!at.has(c))throw new Error(wrong);bits+=at.get(c).toString(2).padStart(width,"0")}
+ const bytes=n=>Uint8Array.from({length:n},(_,i)=>parseInt(bits.slice(i*8,i*8+8),2));
+ if(kinds===64){const n=bits.length>>3;if(!bits.length||bits.length-n*8>=6||bits.slice(n*8).includes("1"))throw new Error(wrong);return unchecked(bytes(n),wrong)}
+ const end=bits.lastIndexOf("1");if(end<16||bits.length-end>width||end%8)throw new Error(wrong);
+ const raw=bytes(end/8),n=raw.length-2;if(crc16(raw.subarray(0,n))!==(raw[n]<<8|raw[n+1]))throw new Error(wrong);return raw.subarray(0,n)}
 function layoutBits(layout){for(const[name,width]of layout)if(typeof name!=="string"||!Number.isInteger(width)||width<1||width>32)throw new Error("a layout is [name, width in bits (1 to 32)] pairs");if(new Set(layout.map(f=>f[0])).size!==layout.length)throw new Error("a layout names each field once");return layout.reduce((sum,f)=>sum+f[1],0)}
 /** Whole numbers packed by layout ([["version",4],["level",7],["gold",16]]: name and width in bits, first field first), zero-padded to whole bytes. A missing value is 0. */
 export function bitsPack(layout,values={}){const total=layoutBits(layout),names=new Set(layout.map(f=>f[0]));for(const name of Object.keys(values))if(!names.has(name))throw new Error("no field "+name);let bits="";
@@ -2989,50 +3008,79 @@ def _load_portable_save(raw: bytes) -> Any:
                       parse_constant=lambda token: number(token, float))
 
 
-def save_text(state: Any) -> str:
-    """📦 Portable JSON as one base64url line to copy or keep in a file: a 16-bit check, then its compact UTF-8 JSON. ``save_state``
-    (and records.js's ``saveState``) read it back. With ``spell_text`` and ``bits_pack``: a page's state as text, to go on where it
-    stopped on another device or after its storage is gone. Use strings for exact numbers outside JavaScript’s safe range."""
+def save_text(state: Any, kinds: int | None = None) -> str:
+    """📦 Portable JSON as one base64url line to copy or keep in a file: a 16-bit check, then its compact UTF-8 JSON. With ``kinds``
+    (64, 128 or 4096) a spell instead (``spell_text``): 0 and the JSON, or 1 and it deflated when that is shorter — as kanji (4096) a
+    long JSON is a fraction of the line's characters, to paste into notes or let the browser remember. ``save_state`` (and records.js's
+    ``saveState``) read it back. So a page can go on where it stopped on another device or after its storage is gone. Use strings for
+    exact numbers outside JavaScript’s safe range."""
     raw = json.dumps(state, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
     _load_portable_save(raw)
+    if kinds:
+        small = zlib.compress(raw, 9)
+        return spell_text(b"\1" + small if len(small) < len(raw) else b"\0" + raw, kinds)
     return base64.urlsafe_b64encode(binascii.crc_hqx(raw, 0xFFFF).to_bytes(2, "big") + raw).decode("ascii").rstrip("=")
 
 
-def save_state(text: str) -> Any:
-    """📦 The value ``save_text`` (or records.js's ``saveText``) wrote; ValueError when the line was cut or changed. Spaces and line
-    breaks in it are ignored."""
+def save_state(text: str, kinds: int | None = None) -> Any:
+    """📦 The value ``save_text`` (or records.js's ``saveText``) wrote with the same ``kinds``; ValueError when the text was cut or
+    changed. Spaces and line breaks in it are ignored."""
     try:
+        if kinds:
+            data = spell_bytes(text, kinds)
+            if data[:1] not in (b"\0", b"\1"):
+                raise ValueError
+            return _load_portable_save((zlib.decompress(data[1:]) if data[0] else data[1:]).decode("utf-8"))
         line = re.sub(r"[ \t\r\n]", "", text)
         raw = base64.b64decode(line + "=" * (-len(line) % 4), altchars=b"-_", validate=True)
         if len(raw) < 2 or binascii.crc_hqx(raw[2:], 0xFFFF) != int.from_bytes(raw[:2], "big"):
             raise ValueError
         return _load_portable_save(raw[2:].decode("utf-8"))
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, zlib.error) as exc:
         raise ValueError("the save text is cut or changed") from exc
 
 
-def spell_text(data: bytes) -> str:
-    """📜 ``data`` as a spell to write down and type back (ふっかつのじゅもん): a 16-bit check and the bytes as 64 kana, 6 bits each,
-    in lines of 5 7 5 — 12 bytes are 19 kana. The check is CRC-16/CCITT-FALSE: one wrong kana or two swapped neighbours never pass.
-    The kana are records.js's (``spellText`` is the twin); ``spell_bytes`` reads it back and ``bits_pack`` makes the bytes."""
-    kana_of = re.search(r'const KANA="([^"]{64})"', _JS["records.js"])[1]
-    raw = binascii.crc_hqx(bytes(data), 0xFFFF).to_bytes(2, "big") + bytes(data)
-    bits = "".join(f"{byte:08b}" for byte in raw)
-    kana = "".join(kana_of[int(bits[i:i + 6].ljust(6, "0"), 2)] for i in range(0, len(bits), 6))
-    return "\n".join(" ".join(filter(None, (kana[i:i + 5], kana[i + 5:i + 12], kana[i + 12:i + 17]))) for i in range(0, len(kana), 17))
+def _spell_kinds(kinds: int) -> str:
+    """The characters of a spell of ``kinds`` 64, 128 or 4096, each kind holding the one before: records.js's KANA (its first 64 are
+    hiragana; then を ん, the katakana no hiragana looks like, and A–Z), then the first 3968 JIS X 0208 kanji in their own (EUC-JP)
+    order — in every Japanese font, and no table to carry."""
+    kana = re.search(r'const KANA="([^"]{128})"', _JS["records.js"])[1]
+    if kinds in (64, 128):
+        return kana[:kinds]
+    if kinds != 4096:
+        raise ValueError("kinds is 64, 128 or 4096")
+    return kana + "".join(bytes((160 + row, 160 + cell)).decode("euc_jp", "ignore") for row in range(16, 85) for cell in range(1, 95))[:3968]
 
 
-def spell_bytes(text: str) -> bytes:
-    """📜 The bytes ``spell_text`` (or records.js's ``spellText``) wrote. Spaces and line breaks are ignored and katakana reads as
-    hiragana; a spell that is not one (a kana off, two swapped, one missing) is ValueError("じゅもんが ちがいます")."""
-    kana_of = re.search(r'const KANA="([^"]{64})"', _JS["records.js"])[1]
-    kana = [chr(ord(c) - 96) if "ァ" <= c <= "ヶ" else c for c in text if c not in " \t\r\n\u3000"]
-    bits = "".join(f"{kana_of.find(c):06b}" if c in kana_of else "x" for c in kana)
-    count = len(bits) // 8
-    raw = bytes(int(bits[i * 8:i * 8 + 8], 2) for i in range(count)) if "x" not in bits else b""
-    if len(raw) < 2 or len(bits) - count * 8 >= 6 or "1" in bits[count * 8:] or binascii.crc_hqx(raw[2:], 0xFFFF) != int.from_bytes(raw[:2], "big"):
+def spell_text(data: bytes, kinds: int = 64) -> str:
+    """📜 ``data`` as a spell (ふっかつのじゅもん) in lines of 5 7 5. ``kinds`` is how many characters it draws from: 64 (hiragana, 6
+    bits each: to write down and type back), 128 (with を ん, katakana and A–Z: 7 bits) or 4096 (with JIS kanji, 12 bits: half the
+    characters of base64 — to paste, not to type); 12 bytes are 19, 17 or 10 characters. A spell of 64 is a 16-bit check and the
+    bytes; one of 128 or 4096 is the bytes, the check and a 1 (so their end is known). The check is CRC-16/CCITT-FALSE: in a spell of
+    64 or 128, one wrong character or two swapped neighbours never pass; any other change passes once in 65,536. records.js's
+    ``spellText`` is the twin; ``spell_bytes`` reads it back and ``bits_pack`` makes the bytes."""
+    chars, width, data = _spell_kinds(kinds), kinds.bit_length() - 1, bytes(data)
+    check = binascii.crc_hqx(data, 0xFFFF).to_bytes(2, "big")
+    bits = "".join(f"{byte:08b}" for byte in (check + data if kinds == 64 else data + check)) + ("" if kinds == 64 else "1")
+    text = "".join(chars[int(bits[i:i + width].ljust(width, "0"), 2)] for i in range(0, len(bits), width))
+    return "\n".join(" ".join(filter(None, (text[i:i + 5], text[i + 5:i + 12], text[i + 12:i + 17]))) for i in range(0, len(text), 17))
+
+
+def spell_bytes(text: str, kinds: int = 64) -> bytes:
+    """📜 The bytes ``spell_text`` (or records.js's ``spellText``) wrote with the same ``kinds``. Spaces and line breaks are ignored,
+    and in a spell of 64 katakana reads as hiragana; a spell that is not one (a character off, two swapped, one missing) is
+    ValueError("じゅもんが ちがいます")."""
+    chars, width = _spell_kinds(kinds), kinds.bit_length() - 1
+    at = {char: f"{index:0{width}b}" for index, char in enumerate(chars)}
+    letters = [chr(ord(c) - 96) if kinds == 64 and "ァ" <= c <= "ヶ" else c for c in text if c not in " \t\r\n\u3000"]
+    bits = "".join(at.get(c, "x") for c in letters)
+    end = len(bits) // 8 * 8 if kinds == 64 else bits.rfind("1")        # 64: whole bytes, then less than a character of zeros; else up to the 1
+    spare = bits[end:] if kinds == 64 else bits[end + 1:]
+    raw = bytes(int(bits[i:i + 8], 2) for i in range(0, end, 8)) if "x" not in bits and end >= 16 and end % 8 == 0 and len(spare) < width and "1" not in spare else b""
+    data, check = (raw[2:], raw[:2]) if kinds == 64 else (raw[:-2], raw[-2:])
+    if len(raw) < 2 or binascii.crc_hqx(data, 0xFFFF) != int.from_bytes(check, "big"):
         raise ValueError("じゅもんが ちがいます")
-    return raw[2:]
+    return data
 
 
 def _layout_bits(layout: Sequence[tuple[str, int]]) -> int:
