@@ -16416,7 +16416,7 @@ body:where([data-page~="tools"]){font-size:15px;line-height:1.65;margin:0}
 @media(max-width:760px){:where([data-page~="tools"]) main{padding:30px 16px}:where([data-page~="tools"]) .workspace{grid-template-columns:1fr}:where([data-page~="tools"]) .controls,:where([data-page~="tools"]) .preview{padding:18px}:where([data-page~="tools"]) header{padding:18px}:where([data-page~="tools"]) h2{font-size:25px}:where([data-page~="tools"]) .exports{gap:8px}}
 
 /* 💻 ⇄ 📱 an emoji face (a control with data-ui-word) is read at 20 px, not at the studio's small text size */
-:where([data-page~="studio"]) [data-ui-word]:is(button,summary,label){font-size:20px;line-height:1}
+:where([data-page~="studio"]) button[data-ui-word],:where([data-page~="studio"]) summary[data-ui-word],:where([data-page~="studio"]) label[data-ui-word]{font-size:20px;line-height:1}
 
 /* 📱 phone slides: the slide is pinned on top (PySaiyanWeBoo's .ui-stage) and the emoji controls scroll under it (landscape: beside it) */
 body:where([data-page~="phone"]){margin:0;background:var(--ui-bg)}
