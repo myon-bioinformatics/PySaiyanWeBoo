@@ -22,3 +22,4 @@ jobs:
       guide_page: docs/guide.page.json
       guide_dir: guide
       guide_brand: PySaiyanWeBoo
+      build: "python3 -S pysaiyanweboo.py --site ."
