@@ -1884,7 +1884,7 @@ class BtkAdapterTests(unittest.TestCase):
     def test_adapters_meet_the_contract_and_name_real_pages(self):
         w = pysaiyanweboo
         pages = w.example_pages()
-        self.assertEqual(sorted(w.BTK_ADAPTERS), ["web-ui-clipboard-shelf", "web-ui-composition-studio", "web-ui-coordinates", "web-ui-door", "web-ui-image-stamp", "web-ui-image-studio", "web-ui-irony", "web-ui-mcp-lab", "web-ui-mcp-send", "web-ui-native-patterns", "web-ui-pattern-run", "web-ui-patterns", "web-ui-photo-studio", "web-ui-playground", "web-ui-screens", "web-ui-showcase", "web-ui-test-report"])
+        self.assertEqual(sorted(w.BTK_ADAPTERS), ["web-ui-clipboard-shelf", "web-ui-coordinates", "web-ui-current-item", "web-ui-door", "web-ui-image-stamp", "web-ui-image-studio", "web-ui-irony", "web-ui-mcp-lab", "web-ui-mcp-send", "web-ui-native-patterns", "web-ui-pattern-run", "web-ui-patterns", "web-ui-photo-studio", "web-ui-playground", "web-ui-screens", "web-ui-showcase", "web-ui-test-report"])
         for adapter_id in w.BTK_ADAPTERS:
             config = w.btk_adapter(adapter_id)
             with self.subTest(adapter_id):
@@ -6390,7 +6390,7 @@ class StaticContractTest(unittest.TestCase):
                 self.assertEqual((path.parent / href).resolve(), icon.resolve())
 
     def test_example_pages_are_single_files_carrying_the_whole_bundle(self):
-        self.assertEqual(sorted(PAGES), ["contract/v1/example.html", "examples/clipboard-shelf.html", "examples/composition-studio.html", "examples/coordinates.html", "examples/door.html", "examples/github-like.html",
+        self.assertEqual(sorted(PAGES), ["contract/v1/example.html", "examples/clipboard-shelf.html", "examples/coordinates.html", "examples/current-item.html", "examples/door.html", "examples/github-like.html",
                                          "examples/image-studio.html", "examples/index.html", "examples/mcp-lab.html", "examples/parts.html", "examples/patterns.html", "examples/photo-studio.html", "examples/play-studio.html", "examples/playground.html", "examples/screens.html", "examples/showcase.html", "examples/test-report.html", "examples/timeline.html", "index.html"])
         self.assertEqual((ROOT / "index.html").read_text(encoding="utf-8"), PAGES["index.html"], "run: python -S pysaiyanweboo.py --site DIR; copy DIR/index.html")
         for name, text in PAGES.items():
@@ -6675,6 +6675,7 @@ def args_for(name):
     room = {"id": "notes", "emoji": "📝", "title": "Notes", "html": '<div id="notes"><p>notes</p></div>'}
     return {"dial": (("level",), {"maximum": 11, "label": "Level"}), "door": ((ui.example_data("door"),), {}), "source": ((source_spec,), {}), "showcase": ((ui.example_data("showcase"),), {}),
             "front": (("<p>main</p>", [room]), {"title": "Front"}), "scroll": (("<button>a</button>",), {"label": "Views"}), "repository-diagnostics": (("myon-bioinformatics/web-ui",), {}),
+            "current-item": ((["Prepare", "Verify"],), {"index": 0}),
             "stage": (('<svg viewBox="0 0 16 9"></svg>',), {"label": "Slide"}), "pager": ((5,), {"variant": "dpad"}),
             "table": (({"columns": ["page", "chromium"], "rows": [["index", {"text": "pass", "status": "pass"}]], "row_headers": True},), {}),
             "steps": (({"key": "demo/run", "steps": [{"id": "run", "title": "Run", "command": "python3 -S demo.py", "expect": "42"}]},), {}),
@@ -6697,6 +6698,9 @@ def test_every_component_gives_html_css_and_a_module_that_mounts(name):
         assert "<script" not in page                                                               # a component without a module ships none
     elif mount:
         assert parts["js"].rstrip().endswith(mount)
+    elif name == "current-item":
+        assert 'aria-current="step"' in parts["html"]
+        assert "export function setCurrentItem(" in parts["js"]
     else:                                                                                           # the module binds itself when a page loads it
         assert any(sign in parts["js"] for sign in ('if(typeof document!=="undefined")', "DOMContentLoaded", "if(rootNode)mount(rootNode)", "addEventListener("))
 
@@ -6965,8 +6969,10 @@ def test_pager_js_takes_the_same_steps_as_python():
 
 
 def test_an_unknown_component_names_the_known_ones():
-    with pytest.raises(ValueError, match="unknown component: nope; one of dial, "):
+    with pytest.raises(ValueError, match="unknown component: nope; one of ") as caught:
         ui.component_parts("nope")
+    names = str(caught.value).split("one of ", 1)[1].split(", ")
+    assert names == list(ui.COMPONENTS)
 
 
 def test_the_cli_prints_a_component_for_node_and_the_shell():
