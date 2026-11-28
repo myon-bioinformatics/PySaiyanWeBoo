@@ -6972,8 +6972,8 @@ def test_views_join_or_frame_each_document_and_one_owner_holds_each_id():
         ui.views_html([{"source": "tools/#a", "document": '<p id="x"></p>'}, {"source": "tools/#b", "document": '<p id="x"></p>'}])
     with pytest.raises(ValueError, match="shares ids"):
         ui.views_html([{"source": "tools/#a", "document": '<p id="door"></p>'}], reserved=("door",))
-    other = ui.views_html([{"source": "tools/#a", "document": '<p id="x"></p>'}, {"source": "tools/b/index.html", "document": '<p id="x"></p>', "repository": "me/b"}])
-    assert "⏸ この道具は id がほかとぶつかる" in other and "https://github.com/me/b" in other    # another repository's: ⏸, not a broken page
+    other = ui.views_html([{"source": "tools/b/index.html", "document": '<p id="x"></p>', "repository": "me/b"}, {"source": "tools/#a", "document": '<p id="x"></p>'}])
+    assert "⏸ この道具は id がほかとぶつかる" in other and "https://github.com/me/b" in other    # another repository's (listed first): ⏸, not a broken page
     with pytest.raises(ValueError, match="distinct lowercase names"):
         ui.views_html([{"source": "tools/#a", "document": ""}, {"source": "tools/#a", "document": ""}])
     assert ui.view_name("tools/a/b/index.html") == "a-b" and ui.view_name("guide/x.html", at="guide/index.html") == "x"

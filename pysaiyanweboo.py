@@ -8358,8 +8358,9 @@ def views_html(views: Sequence[dict[str, Any]], *, at: str = "tools/index.html",
     rebased from ``source`` to ``at`` (the screen's path); a framed app's links to the screen, its views (``site``: this site's
     address, for absolute ones) and their #sections open them on the screen. ``#section`` opens the view that holds it.
 
-    🆔 One owner per id (``reserved``: the host's own, ``home`` and the names): a joined view that shares one stops the build, unless it
-    names its ``repository``: that one shows ⏸ in its place (another repository's tool must not break the screen)."""
+    🆔 One owner per id (``reserved``: the host's own, ``home`` and the names), the site's own views first: a joined view that shares
+    one stops the build, unless it names its ``repository``: that one shows ⏸ in its place (another repository's tool must not break
+    the screen)."""
     home = {"title": "🧰", "heading": "", "about": "", **(home or {})}
     views = [{"name": view_name(view["source"], at), "title": "", "about": "", "framed": False, "repository": None, **view} for view in views]
     names = [view["name"] for view in views]
@@ -8369,7 +8370,7 @@ def views_html(views: Sequence[dict[str, Any]], *, at: str = "tools/index.html",
     routes = {view["name"]: _view_routes(view["document"]) - set(owners) for view in views if view["framed"]}
     targets = {view["source"]: (view["name"], routes.get(view["name"])) for view in views}
     made = {}
-    for view in sorted(views, key=lambda view: view["framed"]):                       # 🧩 the joined ones first: they own their ids
+    for view in sorted(views, key=lambda view: (view["framed"], bool(view["repository"]))):   # 🧩 the joined, the site's own first: they own their ids
         name = view["name"]
         if view["framed"]:
             title, markup = _view_frame(view["document"], view["source"], name, targets, at, site, view["title"])
