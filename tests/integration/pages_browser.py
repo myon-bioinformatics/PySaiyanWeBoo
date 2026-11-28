@@ -1926,6 +1926,108 @@ class ChromeBrowserTests(unittest.TestCase):
             return ui.stamp_page_size(ui.add_part(built, foot, scope='.ui-door-foot'))
         return {'gif.html': page('gif.html', '🎞 GIF', ['えらぶ', 'ならべる', 'つくる']), 'flow.html': page('flow.html', '🌊 Flow', [])}
 
+    @staticmethod
+    def screen():
+        """One page of three views, as a screen of #views is: 🏠 a short one, 🎞 one of sections, 🖼 a framed app. Its few lines of
+        script show a view, name the tab after it and tell the chrome (``ui-chrome-view``). A world is on the page too: its sheet
+        (in a layer, as the portfolio's) hides its own ``.ui-world-spots``. 地点 is a heading of the page's own that happens to be a
+        catalogue word (places, in Chinese), and a closed dialog holds a heading nobody sees."""
+        views = ('<section id="home" data-title="🧰 Tools"><h1>🧰 Tools</h1><p>short</p></section>'
+                 '<section id="gif" data-title="🎞 GIF" hidden><template><h1>🎞 GIF</h1><h2>えらぶ</h2><p style="min-height:640px">えらぶ…</p>'
+                 '<h2 id="make">地点</h2><p style="min-height:640px">地点…</p><dialog><h2>とじた見出し</h2></dialog></template></section>'
+                 '<section id="studio" data-title="🖼 Studio" hidden><template><iframe title="studio" srcdoc="&lt;main&gt;&lt;h2&gt;Inside&lt;/h2&gt;&lt;/main&gt;"></iframe></template></section>')
+        script = ("<script>(()=>{const views=[...document.querySelectorAll('main>section')],inert=v=>v.querySelector(':scope>template');let current='';"
+                  "const show=v=>{if(inert(v))v.replaceChildren(inert(v).content);for(const o of views)o.hidden=o!==v;document.title=v.dataset.title;current=v.id;"   # 💤 a view loads when first shown
+                  "const f=v.querySelector('iframe');document.dispatchEvent(new CustomEvent('ui-chrome-view',{detail:{name:v.id,root:f?f.contentDocument:v}}))};"
+                  "const route=()=>{const name=location.hash.slice(1),v=views.find(v=>v.id===name||inert(v)?.content.getElementById(name)||v.contains(document.getElementById(name)));"
+                  "if(v){show(v);document.getElementById(name).scrollIntoView()}else if(!current)show(views[0])};"
+                  "addEventListener('hashchange',route);addEventListener('DOMContentLoaded',route)})()</script>")
+        door = {'schema': 'web-ui-door/1', 'current': './screen.html', 'k': 0, 'pages': [
+            {'emoji': '🧰', 'label': 'Tools', 'href': './screen.html'}, {'emoji': '🎞', 'label': 'GIF', 'href': './screen.html#gif'}]}
+        built = ui.render_document(trusted_html=f'<main class="ui-page">{views}</main>{script}', title='🧰 Tools',
+                                   css=ui.bundled_css() + '@layer components{.ui-world-spots{display:none}}')
+        built = ui.add_part(built, ui.component_parts('chrome', {'board': {'title': 'TOOLS', 'items': [{'text': '🎞 GIF'}]}}), at='top', scope='.ui-chrome')
+        return ui.add_part(built, ui.component_parts('door', door, foot=True, size=True), scope='.ui-door-foot')
+
+    def test_the_menu_is_the_view_that_shows_and_the_foot_stays_at_the_windows_foot(self):
+        """☰ on a screen of views: the open view under its own name and its sections (a framed view: itself alone), ☆ keeps a
+        section's address and ⭐ opens its view from anywhere; the rows stay shown beside a world's sheet; and on a short view the
+        foot is at the window's foot, off the chrome's ☰. ``PSWB_GIFS`` keeps component-chrome-views.gif."""
+        server, origin = serve_pages({'screen.html': self.screen()})
+        rows = "() => [...document.querySelectorAll('.ui-chrome .ui-world-spots a')].map(a => [a.textContent, a.getAttribute('href')])"
+        hit = ("s => { const n = document.querySelector(s), r = n.getBoundingClientRect(), t = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);"
+               " return n === t || n.contains(t) }")
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={'width': 560, 'height': 480})
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/screen.html')
+                    page.wait_for_selector('.ui-chrome[data-js]')
+                    cam = ui.GifCamera(page)
+                    self.assertEqual(page.evaluate(rows), [['📍🧰 Tools', '#home']])                 # 🏠 the view that shows, by its #name
+                    cam.hold(600)
+                    page.goto(origin + '/screen.html#gif')
+                    page.wait_for_function("document.title === '🎞 GIF'")
+                    self.assertEqual(page.evaluate(rows), [['📍🎞 GIF', '#gif'], ['えらぶ', '#gif-part-1'], ['地点', '#make']])   # its own sections: those it shows, as they read
+                    page.click('.ui-chrome [data-menu="spots"] > summary')
+                    row = page.locator('.ui-chrome .ui-world-spots li', has_text='えらぶ')
+                    self.assertGreater(row.bounding_box()['height'], 0)                             # shown, beside the world's sheet
+                    cam.hold(800)
+                    row.locator('.ui-world-star').click()                                           # ☆ the section, under its view's name
+                    self.assertEqual(page.evaluate('JSON.parse(localStorage.getItem("ui-chrome:tools-chrome")).fav'),
+                                     [{'href': '/screen.html#gif-part-1', 'label': '🎞 GIF › えらぶ'}])
+                    cam.hold(600)
+                    self.assertEqual(page.evaluate(rows)[2], ['地点', '#make'])                      # ☆ redrew the rows: still the heading's own word
+                    page.locator('.ui-chrome .ui-world-spots a', has_text='地点').click()            # a row leads to its section and closes ☰
+                    page.wait_for_url('**/screen.html#make')
+                    self.assertLess(page.evaluate("document.getElementById('make').getBoundingClientRect().top"), 240)
+                    self.assertFalse(page.evaluate("document.querySelector('.ui-chrome [data-menu=\"spots\"]').open"))
+                    cam.hold(700)
+                    page.goto(origin + '/screen.html#studio')                                      # 🖼 a framed view keeps its sections to itself
+                    page.wait_for_function("document.title === '🖼 Studio'")
+                    self.assertEqual(page.evaluate(rows), [['📍🖼 Studio', '#studio']])
+                    page.click('.ui-chrome [data-menu="favorites"] > summary')                      # ⭐ from another view: the view opens, then the section
+                    cam.hold(700)
+                    page.locator('.ui-chrome .ui-world-favs a', has_text='えらぶ').click()
+                    page.wait_for_function("location.hash === '#gif-part-1' && document.title === '🎞 GIF'")
+                    self.assertLess(page.evaluate("document.getElementById('gif-part-1').getBoundingClientRect().top"), 240)
+                    self.assertEqual(page.evaluate(rows)[0], ['📍🎞 GIF', '#gif'])
+                    cam.hold(800)
+                    page.goto('about:blank')                                                        # 🔖 the same address in a new tab
+                    page.goto(origin + '/screen.html#gif-part-1')
+                    page.wait_for_function("location.hash === '#gif-part-1' && document.title === '🎞 GIF'")
+                    page.wait_for_function("document.getElementById('gif-part-1').getBoundingClientRect().top < 240")
+                    self.assertEqual(errors, [])
+                    gif = ui.encode_gif(cam.shots)
+                    self.assertTrue(gif.startswith(b'GIF89a'))
+                    if os.environ.get('PSWB_GIFS'):
+                        ui.gif_targets_from(os.environ['PSWB_GIFS'], ['component-chrome-views'])['component-chrome-views'].write_bytes(gif)
+                    for width, height in ((320, 568), (390, 844), (1280, 800), (1280, 320)):       # a short view: the foot at the window's foot
+                        page.set_viewport_size({'width': width, 'height': height})
+                        page.goto('about:blank')
+                        page.goto(origin + '/screen.html')
+                        page.wait_for_selector('.ui-chrome[data-js]')
+                        foot = page.locator('.ui-door-foot').bounding_box()
+                        self.assertEqual((foot['x'], round(foot['width']), round(foot['y'] + foot['height'])), (0, width, height), (width, height))
+                        self.assertEqual(page.evaluate('document.documentElement.scrollHeight - document.documentElement.clientHeight'), 0, (width, height))
+                        if height > 400:                                                            # ☰ ⋯ are not under it
+                            self.assertTrue(page.evaluate(hit, '.ui-chrome [data-menu="spots"] > summary'), (width, height))
+                            self.assertTrue(page.evaluate(hit, '.ui-chrome [data-menu="more"] > summary'), (width, height))
+                        page.goto(origin + '/screen.html#gif')                                      # a long one: there too, from top to end
+                        page.wait_for_function("document.title === '🎞 GIF'")
+                        for top in (0, 99999):
+                            page.evaluate('y => scrollTo(0, y)', top)
+                            foot = page.locator('.ui-door-foot').bounding_box()
+                            self.assertEqual(round(foot['y'] + foot['height']), height, (width, height, top))
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_the_chrome_and_the_doors_foot_follow_from_page_to_page(self):
         server, origin = serve_pages(self.pages())
         try:

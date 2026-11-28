@@ -912,8 +912,8 @@ class DoorTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 pysaiyanweboo.door_html(DOOR, **bad)
         css = pysaiyanweboo.css_source("door.css")
-        self.assertIn(".ui-door-foot{position:sticky;bottom:0;z-index:32;", css)
-        self.assertEqual([int(px) % 8 for px in re.findall(r"(\d+)px", css[css.index(".ui-door-foot{"):]) if px != "1"], [0] * 5)
+        self.assertIn("body:has(>.ui-door-foot){min-height:100dvh}.ui-door-foot{position:sticky;top:calc(100dvh - 56px - 1px);bottom:0;z-index:32;", css)   # a short page too
+        self.assertEqual([int(px) % 8 for px in re.findall(r"(\d+)px", css[css.index(".ui-door-foot{"):]) if px != "1"], [0] * 6)
 
     def test_the_compact_door_is_the_pulldown_alone(self):
         """🚪 door_html(compact=True): one row for a header or a footer. The same data and options as the panel, none of its words."""
@@ -7015,6 +7015,7 @@ def test_the_coordinate_tool_takes_places_pins_and_share_from_a_spec():
     assert plain.count('type="radio"') == 6 and 'value="100" checked' in plain and 'value="35.681236"' in plain
     full = ui.coordinates_html(COORD_SPEC)
     assert full.startswith('<section class="ui-panel ui-coord" id="map" data-ui-coord data-words=') and '<h2>📍 地点</h2>' in full
+    assert ' translate="no"' in full[:full.index(">")] and "translate" not in plain            # 🌐 its own words stay its own (a chrome would read 地点 as "places")
     assert 'data-pins="site-map-pins/1" data-link>' in full and '<option value="tokyo-station">東京駅 &lt;丸の内&gt;</option>' in full
     assert json.loads(html.unescape(re.search(r"data-places='([^']*)'", full)[1]))[0] == COORD_SPEC["places"][0]
     assert json.loads(html.unescape(re.search(r"data-words='([^']*)'", full)[1])) == COORD_SPEC["words"]

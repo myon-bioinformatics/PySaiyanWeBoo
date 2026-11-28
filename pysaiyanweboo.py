@@ -6367,7 +6367,7 @@ def coordinates_html(spec: Any = None) -> str:
     """The coordinate tool as semantic HTML: a point (typed or read from a Maps URL), a tolerance radius, a tile zoom, and the results the page fills in.
 
     With a spec (``coordinates_validate``) it also offers named places, 📌 pins kept in this browser, and open / copy / share; ``words`` says it all in
-    another language. ``bindCoordinates()`` binds whichever of these the markup holds."""
+    another language (and the tool is ``translate="no"``: a chrome's 🌐 leaves it alone). ``bindCoordinates()`` binds whichever of these the markup holds."""
     plain = spec is None
     spec = coordinates_validate(spec)
     say = {"title": "Coordinates", "lead": "Check a point, read it from a Google or Apple Maps URL, and frame a tolerance area around it. Everything is computed in this page; "
@@ -6383,7 +6383,8 @@ def coordinates_html(spec: Any = None) -> str:
     radios = "".join(f'<label><input type="radio" name="{key}-preset" value="{v}"{" checked" if v == spec["radius"] else ""}> '
                      f'{w("custom") if v == "custom" else w(f"r{v}")}{"" if v in (0, "custom") else f" ({v} m)"}</label>' for v in presets)
     extras = spec["share"] or "pins" in spec
-    data = (f" data-words='{escape(json.dumps(spec['words'], ensure_ascii=False, separators=(',', ':')), quote=True)}'" if spec["words"] else "") + \
+    # its own words are its language: translate=no keeps a chrome's 🌐 from reading one as a catalogue word (地点 is "places" in Chinese)
+    data = (f" data-words='{escape(json.dumps(spec['words'], ensure_ascii=False, separators=(',', ':')), quote=True)}' translate=\"no\"" if spec["words"] else "") + \
            (f" data-places='{escape(json.dumps(spec['places'], ensure_ascii=False, separators=(',', ':')), quote=True)}'" if spec["places"] else "") + \
            (f' data-pins="{escape(spec["pins"], quote=True)}"' if "pins" in spec else "") + (" data-link" if extras else "")
     place = (f'<label for="{key}-place">{w("place")}</label><select class="ui-input" id="{key}-place" data-place><option value="">{w("free")}</option>'
@@ -8125,7 +8126,8 @@ def chrome_validate(spec: Any = None) -> dict[str, Any]:
                 "in N min"; ``labels``, language code → the item in that language, follows 🌐)
     ``home``    where 🏠 leads (left out: no 🏠)
     ``places``  rows this page adds to its ☰, each ``{"label", "href"}`` with a ☆ (up to 32); the script lists the page itself (📍)
-                and its sections ahead of them. ☰ is this page's own: moving between pages is the door's (``door_html``)
+                and its sections ahead of them — on a screen of views, the view that shows (``ui-chrome-view``) and its own sections.
+                ☰ is this page's own: moving between pages is the door's (``door_html``)
     ``tools``   emoji of the page's own (``_chrome_tools``)
     ``settings`` rows the page adds to ⚙️ (up to 8, ``_chrome_rows``): another layout of the same page, a mode
     ``screen``  rows the page adds to ⋯ (up to 8): what belongs to this screen but not to its main buttons, such as a temporary shelf
@@ -17257,7 +17259,9 @@ _CSS["door.css"] = ("@layer components{.ui-door label{display:block;margin:8px 0
                     ".ui-door-compact .ui-input{flex:1 1 auto;min-width:0;max-width:384px;min-height:40px;box-sizing:border-box}"
                     ".ui-door-name{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}"
                     # door_html(foot=True): that row as the page's foot, then its links and 📦 the page's size
-                    ".ui-door-foot{position:sticky;bottom:0;z-index:32;display:flex;align-items:center;margin:0;padding:0;border-top:1px solid var(--ui-border);"
+                    # a short page: the body reaches the window's foot and top keeps the row (56px + its line) there, off the chrome's ☰ ⋯
+                    "body:has(>.ui-door-foot){min-height:100dvh}"
+                    ".ui-door-foot{position:sticky;top:calc(100dvh - 56px - 1px);bottom:0;z-index:32;display:flex;align-items:center;margin:0;padding:0;border-top:1px solid var(--ui-border);"
                     "background:var(--ui-panel);color:var(--ui-fg);font-family:var(--ui-font);font-size:1rem;line-height:1.5}.ui-door-foot *{box-sizing:border-box}"
                     ".ui-door-foot .ui-door{flex:1;min-width:0;margin:0;border:0;background:none}"
                     ".ui-door-foot select{margin:0;padding:0 8px;font:inherit;color:var(--ui-fg);background:var(--ui-bg);border:1px solid var(--ui-border);"
@@ -17284,7 +17288,7 @@ _CSS["chrome.css"] = (
     ":where(.ui-chrome) .ui-board-post .ui-input{flex:1;min-width:0;width:auto;padding:.2rem .5rem}:where(.ui-chrome) .ui-board-post .ui-button{padding:.2rem .6rem}"
     "@keyframes ui-board-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}"
     ":where(.ui-chrome) .ui-world-side{display:flex;flex-direction:column;gap:8px;padding:8px;z-index:2;border-left:1px solid var(--ui-border);background:var(--ui-panel)}"
-    ":where(.ui-chrome) .ui-world-menu[hidden]{display:none}"
+    ":where(.ui-chrome) .ui-world-menu[hidden]{display:none}:where(.ui-chrome) .ui-world-spots{display:block}"   # ☰'s rows: a world on the page hides its own .ui-world-spots per floor
     ":where(.ui-chrome) .ui-world-menu>summary{display:flex;align-items:center;justify-content:center;width:48px;height:48px;box-sizing:border-box;list-style:none;cursor:pointer;user-select:none;-webkit-user-select:none;font-size:1.25rem;line-height:1;border:1px solid var(--ui-border);background:var(--ui-bg);color:var(--ui-fg);border-radius:var(--ui-radius)}"
     ":where(.ui-chrome) .ui-world-menu>summary::-webkit-details-marker{display:none}:where(.ui-chrome) .ui-world-menu[open]>summary{background:var(--ui-accent);color:var(--ui-bg)}"
     ":where(.ui-chrome) .ui-world-home,:where(.ui-chrome) .ui-world-tool{display:flex;align-items:center;justify-content:center;width:48px;height:48px;box-sizing:border-box;text-decoration:none;color:var(--ui-fg);cursor:pointer;font-size:1.25rem;line-height:1;border:1px solid var(--ui-border);background:var(--ui-bg);border-radius:var(--ui-radius)}"
@@ -17402,7 +17406,7 @@ export function sayAround(lang,mine=()=>true){for(const f of document.querySelec
 _JS["chrome.js"] = (shell_js() +
                     "// 🎨 ⚙️'s colors: ui.js's bindTheme, the same lines (one choice, web-ui-theme, for every page of this origin)\n" +
                     re.search(r"^export function bindTheme\(.*$", _JS["ui.js"], re.M)[0] + "\n" + r"""// 🧰 The chrome of a tool page: the board, the menus and 🌐 of a world's shell, with no map.
-// ☰ is this page: itself (📍), its sections (the h2 of <main>) and the rows it gave, each with a ☆. ⭐ lists the starred places of
+// ☰ is this page — on a screen of views, the view that shows: itself (📍), its sections (the h2 of <main>) and the rows it gave, each with a ☆. ⭐ lists the starred places of
 // every page sharing the chrome's id (a place is its path and fragment on this site), so they follow you from tool to tool, as 🌐
 // does. ⏯️ stops the board; ⋯ moves this screen to its top or its end. Nothing else is kept, and this module asks the network for nothing.
 export function bindChrome(root=document){return[...root.querySelectorAll('[data-ui-chrome]')].map(el=>{if(el.hasAttribute('data-js'))return el;el.dataset.js='';
@@ -17436,11 +17440,24 @@ export function bindChrome(root=document){return[...root.querySelectorAll('[data
  hide(document,el.dataset.replaces);host(null,document);   // the page itself is the view until a screen names one
  sel?.addEventListener('change',()=>{setLang(sel.value);save({lang})});
  el.addEventListener('change',e=>{const c=e.target.closest('[data-chrome-choice]');if(c)send(c,{key:c.dataset.chromeChoice,value:c.value})});   // a choice of the page's own (a notation, a layout)
- const here=page(location.pathname),title=(document.title.trim()||here).slice(0,40),key=a=>a.origin===location.origin?page(a.pathname)+a.hash:a.href,
+ let here,title,pend='';const key=a=>a.origin===location.origin?page(a.pathname)+a.hash:a.href,
   row=(href,text,mark='')=>{const li=document.createElement('li'),a=document.createElement('a'),arrow=document.createElement('span'),b=document.createElement('button');a.href=href;arrow.className='ui-world-arrow';arrow.setAttribute('aria-hidden','true');arrow.textContent=mark;a.append(arrow,text);b.type='button';b.className='ui-world-star';b.dataset.t='star';li.append(a,b);return li},
-  spots=el.querySelector('.ui-world-spots'),favs=el.querySelector('.ui-world-favs'),heads=[...document.querySelectorAll('main h2')].filter(h=>!el.contains(h)&&h.textContent.trim());
- spots.prepend(row('#',title,'📍'),...heads.map((h,i)=>{if(!h.id)h.id=el.id+'-part-'+(i+1);const li=row('#'+h.id,h.textContent.trim().slice(0,40));li.querySelector('a').dataset.head=h.id;return li}));
- spots.querySelector('a').setAttribute('aria-current','page');
+  spots=el.querySelector('.ui-world-spots'),favs=el.querySelector('.ui-world-favs');
+ // ☰ is what shows: the page, or the view a screen says is open (ui-chrome-view) — its #name under the tab's title, then the h2 of
+ // its own root (a framed view keeps its sections to itself). A section with no id gets <view>-part-N (the page's: <chrome>-part-N).
+ const place=(name,root)=>{for(const li of spots.querySelectorAll('[data-here]'))li.remove();
+  const scope=!name||!root||root===document?document:root.ownerDocument===document?root:null;
+  here=page(location.pathname)+(name?'#'+name:'');title=(document.title.trim()||here).slice(0,40);
+  const heads=scope?[...scope.querySelectorAll(scope===document?'main h2':'h2')].filter(h=>!el.contains(h)&&h.textContent.trim()&&(scope===document||h.getClientRects().length)):[],   // a view's: those it shows
+   rows=[row(name?'#'+name:'#',title,'📍'),...heads.map((h,i)=>{if(!h.id)h.id=(name||el.id)+'-part-'+(i+1);const li=row('#'+h.id,h.textContent.trim().slice(0,40)),a=li.querySelector('a');
+    a.dataset.head=h.id;a.setAttribute('translate','no');return li})];   // a section reads as its heading does, not as a catalogue word it happens to spell
+  for(const li of rows)li.dataset.here='';spots.prepend(...rows);rows[0].querySelector('a').setAttribute('aria-current','page')},
+ // 🔖 #<view>-part-N from elsewhere (⭐, a link): the screen knows #<view>, so that opens first; the section is there once its view shows.
+  part=name=>{if(pend&&name&&pend.startsWith(name+'-part-')){const at=document.getElementById(pend);if(at){history.replaceState(null,'','#'+pend);at.scrollIntoView()}pend='';return}
+   let want='';try{want=decodeURIComponent(location.hash.slice(1))}catch{}
+   const m=/^(.+)-part-\d+$/.exec(want),at=m&&document.getElementById(want);
+   if(at)at.scrollIntoView();else if(m&&m[1]!==name&&m[1]!==el.id&&document.getElementById(m[1])){pend=want;location.replace('#'+m[1])}};
+ place();
  let fav=(Array.isArray(kept.fav)?kept.fav:[]).filter(f=>f&&typeof f.label==='string'&&typeof f.href==='string'&&/^(\/(?!\/)|https:\/\/)/.test(f.href)).slice(-32);
  const words=a=>a.lastChild.textContent,show=()=>{for(const a of spots.querySelectorAll('a')){const on=fav.some(f=>f.href===key(a)),b=a.parentElement.querySelector('.ui-world-star');b.setAttribute('aria-pressed',String(on));b.textContent=on?'★':'☆'}
   favs.replaceChildren(...fav.map(f=>{const li=row(f.href,f.label.slice(0,80),f.href===here?'📍':''),b=li.querySelector('button');b.setAttribute('aria-pressed','true');b.textContent='★';return li}));say(el)};
@@ -17450,7 +17467,8 @@ export function bindChrome(root=document){return[...root.querySelectorAll('[data
   const act=e.target.closest('[data-chrome-action]');
   if(act){e.preventDefault();send(act,{key:act.dataset.chromeAction})}
   if(e.target.closest('.ui-world-rows a'))shut()});
- show();setLang(CHROME_LANGS.includes(kept.lang)?kept.lang:CHROME_LANGS.includes(lang)?lang:'ja');
+ show();setLang(CHROME_LANGS.includes(kept.lang)?kept.lang:CHROME_LANGS.includes(lang)?lang:'ja');part();
+ document.addEventListener('ui-chrome-view',e=>{place(e.detail?.name,e.detail?.root);show();part(e.detail?.name)});
  const pause=el.querySelector('.ui-world-pause');pause?.addEventListener('click',()=>{const on=el.toggleAttribute('data-motion-paused');pause.setAttribute('aria-pressed',String(on));pause.textContent=on?pause.dataset.resume:pause.dataset.pause});
  el.addEventListener('keydown',e=>{if(e.key==='Escape')shut()});
  document.addEventListener('pointerdown',e=>{if(!el.contains(e.target))shut()});
