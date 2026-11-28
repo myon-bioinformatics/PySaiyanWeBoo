@@ -6937,6 +6937,13 @@ def test_every_word_the_chrome_brings_is_in_eleven_languages():
             ui.chrome_validate(bad)
     with pytest.raises(ValueError, match="labels maps"):
         ui.door_validate({**door, "pages": [{**door["pages"][0], "labels": {"xx": "?"}}]})
+    words = {"GIF工房": ["GIF studio", "Atelier GIF", "Taller GIF", "Oficina GIF", "استوديو GIF", "GIF 工坊", "Студия GIF", "Studio GIF", "GIF-Werkstatt", "Studio ya GIF"]}
+    assert ui.chrome_validate({"words": words})["words"] == words and 'data-words="{&quot;GIF工房&quot;:[&quot;GIF studio&quot;' in ui.chrome_html({"words": words})
+    for bad in ({"GIF工房": ["one"]}, {"": words["GIF工房"]}, {f"w{i}": words["GIF工房"] for i in range(65)}, ["GIF工房"]):
+        with pytest.raises(ValueError):
+            ui.chrome_validate({"words": bad})
+    plain = ui.add_part(ui.render_document(trusted_html="<main><p>x</p></main>", title="t"), ui.component_parts("chrome"), at="top")
+    assert carried(plain) == set(ui._CHROME_WORDS) - {"about", "about2"}                            # add_part keeps a page's body words only
 
 
 def test_the_chrome_sheet_is_plain_and_its_module_asks_the_network_for_nothing():
