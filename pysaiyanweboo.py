@@ -16530,7 +16530,7 @@ body:where([data-page~="studio"]){font-size:13px;line-height:1.5;margin:0}
 :where([data-page~="studio"]) .top-actions{display:flex;flex-wrap:wrap;gap:7px}
 :where([data-page~="studio"]) .top-actions summary{cursor:pointer;padding:7px}
 :where([data-page~="studio"]) .top-actions details a{color:var(--ui-accent);align-self:center;padding:7px 3px;text-underline-offset:3px}
-:where([data-page~="studio"]) button,:where([data-page~="studio"]) .button{display:inline-flex;align-items:center;justify-content:center;gap:5px;text-decoration:none;min-height:38px;padding:10px 12px}
+:where([data-page~="studio"]) button:where(:not(.ui-toolbar-row>*)),:where([data-page~="studio"]) .button{display:inline-flex;align-items:center;justify-content:center;gap:5px;text-decoration:none;min-height:38px;padding:10px 12px}
 :where([data-page~="studio"]) .button{font:inherit;cursor:pointer;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);border-radius:var(--ui-radius)}
 :where([data-page~="studio"]) button:hover,:where([data-page~="studio"]) .button:hover{border-color:var(--ui-accent);background:color-mix(in srgb,var(--ui-accent) 12%,var(--ui-panel))}
 :where([data-page~="studio"]) .primary{background:var(--ui-accent);border-color:var(--ui-accent);color:var(--ui-bg);font-weight:700}
@@ -16652,8 +16652,8 @@ body:where([data-page~="tools"]){font-size:15px;line-height:1.65;margin:0}
 :where([data-page~="tools"]) footer{padding:30px;text-align:center;color:var(--ui-muted);font-size:12px;border-top:1px solid var(--ui-border)}
 @media(max-width:760px){:where([data-page~="tools"]) main{padding:30px 16px}:where([data-page~="tools"]) .workspace{grid-template-columns:1fr}:where([data-page~="tools"]) .controls,:where([data-page~="tools"]) .preview{padding:18px}:where([data-page~="tools"]) header{padding:18px}:where([data-page~="tools"]) h2{font-size:25px}:where([data-page~="tools"]) .exports{gap:8px}}
 
-/* 💻 ⇄ 📱 an emoji face (a control with data-ui-word) is read at 20 px, not at the studio's small text size */
-:where([data-page~="studio"]) button[data-ui-word],:where([data-page~="studio"]) summary[data-ui-word],:where([data-page~="studio"]) label[data-ui-word]{font-size:20px;line-height:1}
+/* 💻 ⇄ 📱 an emoji face (a control with data-ui-word) is read at 20 px, not at the studio's small text size; a toolbar's are its own (toolbar.css) */
+:where([data-page~="studio"]) button[data-ui-word]:where(:not(.ui-toolbar-row>*)),:where([data-page~="studio"]) summary[data-ui-word],:where([data-page~="studio"]) label[data-ui-word]{font-size:20px;line-height:1}
 
 /* 📱 phone slides: the slide is pinned on top (PySaiyanWeBoo's .ui-stage) and the emoji controls scroll under it (landscape: beside it) */
 body:where([data-page~="phone"]){margin:0;background:var(--ui-bg)}
