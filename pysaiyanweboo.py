@@ -8273,10 +8273,13 @@ def chrome_html(spec: Any = None) -> str:
     every = {**chrome["words"], **{ja: row for view in chrome["views"].values() for ja, row in view["words"].items()}}
     words = f' data-words="{escape(json.dumps(every, ensure_ascii=False, separators=(",", ":")), quote=True)}"' if every else ""
     hides = lambda selectors: f' data-replaces="{selectors}"' if selectors else ""
+    # 💻 ⇄ 📱 wherever a view holds PySaiyanWeBoo's switch (labels_switch_html), ⋯ says it too: the view need not declare it
+    auto = (f'<template data-chrome-auto="[data-ui-labels-switch]"><div data-chrome-slot="more">'
+            f'{_chrome_rows_html([{"label": "💻 To textual ⇄ 📱 To iconic", "key": "labels"}])}</div></template>')
     views = "".join(f'<template data-chrome-view="{name}"{hides(view["replaces"])}><div data-chrome-slot="settings">{_chrome_rows_html(view["settings"])}</div>'
                     f'<div data-chrome-slot="more">{_chrome_rows_html(view["screen"])}</div></template>' for name, view in chrome["views"].items())
     return (f'<div class="ui-chrome ui-world-head" id="{chrome["id"]}-chrome" data-ui-chrome lang="{chrome["lang"]}"{words}{hides(chrome["replaces"])}>{shown}'
-            f'<nav class="ui-world-tools">{head}</nav><div class="ui-world-side">{side}</div>{views}</div>')
+            f'<nav class="ui-world-tools">{head}</nav><div class="ui-world-side">{side}</div>{views}{auto}</div>')
 
 
 def door_document(spec: Any, *, theme: str = "modern") -> str:
@@ -17413,17 +17416,24 @@ export function bindChrome(root=document){return[...root.querySelectorAll('[data
  bindTheme(el);   // 🎨 its controls are in ⚙️
  // 🧰 What the rows stand in for hides once this runs (data-replaces). A view of a screen (a panel, a framed app) brings its own rows:
  // in ⚙️ and ⋯ while it shows, its keys go to it, and what they replace hides there. The screen says which (ui-chrome-view: {name, root}).
+ // A part of PySaiyanWeBoo's found in the view (💻 ⇄ 📱) brings its row on its own (data-chrome-auto), and a framed view takes 🎨 too.
  const hide=(root,sel)=>{if(sel)for(const n of root.querySelectorAll(sel)){n.hidden=true;n.style.setProperty('display','none','important')}};   // CSSOM: a frame's CSP allows it
  let view=null;
- const host=(name,root)=>{for(const n of el.querySelectorAll('[data-chrome-hosted]'))n.remove();view=null;
-  const t=[...el.querySelectorAll('template[data-chrome-view]')].find(t=>t.dataset.chromeView===name);if(!t)return;view=root||document;
-  for(const part of t.content.querySelectorAll('[data-chrome-slot]')){const panel=el.querySelector('[data-menu="'+part.dataset.chromeSlot+'"] .ui-world-panel');
-   if(panel)for(const n of part.children){const c=n.cloneNode(true);c.dataset.chromeHosted='';panel.append(c)}}
-  hide(view,t.dataset.replaces);say(el)},
+ const tint=()=>{const doc=view&&(view.ownerDocument||view),b=doc&&doc!==document&&doc.body,top=document.body;if(!b)return;   // 🎨 into a framed view
+  if(b.dataset.uiThemePage===undefined)b.dataset.uiThemePage=b.dataset.uiTheme||'';
+  if(top.dataset.uiThemeChosen!==undefined){b.dataset.uiThemeChosen=top.dataset.uiThemeChosen;b.dataset.uiTheme=top.dataset.uiThemeChosen}else{delete b.dataset.uiThemeChosen;b.dataset.uiTheme=b.dataset.uiThemePage}},
+  host=(name,root)=>{for(const n of el.querySelectorAll('[data-chrome-hosted]'))n.remove();view=root||document;
+  const own=[...el.querySelectorAll('template[data-chrome-view]')].filter(t=>t.dataset.chromeView===name),
+   auto=[...el.querySelectorAll('template[data-chrome-auto]')].filter(t=>view.querySelector(t.dataset.chromeAuto));
+  for(const t of[...own,...auto]){for(const part of t.content.querySelectorAll('[data-chrome-slot]')){const panel=el.querySelector('[data-menu="'+part.dataset.chromeSlot+'"] .ui-world-panel');
+   if(panel)for(const n of part.children){const c=n.cloneNode(true),k=c.querySelector('[data-chrome-action]')?.dataset.chromeAction;   // a key once: a declared row wins
+    if(k&&auto.includes(t)&&el.querySelector('[data-chrome-hosted] [data-chrome-action="'+k+'"]'))continue;c.dataset.chromeHosted='';panel.append(c)}}hide(view,t.dataset.replaces)}
+  tint();say(el)},
   send=(n,detail)=>{const to=n.closest('[data-chrome-hosted]')&&view&&view!==document?view:el,win=(to.ownerDocument||to).defaultView||window;
    to.dispatchEvent(new win.CustomEvent('ui-chrome-action',{bubbles:true,detail}))};
  document.addEventListener('ui-chrome-view',e=>host(e.detail?.name,e.detail?.root));
- hide(document,el.dataset.replaces);
+ el.querySelector('[data-ui-theme-switch]')?.addEventListener('change',tint);
+ hide(document,el.dataset.replaces);host(null,document);   // the page itself is the view until a screen names one
  sel?.addEventListener('change',()=>{setLang(sel.value);save({lang})});
  el.addEventListener('change',e=>{const c=e.target.closest('[data-chrome-choice]');if(c)send(c,{key:c.dataset.chromeChoice,value:c.value})});   // a choice of the page's own (a notation, a layout)
  const here=page(location.pathname),title=(document.title.trim()||here).slice(0,40),key=a=>a.origin===location.origin?page(a.pathname)+a.hash:a.href,
