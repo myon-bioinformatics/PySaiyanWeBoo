@@ -6367,7 +6367,7 @@ def coordinates_html(spec: Any = None) -> str:
     """The coordinate tool as semantic HTML: a point (typed or read from a Maps URL), a tolerance radius, a tile zoom, and the results the page fills in.
 
     With a spec (``coordinates_validate``) it also offers named places, 📌 pins kept in this browser, and open / copy / share; ``words`` says it all in
-    another language. ``bindCoordinates()`` binds whichever of these the markup holds."""
+    another language (and the tool is ``translate="no"``: a chrome's 🌐 leaves it alone). ``bindCoordinates()`` binds whichever of these the markup holds."""
     plain = spec is None
     spec = coordinates_validate(spec)
     say = {"title": "Coordinates", "lead": "Check a point, read it from a Google or Apple Maps URL, and frame a tolerance area around it. Everything is computed in this page; "
@@ -6383,7 +6383,8 @@ def coordinates_html(spec: Any = None) -> str:
     radios = "".join(f'<label><input type="radio" name="{key}-preset" value="{v}"{" checked" if v == spec["radius"] else ""}> '
                      f'{w("custom") if v == "custom" else w(f"r{v}")}{"" if v in (0, "custom") else f" ({v} m)"}</label>' for v in presets)
     extras = spec["share"] or "pins" in spec
-    data = (f" data-words='{escape(json.dumps(spec['words'], ensure_ascii=False, separators=(',', ':')), quote=True)}'" if spec["words"] else "") + \
+    # its own words are its language: translate=no keeps a chrome's 🌐 from reading one as a catalogue word (地点 is "places" in Chinese)
+    data = (f" data-words='{escape(json.dumps(spec['words'], ensure_ascii=False, separators=(',', ':')), quote=True)}' translate=\"no\"" if spec["words"] else "") + \
            (f" data-places='{escape(json.dumps(spec['places'], ensure_ascii=False, separators=(',', ':')), quote=True)}'" if spec["places"] else "") + \
            (f' data-pins="{escape(spec["pins"], quote=True)}"' if "pins" in spec else "") + (" data-link" if extras else "")
     place = (f'<label for="{key}-place">{w("place")}</label><select class="ui-input" id="{key}-place" data-place><option value="">{w("free")}</option>'

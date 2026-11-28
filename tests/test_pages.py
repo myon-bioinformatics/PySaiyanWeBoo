@@ -7015,6 +7015,7 @@ def test_the_coordinate_tool_takes_places_pins_and_share_from_a_spec():
     assert plain.count('type="radio"') == 6 and 'value="100" checked' in plain and 'value="35.681236"' in plain
     full = ui.coordinates_html(COORD_SPEC)
     assert full.startswith('<section class="ui-panel ui-coord" id="map" data-ui-coord data-words=') and '<h2>📍 地点</h2>' in full
+    assert ' translate="no"' in full[:full.index(">")] and "translate" not in plain            # 🌐 its own words stay its own (a chrome would read 地点 as "places")
     assert 'data-pins="site-map-pins/1" data-link>' in full and '<option value="tokyo-station">東京駅 &lt;丸の内&gt;</option>' in full
     assert json.loads(html.unescape(re.search(r"data-places='([^']*)'", full)[1]))[0] == COORD_SPEC["places"][0]
     assert json.loads(html.unescape(re.search(r"data-words='([^']*)'", full)[1])) == COORD_SPEC["words"]
