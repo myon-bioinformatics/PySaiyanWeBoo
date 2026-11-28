@@ -6897,6 +6897,24 @@ def test_the_chrome_takes_actions_and_rows_for_settings_and_this_screen():
     assert "new CustomEvent('ui-chrome-action',{bubbles:true,detail:{key:act.dataset.chromeAction}})" in module and "e.preventDefault()" in module
 
 
+def test_a_settings_row_can_be_a_choice_beside_the_language_and_the_colors():
+    """🧾 a row with options is a pull-down in ⚙️, drawn as 🌐 and 🎨 are (its emoji, the words said by the pull-down); picking one sends
+    the key and the value, and the page sets what is in effect."""
+    notation = {"label": "🧾 Notation", "key": "mode", "options": [{"label": "Modern", "value": "modern"}, {"label": "JSON <raw>", "value": "json"}]}
+    spec = {"settings": [{"label": "📱 スマホ版", "href": "./phone/"}, notation]}
+    assert ui.chrome_validate(spec)["settings"][1] == notation
+    settings = ui.chrome_html(spec)
+    settings = settings[settings.index("⚙️"):settings.index("☰")]
+    choice = '<label class="ui-world-lang">🧾 <select data-chrome-choice="mode" aria-label="Notation" title="Notation"><option value="modern">Modern</option><option value="json">JSON &lt;raw&gt;</option></select></label>'
+    assert choice in settings and settings.index("data-ui-theme-switch") < settings.index(choice) < settings.index('<a href="./phone/">')
+    assert 'aria-label="表示" title="表示"' in ui.chrome_html({"settings": [{**notation, "label": "表示"}]})   # no emoji: the words show
+    for bad in ([{"label": "A", "value": "a"}], [{"label": "A", "value": "a"}] * 2, [{"label": "A", "value": "A b"}, {"label": "B", "value": "b"}], "ab"):
+        with pytest.raises(ValueError, match="options are"):
+            ui.chrome_validate({"settings": [{**notation, "options": bad}]})
+    module = ui.js_source("chrome.js")
+    assert "detail:{key:c.dataset.chromeChoice,value:c.value}" in module
+
+
 def test_every_word_the_chrome_brings_is_in_eleven_languages():
     """🌐 The catalogue: every word in all eleven languages (a format keeps its {0} in each), every key a part writes is in it, a
     catalogue word in a link's label is found (formats are not), and the languages a page, a board item or a door page can carry."""
@@ -6948,6 +6966,73 @@ def test_every_word_the_chrome_brings_is_in_eleven_languages():
             ui.chrome_validate({"words": bad})
     plain = ui.add_part(ui.render_document(trusted_html="<main><p>x</p></main>", title="t"), ui.component_parts("chrome"), at="top")
     assert carried(plain) == set(ui._CHROME_WORDS) - {"about", "about2"}                            # add_part keeps a page's body words only
+
+
+COORD_SPEC = {"id": "map", "point": {"lat": 35.68134, "lon": 139.7665, "label": "東京駅"}, "radius": 100, "pins": "site-map-pins/1", "share": True,
+              "places": [{"id": "tokyo-station", "label": "東京駅 <丸の内>", "lat": 35.68134, "lon": 139.7665, "href": "#cities-spot-station"},
+                         {"id": "tokyo-tower", "label": "東京タワー", "lat": 35.658581, "lon": 139.745433}],
+              "words": {"title": "📍 地点", "pin": "📌 ピン留め", "r0": "地点のみ", "valid": "有効です。", "radius": "半径: {n} m"}}
+
+
+def test_the_coordinate_tool_takes_places_pins_and_share_from_a_spec():
+    """📍 coordinates_html(spec): the plain tool is the markup it always was; a spec adds the list of places, 📌 pins, open / copy / share and
+    the words of another language, each only when asked for. Everything is escaped and the fields' ids follow ``id``."""
+    plain = ui.coordinates_html()
+    assert plain.startswith('<section class="ui-panel ui-coord" id="coord" data-ui-coord><h2>Coordinates</h2>') and plain.endswith("<dl data-out></dl></section>")
+    assert plain == ui.component_parts("coordinates")["html"] == ui.coordinates_html(None)
+    for word in ("data-words", "data-places", "data-pins", "data-link", "data-name", "data-open", "data-share", "<details", 'value="0"'):
+        assert word not in plain, word
+    assert plain.count('type="radio"') == 6 and 'value="100" checked' in plain and 'value="35.681236"' in plain
+    full = ui.coordinates_html(COORD_SPEC)
+    assert full.startswith('<section class="ui-panel ui-coord" id="map" data-ui-coord data-words=') and '<h2>📍 地点</h2>' in full
+    assert 'data-pins="site-map-pins/1" data-link>' in full and '<option value="tokyo-station">東京駅 &lt;丸の内&gt;</option>' in full
+    assert json.loads(html.unescape(re.search(r"data-places='([^']*)'", full)[1]))[0] == COORD_SPEC["places"][0]
+    assert json.loads(html.unescape(re.search(r"data-words='([^']*)'", full)[1])) == COORD_SPEC["words"]
+    assert 'id="map-lat" data-lat value="35.681340"' in full and 'id="map-name" data-name maxlength="80" autocomplete="off" value="東京駅"' in full
+    assert full.count('type="radio" name="map-preset"') == 7 and '<input type="radio" name="map-preset" value="0"> 地点のみ</label>' in full       # 0: the point only
+    assert '<button class="ui-button" type="button" data-pin>📌 ピン留め</button>' in full and full.count("data-copy=") == 3 and "data-share>" in full
+    assert full.count('target="_blank" rel="noopener noreferrer"') == 3 and '<a class="ui-button" data-open="place" target="_blank" rel="noopener noreferrer" hidden>' in full
+    assert "<details><summary>All formats</summary><dl data-out></dl></details></section>" in full and len(re.findall(r'\bid="([^"]+)"', full)) == len(set(re.findall(r'\bid="([^"]+)"', full)))
+    for part, spec in (("data-place", {"places": COORD_SPEC["places"]}), ("data-pins-list", {"pins": "x/1"}), ("data-share-text", {"share": True})):
+        only = ui.coordinates_html(spec)
+        assert part in only and sum(word in only for word in ("data-place>", "data-pins-list", "data-share-text")) == 1, part
+    assert "data-name" not in ui.coordinates_html({"places": COORD_SPEC["places"]}) and "data-link" not in ui.coordinates_html({"words": {"title": "T"}})
+    assert ui.coordinates_validate(None)["point"] == {"lat": 35.681236, "lon": 139.767125, "label": ""} and "pins" not in ui.coordinates_validate({})
+    assert "bindCoordinates" in ui.coordinates_document(COORD_SPEC) and 'id="map-share"' in ui.coordinates_document(COORD_SPEC)
+    for bad in ([], {"extra": 1}, {"id": "Map"}, {"words": {"a": ""}}, {"words": {"a": "x" * 121}}, {"radius": 50}, {"radius": True}, {"share": 1}, {"pins": "My Pins"},
+                {"point": {"lat": 91, "lon": 0}}, {"point": {"lat": "35", "lon": 139}}, {"point": {"lat": 35, "lon": 139, "zoom": 1}}, {"places": {}},
+                {"places": [{"id": "a", "label": "", "lat": 0, "lon": 0}]}, {"places": [{"id": "a", "label": "A", "lat": 0, "lon": 181}]},
+                {"places": [{"id": "a", "label": "A", "lat": 0, "lon": 0, "href": "javascript:alert(1)"}]}, {"places": [{"id": "a", "label": "A", "lat": True, "lon": 0}]},
+                {"places": [{"id": "a", "label": "A", "lat": 0, "lon": 0}] * 2}, {"places": [{"id": f"p{i}", "label": "A", "lat": 0, "lon": 0} for i in range(201)]}):
+        with pytest.raises(ValueError):
+            ui.coordinates_validate(bad)
+
+
+def test_node26_the_coordinate_tools_pins_links_and_distances():
+    """📍 coordinates.js: the distance between two points equals Python's haversine, a pin is checked before it is kept, and the link to a
+    point carries it in the address (and another #fragment for a place of the same page)."""
+    node26()
+    points = [(35.681236, 139.767125, 35.658581, 139.745433), (0.0, 0.0, 0.0, 180.0), (89.9, 10.0, -89.9, -170.0), (51.5007, -0.1246, 48.8584, 2.2945), (35.0, 139.0, 35.0, 139.0)]
+
+    def haversine(a, b, c, d):
+        h = math.sin(math.radians(c - a) / 2) ** 2 + math.cos(math.radians(a)) * math.cos(math.radians(c)) * math.sin(math.radians(d - b) / 2) ** 2
+        return 2 * ui.EARTH_RADIUS_M * math.asin(math.sqrt(min(1.0, max(0.0, h))))
+    harness = r"""
+import assert from 'node:assert/strict';
+import {distanceMeters, checkedPin, pointLink} from './js/coordinates.js';
+const got = data.points.map(([a, b, c, d]) => distanceMeters({lat: a, lon: b}, {lat: c, lon: d}));
+got.forEach((meters, i) => assert.ok(Math.abs(meters - data.expected[i]) <= 1e-6 * Math.max(1, data.expected[i]), i + ': ' + meters + ' / ' + data.expected[i]));
+assert.deepEqual(checkedPin({lat: 35, lon: '139.5', label: 'x'.repeat(90), radius_m: 0, extra: 1}), {lat: 35, lon: 139.5, label: 'x'.repeat(80), radius_m: 0});
+for (const bad of [null, 1, {}, {lat: 91, lon: 0, label: '', radius_m: 1}, {lat: 0, lon: 0, label: 1, radius_m: 1}, {lat: 0, lon: 0, label: '', radius_m: -1},
+                   {lat: 0, lon: 0, label: '', radius_m: Infinity}, {lat: 0, lon: 0, label: '', radius_m: '5'}]) assert.throws(() => checkedPin(bad));
+const pin = {lat: 35.68134, lon: 139.7665, label: '東京駅 & 丸の内', radius_m: 350};
+assert.equal(pointLink(pin, 'https://x.test/tools/?old=1#maps'), 'https://x.test/tools/?lat=35.681340&lon=139.766500&name=%E6%9D%B1%E4%BA%AC%E9%A7%85+%26+%E4%B8%B8%E3%81%AE%E5%86%85&radius_m=350#maps');
+assert.equal(new URL(pointLink(pin, 'https://x.test/tools/#maps', 'cities-spot-station')).hash, '#cities-spot-station');
+assert.equal(new URL(pointLink(pin, 'https://x.test/a')).searchParams.get('name'), pin.label);
+console.log('ok');
+"""
+    data = {"points": points, "expected": [haversine(*row) for row in points]}
+    assert node_js(f"const data={json.dumps(data)};\n" + harness.replace("import assert", "\nimport assert", 1)).stdout.strip() == "ok"
 
 
 def test_the_chrome_sheet_is_plain_and_its_module_asks_the_network_for_nothing():

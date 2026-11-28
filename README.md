@@ -111,6 +111,24 @@ radius, date-line and pole cases), `zoom_for_radius`, `xyz_tile`, `maps_urls` an
 flutter_navigation_basic's coordinate tool. Its Dart tests and shared golden vectors (`tests/fixtures/coordinate_area_cases.json`) are the oracle; `coordinates.js` equals
 Python on 500+ random areas (every copyable text byte for byte), zooms, tiles and 800 Maps-URL variants. Short-link expansion needs a network and stays out.
 
+📍 `coordinates_html(spec)` makes the same tool a site's own map tool, each part only when asked for (`coordinates_validate`; `None` is the plain tool, byte for byte):
+
+```python
+spec = {"id": "map", "point": {"lat": 35.68134, "lon": 139.7665, "label": "東京駅"}, "radius": 100,
+        "places": [{"id": "tokyo-station", "label": "東京駅", "lat": 35.68134, "lon": 139.7665, "href": "#cities-spot-station"}],   # a list to pick from, and the places inside the radius
+        "pins": "site-map-pins/1",      # 📌 up to 100 points with their names and radii, kept in this browser under this key
+        "share": True,                  # open / copy the Maps addresses, the link to this point (?lat=&lon=&name=&radius_m=, read on load), a text to share
+        "words": {"title": "📍 地図URL・座標ピン留め", "pin": "📌 ピン留め", "radius": "半径: {n} m"}}   # any word of the markup or of coordinates.js; the rest stays English
+page = pysaiyanweboo.coordinates_document(spec)          # or component_parts("coordinates", spec) with add_part
+```
+
+A place's `href` that is a `#fragment` of this page keeps the point in its address, so the page it opens can read it back. `coordinates.js` also exports
+`distanceMeters`, `checkedPin` and `pointLink`.
+
+![📍 coordinates with a spec: a place fills the point, 📌 pins it, the pin is listed with its radius, another place follows](docs/evidence/component-coordinates.gif)
+
+🗓️ 2026-11-28 · `PSWB_GIFS=docs/evidence uv run --locked --group world-test python tests/integration/pages_browser.py CoordinatesBrowserTests` writes `component-coordinates.gif`.
+
 Photo studio (`examples/photo-studio.html`): frames and stamps on a photo, all in the page and in memory. Python is the reference: `photo_sniff` (PNG, JPEG, WebP, GIF, AVIF, HEIC
 from the magic bytes; JPEG progressive and EXIF Orientation 1-8 with the marker scan that skips an XMP block and fill bytes), `photo_header_size` (the width and height a PNG, GIF,
 JPEG or WebP header declares, read without decoding, so the 40-megapixel budget is checked before any engine decode), `photo_decide` (Flutter's order: a declared type that is not
@@ -808,7 +826,7 @@ its scripts or styles without `'unsafe-inline'` gets the two hashes added to tha
 
 | | |
 |---|---|
-| 🧰 `chrome` | `chrome_html({"id", "lang", "board", "home", "places", "tools", "settings", "screen"})`: the header and side of a page that is not a world. 📟 a board (title, a scrolling line, the clock `hh:mm:ss`, "in N min"), 🏠, ⭐ starred places of every page that shares the id, ⚙️ (⏯️ stops the board, 🌐 every word the chrome brings in 11 languages, 🎨 the colors), ☰ this page (itself 📍, its `h2`, the rows it gives), ⋯ (⬆️ ⬇️) and up to 8 emoji of the page's own (`href`, `links`, `body`, in the head or the side). A row is `{label, href}` or `{label, key}`: a key row is an action, the chrome sends `ui-chrome-action` (`detail.key`) and the page answers, so one 💾 can offer every format it saves; `settings` and `screen` are rows the page adds to ⚙️ (another layout, a mode) and ⋯ (a temporary shelf). ⭐ and 🌐 are kept in this browser; nothing is sent |
+| 🧰 `chrome` | `chrome_html({"id", "lang", "board", "home", "places", "tools", "settings", "screen"})`: the header and side of a page that is not a world. 📟 a board (title, a scrolling line, the clock `hh:mm:ss`, "in N min"), 🏠, ⭐ starred places of every page that shares the id, ⚙️ (⏯️ stops the board, 🌐 every word the chrome brings in 11 languages, 🎨 the colors), ☰ this page (itself 📍, its `h2`, the rows it gives), ⋯ (⬆️ ⬇️) and up to 8 emoji of the page's own (`href`, `links`, `body`, in the head or the side). A row is `{label, href}`, `{label, key}` or `{label, key, options}`: a key row is an action, the chrome sends `ui-chrome-action` (`detail.key`) and the page answers, so one 💾 can offer every format it saves; an `options` row is a pull-down beside 🌐 and 🎨 (`detail.value` too; the page sets `[data-chrome-choice=key]` to what is in effect, such as a notation); `settings` and `screen` are rows the page adds to ⚙️ (another layout, a mode) and ⋯ (a temporary shelf). ⭐ and 🌐 are kept in this browser; nothing is sent |
 | 🗂️ `tabs` | `tabs_html([(label, html), …], id="profile")`: 2..8 tabs with no script (radio inputs and labels). A panel's animations start each time it is shown, so a bar can grow on its own when its tab opens. The page spec's `tabs` block is the same markup; a page that links its own sheets adds `tabs_css()` |
 
 ```python
