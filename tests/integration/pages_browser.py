@@ -1930,10 +1930,11 @@ class ChromeBrowserTests(unittest.TestCase):
     def screen():
         """One page of three views, as a screen of #views is: 🏠 a short one, 🎞 one of sections, 🖼 a framed app. Its few lines of
         script show a view, name the tab after it and tell the chrome (``ui-chrome-view``). A world is on the page too: its sheet
-        (in a layer, as the portfolio's) hides its own ``.ui-world-spots``."""
+        (in a layer, as the portfolio's) hides its own ``.ui-world-spots``. 地点 is a heading of the page's own that happens to be a
+        catalogue word (places, in Chinese), and a closed dialog holds a heading nobody sees."""
         views = ('<section id="home" data-title="🧰 Tools"><h1>🧰 Tools</h1><p>short</p></section>'
                  '<section id="gif" data-title="🎞 GIF" hidden><template><h1>🎞 GIF</h1><h2>えらぶ</h2><p style="min-height:640px">えらぶ…</p>'
-                 '<h2 id="make">つくる</h2><p style="min-height:640px">つくる…</p></template></section>'
+                 '<h2 id="make">地点</h2><p style="min-height:640px">地点…</p><dialog><h2>とじた見出し</h2></dialog></template></section>'
                  '<section id="studio" data-title="🖼 Studio" hidden><template><iframe title="studio" srcdoc="&lt;main&gt;&lt;h2&gt;Inside&lt;/h2&gt;&lt;/main&gt;"></iframe></template></section>')
         script = ("<script>(()=>{const views=[...document.querySelectorAll('main>section')],inert=v=>v.querySelector(':scope>template');let current='';"
                   "const show=v=>{if(inert(v))v.replaceChildren(inert(v).content);for(const o of views)o.hidden=o!==v;document.title=v.dataset.title;current=v.id;"   # 💤 a view loads when first shown
@@ -1970,7 +1971,7 @@ class ChromeBrowserTests(unittest.TestCase):
                     cam.hold(600)
                     page.goto(origin + '/screen.html#gif')
                     page.wait_for_function("document.title === '🎞 GIF'")
-                    self.assertEqual(page.evaluate(rows), [['📍🎞 GIF', '#gif'], ['えらぶ', '#gif-part-1'], ['つくる', '#make']])   # its own sections
+                    self.assertEqual(page.evaluate(rows), [['📍🎞 GIF', '#gif'], ['えらぶ', '#gif-part-1'], ['地点', '#make']])   # its own sections: those it shows, as they read
                     page.click('.ui-chrome [data-menu="spots"] > summary')
                     row = page.locator('.ui-chrome .ui-world-spots li', has_text='えらぶ')
                     self.assertGreater(row.bounding_box()['height'], 0)                             # shown, beside the world's sheet
@@ -1979,7 +1980,8 @@ class ChromeBrowserTests(unittest.TestCase):
                     self.assertEqual(page.evaluate('JSON.parse(localStorage.getItem("ui-chrome:tools-chrome")).fav'),
                                      [{'href': '/screen.html#gif-part-1', 'label': '🎞 GIF › えらぶ'}])
                     cam.hold(600)
-                    page.locator('.ui-chrome .ui-world-spots a', has_text='つくる').click()          # a row leads to its section and closes ☰
+                    self.assertEqual(page.evaluate(rows)[2], ['地点', '#make'])                      # ☆ redrew the rows: still the heading's own word
+                    page.locator('.ui-chrome .ui-world-spots a', has_text='地点').click()            # a row leads to its section and closes ☰
                     page.wait_for_url('**/screen.html#make')
                     self.assertLess(page.evaluate("document.getElementById('make').getBoundingClientRect().top"), 240)
                     self.assertFalse(page.evaluate("document.querySelector('.ui-chrome [data-menu=\"spots\"]').open"))

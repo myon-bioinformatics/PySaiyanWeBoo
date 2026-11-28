@@ -17447,8 +17447,9 @@ export function bindChrome(root=document){return[...root.querySelectorAll('[data
  const place=(name,root)=>{for(const li of spots.querySelectorAll('[data-here]'))li.remove();
   const scope=!name||!root||root===document?document:root.ownerDocument===document?root:null;
   here=page(location.pathname)+(name?'#'+name:'');title=(document.title.trim()||here).slice(0,40);
-  const heads=scope?[...scope.querySelectorAll(scope===document?'main h2':'h2')].filter(h=>!el.contains(h)&&h.textContent.trim()):[],
-   rows=[row(name?'#'+name:'#',title,'📍'),...heads.map((h,i)=>{if(!h.id)h.id=(name||el.id)+'-part-'+(i+1);const li=row('#'+h.id,h.textContent.trim().slice(0,40));li.querySelector('a').dataset.head=h.id;return li})];
+  const heads=scope?[...scope.querySelectorAll(scope===document?'main h2':'h2')].filter(h=>!el.contains(h)&&h.textContent.trim()&&(scope===document||h.getClientRects().length)):[],   // a view's: those it shows
+   rows=[row(name?'#'+name:'#',title,'📍'),...heads.map((h,i)=>{if(!h.id)h.id=(name||el.id)+'-part-'+(i+1);const li=row('#'+h.id,h.textContent.trim().slice(0,40)),a=li.querySelector('a');
+    a.dataset.head=h.id;a.setAttribute('translate','no');return li})];   // a section reads as its heading does, not as a catalogue word it happens to spell
   for(const li of rows)li.dataset.here='';spots.prepend(...rows);rows[0].querySelector('a').setAttribute('aria-current','page')},
  // 🔖 #<view>-part-N from elsewhere (⭐, a link): the screen knows #<view>, so that opens first; the section is there once its view shows.
   part=name=>{if(pend&&name&&pend.startsWith(name+'-part-')){const at=document.getElementById(pend);if(at){history.replaceState(null,'','#'+pend);at.scrollIntoView()}pend='';return}
