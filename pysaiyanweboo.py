@@ -17426,7 +17426,8 @@ export function bindChrome(root=document){return[...root.querySelectorAll('[data
   const own=[...el.querySelectorAll('template[data-chrome-view]')].filter(t=>t.dataset.chromeView===name),
    auto=[...el.querySelectorAll('template[data-chrome-auto]')].filter(t=>view.querySelector(t.dataset.chromeAuto));
   for(const t of[...own,...auto]){for(const part of t.content.querySelectorAll('[data-chrome-slot]')){const panel=el.querySelector('[data-menu="'+part.dataset.chromeSlot+'"] .ui-world-panel');
-   if(panel)for(const n of part.children){const c=n.cloneNode(true);c.dataset.chromeHosted='';panel.append(c)}}hide(view,t.dataset.replaces)}
+   if(panel)for(const n of part.children){const c=n.cloneNode(true),k=c.querySelector('[data-chrome-action]')?.dataset.chromeAction;   // a key once: a declared row wins
+    if(k&&auto.includes(t)&&el.querySelector('[data-chrome-hosted] [data-chrome-action="'+k+'"]'))continue;c.dataset.chromeHosted='';panel.append(c)}}hide(view,t.dataset.replaces)}
   tint();say(el)},
   send=(n,detail)=>{const to=n.closest('[data-chrome-hosted]')&&view&&view!==document?view:el,win=(to.ownerDocument||to).defaultView||window;
    to.dispatchEvent(new win.CustomEvent('ui-chrome-action',{bubbles:true,detail}))};

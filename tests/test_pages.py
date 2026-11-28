@@ -6942,6 +6942,7 @@ def test_a_page_declares_its_rows_once_and_every_host_places_them():
     assert "document.addEventListener('ui-chrome-view',e=>host(e.detail?.name,e.detail?.root))" in module and "hide(document,el.dataset.replaces);host(null,document)" in module
     auto = '<template data-chrome-auto="[data-ui-labels-switch]"><div data-chrome-slot="more"><ul class="ui-world-rows"><li><a href="#" role="button" data-chrome-action="labels">'
     assert auto in ui.chrome_html({}) and auto in html                            # 💻 ⇄ 📱 needs no declaration: the view holds the switch
+    assert "if(k&&auto.includes(t)&&el.querySelector('[data-chrome-hosted] [data-chrome-action=\"'+k+'\"]'))continue" in module   # a declared 💻 wins
 
 
 def test_every_word_the_chrome_brings_is_in_eleven_languages():
