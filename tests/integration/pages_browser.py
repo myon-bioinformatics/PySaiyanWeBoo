@@ -1999,6 +1999,49 @@ class ChromeBrowserTests(unittest.TestCase):
             server.server_close()
 
 
+    def test_a_choice_in_settings_reaches_the_page_and_the_colors_follow_to_the_next(self):
+        """🧾 a choice row of ⚙️ (a page's notation) tells the page the value; 🎨 picked on one page is the colors of the next one, and
+        "this page's own" there is its own look again (pageTheme's contract: data-ui-theme-page)."""
+        notation = {'label': '🧾 Notation', 'key': 'mode', 'options': [{'label': 'Modern', 'value': 'modern'}, {'label': 'JSON', 'value': 'json'}]}
+        listen = ("<script>document.addEventListener('ui-chrome-action',e=>{document.body.dataset.heard=e.detail.key+'='+e.detail.value;"
+                  "document.body.dataset.uiThemePage=e.detail.value==='json'?'github-like':'modern';"
+                  "if(document.body.dataset.uiThemeChosen===undefined)document.body.dataset.uiTheme=document.body.dataset.uiThemePage})</script>")
+        def page(spec, script=''):
+            built = ui.render_document(trusted_html='<main class="ui-page"><h1>P</h1></main>' + script, title='P', css=ui.bundled_css())
+            return ui.add_part(built, ui.component_parts('chrome', spec), at='top', scope='.ui-chrome')
+        server, origin = serve_pages({'top.html': page({'settings': [notation]}, listen), 'tool.html': page({})})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page_ = browser.new_page()
+                    errors = []
+                    page_.on('pageerror', lambda error: errors.append(str(error)))
+                    page_.goto(origin + '/top.html')
+                    page_.wait_for_selector('.ui-chrome[data-js]')
+                    page_.click('.ui-chrome [data-menu="settings"] > summary')
+                    page_.select_option('.ui-chrome [data-chrome-choice="mode"]', 'json')
+                    self.assertEqual(page_.evaluate('[document.body.dataset.heard, document.body.dataset.uiTheme]'), ['mode=json', 'github-like'])
+                    page_.select_option('.ui-chrome [data-ui-theme-switch]', 'green')                  # 🎨 the visitor's colors win
+                    page_.select_option('.ui-chrome [data-chrome-choice="mode"]', 'modern')
+                    self.assertEqual(page_.evaluate('document.body.dataset.uiTheme'), 'green')
+                    page_.goto(origin + '/tool.html')                                                   # the next page of the site
+                    page_.wait_for_selector('.ui-chrome[data-js]')
+                    self.assertEqual(page_.evaluate('document.body.dataset.uiTheme'), 'green')
+                    page_.click('.ui-chrome [data-menu="settings"] > summary')
+                    self.assertEqual(page_.input_value('.ui-chrome [data-ui-theme-switch]'), 'green')
+                    page_.select_option('.ui-chrome [data-ui-theme-switch]', '')                       # 🎨 its own again, there and back
+                    page_.goto(origin + '/top.html')
+                    page_.wait_for_selector('.ui-chrome[data-js]')
+                    self.assertEqual(page_.evaluate('document.body.dataset.uiTheme'), 'modern')
+                    self.assertEqual(errors, [])
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
 class DoorBrowserTests(unittest.TestCase):
     """Door-to-Door in Chromium: the page's seeded draw, notation and pull-down equal Python's, and the pull-down really goes there."""
 

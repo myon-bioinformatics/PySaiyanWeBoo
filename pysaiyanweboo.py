@@ -8028,24 +8028,44 @@ def _chrome_menu(kind: str, glyph: str, attrs: str, panel: str, hidden: bool = F
             f'<div class="ui-world-panel">{panel}</div></details>')
 
 
-def _chrome_rows(rows: Any, name: str, limit: int = 16, least: int = 1) -> list[dict[str, str]]:
-    """The rows of a panel, each ``{label, href}`` (a link) or ``{label, key}`` (an action: pressing it sends ``ui-chrome-action`` with
-    ``detail.key`` from the chrome, and the page does the rest: save as this format, open that panel)."""
+def _chrome_rows(rows: Any, name: str, limit: int = 16, least: int = 1) -> list[dict[str, Any]]:
+    """The rows of a panel, each ``{label, href}`` (a link), ``{label, key}`` (an action: pressing it sends ``ui-chrome-action`` with
+    ``detail.key`` from the chrome, and the page does the rest: save as this format, open that panel) or ``{label, key, options}`` (a
+    choice, as 🌐 and 🎨 are: a pull-down of 2..16 ``{label, value}``; picking one sends ``detail.key`` and ``detail.value``, and the
+    page shows what is in effect by setting the pull-down's value: ``[data-chrome-choice=key]``)."""
     if (not isinstance(rows, list) or not least <= len(rows) <= limit
-            or any(not isinstance(r, dict) or set(r) not in ({"label", "href"}, {"label", "key"}) for r in rows)):
-        raise ValueError(f"{name} lists {least}..{limit} {{label, href}} or {{label, key}}")
+            or any(not isinstance(r, dict) or set(r) not in ({"label", "href"}, {"label", "key"}, {"label", "key", "options"}) for r in rows)):
+        raise ValueError(f"{name} lists {least}..{limit} {{label, href}}, {{label, key}} or {{label, key, options}}")
     built = []
     for r in rows:
         if "key" in r and (not isinstance(r["key"], str) or not _CHROME_TOKEN.fullmatch(r["key"])):
             raise ValueError(f"{name}: a key is a short lowercase token")
-        built.append({"label": _chrome_text(r["label"], "label", 40), **({"href": _chrome_href(r["href"])} if "href" in r else {"key": r["key"]})})
+        options = r.get("options")
+        if options is not None and (not isinstance(options, list) or not 2 <= len(options) <= 16 or any(
+                not isinstance(o, dict) or set(o) != {"label", "value"} or not isinstance(o["value"], str) or not _CHROME_TOKEN.fullmatch(o["value"]) for o in options)
+                or len({o["value"] for o in options}) != len(options)):
+            raise ValueError(f"{name}: options are 2..16 {{label, value}}, each value a different short lowercase token")
+        built.append({"label": _chrome_text(r["label"], "label", 40), **({"href": _chrome_href(r["href"])} if "href" in r else {"key": r["key"]}),
+                      **({"options": [{"label": _chrome_text(o["label"], "label", 40), "value": o["value"]} for o in options]} if options else {})})
     return built
 
 
-def _chrome_rows_html(rows: list[dict[str, str]]) -> str:
-    return ('<ul class="ui-world-rows">' + "".join(
+def _chrome_choice_html(r: dict[str, Any]) -> str:
+    """A choice row as 🌐 and 🎨 are drawn: its emoji, then the pull-down, which says the words (``"🧾 Notation"``: 🧾, aria-label Notation)."""
+    mark, _, words = r["label"].partition(" ")
+    if not words or any(c.isalnum() for c in mark):
+        mark, words = "", r["label"]
+    said = escape(words, quote=True)
+    return (f'<label class="ui-world-lang">{escape(mark)} <select data-chrome-choice="{r["key"]}" aria-label="{said}" title="{said}">'
+            + "".join(f'<option value="{o["value"]}">{escape(o["label"])}</option>' for o in r["options"]) + '</select></label>')
+
+
+def _chrome_rows_html(rows: list[dict[str, Any]]) -> str:
+    choices = "".join(_chrome_choice_html(r) for r in rows if "options" in r)         # with 🌐 and 🎨, before the rows
+    rows = [r for r in rows if "options" not in r]
+    return choices + (('<ul class="ui-world-rows">' + "".join(
         f'<li><a href="{escape(r["href"], quote=True)}">{escape(r["label"])}</a></li>' if "href" in r
-        else f'<li><a href="#" role="button" data-chrome-action="{r["key"]}">{escape(r["label"])}</a></li>' for r in rows) + '</ul>') if rows else ""
+        else f'<li><a href="#" role="button" data-chrome-action="{r["key"]}">{escape(r["label"])}</a></li>' for r in rows) + '</ul>') if rows else "")
 
 
 def _chrome_tools(tools_in: Any) -> dict[str, dict[str, Any]]:
@@ -17331,6 +17351,7 @@ export function bindChrome(root=document){return[...root.querySelectorAll('[data
    sayAround(to,mine)};
  bindTheme(el);   // 🎨 its controls are in ⚙️
  sel?.addEventListener('change',()=>{setLang(sel.value);save({lang})});
+ el.addEventListener('change',e=>{const c=e.target.closest('[data-chrome-choice]');if(c)el.dispatchEvent(new CustomEvent('ui-chrome-action',{bubbles:true,detail:{key:c.dataset.chromeChoice,value:c.value}}))});   // a choice of the page's own (a notation, a layout)
  const here=page(location.pathname),title=(document.title.trim()||here).slice(0,40),key=a=>a.origin===location.origin?page(a.pathname)+a.hash:a.href,
   row=(href,text,mark='')=>{const li=document.createElement('li'),a=document.createElement('a'),arrow=document.createElement('span'),b=document.createElement('button');a.href=href;arrow.className='ui-world-arrow';arrow.setAttribute('aria-hidden','true');arrow.textContent=mark;a.append(arrow,text);b.type='button';b.className='ui-world-star';b.dataset.t='star';li.append(a,b);return li},
   spots=el.querySelector('.ui-world-spots'),favs=el.querySelector('.ui-world-favs'),heads=[...document.querySelectorAll('main h2')].filter(h=>!el.contains(h)&&h.textContent.trim());
