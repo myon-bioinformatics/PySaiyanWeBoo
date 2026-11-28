@@ -68,7 +68,10 @@ update / delete. The choice is remembered in the browser.
 A studio's controls are `toolbar_html(groups)`: rows of groups (`[("create", [{act, face, word, words, candidates?, close?, href?}]), …]`,
 checked by `toolbar_validate`), each control an emoji face with its short word, and one candidate row that `bindToolbar(root, run)`
 (`ui.js`) opens under the pressed row: a candidate runs its own act (`▭` → `rect`), or the button's act with its face (a stamp:
-`run("emoji", "🌱")`), and `close` hides the row after the pick (📥 📤 and their formats). Every press calls `run`; the page decides.
+`run("emoji", "🌱")`), and `close` hides the row after the pick (📥 📤 and their formats). A candidate with `accept` (and
+`capture: "environment"` for a camera) gets the toolbar's own hidden file chooser: the pick opens it and the chosen File runs
+`run("image", file)`, so a page writes no `<input type="file">` of its own; `choose(act)` opens one from the page. Every press calls
+`run`; the page decides.
 From Node, run `node vendor/py_launch.cjs -- pysaiyanweboo.py --css-bundle`.
 
 🌍 The world (`web-ui-world/1`: [🌍 the travel world](https://myon-bioinformatics.github.io/tools/demos/world.html), 🏫 the school, 🗼 the parallel cities, 🎬 the camera page, the catalogue map) and 🤖🔁 the MCP / API stubs

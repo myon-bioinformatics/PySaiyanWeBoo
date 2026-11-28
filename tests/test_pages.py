@@ -8087,6 +8087,15 @@ def test_a_toolbar_is_rows_of_groups_with_one_candidate_row_and_words_for_every_
     assert '<a class="ui-button" href="../?a=1&amp;b=2" data-act="home" data-ui-word="Image Studio" aria-label="Image &lt;Studio&gt;"' in html
     assert html.count("<input type=file hidden>") == 1 and html.index("<input type=file hidden>") > html.index('data-act="home"')
     assert ui.COMPONENTS["toolbar"] == {"html": "toolbar_html", "css": ("toolbar.css",), "js": ("ui.js",), "spec": "toolbar_validate"}
+    # 📥 a candidate with accept gets the toolbar's own hidden chooser (one per act, at the end); its button runs nothing until a file
+    imports = [("file", [{"act": "import", "face": "📥", "word": "インポート", "words": "インポート", "close": True, "candidates": [
+        {"face": "画像", "act": "image", "words": "画像", "accept": "image/png,image/jpeg"},
+        {"face": "カメラ", "act": "camera", "words": "カメラ", "accept": "image/png", "capture": "environment"},
+        {"face": "JSON", "act": "open", "words": "JSON", "accept": ".json,application/json"}, {"face": "シェルフ", "act": "shelf"}]}])]
+    files = ui.toolbar_html(imports)
+    assert re.findall(r'<input type="file" hidden data-ui-file="([a-z]+)" accept="([^"]+)"( capture="environment")? aria-label="[^"]+" />', files) == [
+        ("image", "image/png,image/jpeg", ""), ("camera", "image/png", ' capture="environment"'), ("open", ".json,application/json", "")]
+    assert files.endswith(' />' + "</div>") and 'data-acts="image camera open shelf"' in files and ui.toolbar_validate(ui.toolbar_validate(imports))
     css = ui.css_source("toolbar.css")
     for rule in (".ui-toolbar-row{display:flex;flex-wrap:wrap", ".ui-toolbar-row[hidden]{display:none}", "min-width:48px;min-height:48px",
                  ".ui-toolbar-row>button:disabled{opacity:.32}"):
@@ -8100,6 +8109,9 @@ def test_a_toolbar_is_rows_of_groups_with_one_candidate_row_and_words_for_every_
         ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "href": "x", "candidates": [{"face": "c"}]}])], "link"),
         ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "candidates": [{"face": "c", "words": "x|y"}]}])], "'|'"),
         ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "colour": "red"}])], "a control is"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "candidates": [{"face": "c", "accept": "image/png"}]}])], "has an act"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "candidates": [{"face": "c", "act": "b", "accept": 'x" onload="'}]}])], "accept is"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "candidates": [{"face": "c", "act": "b", "capture": "environment"}]}])], "capture"),
     ]
     for groups, said in bad:
         with pytest.raises(ValueError, match=re.escape(said)):
@@ -8112,7 +8124,8 @@ def test_a_toolbar_is_rows_of_groups_with_one_candidate_row_and_words_for_every_
 def test_node26_bind_toolbar_runs_acts_opens_candidates_under_their_row_and_closes_after_a_pick():
     """🧰 bindToolbar on a stand-in DOM: every control runs its act; a button with candidates also opens them right under its own row
     and a second press closes them; a candidate runs its own act, or the button's act with its face (stamps); data-close hides the
-    row after the pick; a disabled control does nothing; a press keeps the focus (pointerdown is prevented)."""
+    row after the pick; a candidate with a chooser ([data-ui-file]) opens it and the chosen File runs the act; a disabled control does
+    nothing; a press keeps the focus (pointerdown is prevented)."""
     script = """
 import assert from "node:assert/strict";
 const key = (k) => k.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -8131,6 +8144,8 @@ class El {
   closest(sel) { for (let n = this; n; n = n.parent) if (n.matches(sel)) return n; return null; }
   contains(x) { for (let n = x; n; n = n.parent) if (n === this) return true; return false; }
   querySelector(sel) { for (const c of this.children) { if (c.matches(sel)) return c; const r = c.querySelector(sel); if (r) return r; } return null; }
+  querySelectorAll(sel) { return this.children.flatMap((c) => [...(c.matches(sel) ? [c] : []), ...c.querySelectorAll(sel)]); }
+  click() { this.clicks = (this.clicks || 0) + 1; }
 }
 const fire = (type, target) => { let prevented = false; const e = { type, target, preventDefault() { prevented = true; } };
   for (let n = target; n; n = n.parent) for (const f of n.listeners[type] || []) f(e); return prevented; };
@@ -8144,9 +8159,11 @@ const text = new El("button", { "data-act": "text" }),
   shape = new El("button", { "data-act": "shape", "data-candidates": "▭ ◯", "data-acts": "rect ellipse", "data-words": "四角|丸（まる）" }),
   emoji = new El("button", { "data-act": "emoji", "data-candidates": "🌱 ✨" }),
   exp = new El("button", { "data-act": "export", "data-candidates": "PPTX PNG", "data-acts": "pptx png", "data-words": "PPTX|PNG", "data-close": "" }),
-  off = new El("button", { "data-act": "off" });
+  imp = new El("button", { "data-act": "import", "data-candidates": "画像 JSON", "data-acts": "image open", "data-words": "画像|JSON", "data-close": "" }),
+  off = new El("button", { "data-act": "off" }),
+  chooser = new El("input", { "data-ui-file": "image" });
 off.disabled = true;
-create.append(text, shape, emoji); file.append(exp, off); root.append(create, cands, file);
+create.append(text, shape, emoji); file.append(exp, imp, off); root.append(create, cands, file, chooser);
 const ran = [];
 const bar = bindToolbar(root, (...a) => ran.push(a));
 assert.equal(fire("pointerdown", text), true);                                            // the focus stays where it was
@@ -8175,6 +8192,17 @@ assert.equal(cands.hidden, true);                                               
 assert.equal(cands.children.length, 0);
 bar.offer(shape); bar.close();
 assert.equal(cands.hidden, true);
+const before = ran.length;
+fire("click", imp); fire("click", cands.children[0]);                                     // 📥 画像: its chooser opens, nothing runs yet
+assert.deepEqual([chooser.clicks, ran.length, cands.hidden], [1, before + 1, true]);      // (+1: the press of 📥 itself)
+chooser.files = [{ name: "photo.png" }]; chooser.value = "C:/fakepath/photo.png";
+fire("change", chooser);
+assert.deepEqual(ran.at(-1), ["image", { name: "photo.png" }]);                          // the chosen File runs the act
+assert.equal(chooser.value, "");                                                         // the same file can be chosen again
+fire("click", imp); fire("click", cands.children[1]);
+assert.deepEqual(ran.at(-1), ["open"]);                                                   // no chooser for it: runs as before
+bar.choose("image");
+assert.equal(chooser.clicks, 2);                                                          // a host's key opens it from the page
 """
     node_js(script)
 

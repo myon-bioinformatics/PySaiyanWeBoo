@@ -30,8 +30,8 @@ export function bindToggles(root=document){return[...root.querySelectorAll("[dat
 export function bindTheme(root=document,{key="web-ui-theme"}={}){const body=document.body,controls=[...root.querySelectorAll("[data-ui-theme-switch],input[name=ui-theme]")];const known=name=>controls.some(c=>c.tagName==="SELECT"?[...c.options].some(o=>o.value===name):c.value===name);if(body.dataset.uiThemePage===undefined)body.dataset.uiThemePage=body.dataset.uiTheme||"";const sync=()=>{const chosen=body.dataset.uiThemeChosen;for(const c of controls){if(c.tagName==="SELECT")c.value=chosen===undefined&&[...c.options].some(o=>o.value==="")?"":body.dataset.uiTheme;else c.checked=c.value===body.dataset.uiTheme}};const choose=name=>{if(name){body.dataset.uiThemeChosen=name;body.dataset.uiTheme=name}else{delete body.dataset.uiThemeChosen;body.dataset.uiTheme=body.dataset.uiThemePage}};let saved=null;try{saved=localStorage.getItem(key)}catch{}if(saved&&known(saved))choose(saved);sync();for(const c of controls)c.addEventListener("change",()=>{if(!known(c.value))return;choose(c.value);sync();try{if(c.value)localStorage.setItem(key,c.value);else localStorage.removeItem(key)}catch{}});return body.dataset.uiTheme}
 /** Switch data-ui-labels on <body> with no reload: "emoji" (the default: icon faces) or "words" (as on a PC: every [data-ui-word] shows its short word instead of its face; CSS in components.css). Buttons with data-ui-labels-switch flip it (aria-pressed is true while words show), and so does a header row whose key is "labels" (the ui-chrome-action event). A flip is remembered (localStorage, best effort). Returns the labels in effect. */
 export function bindLabels(root=document,{key="web-ui-labels"}={}){const body=document.body,buttons=[...root.querySelectorAll("[data-ui-labels-switch]")];const show=v=>{body.dataset.uiLabels=v==="words"?"words":"emoji";for(const b of buttons)b.setAttribute("aria-pressed",String(body.dataset.uiLabels==="words"));return body.dataset.uiLabels};let saved=null;try{saved=localStorage.getItem(key)}catch{}show(saved||body.dataset.uiLabels);const flip=()=>{const v=show(body.dataset.uiLabels==="words"?"emoji":"words");try{localStorage.setItem(key,v)}catch{}};for(const b of buttons)b.addEventListener("click",flip);document.addEventListener("ui-chrome-action",e=>{if(e.detail&&e.detail.key==="labels")flip()});return body.dataset.uiLabels}
-/** A toolbar from toolbar_html(): a click on a [data-act] control calls run(act), a button with candidates too (a mode such as 🔷 on a canvas becomes the tool as its row opens; a page with nothing to do for it ignores the name). A button with data-candidates opens its candidates in the toolbar's one candidate row ([data-ui-candidates]), right under its own row; pressing it again closes them. A candidate calls run(its data-acts entry) or, when it names no action, run(the button's act, the candidate's face), and data-close hides the row after the pick. Each candidate's words (data-words, "|"-separated) are its title, aria-label and, up to "（", its data-ui-word. Pressing a control keeps the focus where it was, so a text being typed stays open. Returns {offer(button), close()}. */
-export function bindToolbar(root,run){const row=root.querySelector("[data-ui-candidates]");const close=()=>{if(!row)return;row.hidden=true;row.dataset.tool="";row.replaceChildren()};const offer=b=>{if(!row)return;if(row.dataset.tool===b.dataset.act&&!row.hidden)return close();const faces=b.dataset.candidates.split(" "),acts=(b.dataset.acts||"").split(" "),words=(b.dataset.words||"").split("|");row.dataset.tool=b.dataset.act;b.closest(".ui-toolbar-row").after(row);row.hidden=false;row.replaceChildren(...faces.map((face,i)=>{const c=document.createElement("button");c.type="button";c.textContent=face;const said=words[i]||face;c.title=said;c.setAttribute("aria-label",said);if(words[i])c.dataset.uiWord=said.split("（")[0];c.addEventListener("click",()=>{if(acts[i])run(acts[i]);else run(b.dataset.act,face);if("close"in b.dataset)close()});return c}))};root.addEventListener("pointerdown",e=>{if(e.target.closest("button,a"))e.preventDefault()});root.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b||!root.contains(b)||b.disabled)return;if(b.dataset.candidates)offer(b);run(b.dataset.act)});return{offer,close}}
+/** A toolbar from toolbar_html(): a click on a [data-act] control calls run(act), a button with candidates too (a mode such as 🔷 on a canvas becomes the tool as its row opens; a page with nothing to do for it ignores the name). A button with data-candidates opens its candidates in the toolbar's one candidate row ([data-ui-candidates]), right under its own row; pressing it again closes them. A candidate calls run(its data-acts entry) or, when it names no action, run(the button's act, the candidate's face), and data-close hides the row after the pick. Each candidate's words (data-words, "|"-separated) are its title, aria-label and, up to "（", its data-ui-word. Pressing a control keeps the focus where it was, so a text being typed stays open. A candidate whose act has a chooser ([data-ui-file], from a candidate with accept) opens it instead, and the chosen File runs run(act, file). Returns {offer(button), close(), choose(act)}: choose opens an act's chooser from the page (a host's key). */
+export function bindToolbar(root,run){const row=root.querySelector("[data-ui-candidates]"),files={};for(const f of root.querySelectorAll("[data-ui-file]")){files[f.dataset.uiFile]=f;f.addEventListener("change",()=>{const x=f.files&&f.files[0];f.value="";if(x)run(f.dataset.uiFile,x)})}const close=()=>{if(!row)return;row.hidden=true;row.dataset.tool="";row.replaceChildren()};const offer=b=>{if(!row)return;if(row.dataset.tool===b.dataset.act&&!row.hidden)return close();const faces=b.dataset.candidates.split(" "),acts=(b.dataset.acts||"").split(" "),words=(b.dataset.words||"").split("|");row.dataset.tool=b.dataset.act;b.closest(".ui-toolbar-row").after(row);row.hidden=false;row.replaceChildren(...faces.map((face,i)=>{const c=document.createElement("button");c.type="button";c.textContent=face;const said=words[i]||face;c.title=said;c.setAttribute("aria-label",said);if(words[i])c.dataset.uiWord=said.split("（")[0];c.addEventListener("click",()=>{if(files[acts[i]])files[acts[i]].click();else if(acts[i])run(acts[i]);else run(b.dataset.act,face);if("close"in b.dataset)close()});return c}))};root.addEventListener("pointerdown",e=>{if(e.target.closest("button,a"))e.preventDefault()});root.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b||!root.contains(b)||b.disabled)return;if(b.dataset.candidates)offer(b);run(b.dataset.act)});return{offer,close,choose:a=>files[a]&&files[a].click()}}
 /** Tell bindTheme which theme is the page's own (a page whose own look changes, such as display modes): it shows unless the visitor chose one. Returns the theme in effect. */
 export function pageTheme(name){const body=document.body;body.dataset.uiThemePage=name;if(body.dataset.uiThemeChosen===undefined)body.dataset.uiTheme=name;return body.dataset.uiTheme}
 /** Mark on-screen elements with data-lit (IntersectionObserver); CSS decides what lit looks like. Without IntersectionObserver every element counts as lit. Returns a stop function. */
@@ -5820,10 +5820,11 @@ def toolbar_validate(groups: Any) -> list[tuple[str, list[dict[str, Any]]]]:
 
     ``act`` (``[a-z][a-z0-9-]*``, unique in the toolbar: what ``bindToolbar``'s ``run`` is called with), ``face`` (what the button
     shows, an emoji by default), ``word`` (its short word for 💻 To textual, ``data-ui-word``), ``words`` (title and aria-label),
-    and optionally ``href`` (a link instead of a button), ``candidates`` (``[{face, act?, words?}]``: one row of choices that opens
-    under the button; a candidate with an ``act`` runs it, one without runs the button's act with the candidate's face) and ``close``
-    (true: a pick hides the row again, as for 📥 📤). Returns ``[(group, [control with every key filled])]``; a ``ValueError`` names
-    the first thing wrong."""
+    and optionally ``href`` (a link instead of a button), ``candidates`` (``[{face, act?, words?, accept?, capture?}]``: one row of
+    choices that opens under the button; a candidate with an ``act`` runs it, one without runs the button's act with the candidate's
+    face, and one with ``accept`` (file types, as ``<input type="file" accept>``; ``capture``: "user" or "environment", a camera)
+    opens a file chooser instead and runs its act with the chosen File) and ``close`` (true: a pick hides the row again, as for
+    📥 📤). Returns ``[(group, [control with every key filled])]``; a ``ValueError`` names the first thing wrong."""
     if not isinstance(groups, (list, tuple)) or not groups:
         raise ValueError("a toolbar is a non-empty list of (group, controls)")
     seen, out = set(), []
@@ -5849,15 +5850,20 @@ def toolbar_validate(groups: Any) -> list[tuple[str, list[dict[str, Any]]]]:
                 raise ValueError(f"{act}: candidates is a list")
             norm = []
             for k in cands:
-                if not isinstance(k, dict) or set(k) - {"face", "act", "words"} or not isinstance(k.get("face"), str) or not k["face"]:
-                    raise ValueError(f"{act}: a candidate is {{face, act?, words?}}: {k!r}")
+                if not isinstance(k, dict) or set(k) - {"face", "act", "words", "accept", "capture"} or not isinstance(k.get("face"), str) or not k["face"]:
+                    raise ValueError(f"{act}: a candidate is {{face, act?, words?, accept?, capture?}}: {k!r}")
                 if any(ch.isspace() for ch in k["face"]):
                     raise ValueError(f"{act}: a candidate's face has no spaces: {k['face']!r}")
                 if k.get("act") and not (isinstance(k["act"], str) and _TOOL_ACT.fullmatch(k["act"])):   # "" is none, as returned
                     raise ValueError(f"{act}: a candidate's act must be [a-z][a-z0-9-]*: {k.get('act')!r}")
                 if "|" in k.get("words", ""):
                     raise ValueError(f"{act}: a candidate's words have no '|'")
-                norm.append({"face": k["face"], "act": k.get("act", ""), "words": k.get("words", "")})
+                accept, capture = k.get("accept", ""), k.get("capture", "")
+                if accept and not (isinstance(accept, str) and k.get("act") and re.fullmatch(r"[\w.+/*-]+(,[\w.+/*-]+)*", accept)):
+                    raise ValueError(f"{act}: a file candidate has an act and accept is types joined by ',': {k!r}")
+                if capture not in ("", "user", "environment") or (capture and not accept):
+                    raise ValueError(f"{act}: capture is user or environment, on a file candidate: {k!r}")
+                norm.append({"face": k["face"], "act": k.get("act", ""), "words": k.get("words", ""), "accept": accept, "capture": capture})
             if c.get("close") and not norm:
                 raise ValueError(f"{act}: close needs candidates")
             if c.get("href") is not None and (norm or not isinstance(c["href"], str)):
@@ -5872,8 +5878,9 @@ def toolbar_html(groups: Any, *, label: str = "道具", id: str | None = None, c
                  inside: dict[str, str] | None = None, after: dict[str, str] | None = None, row_class: str = "") -> str:
     """🧰 A studio toolbar: one row per group (``data-ui-group``, a light line between groups), emoji faces with their short words
     (💻 To textual ⇄ 📱 To iconic, ``bindLabels``), and one hidden candidate row (``candidates_id``) that ``bindToolbar(root, run)``
-    opens under the row of the pressed button. ``inside`` adds markup at the end of a group's row (a switch, hidden file inputs),
-    ``after`` right after it (a list of the page's items). ``groups`` is checked by ``toolbar_validate``."""
+    opens under the row of the pressed button. A candidate with ``accept`` gets a hidden ``<input type="file" data-ui-file="act">``
+    at the end (📥: the page writes no chooser of its own). ``inside`` adds markup at the end of a group's row (a switch), ``after``
+    right after it (a list of the page's items). ``groups`` is checked by ``toolbar_validate``."""
     rows_in = toolbar_validate(groups)
     inside, after = inside or {}, after or {}
     unknown = (set(inside) | set(after)) - {g for g, _ in rows_in}
@@ -5904,6 +5911,10 @@ def toolbar_html(groups: Any, *, label: str = "道具", id: str | None = None, c
         if i == 0:
             parts.append(f'<div class="ui-toolbar-row" data-ui-candidates{cid} role="group" aria-label="候補" hidden></div>')
         parts.append(after.get(group, ""))
+    choosers = {k["act"]: k for _g, row in rows_in for c in row for k in c["candidates"] if k["accept"]}   # 📥 one per act
+    parts += [f'<input type="file" hidden data-ui-file="{a}" accept="{escape(k["accept"], quote=True)}"'
+              + (f' capture="{k["capture"]}"' if k["capture"] else "") + f' aria-label="{escape(k["words"] or k["face"], quote=True)}" />'
+              for a, k in choosers.items()]
     ident = f' id="{escape(id, quote=True)}"' if id else ""
     return f'<div class="ui-toolbar"{ident} role="toolbar" aria-label="{escape(label, quote=True)}">' + "".join(parts) + "</div>"
 
