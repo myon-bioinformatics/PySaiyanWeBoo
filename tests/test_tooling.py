@@ -1959,8 +1959,10 @@ def test_locked_baseline_runs_automatically_without_candidate_snapshot():
     assert "continue-on-error" not in job
     assert job.get("needs") == ci["jobs"]["resolve-vendor"].get("needs")
     assert job.get("if") == ci["jobs"]["resolve-vendor"].get("if")
-    matrix = job.get("strategy", {}).get("matrix", {})
-    assert matrix == {"node-version": ["26", "latest"]}
+    assert "strategy" not in job
+    setup_node = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/setup-node@"))
+    assert setup_node["with"]["node-version"] == "26"
+    assert ci["jobs"]["tooling"]["strategy"]["matrix"]["node-version"] == ["26", "latest"]
     steps = job["steps"]
     assert not any("vendor_sync.py promote" in s.get("run", "") for s in steps)
     assert not any("vendor_sync.py update" in s.get("run", "") for s in steps)

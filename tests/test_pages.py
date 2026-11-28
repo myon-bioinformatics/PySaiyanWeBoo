@@ -4553,7 +4553,7 @@ console.log(JSON.stringify(out));
                 guard = re.search(r':where\(\[data-page~="([a-z]+)"\]\)', part)
                 self.assertTrue(guard, f"waits for its page: {part.strip()}")
                 pages.add(guard[1])
-        self.assertEqual(pages, {"studio", "tools", "phone"})   # 🖥️ the PC slide studio is retired (Ironmate's one slide editor is "phone")
+        self.assertEqual(pages, {"studio", "tools", "slides"})   # 📽️ Ironmate's one slide editor (phone-first, the same page on a PC)
         picture = {"#e1e8e3", "#e4e9e2", "#f7f9f4", "#fff", "rgba(0,0,0,.16)"}
         self.assertEqual(set(re.findall(r"#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)", flat)), picture)
         for rule in re.findall(r"[^{}]*\{[^{}]*(?:#[0-9a-fA-F]{3,8}\b|rgba?\()[^{}]*\}", flat):
@@ -6886,13 +6886,14 @@ def test_the_chrome_takes_actions_and_rows_for_settings_and_this_screen():
     assert checked["tools"]["💾"]["links"] == [{"label": "🖼 PNG <1x>", "key": "png"}, {"label": "📦 JSON", "key": "json"}, {"label": "Docs", "href": "./docs/"}]
     assert (checked["settings"], checked["screen"]) == ([{"label": "📱 スマホ版", "href": "./phone/"}], [{"label": "📋 シェルフ", "key": "shelf"}])
     html = ui.chrome_html(spec)
-    assert re.findall(r'<a href="#" role="button" data-chrome-action="([a-z]+)">([^<]*)</a>', html) == [("png", "🖼 PNG &lt;1x&gt;"), ("json", "📦 JSON"), ("shelf", "📋 シェルフ")]
+    shown = re.sub(r"<template\b.*?</template>", "", html, flags=re.S)        # 💻 ⇄ 📱 waits in a template for a view that has the switch
+    assert re.findall(r'<a href="#" role="button" data-chrome-action="([a-z]+)">([^<]*)</a>', shown) == [("png", "🖼 PNG &lt;1x&gt;"), ("json", "📦 JSON"), ("shelf", "📋 シェルフ")]
     settings = html[html.index("⚙️"):html.index("☰")]                     # the page's rows follow the chrome's own in ⚙️, and ⬆️ ⬇️ in ⋯
     assert settings.index("data-lang") < settings.index('<a href="./phone/">📱 スマホ版</a>')
     more = html[html.index("⋯"):]
     assert more.index('data-scroll="bottom"') < more.index('data-chrome-action="shelf"')
     plain = ui.chrome_validate({})
-    assert (plain["settings"], plain["screen"]) == ([], []) and "data-chrome-action" not in ui.chrome_html({})
+    assert (plain["settings"], plain["screen"]) == ([], []) and "data-chrome-action" not in re.sub(r"<template\b.*?</template>", "", ui.chrome_html({}), flags=re.S)
     module = ui.js_source("chrome.js")                                     # the page hears the key; the chrome does nothing else with it
     assert "send(act,{key:act.dataset.chromeAction})" in module and "new win.CustomEvent('ui-chrome-action',{bubbles:true,detail})" in module
 
@@ -6938,7 +6939,10 @@ def test_a_page_declares_its_rows_once_and_every_host_places_them():
     with pytest.raises(ValueError, match="ui-chrome-rows has"):
         ui.chrome_rows_script({"rows": []})
     module = ui.js_source("chrome.js")
-    assert "document.addEventListener('ui-chrome-view',e=>host(e.detail?.name,e.detail?.root))" in module and "hide(document,el.dataset.replaces)" in module
+    assert "document.addEventListener('ui-chrome-view',e=>host(e.detail?.name,e.detail?.root))" in module and "hide(document,el.dataset.replaces);host(null,document)" in module
+    auto = '<template data-chrome-auto="[data-ui-labels-switch]"><div data-chrome-slot="more"><ul class="ui-world-rows"><li><a href="#" role="button" data-chrome-action="labels">'
+    assert auto in ui.chrome_html({}) and auto in html                            # 💻 ⇄ 📱 needs no declaration: the view holds the switch
+    assert "if(k&&auto.includes(t)&&el.querySelector('[data-chrome-hosted] [data-chrome-action=\"'+k+'\"]'))continue" in module   # a declared 💻 wins
 
 
 def test_every_word_the_chrome_brings_is_in_eleven_languages():
