@@ -5626,7 +5626,7 @@ def dial_html(name: str, *, minimum: float = 0, maximum: float = 100, step: floa
     return (f'<span class="ui-dial" data-ui-dial><input type="range" name="{name}" min="{minimum:g}" max="{maximum:g}" step="{step:g}" value="{value:g}"{aria}></span>')
 
 
-# --- 🖼️ A fixed display area and 🧭 page controls in variants: the slide-on-a-phone parts Ironmate's phone page drew by hand ----------------
+# --- 🖼️ A fixed display area and 🧭 page controls in variants: the slide-on-a-phone parts Ironmate's slide editor drew by hand ----------------
 STAGE_CSS = (
     # A stage keeps its ratio (--ui-stage-w / --ui-stage-h, which stage_html sets) and is never taller than --ui-stage-room, so the controls under
     # it stay in reach; data-ui-stage=pinned keeps it at the top while what is under it scrolls. svg, img, canvas and video children (or any child
@@ -16418,7 +16418,7 @@ def svg_rasterize(data: Any, width: int | None = None, *, max_bytes: int = 1024 
         out += bytes((round(r / a * 255), round(g / a * 255), round(b / a * 255), alpha)) if alpha else bytes(4)
     return out_w, out_h, bytes(out)
 
-# 📽️ Several scenes of the image studio as one deck (Ironmate's slide studio and 📱 phone slides, first written there): 1 to 20
+# 📽️ Several scenes of the image studio as one deck (Ironmate's one slide editor, first written there): 1 to 20
 # scenes of one size and a title, kept as JSON, pages added, copied, deleted and moved. The refusals are the page's text
 # (Japanese), as ``StudioError``. ``js/slide-deck.js`` (``slideDeck(core, shell)``) is the same functions for a page. 🏭 This is the
 # ability to build a studio: its writer (``slide_deck_pptx``, ``zip_stored``) is the one place this file assembles Office XML, into
@@ -16632,9 +16632,9 @@ def slide_deck_pptx(deck: Any, shell: dict[str, str], image_for_layer: Any = Non
                                  f"<Slides>{len(deck['slides'])}</Slides><Notes>0</Notes><HiddenSlides>0</HiddenSlides></Properties>")
     return {"data": zip_stored(files), "native": native, "images": images, "slides": len(deck["slides"])}
 
-# 🏭 The pages of Ironmate's studio as Ironmate draws them (image studio, browser tools, slide studio, 📱 phone slides), by
-# ``<body data-page="studio">`` / ``"tools"`` / ``"studio slides"`` / ``"phone"``: header and brand, the three-column workspace, the
-# board and its handles, the shelf cards, the inspector, the tool sections, the slide controls and the pinned phone slide. Every
+# 🏭 The pages of Ironmate's studio as Ironmate draws them (image studio, browser tools, the one slide editor), by
+# ``<body data-page="studio">`` / ``"tools"`` / ``"slides"``: the three-column workspace, the
+# board and its handles, the shelf cards, the inspector, the tool sections, the slide controls and the pinned slide. Every
 # selector waits for its ``data-page`` (zero specificity, so the cascade is the page's), so the sheet does nothing anywhere else.
 # The colours are the theme's tokens only, so the pages read under every palette, light or dark; the one literal colours left are
 # the picture's (the board's, thumbnails' and pixel preview's transparency checker, the white slide and its shadow). Unlayered,
@@ -16761,23 +16761,23 @@ body:where([data-page~="tools"]){font-size:15px;line-height:1.65;margin:0}
 /* 💻 ⇄ 📱 an emoji face (a control with data-ui-word) is read at 20 px, not at the studio's small text size; a toolbar's are its own (toolbar.css) */
 :where([data-page~="studio"]) button[data-ui-word]:where(:not(.ui-toolbar-row>*)),:where([data-page~="studio"]) summary[data-ui-word],:where([data-page~="studio"]) label[data-ui-word]{font-size:20px;line-height:1}
 
-/* 📱 phone slides: the slide is pinned on top (PySaiyanWeBoo's .ui-stage) and the emoji controls scroll under it (landscape: beside it) */
-body:where([data-page~="phone"]){margin:0;background:var(--ui-bg)}
-:where([data-page~="phone"]) input[type=file]{display:none}
-:where([data-page~="phone"]) .button{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;cursor:pointer;text-decoration:none;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);border-radius:var(--ui-radius)}
-:where([data-page~="phone"]) .phone{display:flex;flex-direction:column;height:100dvh;max-width:960px;margin:0 auto}
-:where([data-page~="phone"]) .ui-stage{background:#fff;border:0;box-shadow:0 8px 24px rgba(0,0,0,.16);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-:where([data-page~="phone"]) .phone-svg svg{position:absolute;inset:0;width:100%;height:100%;display:block}
-:where([data-page~="phone"]) .phone-pick{position:absolute;box-sizing:border-box;border:2px dashed var(--ui-accent);pointer-events:none}
-:where([data-page~="phone"]) .phone-pick[hidden],:where([data-page~="phone"]) .phone-edit[hidden]{display:none}
-:where([data-page~="phone"]) .phone-grip{position:absolute;right:-16px;bottom:-16px;width:32px;height:32px;display:grid;place-items:center;border-radius:50%;background:var(--ui-accent);color:var(--ui-bg);font-size:16px;pointer-events:auto;touch-action:none}
-:where([data-page~="phone"]) .phone-edit{flex:1 1 100%;box-sizing:border-box;margin:0;min-height:88px;padding:8px;font-size:16px;line-height:1.5;border:2px solid var(--ui-accent);resize:vertical}
-:where([data-page~="phone"]) .phone-deck{flex:1;min-height:0;overflow:auto;display:flex;flex-wrap:wrap;align-items:flex-start;align-content:flex-start;gap:16px;padding:16px}
-:where([data-page~="phone"]) .phone-tools{flex:1 1 328px;min-width:0}
-:where([data-page~="phone"]) .phone-status{flex:1 1 128px;margin:0;align-self:center;min-height:24px;font-size:16px;overflow-wrap:anywhere}
-:where([data-page~="phone"]) .phone-status[data-error=true]{color:var(--ui-danger)}
-@media(orientation:landscape) and (max-height:560px),(min-width:960px){:where([data-page~="phone"]) .phone{flex-direction:row;max-width:none}:where([data-page~="phone"]) .ui-stage{max-width:72vw;--ui-stage-room:100dvh}:where([data-page~="phone"]) .phone-deck{flex-direction:column;flex-wrap:nowrap}:where([data-page~="phone"]) .phone-tools,:where([data-page~="phone"]) .phone-status{flex:none}}
-@media(min-width:960px){:where([data-page~="phone"]) .ui-stage{max-width:calc(100vw - 376px)}}
+/* 📽️ the one slide editor (phone-first, the same page on a PC): the slide is pinned on top (PySaiyanWeBoo's .ui-stage) and the emoji controls scroll under it (landscape: beside it) */
+body:where([data-page~="slides"]){margin:0;background:var(--ui-bg)}
+:where([data-page~="slides"]) input[type=file]{display:none}
+:where([data-page~="slides"]) .button{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;cursor:pointer;text-decoration:none;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);border-radius:var(--ui-radius)}
+:where([data-page~="slides"]) .slides{display:flex;flex-direction:column;height:100dvh;max-width:960px;margin:0 auto}
+:where([data-page~="slides"]) .ui-stage{background:#fff;border:0;box-shadow:0 8px 24px rgba(0,0,0,.16);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+:where([data-page~="slides"]) .slides-svg svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+:where([data-page~="slides"]) .slides-pick{position:absolute;box-sizing:border-box;border:2px dashed var(--ui-accent);pointer-events:none}
+:where([data-page~="slides"]) .slides-pick[hidden],:where([data-page~="slides"]) .slides-edit[hidden]{display:none}
+:where([data-page~="slides"]) .slides-grip{position:absolute;right:-16px;bottom:-16px;width:32px;height:32px;display:grid;place-items:center;border-radius:50%;background:var(--ui-accent);color:var(--ui-bg);font-size:16px;pointer-events:auto;touch-action:none}
+:where([data-page~="slides"]) .slides-edit{flex:1 1 100%;box-sizing:border-box;margin:0;min-height:88px;padding:8px;font-size:16px;line-height:1.5;border:2px solid var(--ui-accent);resize:vertical}
+:where([data-page~="slides"]) .slides-deck{flex:1;min-height:0;overflow:auto;display:flex;flex-wrap:wrap;align-items:flex-start;align-content:flex-start;gap:16px;padding:16px}
+:where([data-page~="slides"]) .slides-tools{flex:1 1 328px;min-width:0}
+:where([data-page~="slides"]) .slides-status{flex:1 1 128px;margin:0;align-self:center;min-height:24px;font-size:16px;overflow-wrap:anywhere}
+:where([data-page~="slides"]) .slides-status[data-error=true]{color:var(--ui-danger)}
+@media(orientation:landscape) and (max-height:560px),(min-width:960px){:where([data-page~="slides"]) .slides{flex-direction:row;max-width:none}:where([data-page~="slides"]) .ui-stage{max-width:72vw;--ui-stage-room:100dvh}:where([data-page~="slides"]) .slides-deck{flex-direction:column;flex-wrap:nowrap}:where([data-page~="slides"]) .slides-tools,:where([data-page~="slides"]) .slides-status{flex:none}}
+@media(min-width:960px){:where([data-page~="slides"]) .ui-stage{max-width:calc(100vw - 376px)}}
 """
 
 def imagestudio_html() -> str:
@@ -20214,7 +20214,7 @@ _JS["pixel-editor.js"] = r"""export function bindPixelEditor({ root, catalog, gr
 """
 
 
-# 📽️ The slide deck for a page (Ironmate's slide studio and 📱 phone slides): the functions of slide_deck_*, the same values.
+# 📽️ The slide deck for a page (Ironmate's one slide editor): the functions of slide_deck_*, the same values.
 _JS["slide-deck.js"] = '/* web-ui slide-deck: several scenes of the image studio as one deck (checked, kept as JSON, pages added, copied, deleted and moved) and written as a PPTX in the page: text, rectangles, ellipses, triangles and arrows stay editable, anything else is a picture. slideDeck(core, shell): core is js/imagestudio.js (or the same functions), shell the empty package the slides go into (part name to text). pysaiyanweboo.py (slide_deck_*) is the reference; this must agree. */\n' + r"""export function slideDeck(C, shell) {
   const SCHEMA = "ironmate-slide-deck/1",
     LIMIT = 32 * 1024 * 1024;

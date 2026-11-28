@@ -4553,7 +4553,7 @@ console.log(JSON.stringify(out));
                 guard = re.search(r':where\(\[data-page~="([a-z]+)"\]\)', part)
                 self.assertTrue(guard, f"waits for its page: {part.strip()}")
                 pages.add(guard[1])
-        self.assertEqual(pages, {"studio", "tools", "phone"})   # 🖥️ the PC slide studio is retired (Ironmate's one slide editor is "phone")
+        self.assertEqual(pages, {"studio", "tools", "slides"})   # 📽️ Ironmate's one slide editor (phone-first, the same page on a PC)
         picture = {"#e1e8e3", "#e4e9e2", "#f7f9f4", "#fff", "rgba(0,0,0,.16)"}
         self.assertEqual(set(re.findall(r"#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)", flat)), picture)
         for rule in re.findall(r"[^{}]*\{[^{}]*(?:#[0-9a-fA-F]{3,8}\b|rgba?\()[^{}]*\}", flat):
