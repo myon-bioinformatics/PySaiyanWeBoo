@@ -17701,8 +17701,8 @@ export function bindCoordinates(root=document){return[...root.querySelectorAll("
   if(near){near.hidden=true;$("[data-nearby-list]").replaceChildren()}if(shareText)shareText.value="";
   for(const b of box.querySelectorAll("[data-pin],[data-copy],[data-share]"))b.disabled=!current;
   if(!current){if(place)place.value="";return}
-  const u=mapsUrls(current.lat,current.lon),spot=places.find(p=>same(p,current)),open=(k,href)=>{const a=$('[data-open="'+k+'"]');if(a&&href){a.href=href;a.hidden=false}};
-  if(place)place.value=spot?spot.id:"";open("google",u.google);open("apple",u.apple);if(spot)open("place",placeLink(current,spot));
+  const u=mapsUrls(current.lat,current.lon),spot=places.find(p=>same(p,current)),open=(k,href,here)=>{const a=$('[data-open="'+k+'"]');if(a&&href){a.href=href;a.hidden=false;if(here)a.removeAttribute("target");else a.target="_blank"}};
+  if(place)place.value=spot?spot.id:"";open("google",u.google);open("apple",u.apple);if(spot)open("place",placeLink(current,spot),(spot.href||"").startsWith("#"));   // a place of this page opens here
   if(near&&current.radius_m>0){const hits=places.map(p=>({p,m:distanceMeters(current,p)})).filter(x=>x.m<=current.radius_m).sort((a,b)=>a.m-b.m);near.hidden=false;$("[data-nearby-count]").textContent=w("within",hits.length);
    for(const{p,m}of hits){const li=document.createElement("li"),href=placeLink(current,p),el=document.createElement(href?"a":"span");if(href)el.href=href;el.textContent=p.label+" ("+w("meters",Math.round(m))+")";li.append(el);$("[data-nearby-list]").append(li)}}
   if(shareText)shareText.value=text(current);const pin=$("[data-pin]");if(pin)pin.textContent=pins.some(p=>same(p,current))?w("repin"):w("pin")};
@@ -17722,7 +17722,9 @@ export function bindCoordinates(root=document){return[...root.querySelectorAll("
   for(const p of pins){const li=document.createElement("li"),open=document.createElement("button"),range=document.createElement("span"),remove=document.createElement("button");open.type=remove.type="button";open.className=remove.className="ui-button";
    open.textContent=label(p);open.addEventListener("click",()=>setPoint(p));range.textContent=p.radius_m>0?w("radius",p.radius_m):w("point_only");remove.textContent=w("unpin");remove.setAttribute("aria-label",w("unpin")+": "+label(p));
    remove.addEventListener("click",()=>{pins=pins.filter(v=>!same(v,p));save();drawPins();show()});li.append(open,range,remove);list.append(li)}};
- const copy=async t=>{try{await navigator.clipboard.writeText(t);note.textContent=w("copied")}catch{if(shareText){shareText.value=t;shareText.focus();shareText.select()}note.textContent=w("uncopied")}};
+ // Copy: the clipboard, else the old way (a selected field and execCommand); when neither works the text is left selected for the reader to copy.
+ const copy=async t=>{try{await navigator.clipboard.writeText(t)}catch{const f=document.createElement("textarea");f.value=t;f.readOnly=true;f.style.cssText="position:fixed;opacity:0";document.body.append(f);f.select();
+   let ok=false;try{ok=document.execCommand("copy")}catch{}f.remove();if(!ok){if(shareText){shareText.value=t;shareText.focus();shareText.select()}note.textContent=w("uncopied");return}}note.textContent=w("copied")};
  for(const el of[lat,lon,radius,zoom,...(name?[name]:[])])el.addEventListener("input",show);for(const r of radios)r.addEventListener("change",show);
  $("[data-use-url]").addEventListener("click",()=>{const p=tryParseMapsUrl(url.value);if(!p){status.textContent=w("bad_url");return}setPoint({lat:p[0],lon:p[1],label:""})});
  if(place)place.addEventListener("change",()=>{const p=places.find(p=>p.id===place.value);if(p)setPoint({lat:p.lat,lon:p.lon,label:p.label})});

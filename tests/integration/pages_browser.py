@@ -2413,6 +2413,8 @@ class CoordinatesBrowserTests(unittest.TestCase):
                     self.assertIn('35.681340', box.locator('[data-open="google"]').get_attribute('href'))
                     link = origin + '/map.html?lat=35.681340&lon=139.766500&name=%E6%9D%B1%E4%BA%AC%E9%A7%85&radius_m=100'
                     self.assertEqual(box.locator('[data-open="place"]').get_attribute('href'), link + '#cities-spot-station')   # a place of this page keeps the point
+                    self.assertIsNone(box.locator('[data-open="place"]').get_attribute('target'))                # … and opens here, not in a new tab
+                    self.assertEqual(box.locator('[data-open="google"]').get_attribute('target'), '_blank')
                     self.assertEqual(box.locator('[data-nearby-count]').inner_text(), '1件（中心からの直線距離）')
                     self.assertIn('地点リンク: ' + link, box.locator('[data-share-text]').input_value())
                     self.assertEqual(box.locator('[data-pins-list] li').all_inner_texts(), ['ピンはまだありません。'])
@@ -2444,6 +2446,16 @@ class CoordinatesBrowserTests(unittest.TestCase):
                     box.locator('[data-note]', has_text='コピーしました。').wait_for()                            # the clipboard answers a moment later
                     copied = page.evaluate('navigator.clipboard.readText()')
                     self.assertEqual(copied, origin + '/map.html?lat=35.658581&lon=139.745433&name=%E6%9D%B1%E4%BA%AC%E3%82%BF%E3%83%AF%E3%83%BC&radius_m=3500')
+                    page.evaluate("""() => { Object.defineProperty(navigator, 'clipboard', {value: {writeText: async () => { throw Error('denied'); }}});
+                        document.execCommand = command => { window.oldWay = document.activeElement.value; return command === 'copy'; }; }""")
+                    box.locator('[data-copy="apple"]').click()                                                   # no clipboard: the old way, a selected field
+                    box.locator('[data-note]', has_text='コピーしました。').wait_for()
+                    self.assertEqual(page.evaluate('window.oldWay'), box.locator('[data-open="apple"]').get_attribute('href'))
+                    page.evaluate("() => { document.execCommand = () => false; }")
+                    box.locator('[data-copy="google"]').click()                                                  # neither: the text is left selected
+                    box.locator('[data-note]', has_text='Could not copy').wait_for()
+                    self.assertEqual(box.locator('[data-share-text]').input_value(), box.locator('[data-open="google"]').get_attribute('href'))
+                    self.assertTrue(box.locator('[data-share-text]').evaluate('field => document.activeElement === field && field.selectionEnd - field.selectionStart === field.value.length'))
                     page.reload()                                                                                # the pins are this browser's
                     self.assertEqual(box.locator('[data-pins-list] li').count(), 2)
                     box.locator('[data-pins-list] li button').nth(2).click()                                     # open the tower's pin: point only
