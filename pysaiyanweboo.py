@@ -17413,8 +17413,7 @@ export function bindChrome(root=document){return[...root.querySelectorAll('[data
  bindTheme(el);   // 🎨 its controls are in ⚙️
  // 🧰 What the rows stand in for hides once this runs (data-replaces). A view of a screen (a panel, a framed app) brings its own rows:
  // in ⚙️ and ⋯ while it shows, its keys go to it, and what they replace hides there. The screen says which (ui-chrome-view: {name, root}).
- const hide=(root,sel)=>{const doc=root.ownerDocument||root;if(!sel||!doc.head||[...doc.head.children].some(n=>n.dataset?.chromeReplaces===sel))return;
-  const st=doc.createElement('style');st.dataset.chromeReplaces=sel;st.textContent=sel+'{display:none!important}';doc.head.append(st)};
+ const hide=(root,sel)=>{if(sel)for(const n of root.querySelectorAll(sel)){n.hidden=true;n.style.setProperty('display','none','important')}};   // CSSOM: a frame's CSP allows it
  let view=null;
  const host=(name,root)=>{for(const n of el.querySelectorAll('[data-chrome-hosted]'))n.remove();view=null;
   const t=[...el.querySelectorAll('template[data-chrome-view]')].find(t=>t.dataset.chromeView===name);if(!t)return;view=root||document;

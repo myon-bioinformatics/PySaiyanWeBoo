@@ -2046,7 +2046,8 @@ class ChromeBrowserTests(unittest.TestCase):
         """🧰 A screen of two views: a panel of its own and a framed app. Each declares its rows (chrome_rows_script); the chrome places
         the shown one's in ⚙️ and ⋯ (chrome_hosting), sends its keys to that view (the frame's document for the app), and hides what
         they stand in for there; the page's own declaration holds throughout."""
-        studio = ("<!doctype html><html><head></head><body><header id='studio-head'>🏭 own bar</header><main>studio</main>"
+        studio = ("<!doctype html><html><head><meta http-equiv='Content-Security-Policy' content=\"style-src 'self'\"></head><body>"   # 🛡️ a studio's CSP: no inline style
+                  "<header id='studio-head'>🏭 own bar</header><main>studio</main>"
                   + ui.chrome_rows_script({'screen': [{'label': '📋 シェルフ', 'key': 'shelf'}], 'replaces': '#studio-head'})
                   + "<script>document.addEventListener('ui-chrome-action',e=>{document.body.dataset.heard=e.detail.key})</script></body></html>")
         notes = ('<button id="own-layout">🔀</button>'
