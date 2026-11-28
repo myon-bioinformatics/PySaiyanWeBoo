@@ -6898,6 +6898,24 @@ def test_the_chrome_takes_actions_and_rows_for_settings_and_this_screen():
     assert "new CustomEvent('ui-chrome-action',{bubbles:true,detail:{key:act.dataset.chromeAction}})" in module and "e.preventDefault()" in module
 
 
+def test_a_settings_row_can_be_a_choice_beside_the_language_and_the_colors():
+    """🧾 a row with options is a pull-down in ⚙️, drawn as 🌐 and 🎨 are (its emoji, the words said by the pull-down); picking one sends
+    the key and the value, and the page sets what is in effect."""
+    notation = {"label": "🧾 Notation", "key": "mode", "options": [{"label": "Modern", "value": "modern"}, {"label": "JSON <raw>", "value": "json"}]}
+    spec = {"settings": [{"label": "📱 スマホ版", "href": "./phone/"}, notation]}
+    assert ui.chrome_validate(spec)["settings"][1] == notation
+    settings = ui.chrome_html(spec)
+    settings = settings[settings.index("⚙️"):settings.index("☰")]
+    choice = '<label class="ui-world-lang">🧾 <select data-chrome-choice="mode" aria-label="Notation" title="Notation"><option value="modern">Modern</option><option value="json">JSON &lt;raw&gt;</option></select></label>'
+    assert choice in settings and settings.index("data-ui-theme-switch") < settings.index(choice) < settings.index('<a href="./phone/">')
+    assert 'aria-label="表示" title="表示"' in ui.chrome_html({"settings": [{**notation, "label": "表示"}]})   # no emoji: the words show
+    for bad in ([{"label": "A", "value": "a"}], [{"label": "A", "value": "a"}] * 2, [{"label": "A", "value": "A b"}, {"label": "B", "value": "b"}], "ab"):
+        with pytest.raises(ValueError, match="options are"):
+            ui.chrome_validate({"settings": [{**notation, "options": bad}]})
+    module = ui.js_source("chrome.js")
+    assert "detail:{key:c.dataset.chromeChoice,value:c.value}" in module
+
+
 def test_every_word_the_chrome_brings_is_in_eleven_languages():
     """🌐 The catalogue: every word in all eleven languages (a format keeps its {0} in each), every key a part writes is in it, a
     catalogue word in a link's label is found (formats are not), and the languages a page, a board item or a door page can carry."""
