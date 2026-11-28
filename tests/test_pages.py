@@ -6894,7 +6894,7 @@ def test_the_chrome_takes_actions_and_rows_for_settings_and_this_screen():
     plain = ui.chrome_validate({})
     assert (plain["settings"], plain["screen"]) == ([], []) and "data-chrome-action" not in ui.chrome_html({})
     module = ui.js_source("chrome.js")                                     # the page hears the key; the chrome does nothing else with it
-    assert "new CustomEvent('ui-chrome-action',{bubbles:true,detail:{key:act.dataset.chromeAction}})" in module and "e.preventDefault()" in module
+    assert "send(act,{key:act.dataset.chromeAction})" in module and "new win.CustomEvent('ui-chrome-action',{bubbles:true,detail})" in module
 
 
 def test_a_settings_row_can_be_a_choice_beside_the_language_and_the_colors():
@@ -6912,7 +6912,33 @@ def test_a_settings_row_can_be_a_choice_beside_the_language_and_the_colors():
         with pytest.raises(ValueError, match="options are"):
             ui.chrome_validate({"settings": [{**notation, "options": bad}]})
     module = ui.js_source("chrome.js")
-    assert "detail:{key:c.dataset.chromeChoice,value:c.value}" in module
+    assert "send(c,{key:c.dataset.chromeChoice,value:c.value})" in module
+
+
+def test_a_page_declares_its_rows_once_and_every_host_places_them():
+    """🧰 chrome_rows_script / chrome_rows_of: what a page asks a host's header for (Ironmate's studios: 📋 the shelf, 💻 ⇄ 📱);
+    chrome_hosting joins the page's own rows in and gives each view of a screen its rows, drawn as templates the script swaps in."""
+    shelf = {"screen": [{"label": "📋 シェルフ", "key": "shelf"}, {"label": "💻 To textual ⇄ 📱 To iconic", "key": "labels"}], "replaces": "#studio-head,#labels-switch"}
+    notation = {"settings": [{"label": "🧾 表示", "key": "mode", "options": [{"label": "A", "value": "a"}, {"label": "B", "value": "b"}]}],
+                "words": {"表示": ["Display", "Affichage", "Visualización", "Exibição", "العرض", "显示", "Вид", "Tampilan", "Anzeige", "Mwonekano"]}}
+    framed = "<html><head></head><body>" + ui.chrome_rows_script(shelf) + "<main>studio</main></body></html>"
+    page = "<main>front</main>" + ui.chrome_rows_script(notation)
+    assert ui.chrome_rows_of(framed)["replaces"] == "#studio-head,#labels-switch" and ui.chrome_rows_of("<main></main>") == {}
+    spec = ui.chrome_hosting({"id": "tools", "words": {"GIF工房": ["GIF studio"] * 10}}, page, {"image-studio": framed, "gif": "<main>gif</main>"})
+    assert spec["settings"] == notation["settings"] and set(spec["words"]) == {"GIF工房", "表示"} and set(spec["views"]) == {"image-studio"}
+    html = ui.chrome_html(spec)
+    assert '<template data-chrome-view="image-studio" data-replaces="#studio-head,#labels-switch"><div data-chrome-slot="settings"></div><div data-chrome-slot="more"><ul class="ui-world-rows">' in html
+    assert html.index('data-chrome-choice="mode"') < html.index("<template")                  # the page's own row is there from the start
+    assert html.count('data-chrome-action="shelf"') == 1 and html.index('data-chrome-action="shelf"') > html.index("<template")
+    assert ui.chrome_html({"replaces": "#own-menu"}).startswith('<div class="ui-chrome ui-world-head" id="tools-chrome" data-ui-chrome lang="ja" data-replaces="#own-menu">')
+    for bad, match in (({"views": {"Big": {}}}, "views maps"), ({"views": {"a": {"tools": {}}}}, "view a has"), ({"replaces": "studio"}, "replaces lists"),
+                       ({"views": {"a": {"screen": [{"label": "x", "key": "Bad Key"}]}}}, "a key is")):
+        with pytest.raises(ValueError, match=match):
+            ui.chrome_validate(bad)
+    with pytest.raises(ValueError, match="ui-chrome-rows has"):
+        ui.chrome_rows_script({"rows": []})
+    module = ui.js_source("chrome.js")
+    assert "document.addEventListener('ui-chrome-view',e=>host(e.detail?.name,e.detail?.root))" in module and "hide(document,el.dataset.replaces)" in module
 
 
 def test_every_word_the_chrome_brings_is_in_eleven_languages():

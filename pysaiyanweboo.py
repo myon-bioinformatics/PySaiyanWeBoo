@@ -8129,18 +8129,22 @@ def chrome_validate(spec: Any = None) -> dict[str, Any]:
     ``tools``   emoji of the page's own (``_chrome_tools``)
     ``settings`` rows the page adds to ⚙️ (up to 8, ``_chrome_rows``): another layout of the same page, a mode
     ``screen``  rows the page adds to ⋯ (up to 8): what belongs to this screen but not to its main buttons, such as a temporary shelf
+    ``replaces`` ``"#id,#id"``: the page's own controls these rows stand in for, hidden once the script runs (without it they stay)
+    ``views``   ``{name: {"settings", "screen", "replaces", "words"}}`` (up to 32): the rows of each view of a screen (a panel, a framed
+                app), in ⚙️ and ⋯ while that view shows; the screen tells the chrome which (``ui-chrome-view``), and a view's keys go
+                to it. ``chrome_rows_of(page)`` reads what a page declares; ``chrome_hosting`` joins it in
     """
     spec = {} if spec is None else spec
-    if not isinstance(spec, dict) or set(spec) - {"id", "lang", "words", "board", "home", "places", "tools", "settings", "screen"}:
-        raise ValueError("a chrome has id, lang, words, board, home, places, tools, settings and screen")
+    if not isinstance(spec, dict) or set(spec) - {"id", "lang", "words", "board", "home", "places", "tools", "settings", "screen", "replaces", "views"}:
+        raise ValueError("a chrome has id, lang, words, board, home, places, tools, settings, screen, replaces and views")
     codes = [code for code, _ in CHROME_LANGS]
     if spec.get("lang", "ja") not in codes:
         raise ValueError(f"lang is one of {', '.join(codes)}")
-    words = spec.get("words", {})
-    if (not isinstance(words, dict) or len(words) > 64
-            or any(not isinstance(ja, str) or not isinstance(row, list) or len(row) != len(codes) - 1 for ja, row in words.items())):
-        raise ValueError(f"words maps up to 64 Japanese words to their {len(codes) - 1} other languages, in CHROME_LANGS order")
-    words = {_chrome_text(ja, "a word", 120): [_chrome_text(w, "a word", 120) for w in row] for ja, row in words.items()}
+    words = _chrome_words(spec.get("words", {}))
+    views = spec.get("views", {})
+    if not isinstance(views, dict) or len(views) > 32 or any(not isinstance(name, str) or not _CHROME_TOKEN.fullmatch(name) for name in views):
+        raise ValueError("views maps up to 32 lowercase names to their rows")
+    views = {name: _chrome_view(rows, f"view {name}", tools=False) for name, rows in views.items()}
     board = spec.get("board")
     if board is not None:
         if not isinstance(board, dict) or set(board) - {"title", "items"} or not isinstance(board.get("items"), list) or not 1 <= len(board["items"]) <= 12:
@@ -8161,7 +8165,69 @@ def chrome_validate(spec: Any = None) -> dict[str, Any]:
     return {"id": chrome_id, "lang": spec.get("lang", "ja"), "words": words, "board": board, "home": None if spec.get("home") is None else _chrome_href(spec["home"]),
             "places": [{"label": _chrome_text(p["label"], "label", 40), "href": _chrome_href(p["href"])} for p in places],
             "tools": _chrome_tools(spec.get("tools", {})),
-            "settings": _chrome_rows(spec.get("settings", []), "settings", 8, 0), "screen": _chrome_rows(spec.get("screen", []), "screen", 8, 0)}
+            "settings": _chrome_rows(spec.get("settings", []), "settings", 8, 0), "screen": _chrome_rows(spec.get("screen", []), "screen", 8, 0),
+            "replaces": _chrome_replaces(spec.get("replaces", "")), "views": views}
+
+
+def _chrome_words(words: Any) -> dict[str, list[str]]:
+    codes = [code for code, _ in CHROME_LANGS]
+    if (not isinstance(words, dict) or len(words) > 64
+            or any(not isinstance(ja, str) or not isinstance(row, list) or len(row) != len(codes) - 1 for ja, row in words.items())):
+        raise ValueError(f"words maps up to 64 Japanese words to their {len(codes) - 1} other languages, in CHROME_LANGS order")
+    return {_chrome_text(ja, "a word", 120): [_chrome_text(w, "a word", 120) for w in row] for ja, row in words.items()}
+
+
+def _chrome_replaces(value: Any) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"(#[A-Za-z][\w-]*(,#[A-Za-z][\w-]*)*)?", value):
+        raise ValueError("replaces lists ids: #a,#b")
+    return value
+
+
+def _chrome_view(rows: Any, name: str, tools: bool = True) -> dict[str, Any]:
+    """What a page asks a host's header to show for it: ``tools`` (a page's own; a view has none), ``settings`` and ``screen`` rows,
+    ``replaces`` and ``words``."""
+    keys = {"settings", "screen", "replaces", "words", *(("tools",) if tools else ())}
+    if not isinstance(rows, dict) or set(rows) - keys:
+        raise ValueError(f"{name} has {', '.join(sorted(keys))}")
+    return {**({"tools": _chrome_tools(rows.get("tools", {}))} if tools else {}),
+            "settings": _chrome_rows(rows.get("settings", []), "settings", 8, 0), "screen": _chrome_rows(rows.get("screen", []), "screen", 8, 0),
+            "replaces": _chrome_replaces(rows.get("replaces", "")), "words": _chrome_words(rows.get("words", {}))}
+
+
+_CHROME_ROWS = re.compile(r'<script type="application/json" id="ui-chrome-rows">(.*?)</script>', re.S)
+
+
+def chrome_rows_of(page: str) -> dict[str, Any]:
+    """🧰 What a page declares for a host's header: its ``<script type="application/json" id="ui-chrome-rows">`` (``chrome_rows_script``),
+    ``{tools, settings, screen, replaces, words}`` checked (``{}`` when it declares none). A page that has its own way in (Ironmate's
+    studios: 📋 the shelf, 💻 ⇄ 📱) says so once, and every host that shows it, a page's chrome or a screen's panel, places the rows.
+    A block inside a ``<template>`` (a screen's inert panel) is that panel's, not the page's."""
+    block = _CHROME_ROWS.search(re.sub(r"<template\b.*?</template>", "", page, flags=re.S))
+    return _chrome_view(json.loads(block[1]), "ui-chrome-rows") if block else {}
+
+
+def chrome_rows_script(rows: dict[str, Any]) -> str:
+    """🧰 A page's declaration for a host's header (``chrome_rows_of`` reads it): the rows as a JSON data block."""
+    _chrome_view(rows, "ui-chrome-rows")
+    return '<script type="application/json" id="ui-chrome-rows">' + json.dumps(rows, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c") + "</script>"
+
+
+def chrome_hosting(spec: Any, page: str = "", views: dict[str, str] | None = None) -> dict[str, Any]:
+    """🧰 A chrome spec with what its page declares joined in (``chrome_rows_of(page)``: the page's emoji, ⚙️ and ⋯ rows, its words,
+    what they replace) and the ``views`` of a screen, name → the document of that view (each one's declaration, when it has one).
+    So a host writes no rows of its own: a page that declares them is placed, here or as a panel."""
+    spec = dict(spec or {})
+    own = chrome_rows_of(page)
+    for key in ("settings", "screen"):
+        spec[key] = [*spec.get(key, []), *own.get(key, [])]
+    spec["tools"] = {**spec.get("tools", {}), **own.get("tools", {})}
+    spec["words"] = {**spec.get("words", {}), **own.get("words", {})}
+    if own.get("replaces"):
+        spec["replaces"] = ",".join(filter(None, (spec.get("replaces", ""), own["replaces"])))
+    found = {name: rows for name, rows in ((name, chrome_rows_of(document)) for name, document in (views or {}).items()) if rows}
+    if found:
+        spec["views"] = {**spec.get("views", {}), **{name: {k: v for k, v in rows.items() if k != "tools"} for name, rows in found.items()}}
+    return {k: v for k, v in spec.items() if v not in ({}, [], "")}
 
 
 def chrome_html(spec: Any = None) -> str:
@@ -8204,9 +8270,13 @@ def chrome_html(spec: Any = None) -> str:
         chars = sum(len(e["text"]) + (10 if e["at"] else 0) for e in board["items"])
         shown = (f'<div class="ui-board" aria-live="off" data-offset="" data-chars="{chars}"><strong>{escape(board["title"])}</strong>'
                  f'<span class="ui-board-clock" data-clock>--:--:--</span><div class="ui-board-track"><div class="ui-board-run">{run}</div></div></div>')
-    words = f' data-words="{escape(json.dumps(chrome["words"], ensure_ascii=False, separators=(",", ":")), quote=True)}"' if chrome["words"] else ""
-    return (f'<div class="ui-chrome ui-world-head" id="{chrome["id"]}-chrome" data-ui-chrome lang="{chrome["lang"]}"{words}>{shown}'
-            f'<nav class="ui-world-tools">{head}</nav><div class="ui-world-side">{side}</div></div>')
+    every = {**chrome["words"], **{ja: row for view in chrome["views"].values() for ja, row in view["words"].items()}}
+    words = f' data-words="{escape(json.dumps(every, ensure_ascii=False, separators=(",", ":")), quote=True)}"' if every else ""
+    hides = lambda selectors: f' data-replaces="{selectors}"' if selectors else ""
+    views = "".join(f'<template data-chrome-view="{name}"{hides(view["replaces"])}><div data-chrome-slot="settings">{_chrome_rows_html(view["settings"])}</div>'
+                    f'<div data-chrome-slot="more">{_chrome_rows_html(view["screen"])}</div></template>' for name, view in chrome["views"].items())
+    return (f'<div class="ui-chrome ui-world-head" id="{chrome["id"]}-chrome" data-ui-chrome lang="{chrome["lang"]}"{words}{hides(chrome["replaces"])}>{shown}'
+            f'<nav class="ui-world-tools">{head}</nav><div class="ui-world-side">{side}</div>{views}</div>')
 
 
 def door_document(spec: Any, *, theme: str = "modern") -> str:
@@ -17341,8 +17411,22 @@ export function bindChrome(root=document){return[...root.querySelectorAll('[data
    for(const a of el.querySelectorAll('[data-head]')){const h=document.getElementById(a.dataset.head);if(h)a.lastChild.textContent=h.textContent.trim().slice(0,40)}   // ☰ says the sections as they read now
    sayAround(to,mine)};
  bindTheme(el);   // 🎨 its controls are in ⚙️
+ // 🧰 What the rows stand in for hides once this runs (data-replaces). A view of a screen (a panel, a framed app) brings its own rows:
+ // in ⚙️ and ⋯ while it shows, its keys go to it, and what they replace hides there. The screen says which (ui-chrome-view: {name, root}).
+ const hide=(root,sel)=>{const doc=root.ownerDocument||root;if(!sel||!doc.head||[...doc.head.children].some(n=>n.dataset?.chromeReplaces===sel))return;
+  const st=doc.createElement('style');st.dataset.chromeReplaces=sel;st.textContent=sel+'{display:none!important}';doc.head.append(st)};
+ let view=null;
+ const host=(name,root)=>{for(const n of el.querySelectorAll('[data-chrome-hosted]'))n.remove();view=null;
+  const t=[...el.querySelectorAll('template[data-chrome-view]')].find(t=>t.dataset.chromeView===name);if(!t)return;view=root||document;
+  for(const part of t.content.querySelectorAll('[data-chrome-slot]')){const panel=el.querySelector('[data-menu="'+part.dataset.chromeSlot+'"] .ui-world-panel');
+   if(panel)for(const n of part.children){const c=n.cloneNode(true);c.dataset.chromeHosted='';panel.append(c)}}
+  hide(view,t.dataset.replaces);say(el)},
+  send=(n,detail)=>{const to=n.closest('[data-chrome-hosted]')&&view&&view!==document?view:el,win=(to.ownerDocument||to).defaultView||window;
+   to.dispatchEvent(new win.CustomEvent('ui-chrome-action',{bubbles:true,detail}))};
+ document.addEventListener('ui-chrome-view',e=>host(e.detail?.name,e.detail?.root));
+ hide(document,el.dataset.replaces);
  sel?.addEventListener('change',()=>{setLang(sel.value);save({lang})});
- el.addEventListener('change',e=>{const c=e.target.closest('[data-chrome-choice]');if(c)el.dispatchEvent(new CustomEvent('ui-chrome-action',{bubbles:true,detail:{key:c.dataset.chromeChoice,value:c.value}}))});   // a choice of the page's own (a notation, a layout)
+ el.addEventListener('change',e=>{const c=e.target.closest('[data-chrome-choice]');if(c)send(c,{key:c.dataset.chromeChoice,value:c.value})});   // a choice of the page's own (a notation, a layout)
  const here=page(location.pathname),title=(document.title.trim()||here).slice(0,40),key=a=>a.origin===location.origin?page(a.pathname)+a.hash:a.href,
   row=(href,text,mark='')=>{const li=document.createElement('li'),a=document.createElement('a'),arrow=document.createElement('span'),b=document.createElement('button');a.href=href;arrow.className='ui-world-arrow';arrow.setAttribute('aria-hidden','true');arrow.textContent=mark;a.append(arrow,text);b.type='button';b.className='ui-world-star';b.dataset.t='star';li.append(a,b);return li},
   spots=el.querySelector('.ui-world-spots'),favs=el.querySelector('.ui-world-favs'),heads=[...document.querySelectorAll('main h2')].filter(h=>!el.contains(h)&&h.textContent.trim());
@@ -17355,7 +17439,7 @@ export function bindChrome(root=document){return[...root.querySelectorAll('[data
   if(b){const a=b.parentElement.querySelector('a'),k=key(a);fav=fav.some(f=>f.href===k)?fav.filter(f=>f.href!==k):[...fav,{href:k,label:k===here?title:title+' › '+words(a)}].slice(-32);show();save({fav})}
   if(s){shut();scrollTo({top:s.dataset.scroll==='top'?0:document.documentElement.scrollHeight,behavior:'smooth'})}
   const act=e.target.closest('[data-chrome-action]');
-  if(act){e.preventDefault();el.dispatchEvent(new CustomEvent('ui-chrome-action',{bubbles:true,detail:{key:act.dataset.chromeAction}}))}
+  if(act){e.preventDefault();send(act,{key:act.dataset.chromeAction})}
   if(e.target.closest('.ui-world-rows a'))shut()});
  show();setLang(CHROME_LANGS.includes(kept.lang)?kept.lang:CHROME_LANGS.includes(lang)?lang:'ja');
  const pause=el.querySelector('.ui-world-pause');pause?.addEventListener('click',()=>{const on=el.toggleAttribute('data-motion-paused');pause.setAttribute('aria-pressed',String(on));pause.textContent=on?pause.dataset.resume:pause.dataset.pause});
