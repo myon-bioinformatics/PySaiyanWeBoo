@@ -2042,6 +2042,57 @@ class ChromeBrowserTests(unittest.TestCase):
             server.server_close()
 
 
+    def test_each_view_of_a_screen_brings_its_rows_and_its_keys_go_to_it(self):
+        """🧰 A screen of two views: a panel of its own and a framed app. Each declares its rows (chrome_rows_script); the chrome places
+        the shown one's in ⚙️ and ⋯ (chrome_hosting), sends its keys to that view (the frame's document for the app), and hides what
+        they stand in for there; the page's own declaration holds throughout."""
+        studio = ("<!doctype html><html><head><meta http-equiv='Content-Security-Policy' content=\"style-src 'self'\"></head><body>"   # 🛡️ a studio's CSP: no inline style
+                  "<header id='studio-head'>🏭 own bar</header><main>studio</main>"
+                  + ui.chrome_rows_script({'screen': [{'label': '📋 シェルフ', 'key': 'shelf'}], 'replaces': '#studio-head'})
+                  + "<script>document.addEventListener('ui-chrome-action',e=>{document.body.dataset.heard=e.detail.key})</script></body></html>")
+        notes = ('<button id="own-layout">🔀</button>'
+                 + ui.chrome_rows_script({'settings': [{'label': '🔀 Layout', 'key': 'layout', 'options': [{'label': 'Grid', 'value': 'grid'}, {'label': 'List', 'value': 'list'}]}], 'replaces': '#own-layout'}))
+        screen = ("<script>const show=n=>{for(const s of document.querySelectorAll('main > section'))s.hidden=s.id!==n;const p=document.getElementById(n),t=p.querySelector(':scope>template');"
+                  "if(t)p.replaceChildren(t.content.cloneNode(true));const f=p.querySelector('iframe'),"
+                  "tell=()=>document.dispatchEvent(new CustomEvent('ui-chrome-view',{detail:{name:n,root:f?f.contentDocument:p}}));if(f&&!f.dataset.ready)f.addEventListener('load',()=>{f.dataset.ready=1;tell()},{once:true});else tell()};"
+                  "document.getElementById('notes').addEventListener('ui-chrome-action',e=>{document.body.dataset.heard=e.detail.key+'='+e.detail.value})</script>")
+        body = ('<main class="ui-page"><h1>Screen</h1><nav id="own-menu">old ⚙</nav><section id="studio" hidden><template><iframe srcdoc="' + __import__('html').escape(studio) + '"></iframe></template></section>'
+                + '<section id="notes" hidden><template>' + notes + '</template></section></main>' + screen + ui.chrome_rows_script({'replaces': '#own-menu'}))
+        built = ui.render_document(trusted_html=body, title='Screen', css=ui.bundled_css())
+        spec = ui.chrome_hosting({}, built, {'studio': studio, 'notes': notes})
+        server, origin = serve_pages({'screen.html': ui.add_part(built, ui.component_parts('chrome', spec), at='top', scope='.ui-chrome')})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page()
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/screen.html')
+                    page.wait_for_selector('.ui-chrome[data-js]')
+                    self.assertFalse(page.is_visible('#own-menu'))                                    # the page's own declaration
+                    page.evaluate("show('studio')")
+                    frame = page.frame_locator('#studio iframe')
+                    page.wait_for_selector('.ui-chrome [data-menu="more"] [data-chrome-action="shelf"]', state='attached')
+                    self.assertEqual(frame.locator('#studio-head').evaluate("n => getComputedStyle(n).display"), 'none')
+                    page.click('.ui-chrome [data-menu="more"] > summary')
+                    page.click('.ui-chrome [data-chrome-action="shelf"]')
+                    self.assertEqual(frame.locator('body').get_attribute('data-heard'), 'shelf')       # the key went into the frame
+                    self.assertIsNone(page.get_attribute('body', 'data-heard'))
+                    page.evaluate("show('notes')")
+                    self.assertEqual(page.locator('.ui-chrome [data-chrome-action="shelf"]').count(), 0)  # the studio's rows left with it
+                    self.assertFalse(page.is_visible('#own-layout'))
+                    page.click('.ui-chrome [data-menu="settings"] > summary')
+                    page.select_option('.ui-chrome [data-chrome-choice="layout"]', 'list')
+                    self.assertEqual(page.get_attribute('body', 'data-heard'), 'layout=list')
+                    self.assertEqual(errors, [])
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
 class DoorBrowserTests(unittest.TestCase):
     """Door-to-Door in Chromium: the page's seeded draw, notation and pull-down equal Python's, and the pull-down really goes there."""
 
