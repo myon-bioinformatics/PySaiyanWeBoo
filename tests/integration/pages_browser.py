@@ -2042,6 +2042,61 @@ class ChromeBrowserTests(unittest.TestCase):
             server.server_close()
 
 
+    def test_one_page_of_views_routes_loads_lazily_frames_apps_and_tells_the_chrome(self):
+        """🧰 views: #name shows a view (its template mounts, its scripts run in the page's order), #section opens the view that holds
+        it, the tab and 📟 the board follow, 🚪 points at it, the chrome hears it; a framed app keeps its #links inside its frame and
+        tells the host when it loads; uiViews.show moves from the host."""
+        import html as html_
+        directory = tempfile.mkdtemp()
+        (Path(directory) / 'app').mkdir()
+        (Path(directory) / 'a.js').write_text("document.body.dataset.order=(document.body.dataset.order||'')+'src;'", encoding='utf-8')
+        joined = ('<!doctype html><html><head><title>🅰️ A</title></head><body><main><p id="a-text">a</p><section id="deep">deep</section></main>'
+                  '<script src="./a.js"></script><script type="module">document.body.dataset.order+="module;"</script></body></html>')
+        app = ('<!doctype html><html><head><title>App</title></head><body><a id="go" href="#part">part</a><section id="part" style="margin-top:2000px">p</section>'
+               '<a id="out" href="../index.html#a">a</a></body></html>')
+        views = [{'source': 'a.html', 'document': joined, 'about': 'A を見る。'}, {'source': 'app/index.html', 'document': app, 'framed': True, 'title': '🖼️ App'}]
+        door = ('<select data-door-select><option value="#">🏠</option><option value="./index.html#a">A</option><option value="./index.html#app">App</option></select>'
+                "<script>document.addEventListener('ui-view-frame',e=>{document.body.dataset.frame=e.detail.name});document.addEventListener('ui-chrome-view',e=>{document.body.dataset.chrome=e.detail.name})</script>")
+        page = ui.render_document(title='🧰', trusted_html=door, css=ui.bundled_css())
+        page = ui.add_part(page, ui.component_parts('chrome', {'board': {'title': 'T', 'items': [{'text': 'card one'}, {'text': 'card two'}]}}), at='top', scope='.ui-chrome')
+        page = ui.add_part(page, ui.component_parts('views', views, at='index.html', home={'title': '🧰 Home', 'heading': 'Home', 'about': 'ここは家。'}))
+        (Path(directory) / 'index.html').write_text(page, encoding='utf-8')
+        server, origin = serve_directory(directory)
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page()
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/index.html')
+                    page.wait_for_function("() => document.title === '🧰 Home'")
+                    board = "() => [...document.querySelectorAll('.ui-board-run > .ui-board-item:not([aria-hidden])')].map(n => n.textContent)"
+                    self.assertTrue(page.is_visible('#home .ui-view-index a[href="#app"]'))
+                    self.assertEqual(page.locator('#a-text').count(), 0)                             # 💤 a view mounts when first opened
+                    page.evaluate("location.hash = 'a'")
+                    page.wait_for_function("() => document.body.dataset.order === 'src;module;'")    # ▶️ its scripts, in the page's order
+                    self.assertEqual((page.title(), page.input_value('[data-door-select]'), page.evaluate(board)[0]), ('🅰️ A', './index.html#a', 'A を見る。'))
+                    self.assertEqual(page.get_attribute('body', 'data-chrome'), 'a')
+                    page.evaluate("location.hash = 'home'")
+                    page.evaluate("location.hash = 'deep'")                                        # a #section opens the view that holds it
+                    page.wait_for_function("() => !document.getElementById('a').hidden")
+                    page.evaluate("uiViews.show(document.getElementById('app'))")
+                    page.wait_for_function("() => document.body.dataset.frame === 'app'")
+                    self.assertEqual((page.title(), page.get_attribute('body', 'data-chrome')), ('🖼️ App', 'app'))
+                    frame, before = page.frame_locator('#app iframe'), page.evaluate('location.hash')
+                    frame.locator('#go').click()
+                    self.assertEqual(page.evaluate('location.hash'), before)                        # 🖼️ its #link stayed in its frame
+                    self.assertEqual(page.frame_locator('#app iframe').locator('body').evaluate('() => location.hash'), '#part')
+                    self.assertEqual(frame.locator('#out').get_attribute('target'), '_top')
+                    self.assertEqual(frame.locator('#out').get_attribute('href'), '/#a')
+                    self.assertEqual(errors, [])
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_each_view_of_a_screen_brings_its_rows_and_its_keys_go_to_it(self):
         """🧰 A screen of two views: a panel of its own and a framed app. Each declares its rows (chrome_rows_script); the chrome places
         the shown one's in ⚙️ and ⋯ (chrome_hosting), sends its keys to that view (the frame's document for the app), and hides what
