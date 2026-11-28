@@ -2405,7 +2405,8 @@ class CoordinatesBrowserTests(unittest.TestCase):
                     errors = []
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     page.goto(origin + '/map.html')
-                    box = page.locator('#map[data-ui-coord]')
+                    box = page.locator('#map[data-ui-coord][data-js]')
+                    self.assertEqual(page.evaluate('webUiCoordinates.bindCoordinates().length'), 0)              # bound once: a second call finds nothing new
                     cam = ui.GifCamera(page)
                     self.assertEqual(box.locator('h2').inner_text(), '📍 地図URL・座標ピン留め')
                     self.assertEqual(box.locator('[data-status]').inner_text(), '有効です。')

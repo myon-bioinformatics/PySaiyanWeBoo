@@ -17685,7 +17685,8 @@ export function checkedPin(p){if(!p||typeof p!=="object"||typeof p.label!=="stri
  const[lat,lon]=parseCoordinate(String(p.lat),String(p.lon));return{lat,lon,label:p.label.slice(0,80),radius_m:p.radius_m}}
 // The link to a point: this address with ?lat=&lon=&name=&radius_m= (and another #fragment when given).
 export function pointLink(p,here,hash){const u=new URL(here);u.search=new URLSearchParams({lat:fixed(p.lat,6),lon:fixed(p.lon,6),name:p.label,radius_m:String(p.radius_m)});if(hash!==undefined)u.hash=hash;return u.href}
-export function bindCoordinates(root=document){return[...root.querySelectorAll("[data-ui-coord]")].map(box=>{
+// Binds each tool once (data-js marks it): a page that shows its panels later calls this again and only the new ones are bound.
+export function bindCoordinates(root=document){return[...root.querySelectorAll("[data-ui-coord]:not([data-js])")].map(box=>{box.dataset.js="";
  const $=s=>box.querySelector(s),lat=$("[data-lat]"),lon=$("[data-lon]"),url=$("[data-url]"),status=$("[data-status]"),out=$("[data-out]"),radius=$("[data-radius]"),zoom=$("[data-zoom]");
  const radios=[...box.querySelectorAll('fieldset input[type="radio"]')],preset=()=>radios.find(r=>r.checked).value;
  const said=JSON.parse(box.dataset.words||"{}"),w=(k,n)=>String(said[k]??WORDS[k]).replace("{n}",n);
