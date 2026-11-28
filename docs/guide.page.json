@@ -1,220 +1,350 @@
 {
-  "schema": "web-ui-page/1",
-  "title": "PySaiyanWeBoo 機能一覧",
-  "theme": "auto",
-  "description": "HTML・CSS・JS を Python から組む共通の部品とテーマ。表紙（UI の見本）とは別に、機能をコードから全部並べる。",
-  "icon": "./icon.png",
-  "favicon": "./favicon.png",
-  "blocks": [
+ "schema": "web-ui-page/1",
+ "title": "PySaiyanWeBoo 機能一覧",
+ "theme": "auto",
+ "description": "HTML・CSS・JS を Python から組む共通の部品とテーマ。表紙（UI の見本）とは別に、機能をコードから全部並べる。",
+ "icon": "./icon.png",
+ "favicon": "./favicon.png",
+ "blocks": [
+  {
+   "type": "badges",
+   "items": [
+    "📄 単一ファイル（pysaiyanweboo.py）",
+    "🧰 標準ライブラリのみ",
+    "🐍 Python 3.10+",
+    "🟩 Node は py_launch.cjs 経由"
+   ]
+  },
+  {
+   "type": "tabs",
+   "id": "guide",
+   "tabs": [
     {
-      "type": "badges",
-      "items": [
-        "📄 単一ファイル（pysaiyanweboo.py）",
-        "🧰 標準ライブラリのみ",
-        "🐍 Python 3.10+",
-        "🟩 Node は py_launch.cjs 経由"
-      ]
-    },
-    {
-      "type": "tabs",
-      "id": "guide",
-      "tabs": [
+     "label": "🧩 機能一覧",
+     "blocks": [
+      {
+       "type": "section",
+       "title": "🎛️ 表紙",
+       "blocks": [
         {
-          "label": "🧩 機能一覧",
-          "blocks": [
-            {
-              "type": "section",
-              "title": "🎛️ 表紙",
-              "blocks": [
-                {
-                  "type": "text",
-                  "text": "テーマの切り替え・ランダムなテーマ・部品の見本は表紙にあります。"
-                },
-                {
-                  "type": "links",
-                  "items": [
-                    {
-                      "label": "🎛️ UI の見本（表紙）",
-                      "href": "../"
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "type": "section",
-              "title": "▶️ 実行",
-              "blocks": [
-                {
-                  "type": "card",
-                  "title": "📄 ページを描く",
-                  "text": "web-ui-page/1（データだけの JSON）から 1 枚の HTML。各リポジトリの利用ガイドもこれ。",
-                  "blocks": [
-                    {
-                      "type": "output",
-                      "text": "$ python -S pysaiyanweboo.py --page demo.page.json > demo.html\n$ wc -c < demo.html\n6273"
-                    }
-                  ]
-                },
-                {
-                  "type": "card",
-                  "title": "🧩 機能一覧に全部を足す",
-                  "text": "CLI の全コマンドと公開名をコードから読み、🧩 機能一覧 タブの先頭に（--features、繰り返し可。手書きの見どころはその下）。",
-                  "blocks": [
-                    {
-                      "type": "output",
-                      "text": "$ python -S pysaiyanweboo.py --page docs/guide.page.json --features xprobe.py > index.html"
-                    }
-                  ]
-                },
-                {
-                  "type": "card",
-                  "title": "📲 ホーム画面のアイコン",
-                  "text": "spec の icon から icon-180/192/512.png と manifest.webmanifest を書きます（--home-screen DIR）。",
-                  "blocks": [
-                    {
-                      "type": "output",
-                      "text": "$ python -S pysaiyanweboo.py --page guide.page.json --home-screen _site > _site/index.html"
-                    }
-                  ]
-                },
-                {
-                  "type": "card",
-                  "title": "🧩 部品を 1 つ",
-                  "text": "部品ごとに HTML・CSS・JS・JSON を取り出せます（--part）。",
-                  "blocks": [
-                    {
-                      "type": "output",
-                      "text": "$ python -S pysaiyanweboo.py --component gaze-avatar --part json\n{\"html\": \"<button type=\\\"button\\\" class=\\\"ui-gaze\\\" aria-label=\\\"Blink\\\">…"
-                    }
-                  ]
-                },
-                {
-                  "type": "card",
-                  "title": "🗂 見本のデータ",
-                  "text": "ツールやページが使う spec を JSON で（--example NAME）。",
-                  "blocks": [
-                    {
-                      "type": "output",
-                      "text": "$ python -S pysaiyanweboo.py --example layout-presets\n{\n  \"schema\": \"web-ui-layout-presets/1\",\n  \"default\": \"grid8\",\n  …"
-                    }
-                  ]
-                },
-                {
-                  "type": "card",
-                  "title": "🌐 サイト一式",
-                  "text": "表紙・見本・ブラウザ用モジュール（js/ 28 本）を DIR に書きます。",
-                  "blocks": [
-                    {
-                      "type": "output",
-                      "text": "$ python -S pysaiyanweboo.py --site site\n$ ls site\ncontract  docs  examples  index.html  js"
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "type": "section",
-              "title": "🐍 Python・🟩 Node から呼ぶ",
-              "blocks": [
-                {
-                  "type": "output",
-                  "text": "import pysaiyanweboo as PSWB\nhtml = PSWB.page_document(spec)                  # 📄\nspec = PSWB.add_features(spec, \"xprobe.py\")      # 📚"
-                },
-                {
-                  "type": "output",
-                  "text": "const { call } = require(\"./vendor/py_launch.cjs\");\ncall(\"pysaiyanweboo.py\", \"page_document\", { args: [spec] });"
-                }
-              ]
-            }
-          ]
+         "type": "text",
+         "text": "テーマの切り替え・ランダムなテーマ・部品の見本は表紙にあります。"
         },
         {
-          "label": "🔬 検証ガイド",
-          "blocks": [
-            {
-              "type": "runbook",
-              "id": "verify",
-              "books": [
-                {
-                  "label": "⚡ そのまま",
-                  "intro": "📋 コピーして手元で試し、結果を記録できます。🤖 の手順は、Pages の公開で実際に動かした結果も載ります。",
-                  "runbook": {
-                    "key": "pysaiyanweboo/verify",
-                    "steps": [
-                      {
-                        "id": "presets",
-                        "title": "📐 レイアウトの候補",
-                        "command": "python3 -S pysaiyanweboo.py --example layout-presets | sed -n '1,12p'",
-                        "expect": "{\n  \"schema\": \"web-ui-layout-presets/1\",\n  \"default\": \"grid8\",\n…",
-                        "expect_stdout_contains": "{\n  \"schema\": \"web-ui-layout-presets/1\",\n  \"default\": \"grid8\",",
-                        "run": true
-                      },
-                      {
-                        "id": "component",
-                        "title": "🧩 部品をひとつ",
-                        "command": "python3 -S pysaiyanweboo.py --component gaze-avatar --part json | { head -c 200 && cat >/dev/null; }",
-                        "expect_stdout_contains": "{\"html\":",
-                        "run": true
-                      }
-                    ]
-                  }
-                }
-              ]
-            }
-          ]
+         "type": "links",
+         "items": [
+          {
+           "label": "🎛️ UI の見本（表紙）",
+           "href": "./ui.html"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "section",
+       "title": "▶️ 実行",
+       "blocks": [
+        {
+         "type": "card",
+         "title": "📄 ページを描く",
+         "text": "web-ui-page/1（データだけの JSON）から 1 枚の HTML。各リポジトリの利用ガイドもこれ。",
+         "blocks": [
+          {
+           "type": "output",
+           "text": "$ python -S pysaiyanweboo.py --page demo.page.json > demo.html\n$ wc -c < demo.html\n6273"
+          }
+         ]
         },
         {
-          "label": "🎞 GIF デモ",
-          "blocks": [
-            {
-              "type": "text",
-              "text": "🎞 動く見本は表紙（テーマの切り替え・ランダムな壁）と、この部品とテーマで組んだ 🌍 ワールド（ポートフォリオで作る）にあります。",
-              "muted": true
-            },
-            {
-              "type": "links",
-              "items": [
-                {
-                  "label": "🌍 旅",
-                  "href": "https://myon-bioinformatics.github.io/tools/demos/world.html"
-                },
-                {
-                  "label": "🏫 スクール",
-                  "href": "https://myon-bioinformatics.github.io/tools/demos/world.html#school"
-                },
-                {
-                  "label": "🗼 パラレルシティ",
-                  "href": "https://myon-bioinformatics.github.io/tools/demos/world.html#tokyo"
-                },
-                {
-                  "label": "🎬 カメラ",
-                  "href": "https://myon-bioinformatics.github.io/tools/demos/world.html#camera"
-                }
-              ]
-            }
-          ]
+         "type": "card",
+         "title": "🧩 機能一覧に全部を足す",
+         "text": "CLI の全コマンドと公開名をコードから読み、🧩 機能一覧 タブの先頭に（--features、繰り返し可。手書きの見どころはその下）。",
+         "blocks": [
+          {
+           "type": "output",
+           "text": "$ python -S pysaiyanweboo.py --page docs/guide.page.json --features xprobe.py > index.html"
+          }
+         ]
+        },
+        {
+         "type": "card",
+         "title": "📲 ホーム画面のアイコン",
+         "text": "spec の icon から icon-180/192/512.png と manifest.webmanifest を書きます（--home-screen DIR）。",
+         "blocks": [
+          {
+           "type": "output",
+           "text": "$ python -S pysaiyanweboo.py --page guide.page.json --home-screen _site > _site/index.html"
+          }
+         ]
+        },
+        {
+         "type": "card",
+         "title": "🧩 部品を 1 つ",
+         "text": "部品ごとに HTML・CSS・JS・JSON を取り出せます（--part）。",
+         "blocks": [
+          {
+           "type": "output",
+           "text": "$ python -S pysaiyanweboo.py --component gaze-avatar --part json\n{\"html\": \"<button type=\\\"button\\\" class=\\\"ui-gaze\\\" aria-label=\\\"Blink\\\">…"
+          }
+         ]
+        },
+        {
+         "type": "card",
+         "title": "🗂 見本のデータ",
+         "text": "ツールやページが使う spec を JSON で（--example NAME）。",
+         "blocks": [
+          {
+           "type": "output",
+           "text": "$ python -S pysaiyanweboo.py --example layout-presets\n{\n  \"schema\": \"web-ui-layout-presets/1\",\n  \"default\": \"grid8\",\n  …"
+          }
+         ]
+        },
+        {
+         "type": "card",
+         "title": "🌐 サイト一式",
+         "text": "表紙・見本・ブラウザ用モジュール（js/ 28 本）を DIR に書きます。",
+         "blocks": [
+          {
+           "type": "output",
+           "text": "$ python -S pysaiyanweboo.py --site site\n$ ls site\ncontract  docs  examples  index.html  js"
+          }
+         ]
         }
-      ]
+       ]
+      },
+      {
+       "type": "section",
+       "title": "🐍 Python・🟩 Node から呼ぶ",
+       "blocks": [
+        {
+         "type": "output",
+         "text": "import pysaiyanweboo as PSWB\nhtml = PSWB.page_document(spec)                  # 📄\nspec = PSWB.add_features(spec, \"xprobe.py\")      # 📚"
+        },
+        {
+         "type": "output",
+         "text": "const { call } = require(\"./vendor/py_launch.cjs\");\ncall(\"pysaiyanweboo.py\", \"page_document\", { args: [spec] });"
+        }
+       ]
+      }
+     ]
     },
     {
-      "type": "section",
-      "title": "🔗 リンク",
-      "blocks": [
+     "label": "🔬 検証ガイド",
+     "blocks": [
+      {
+       "type": "runbook",
+       "id": "verify",
+       "books": [
         {
-          "type": "links",
-          "items": [
-            {
-              "label": "🎛️ 表紙",
-              "href": "../"
-            },
-            {
-              "label": "📄 pysaiyanweboo.py",
-              "href": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/main/pysaiyanweboo.py"
-            }
+         "label": "⚡ そのまま",
+         "intro": "📋 コピーして手元で試し、結果を記録できます。🤖 の手順は、Pages の公開で実際に動かした結果も載ります。",
+         "runbook": {
+          "key": "pysaiyanweboo/verify",
+          "steps": [
+           {
+            "id": "presets",
+            "title": "📐 レイアウトの候補",
+            "command": "python3 -S pysaiyanweboo.py --example layout-presets | sed -n '1,12p'",
+            "expect": "{\n  \"schema\": \"web-ui-layout-presets/1\",\n  \"default\": \"grid8\",\n…",
+            "expect_stdout_contains": "{\n  \"schema\": \"web-ui-layout-presets/1\",\n  \"default\": \"grid8\",",
+            "run": true
+           },
+           {
+            "id": "component",
+            "title": "🧩 部品をひとつ",
+            "command": "python3 -S pysaiyanweboo.py --component gaze-avatar --part json | { head -c 200 && cat >/dev/null; }",
+            "expect_stdout_contains": "{\"html\":",
+            "run": true
+           },
+           {
+            "id": "page",
+            "title": "📄 JSON → ページ",
+            "run": true,
+            "command": "printf '%s' '{\"schema\": \"web-ui-page/1\", \"title\": \"👋\", \"blocks\": [{\"type\": \"text\", \"text\": \"hello\"}]}' > /tmp/pswb-page.json\npython3 -S pysaiyanweboo.py --page /tmp/pswb-page.json | grep -o '<title>[^<]*</title>'",
+            "expect": "<title>👋</title>"
+           }
           ]
+         }
         }
-      ]
+       ]
+      }
+     ]
+    },
+    {
+     "label": "🎞 GIF デモ",
+     "blocks": [
+      {
+       "type": "text",
+       "text": "🎞 PySaiyanWeBoo の部品とページを、ブラウザテストが動かした様子（tests/integration の GIF）。",
+       "muted": true
+      },
+      {
+       "type": "card",
+       "title": "🔬 手順（runbook）",
+       "text": "",
+       "blocks": [
+        {
+         "type": "image",
+         "src": "./docs/demo/component-steps.gif",
+         "alt": "🔬 手順（runbook）"
+        }
+       ]
+      },
+      {
+       "type": "card",
+       "title": "📊 表",
+       "text": "",
+       "blocks": [
+        {
+         "type": "image",
+         "src": "./docs/demo/component-table.gif",
+         "alt": "📊 表"
+        }
+       ]
+      },
+      {
+       "type": "card",
+       "title": "🧰 操作の部品",
+       "text": "",
+       "blocks": [
+        {
+         "type": "image",
+         "src": "./docs/demo/component-operations.gif",
+         "alt": "🧰 操作の部品"
+        }
+       ]
+      },
+      {
+       "type": "card",
+       "title": "🎬 ステージとページ送り",
+       "text": "",
+       "blocks": [
+        {
+         "type": "image",
+         "src": "./docs/demo/component-stage-pager.gif",
+         "alt": "🎬 ステージとページ送り"
+        }
+       ]
+      },
+      {
+       "type": "card",
+       "title": "💬 チャット",
+       "text": "",
+       "blocks": [
+        {
+         "type": "image",
+         "src": "./docs/evidence/component-chat.gif",
+         "alt": "💬 チャット"
+        }
+       ]
+      },
+      {
+       "type": "card",
+       "title": "💬 チャットの共有",
+       "text": "",
+       "blocks": [
+        {
+         "type": "image",
+         "src": "./docs/evidence/component-chat-share.gif",
+         "alt": "💬 チャットの共有"
+        }
+       ]
+      },
+      {
+       "type": "card",
+       "title": "🧭 ヘッダー・フッター",
+       "text": "",
+       "blocks": [
+        {
+         "type": "image",
+         "src": "./docs/evidence/component-chrome.gif",
+         "alt": "🧭 ヘッダー・フッター"
+        }
+       ]
+      },
+      {
+       "type": "card",
+       "title": "🌐 サイトの枠",
+       "text": "",
+       "blocks": [
+        {
+         "type": "image",
+         "src": "./docs/evidence/site-chrome.gif",
+         "alt": "🌐 サイトの枠"
+        }
+       ]
+      },
+      {
+       "type": "card",
+       "title": "🌐 言語の切り替え",
+       "text": "",
+       "blocks": [
+        {
+         "type": "image",
+         "src": "./docs/evidence/site-chrome-languages.gif",
+         "alt": "🌐 言語の切り替え"
+        }
+       ]
+      },
+      {
+       "type": "card",
+       "title": "🔬 検証ガイドのページ",
+       "text": "",
+       "blocks": [
+        {
+         "type": "image",
+         "src": "./docs/demo/page-verify-guide.gif",
+         "alt": "🔬 検証ガイドのページ"
+        }
+       ]
+      },
+      {
+       "type": "card",
+       "title": "🎞 GIF 工房のページ",
+       "text": "",
+       "blocks": [
+        {
+         "type": "image",
+         "src": "./docs/demo/page-gif-maker.gif",
+         "alt": "🎞 GIF 工房のページ"
+        }
+       ]
+      },
+      {
+       "type": "card",
+       "title": "🌐 ブラウザでの確認",
+       "text": "",
+       "blocks": [
+        {
+         "type": "image",
+         "src": "./docs/evidence/browser.gif",
+         "alt": "🌐 ブラウザでの確認"
+        }
+       ]
+      }
+     ]
     }
-  ]
+   ]
+  },
+  {
+   "type": "section",
+   "title": "🔗 リンク",
+   "blocks": [
+    {
+     "type": "links",
+     "items": [
+      {
+       "label": "🎛️ 表紙",
+       "href": "./ui.html"
+      },
+      {
+       "label": "📄 pysaiyanweboo.py",
+       "href": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/main/pysaiyanweboo.py"
+      }
+     ]
+    }
+   ]
+  }
+ ]
 }

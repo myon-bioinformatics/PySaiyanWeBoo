@@ -18,8 +18,7 @@ jobs:
     uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@27c46411c0a07d9b4d0f1ad5751ed1bb9e869b5c
     with:
       artifact_path: .
-      # 📚 index.html stays the front page (the UI); the usage guide with the full 🧩 機能一覧 goes under guide/
+      # 📚 index.html is the usage guide (🧩 機能一覧 / 🔬 検証ガイド / 🎞 GIF デモ, like every repository); the front (the UI) is ui.html
       guide_page: docs/guide.page.json
-      guide_dir: guide
       guide_brand: PySaiyanWeBoo
       build: "python3 -S pysaiyanweboo.py --site ."

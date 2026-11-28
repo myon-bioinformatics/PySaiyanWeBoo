@@ -21300,7 +21300,7 @@ def example_pages() -> dict[str, str]:
         "examples/image-studio.html": imagestudio_document(),
         "examples/parts.html": parts_document(),
         "contract/v1/example.html": page(contract, "web-ui HTML contract v1 fixture"),
-        "index.html": _index_page(),
+        "ui.html": _index_page(),         # 🎛️ the front (Try it, the theme wall, rooms); the usage guide is index.html
     }
 
 
@@ -21717,7 +21717,7 @@ def _index_page() -> str:
         {"id": "guide", "emoji": "🧩", "title": "機能一覧", "text": "Every CLI option and public name, read from the code.",
          "link": "Open the guide", "html": '<section class="ui-panel" id="guide"><h2>🧩 機能一覧</h2><p class="ui-muted">The usage guide lists '
                                            'every option and every public name of pysaiyanweboo.py, read from the code at build time.</p>'
-                                           '<p class="ui-links"><a href="./guide/">🧩 機能一覧</a></p></section>'},
+                                           '<p class="ui-links"><a href="./">🧩 機能一覧</a></p></section>'},
     ]
     css = layout_presets.css(presets) + _WALL_CSS
     scripts = (module_script(EMBEDDED_UI_JS + "bindTheme();\n") + module_script(_JS["theme.js"] + "bindSeed();\n") + module_script(_JS["curl.js"]))
