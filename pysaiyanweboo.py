@@ -7885,6 +7885,14 @@ _CHROME_WORDS = {
     "about": ("{0}：このページの案内。", "{0}: a guide to this page.", "{0} : le guide de cette page.", "{0}: la guía de esta página.", "{0}: o guia desta página.", "{0}: دليل هذه الصفحة.", "{0}：本页指南。", "{0}: путеводитель по этой странице.", "{0}: panduan halaman ini.", "{0}: Wegweiser dieser Seite.", "{0}: mwongozo wa ukurasa huu."),
     "about2": ("🚪 でほかの場所へ、🏠 で戻れます。", "🚪 takes you elsewhere, 🏠 back home.", "🚪 mène ailleurs, 🏠 ramène à l'accueil.", "🚪 lleva a otro lugar, 🏠 vuelve al inicio.", "🚪 leva a outro lugar, 🏠 volta ao início.", "🚪 إلى مكان آخر، و🏠 للعودة.", "🚪 前往别处，🏠 返回首页。", "🚪 — в другое место, 🏠 — обратно.", "🚪 ke tempat lain, 🏠 kembali ke beranda.", "🚪 führt woandershin, 🏠 zurück.", "🚪 kwenda kwingine, 🏠 kurudi mwanzo."),
 }
+def chrome_word(key: str, lang: str = "ja", *args: Any) -> str:
+    """🌐 One catalogue word in a language, its {0} {1} filled in (a word missing there is the English one): Python's chromeWord, for
+    markup built with the catalogue's words (a world's header says ⭐ and ⚙️ in them, so 🌐 finds them)."""
+    row = {**_CHROME_WORDS, **_PAGE_WORDS}[key]
+    codes = [code for code, _ in CHROME_LANGS]
+    return (row[codes.index(lang)] if lang in codes else row[1]).format(*args)
+
+
 def _chrome_labels(value: Any, label: str, limit: int, codes: Sequence[str]) -> dict[str, str]:
     """A ``labels`` block: language code → words, for the codes allowed (the others come from ``label``/``text``)."""
     if not isinstance(value, dict) or set(value) - set(codes):

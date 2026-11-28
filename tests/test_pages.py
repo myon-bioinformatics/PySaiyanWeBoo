@@ -6930,6 +6930,7 @@ def test_every_word_the_chrome_brings_is_in_eleven_languages():
     assert "bindChrome" not in shell and "bindTheme" not in shell
     with pytest.raises(ValueError, match="words maps a key"):
         ui.shell_js({"pet": ["なでる", "Pet"]})
+    assert (ui.chrome_word("home"), ui.chrome_word("home", "fr"), ui.chrome_word("in", "en", 5), ui.chrome_word("record", "de")) == ("ホーム", "Accueil", "in 5 min", "Ihr Protokoll")
     assert ui.page_language(page) == "ja" and ui.page_language("<html><body><main><p>Pick a template and send.</p><pre>日本語</pre></main></body></html>") == "en"
     assert ui.chrome_validate({"lang": "ar"})["lang"] == "ar" and '<option value="ar" lang="ar" selected>' in ui.chrome_html({"lang": "ar"})
     assert ui.chrome_validate({"board": {"items": [{"text": "🏠 家", "labels": {"en": "🏠 Home"}}]}})["board"]["items"][0]["labels"] == {"en": "🏠 Home"}
