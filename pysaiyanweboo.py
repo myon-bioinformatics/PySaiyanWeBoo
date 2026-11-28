@@ -4461,7 +4461,7 @@ function bindImportPage() {
   $('clear').addEventListener('click',()=>{++revision;loaded=null;clearResult();$('html-input').value='';$('file-input').value='';$('source-url').value='';sourceLink.update();setText($('status'),'取込データと結果を消去しました。');});
 }
 
-if (typeof document !== 'undefined' && document.querySelector('script[type="module"][src="./extract.mjs"]')) bindImportPage();
+if (typeof document !== 'undefined' && document.querySelector('script[type="module"][src$="extract.mjs"]')) bindImportPage();
 """
 
 
