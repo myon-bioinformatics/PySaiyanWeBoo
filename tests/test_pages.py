@@ -6791,7 +6791,8 @@ def args_for(name):
             "table": (({"columns": ["page", "chromium"], "rows": [["index", {"text": "pass", "status": "pass"}]], "row_headers": True},), {}),
             "steps": (({"key": "demo/run", "steps": [{"id": "run", "title": "Run", "command": "python3 -S demo.py", "expect": "42"}]},), {}),
             "tabs": (([("About", "<p>a</p>"), ("Skills", "<p>b</p>")],), {"id": "profile"}),
-            "toolbar": ((_TOOLBAR,), {"candidates_id": "cands"})}.get(name, ((), {}))
+            "toolbar": ((_TOOLBAR,), {"candidates_id": "cands"}),
+            "views": (([{"source": "tools/#a", "document": "<p>a</p>", "about": "A."}],), {"home": {"title": "🧰"}})}.get(name, ((), {}))
 
 
 @pytest.mark.parametrize("name", sorted(ui.COMPONENTS))
@@ -6939,6 +6940,46 @@ def test_a_page_declares_its_rows_once_and_every_host_places_them():
         ui.chrome_rows_script({"rows": []})
     module = ui.js_source("chrome.js")
     assert "document.addEventListener('ui-chrome-view',e=>host(e.detail?.name,e.detail?.root))" in module and "hide(document,el.dataset.replaces)" in module
+
+
+def test_views_join_or_frame_each_document_and_one_owner_holds_each_id():
+    """🧰 views_html: 🏠 lists the views in order; a joined view brings its <head>'s own parts and its <body> as a template, links rebased
+    to the page (a link to itself: its #name), the shared sheet left to the page; a framed app runs whole in a srcdoc frame whose files
+    load from the root, whose #links stay in it and whose links to the page's views open them there. One owner per id."""
+    from html import unescape
+    gif = ('<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>🎞 GIF工房</title><style>' + ui.bundled_css() + '.g{}</style>'
+           '<link rel="icon" href="x.png"></head><body class="ui-elements"><main id="gif-main"><a href="./">↺</a><a href="./?w=8">8</a>'
+           '<img src="../media/a.gif"></main><script type="module" src="./gif.js"></script></body></html>')
+    app = ('<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="script-src \'self\'"><title>App</title></head><body>'
+           '<a href="#part">part</a><section id="part">p</section><a href="../#gif">🎞</a><a href="https://me.example/tools/#gif">abs</a>'
+           '<a href="https://other.example/">↗</a><a href="./other.html">file</a><script src="app.js"></script></body></html>')
+    page = ui.views_html([{"source": "tools/#gif", "document": gif, "about": "画像を並べて GIF に。端末の中で。"},
+                          {"source": "tools/app/index.html", "document": app, "framed": True, "title": "🖼️ 工房"}],
+                         site="https://me.example/", home={"title": "🧰 Tools", "heading": "🧰 Tools", "about": "ひとつの画面。"}, reserved=("door",))
+    assert page.startswith('<section id="home" data-ui-view data-title="🧰 Tools" data-about="[&quot;ひとつの画面。&quot;]">')
+    assert '<ul class="ui-view-index"><li><a href="#gif">🎞 GIF工房</a></li><li><a href="#app">🖼️ 工房</a></li></ul>' in page
+    joined = page[page.index('<section id="gif"'):page.index('<section id="app"')]
+    assert joined.startswith('<section id="gif" class="ui-elements" data-ui-view data-title="🎞 GIF工房" data-about="[&quot;画像を並べて GIF に。&quot;, &quot;端末の中で。&quot;]" hidden><template><style>.g{}</style>')
+    assert ui.bundled_css() not in joined and "<title>" not in joined and 'rel="icon"' not in joined and "<meta" not in joined
+    assert '<a href="#gif">↺</a><a href="./?w=8">8</a><img src="./../media/a.gif">' in joined and '<script type="module" src="./gif.js">' in joined
+    framed = unescape(page[page.index('srcdoc="') + 8:page.index('"></iframe>')])
+    assert '<section id="app" data-ui-view data-title="🖼️ 工房" data-routes="part" hidden><template><iframe class="ui-view-frame" title="🖼️ 工房"' in page
+    assert framed.index('<base href="./app/">') < framed.index("Content-Security-Policy")         # before its own CSP, which governs what follows
+    assert '<a href="#part">' in framed and '<a target="_top" href="/tools/#gif">🎞</a><a target="_top" href="/tools/#gif">abs</a>' in framed
+    assert '<a target="_top" href="https://other.example/">' in framed and '<a target="_top" href="/tools/app/other.html">' in framed
+    assert '<script src="/tools/app/app.js"></script>' in framed
+    with pytest.raises(ValueError, match="the b view shares ids"):
+        ui.views_html([{"source": "tools/#a", "document": '<p id="x"></p>'}, {"source": "tools/#b", "document": '<p id="x"></p>'}])
+    with pytest.raises(ValueError, match="shares ids"):
+        ui.views_html([{"source": "tools/#a", "document": '<p id="door"></p>'}], reserved=("door",))
+    other = ui.views_html([{"source": "tools/#a", "document": '<p id="x"></p>'}, {"source": "tools/b/index.html", "document": '<p id="x"></p>', "repository": "me/b"}])
+    assert "⏸ この道具は id がほかとぶつかる" in other and "https://github.com/me/b" in other    # another repository's: ⏸, not a broken page
+    with pytest.raises(ValueError, match="distinct lowercase names"):
+        ui.views_html([{"source": "tools/#a", "document": ""}, {"source": "tools/#a", "document": ""}])
+    assert ui.view_name("tools/a/b/index.html") == "a-b" and ui.view_name("guide/x.html", at="guide/index.html") == "x"
+    parts = ui.component_parts("views", [{"source": "tools/#a", "document": "<p>a</p>"}])
+    assert ".ui-view-frame{" in parts["css"] and parts["js"].rstrip().endswith("bindViews();") and "export function bindViews()" in parts["js"]
+    assert "document.dispatchEvent(new CustomEvent('ui-chrome-view'" in parts["js"] and "'ui-view-frame'" in parts["js"]
 
 
 def test_every_word_the_chrome_brings_is_in_eleven_languages():

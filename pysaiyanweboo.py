@@ -8,8 +8,8 @@ only as an explicit subprocess helper for pytest/CI one-liners.
 """
 from __future__ import annotations
 
-import argparse, ast, base64, binascii, colorsys, errno, hashlib, heapq, hmac, http.client, http.server, importlib.util, io, json, math, os, random, re, shlex, shutil, struct, subprocess, sys, time, unicodedata, urllib.error, urllib.request, xml.etree.ElementTree as ET, zlib
-from collections import Counter, defaultdict; from datetime import date, datetime, timezone; from decimal import Decimal; from html import escape, unescape; from pathlib import Path; from typing import Any, Sequence; from urllib.parse import parse_qsl, quote, urlsplit
+import argparse, ast, base64, binascii, colorsys, errno, hashlib, heapq, hmac, http.client, http.server, importlib.util, io, json, math, os, posixpath, random, re, shlex, shutil, struct, subprocess, sys, time, unicodedata, urllib.error, urllib.request, xml.etree.ElementTree as ET, zlib
+from collections import Counter, defaultdict; from datetime import date, datetime, timezone; from decimal import Decimal; from html import escape, unescape; from pathlib import Path; from typing import Any, Sequence; from urllib.parse import parse_qsl, quote, urlsplit, urlunsplit
 
 THEMES = ("modern", "github-like")
 # Token-only candidates: their values live in the Python tokens.css source; not in contract v1 yet.
@@ -5993,6 +5993,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "door": {"html": "door_html", "css": ("door.css",), "js": ("door.js",)},
     "tabs": {"html": "tabs_html", "css": ("tabs_css",), "js": ()},
     "chrome": {"html": "chrome_html", "css": ("chrome.css",), "js": ("chrome.js",), "mount": "bindChrome();"},
+    "views": {"html": "views_html", "css": ("views_css",), "js": ("views.js",), "mount": "bindViews();"},
     "playground": {"html": "playground_html", "css": ("playground.css",), "js": ("playground.js",)},
     "report": {"html": "report_html", "css": ("report.css",), "js": ("report.js",)},
     "mcp": {"html": "mcp_html", "css": ("mcp.css",), "js": ("mcp.js",)},
@@ -6016,7 +6017,9 @@ COMPONENTS: dict[str, dict[str, Any]] = {
 }
 # Stylesheets that are built rather than stored: the spec (the first argument) decides them.
 _COMPONENT_CSS = {"showcase_css": lambda *a: showcase_css(showcase_validate(a[0])),
-                  "front_css": lambda *a: front_css(), "gaze_avatar_css": lambda: GAZE_AVATAR_CSS, "tabs_css": lambda *a, **k: tabs_css()}
+                  "front_css": lambda *a: front_css(), "gaze_avatar_css": lambda: GAZE_AVATAR_CSS, "tabs_css": lambda *a, **k: tabs_css(),
+                  "views_css": lambda *a, **k: ".ui-view-index{display:grid;gap:8px;padding:0;list-style:none}"
+                                               ".ui-view-frame{display:block;width:100%;height:calc(100dvh - 72px);border:0}"}
 
 
 def component_parts(name: str, /, *args: Any, **kwargs: Any) -> dict[str, str]:
@@ -8228,6 +8231,174 @@ def chrome_hosting(spec: Any, page: str = "", views: dict[str, str] | None = Non
     if found:
         spec["views"] = {**spec.get("views", {}), **{name: {k: v for k, v in rows.items() if k != "tools"} for name, rows in found.items()}}
     return {k: v for k, v in spec.items() if v not in ({}, [], "")}
+
+
+# ── 🧰 views: one page, many #views (a site's tools as panels of one screen) ──────────────────────────────────────────────────────
+_VIEW_LINK = re.compile(r'(?P<attr>\b(?:href|src)=)(?P<quote>["\'])(?P<url>[^"\']*)(?P=quote)')
+_VIEW_SCRIPT = re.compile(r"<script\b[^>]*>.*?</script>", re.S)
+
+
+def view_name(source: str, at: str = "tools/index.html") -> str:
+    """🧰 The #name a document has as a view of the screen ``at``: one built for the screen's own folder names itself (``tools/#gif``),
+    another is its path under that folder (``tools/heatmap/index.html`` → ``heatmap``, ``tools/a/b/index.html`` → ``a-b``)."""
+    folder = posixpath.dirname(at)
+    return source.partition("#")[2] or re.sub(r"(?:/index)?\.html$", "", source.removeprefix(folder + "/" if folder else "")).replace("/", "-")
+
+
+def _view_rebase(markup: str, source: str, name: str, at: str, root: bool = False) -> str:
+    """Every relative ``href`` / ``src`` of ``markup`` (written for ``source``) as seen from the screen ``at`` (``root``: from the site's
+    root, ``/tools/…``); a link to the document itself becomes ``#name``. Script bodies stay as they are (a ``<script src>`` moves)."""
+    def move(match):
+        parts = urlsplit(match["url"])
+        if not parts.path or parts.scheme or parts.netloc or parts.path.startswith("/"):
+            return match[0]
+        where = posixpath.normpath(posixpath.join(posixpath.dirname(source), parts.path))
+        if where in (posixpath.dirname(source), source) and not root and not parts.query:
+            url = "#" + (parts.fragment or name)                                      # the document itself: its view (or its #section)
+        else:
+            rel = posixpath.relpath(where, posixpath.dirname(at) or ".")
+            path = "/" + where if root else "./" if rel == "." else "./" + rel + ("/" if parts.path.endswith("/") else "")
+            url = urlunsplit(("", "", path + ("/" if root and parts.path.endswith("/") else ""), parts.query, parts.fragment))
+        return match["attr"] + match["quote"] + url + match["quote"]
+    pieces = re.split(r"(<script\b[^>]*>.*?</script>)", markup, flags=re.S)
+    return "".join(_VIEW_LINK.sub(move, piece) if i % 2 == 0 else re.sub(r"<script\b[^>]*>", lambda tag: _VIEW_LINK.sub(move, tag[0]), piece, count=1)
+                   for i, piece in enumerate(pieces))
+
+
+def _view_title(page: str, name: str) -> str:
+    title = re.search(r"<title>(.*?)</title>", page, re.S)
+    return unescape(title[1]).strip() if title else name
+
+
+def _view_join(page: str, source: str, name: str, at: str) -> tuple[str, str, str]:
+    """(title, markup, body class) of a document as a joined view: its <head>'s own styles and scripts (the shared sheet, the name, the
+    icons and the viewport are the screen's), then its <body>, links rebased (``_view_rebase``)."""
+    title = _view_title(page, name)
+    page = re.sub(r"^\s*<!doctype html>\s*|<html\b[^>]*>|</html>\s*$", "", page, flags=re.I)   # a page may leave <head> / <body> implied
+    head = re.search(r"<head>(.*?)</head>", page, re.S)
+    body = re.search(r"<body\b([^>]*)>(.*)</body>", page, re.S)
+    classes = re.search(r'\bclass="([^"]*)"', body[1]) if body else None
+    head, body = (head[1] if head else ""), (body[2] if body else page[head.end():] if head else page)
+    head, body = (re.sub(r'<meta\b[^>]*>|<title>.*?</title>|<link rel="(?:icon|apple-touch-icon|manifest)"[^>]*>', "", part, flags=re.S) for part in (head, body))
+    for shared in (bundled_css(), core_css()):                                        # 🎨 the screen links the shared sheet once
+        head = head.replace("<style>" + shared, "<style>")
+    return title, _view_rebase(head.replace("<style></style>", "") + body, source, name, at), classes[1] if classes else ""
+
+
+def _view_to_top(page: str, source: str, targets: dict[str, tuple[str, set[str] | None]], at: str, site: str) -> str:
+    """Every ``<a href>`` of a framed document that leaves it opens in the screen (``target="_top"``): one to a view becomes
+    ``/<folder>/#name`` or the #section it holds (``targets``: source → (name, a framed view's routes, or None: a joined one holds any))."""
+    folder, pages = "/" + posixpath.dirname(at), {}
+    for path in targets:
+        pages.update({"/" + path: path, **({posixpath.dirname("/" + path) + "/": path} if path.endswith("/index.html") else {})})
+    site = site.rstrip("/")
+    def move(tag):
+        href = re.search(r'\bhref=(["\'])([^"\']*)\1', tag[0])
+        if not href or re.search(r"\b(?:target|download)\b", tag[0]) or href[2].startswith(("#", "javascript:", "blob:", "data:")):
+            return tag[0]
+        parts = urlsplit(href[2])
+        if parts.scheme or parts.netloc:
+            if not site or not href[2].startswith(site + "/"):
+                return tag[0].replace("<a", '<a target="_top"', 1)                        # 🌐 another site
+            path = parts.path
+        else:
+            path = posixpath.normpath(posixpath.join("/" + posixpath.dirname(source), parts.path)) + ("/" if parts.path.endswith("/") else "")
+        if path in (folder.rstrip("/") + "/", "/" + at) and parts.fragment:              # 🧰 the screen itself, at a #view
+            url = f"{folder.rstrip('/')}/#{parts.fragment}"
+        elif path in pages:
+            name, own = targets[pages[path]]
+            url = f"{folder.rstrip('/')}/#" + (parts.fragment if parts.fragment and (own is None or parts.fragment in own) else name)
+        else:
+            return tag[0].replace("<a", '<a target="_top"', 1)                            # 🏠 the site's other pages and files
+        return tag[0].replace(href[0], f"href={href[1]}{url}{href[1]}", 1).replace("<a", '<a target="_top"', 1)
+    pieces = re.split(r"(<script\b[^>]*>.*?</script>)", page, flags=re.S)
+    return "".join(re.sub(r"<a\b[^>]*>", move, piece) if i % 2 == 0 else piece for i, piece in enumerate(pieces))
+
+
+def _view_routes(page: str) -> set[str]:
+    """The #sections a document links itself to (an ``href="#x"`` with an ``id="x"``): where the screen can open a framed view."""
+    page = _VIEW_SCRIPT.sub("", page)
+    return set(re.findall(r'href="#([^"]+)"', page)) & set(re.findall(r'\bid="([^"]+)"', page))
+
+
+def _view_frame(page: str, source: str, name: str, targets: dict[str, tuple[str, set[str] | None]], at: str, site: str,
+                label: str = "") -> tuple[str, str]:
+    """(title, markup) of an app that owns its document as a framed view: the page whole in an ``<iframe srcdoc>``, so its ids, styles,
+    scripts and CSP stay its own. Its links leave for the screen (``_view_to_top``); its files load from the site's root (a srcdoc
+    frame's preload ignores ``<base>``); a ``<base>`` of its folder serves what its scripts resolve themselves, and its #links stay in
+    it. Both come first in ``<head>``, before any CSP of its own (which governs what follows it). ``label`` names the frame."""
+    title = label or _view_title(page, name)
+    page = _view_rebase(_view_to_top(page, source, targets, at, site), source, name, at, root=True)
+    keep = ("addEventListener('click',e=>{const a=e.target.closest?.('a[href^=\"#\"]');if(!a||e.defaultPrevented||a.target)return;"
+            "e.preventDefault();location.hash=a.getAttribute('href')})")             # 🖼️ a #link stays in its document
+    rel = posixpath.relpath(posixpath.dirname(source) or ".", posixpath.dirname(at) or ".")
+    first = f'<base href="./{"" if rel == "." else rel + "/"}"><script>{keep}</script>'
+    page = (re.sub(r"<head\b[^>]*>", lambda head: head[0] + first, page, count=1) if re.search(r"<head\b", page)
+            else re.sub(r"(<html\b[^>]*>|^)", lambda tag: tag[0] + first, page, count=1))
+    return title, f'<iframe class="ui-view-frame" title="{escape(title)}" srcdoc="{escape(page)}"></iframe>'
+
+
+def _view_about(text: Any) -> list[str]:
+    """📟 What a view is, as the board's items: a sentence each, three at most, 120 characters each (a list is taken as it is)."""
+    parts = text if isinstance(text, list) else re.split(r"(?<=[。！？])|(?<=[.!?])\s+", unescape(str(text or "")))
+    return [part if len(part) <= 120 else part[:119] + "…" for part in (str(p).strip() for p in parts) if part][:3]
+
+
+def views_html(views: Sequence[dict[str, Any]], *, at: str = "tools/index.html", site: str = "", home: dict[str, Any] | None = None,
+               reserved: Sequence[str] = ()) -> str:
+    """🧰 One page of many views: 🏠 ``#home`` lists them, ``#name`` shows one. ``component_parts("views", views, …)`` gives it with its
+    styles and ``bindViews()`` (views.js); the page around it (a chrome, a door) is the host's.
+
+    ``views``, in the order 🏠 lists them: each ``{"source", "document", "name", "title", "about", "framed", "repository"}``. ``source``
+    is the path the document was written for, under the site's root (``tools/heatmap/index.html``; one written for the screen's own
+    folder is ``tools/#gif``), and names the view (``view_name``) unless ``name`` does; ``title`` names it in 🏠 and the tab (else the
+    document's ``<title>``); ``about`` says what it is (📟 the board shows it while it is open). A view stays an inert ``<template>``
+    until it is first opened: its styles and scripts load then, its scripts in the page's order. ``framed`` runs an app that owns its
+    document (its CSP, its ids) in an ``<iframe srcdoc>``; else its ``<head>``'s own parts and its ``<body>`` join the page. Links are
+    rebased from ``source`` to ``at`` (the screen's path); a framed app's links to the screen, its views (``site``: this site's
+    address, for absolute ones) and their #sections open them on the screen. ``#section`` opens the view that holds it.
+
+    🆔 One owner per id (``reserved``: the host's own, ``home`` and the names): a joined view that shares one stops the build, unless it
+    names its ``repository``: that one shows ⏸ in its place (another repository's tool must not break the screen)."""
+    home = {"title": "🧰", "heading": "", "about": "", **(home or {})}
+    views = [{"name": view_name(view["source"], at), "title": "", "about": "", "framed": False, "repository": None, **view} for view in views]
+    names = [view["name"] for view in views]
+    if len(set(names)) != len(names) or "home" in names or any(not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) for name in names):
+        raise ValueError(f"views need distinct lowercase names other than home: {names}")
+    owners = {name: name for name in ("home", *names, *reserved)}
+    routes = {view["name"]: _view_routes(view["document"]) - set(owners) for view in views if view["framed"]}
+    targets = {view["source"]: (view["name"], routes.get(view["name"])) for view in views}
+    made = {}
+    for view in sorted(views, key=lambda view: view["framed"]):                       # 🧩 the joined ones first: they own their ids
+        name = view["name"]
+        if view["framed"]:
+            title, markup = _view_frame(view["document"], view["source"], name, targets, at, site, view["title"])
+            made[name] = title, markup, "", routes[name]
+            continue
+        title, markup, classes = _view_join(view["document"], view["source"], name, at)
+        ids = set(re.findall(r'\bid="([^"]+)"', _VIEW_SCRIPT.sub("", markup)))
+        clash = sorted(i for i in ids if owners.get(i, name) != name)
+        if clash and not view["repository"]:
+            raise ValueError(f"🆔 the {name} view shares ids with another part of the page: {clash}")
+        if clash:                                                                     # ⏸ rather than a broken screen
+            repository = str(view["repository"])
+            title, markup, classes = _view_join(page_document({"schema": "web-ui-page/1", "title": f"⏸ {repository.rpartition('/')[2]}", "blocks": [
+                {"type": "text", "text": f"⏸ この道具は id がほかとぶつかるので、ここでは開かない（{', '.join(clash)}）。"},
+                {"type": "links", "items": [{"label": "🐙 GitHub", "href": f"https://github.com/{repository}"}]}]}), view["source"], name, at)
+            ids = set()
+        owners.update(dict.fromkeys(ids, name))
+        made[name] = title, markup, classes, set()
+    index, sections = [], []
+    for view in views:
+        name, (title, markup, classes, own) = view["name"], made[view["name"]]
+        title, about = view["title"] or title, _view_about(view["about"])
+        index.append(f'<li><a href="#{name}">{escape(title, quote=False)}</a></li>')
+        sections.append(f'<section id="{name}"' + (f' class="{escape(classes)}"' if classes else "") + f' data-ui-view data-title="{escape(title)}"'
+                        + (f' data-about="{escape(json.dumps(about, ensure_ascii=False))}"' if about else "")
+                        + (f' data-routes="{" ".join(sorted(own))}"' if own else "") + f" hidden><template>{markup}</template></section>")
+    heading = f"<h1>{escape(home['heading'], quote=False)}</h1>" if home["heading"] else ""
+    return (f'<section id="home" data-ui-view data-title="{escape(home["title"])}" data-about="{escape(json.dumps(_view_about(home["about"]), ensure_ascii=False))}">'
+            f'<main class="ui-page">{heading}<ul class="ui-view-index">{"".join(index)}</ul></main></section>' + "".join(sections))
 
 
 def chrome_html(spec: Any = None) -> str:
@@ -17914,6 +18085,49 @@ export function bindStudio(root=document){return[...root.querySelectorAll("[data
 globalThis.webUiStudio={pitchClass,transposeKey,fifthNeighbor,scale,diatonicChord,convertProgression,convertRomanToken,applyModifier,chordTones,normalizedInversion,chordWithInversion,beatMicros,subdivisionMicros,barMicros,metronomePosition,durationLabel,tapTempo,parseNotes,notesPerBar,noteBars,mulberry32,songSeed,songSeedText,bindStudio};
 if(typeof document!=="undefined")bindStudio();
 """
+
+_JS["views.js"] = r"""/* web-ui views: one page of many #views (views_html). 🏠 #home lists them; #name shows one, #section opens the view that holds it.
+A view is an inert <template> until first opened, then its scripts run in the page's order. The page's title is the view's, 🚪 (a door's
+select) points at it, 📟 the board says what it is, and the chrome hears which view shows (ui-chrome-view). A framed view's frame tells
+the host when it loads (ui-view-frame {name, frame}); globalThis.uiViews {mount, show, current} lets the host move between views. */
+export function bindViews(){
+ const views=[...document.querySelectorAll('[data-ui-view]')],names=views.map(v=>v.id),home=document.getElementById('home')||views[0];let current='',lead=JSON.parse(home?.dataset.about||'[]').length;
+ if(!views.length||globalThis.uiViews)return globalThis.uiViews;
+ const mark=()=>{const door=document.querySelector('[data-door-select]');if(!door?.options.length)return;   // 🚪 where you are (🏠: no row of its own)
+  door.value=([...door.options].find(o=>o.value.endsWith('#'+current))||door.options[0]).value};
+ const inside=(view,target,fragment)=>{const frame=view.querySelector('iframe');if(!frame)return(document.getElementById(target)||view).scrollIntoView();
+  const go=()=>{if(location.hash===fragment)frame.contentWindow.location.replace('about:srcdoc'+fragment)};
+  if(frame.dataset.ready)go();else frame.addEventListener('load',go,{once:true})};   // 🖼️ a framed app's own #section
+ const runs=type=>['','text/javascript','module'].includes(type);
+ const play=async marks=>{for(const[mark,old]of marks){const s=document.createElement('script');for(const a of old.attributes)s.setAttribute(a.name,a.value);   // ▶️ in the page's order
+   if(old.src){s.async=false;const done=new Promise(r=>{s.onload=s.onerror=r});mark.replaceWith(s);await done}
+   else if(s.type==='module'){const id='ui-view-ran-'+Math.random().toString(36).slice(2),done=new Promise(r=>{addEventListener(id,r,{once:true});addEventListener('error',r,{once:true});setTimeout(r,10000)});
+    s.textContent=old.textContent+'\n;dispatchEvent(new Event('+JSON.stringify(id)+'))';mark.replaceWith(s);await done}
+   else{s.textContent=old.textContent;mark.replaceWith(s)}}};
+ const mount=view=>{const inert=view.querySelector(':scope>template');if(!inert)return;const part=document.importNode(inert.content,true);   // 💤 loads when first opened
+  const marks=[...part.querySelectorAll('script')].filter(s=>runs(s.type)).map(s=>{const mark=document.createComment('▶️');s.replaceWith(mark);return[mark,s]});
+  view.replaceChildren(part);play(marks);
+  for(const frame of view.querySelectorAll('iframe'))frame.addEventListener('load',()=>{frame.dataset.ready='1';
+   document.dispatchEvent(new CustomEvent('ui-view-frame',{detail:{name:view.id,frame}}))},{once:true})};
+ const tell=view=>{const run=document.querySelector('.ui-board-run');if(!run)return;   // 📟 what the open view is, then the rest of the board
+  const about=JSON.parse((view.dataset.about?view:home).dataset.about||'[]'),rest=[...run.children].slice(lead,run.children.length/2);
+  const first=[...about.map(text=>Object.assign(document.createElement('span'),{className:'ui-board-item',textContent:text})),...rest];
+  run.replaceChildren(...first,...first.map(n=>{const c=n.cloneNode(true);c.setAttribute('aria-hidden','true');return c}));lead=about.length};
+ const host=view=>{const frame=view.querySelector('iframe'),say=()=>document.dispatchEvent(new CustomEvent('ui-chrome-view',{detail:{name:view.id,root:frame?frame.contentDocument:view}}));
+  if(frame&&!frame.dataset.ready)frame.addEventListener('load',()=>{if(current===view.id)say()},{once:true});else say()};   // ⚙️ ⋯ the view's own rows
+ const show=(view,target,fragment)=>{mount(view);for(const v of views)v.hidden=v!==view;document.title=view.dataset.title;tell(view);
+  if(target)inside(view,target,fragment);else if(current&&current!==view.id)scrollTo(0,0);current=view.id;mark();host(view)};
+ const route=()=>{const fragment=location.hash;let name='';
+  try{name=decodeURIComponent(fragment.slice(1).split('?',1)[0])}catch{}
+  if(names.includes(name))return show(document.getElementById(name));
+  const owner=name&&views.find(v=>(v.dataset.routes||'').split(' ').includes(name)||v.querySelector(':scope>template')?.content.getElementById(name)||v.contains(document.getElementById(name)));
+  if(owner)return show(owner,name,fragment);if(!name||!current)show(home)};
+ addEventListener('hashchange',route);addEventListener('pageshow',()=>setTimeout(mark));
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',route);else route();
+ return globalThis.uiViews={mount,show,get current(){return current}};
+}
+"""
+
 
 _JS["door.js"] = r"""/* web-ui door: a Door-to-Door pull-down, emoji transitions ("A → B", "A ↔ B") and a seeded draw. Python (web_ui.door_options, emoji_path, door_draw) is the reference. */
 const DROP="\\ufe0e\\ufe0f \\t\\n\\v\\f\\r\\x1c-\\x1f\\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
