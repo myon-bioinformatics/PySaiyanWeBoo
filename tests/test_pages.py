@@ -912,8 +912,8 @@ class DoorTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 pysaiyanweboo.door_html(DOOR, **bad)
         css = pysaiyanweboo.css_source("door.css")
-        self.assertIn(".ui-door-foot{position:sticky;bottom:0;z-index:32;", css)
-        self.assertEqual([int(px) % 8 for px in re.findall(r"(\d+)px", css[css.index(".ui-door-foot{"):]) if px != "1"], [0] * 5)
+        self.assertIn("body:has(>.ui-door-foot){min-height:100dvh}.ui-door-foot{position:sticky;top:calc(100dvh - 56px - 1px);bottom:0;z-index:32;", css)   # a short page too
+        self.assertEqual([int(px) % 8 for px in re.findall(r"(\d+)px", css[css.index(".ui-door-foot{"):]) if px != "1"], [0] * 6)
 
     def test_the_compact_door_is_the_pulldown_alone(self):
         """🚪 door_html(compact=True): one row for a header or a footer. The same data and options as the panel, none of its words."""
