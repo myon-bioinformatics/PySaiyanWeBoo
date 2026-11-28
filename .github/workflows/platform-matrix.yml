@@ -225,6 +225,8 @@ jobs:
           pattern: platform-web-ui-*
           path: collected
       - name: One matrix page and the browsers' own evidence
+        env:
+          PYTHONPATH: ${{ github.workspace }}  # 🔁 BTK main renders with pysaiyanweboo: here it is this checkout
         run: |
           mkdir -p matrix
           python3 -S .browser-test-kit/tools/platform_probe.py merge collected --out matrix/dataset.json
