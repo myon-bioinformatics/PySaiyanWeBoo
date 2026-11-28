@@ -30,6 +30,8 @@ export function bindToggles(root=document){return[...root.querySelectorAll("[dat
 export function bindTheme(root=document,{key="web-ui-theme"}={}){const body=document.body,controls=[...root.querySelectorAll("[data-ui-theme-switch],input[name=ui-theme]")];const known=name=>controls.some(c=>c.tagName==="SELECT"?[...c.options].some(o=>o.value===name):c.value===name);if(body.dataset.uiThemePage===undefined)body.dataset.uiThemePage=body.dataset.uiTheme||"";const sync=()=>{const chosen=body.dataset.uiThemeChosen;for(const c of controls){if(c.tagName==="SELECT")c.value=chosen===undefined&&[...c.options].some(o=>o.value==="")?"":body.dataset.uiTheme;else c.checked=c.value===body.dataset.uiTheme}};const choose=name=>{if(name){body.dataset.uiThemeChosen=name;body.dataset.uiTheme=name}else{delete body.dataset.uiThemeChosen;body.dataset.uiTheme=body.dataset.uiThemePage}};let saved=null;try{saved=localStorage.getItem(key)}catch{}if(saved&&known(saved))choose(saved);sync();for(const c of controls)c.addEventListener("change",()=>{if(!known(c.value))return;choose(c.value);sync();try{if(c.value)localStorage.setItem(key,c.value);else localStorage.removeItem(key)}catch{}});return body.dataset.uiTheme}
 /** Switch data-ui-labels on <body> with no reload: "emoji" (the default: icon faces) or "words" (as on a PC: every [data-ui-word] shows its short word instead of its face; CSS in components.css). Buttons with data-ui-labels-switch flip it (aria-pressed is true while words show), and so does a header row whose key is "labels" (the ui-chrome-action event). A flip is remembered (localStorage, best effort). Returns the labels in effect. */
 export function bindLabels(root=document,{key="web-ui-labels"}={}){const body=document.body,buttons=[...root.querySelectorAll("[data-ui-labels-switch]")];const show=v=>{body.dataset.uiLabels=v==="words"?"words":"emoji";for(const b of buttons)b.setAttribute("aria-pressed",String(body.dataset.uiLabels==="words"));return body.dataset.uiLabels};let saved=null;try{saved=localStorage.getItem(key)}catch{}show(saved||body.dataset.uiLabels);const flip=()=>{const v=show(body.dataset.uiLabels==="words"?"emoji":"words");try{localStorage.setItem(key,v)}catch{}};for(const b of buttons)b.addEventListener("click",flip);document.addEventListener("ui-chrome-action",e=>{if(e.detail&&e.detail.key==="labels")flip()});return body.dataset.uiLabels}
+/** A toolbar from toolbar_html(): a click on a [data-act] control calls run(act), a button with candidates too (a mode such as 🔷 on a canvas becomes the tool as its row opens; a page with nothing to do for it ignores the name). A button with data-candidates opens its candidates in the toolbar's one candidate row ([data-ui-candidates]), right under its own row; pressing it again closes them. A candidate calls run(its data-acts entry) or, when it names no action, run(the button's act, the candidate's face), and data-close hides the row after the pick. Each candidate's words (data-words, "|"-separated) are its title, aria-label and, up to "（", its data-ui-word. Pressing a control keeps the focus where it was, so a text being typed stays open. A candidate whose act has a chooser ([data-ui-file], from a candidate with accept) opens it instead, and the chosen File runs run(act, file). Returns {offer(button), close(), choose(act)}: choose opens an act's chooser from the page (a host's key). */
+export function bindToolbar(root,run){const row=root.querySelector("[data-ui-candidates]"),files={};for(const f of root.querySelectorAll("[data-ui-file]")){files[f.dataset.uiFile]=f;f.addEventListener("change",()=>{const x=f.files&&f.files[0];f.value="";if(x)run(f.dataset.uiFile,x)})}const close=()=>{if(!row)return;row.hidden=true;row.dataset.tool="";row.replaceChildren()};const offer=b=>{if(!row)return;if(row.dataset.tool===b.dataset.act&&!row.hidden)return close();const faces=b.dataset.candidates.split(" "),acts=(b.dataset.acts||"").split(" "),words=(b.dataset.words||"").split("|");row.dataset.tool=b.dataset.act;b.closest(".ui-toolbar-row").after(row);row.hidden=false;row.replaceChildren(...faces.map((face,i)=>{const c=document.createElement("button");c.type="button";c.textContent=face;const said=words[i]||face;c.title=said;c.setAttribute("aria-label",said);if(words[i])c.dataset.uiWord=said.split("（")[0];c.addEventListener("click",()=>{if(files[acts[i]])files[acts[i]].click();else if(acts[i])run(acts[i]);else run(b.dataset.act,face);if("close"in b.dataset)close()});return c}))};root.addEventListener("pointerdown",e=>{if(e.target.closest("button,a"))e.preventDefault()});root.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b||!root.contains(b)||b.disabled)return;if(b.dataset.candidates)offer(b);run(b.dataset.act)});return{offer,close,choose:a=>files[a]&&files[a].click()}}
 /** Tell bindTheme which theme is the page's own (a page whose own look changes, such as display modes): it shows unless the visitor chose one. Returns the theme in effect. */
 export function pageTheme(name){const body=document.body;body.dataset.uiThemePage=name;if(body.dataset.uiThemeChosen===undefined)body.dataset.uiTheme=name;return body.dataset.uiTheme}
 /** Mark on-screen elements with data-lit (IntersectionObserver); CSS decides what lit looks like. Without IntersectionObserver every element counts as lit. Returns a stop function. */
@@ -2326,7 +2328,7 @@ def add_site_chrome(page: str, links: Any, *, title: str = "GUIDE", _back_nav: b
     CSP lists its scripts or styles gets the parts' hashes listed (``add_part``).
 
     🌐 Every word these parts put on the page follows ⚙️'s language: the chrome's own, 🫧's, the foot's, a link named by a catalogue
-    word (``chrome_words``: the way back's ポートフォリオ and GitHub リポジトリ) and the stand-in line of a page that says nothing of
+    word (the way back's ポートフォリオ and GitHub リポジトリ, found by its words) and the stand-in line of a page that says nothing of
     itself; the page's own words stay as they are. The page's ``<html lang>`` says the language of its own words (``page_language``),
     and the chrome starts in it. Colors a page does not carry yet (the token-only themes, github-like) come with the chrome."""
     if '<div class="ui-door-foot">' in page:
@@ -5810,6 +5812,120 @@ def current_items_html(items: list[str] | tuple[str, ...], *, index: int | None 
     return f'<ol class="ui-current-items"{identifier} aria-label="{escape(label, quote=True)}">{"".join(rows)}</ol>'
 
 
+_TOOL_ACT = re.compile(r"[a-z][a-z0-9-]*")
+
+
+def toolbar_validate(groups: Any) -> list[tuple[str, list[dict[str, Any]]]]:
+    """🧰 The data of a studio toolbar: ``[(group, [control, …]), …]``, the rows in order. A control is a dict:
+
+    ``act`` (``[a-z][a-z0-9-]*``, unique in the toolbar: what ``bindToolbar``'s ``run`` is called with), ``face`` (what the button
+    shows, an emoji by default), ``word`` (its short word for 💻 To textual, ``data-ui-word``), ``words`` (title and aria-label),
+    and optionally ``href`` (a link instead of a button), ``candidates`` (``[{face, act?, words?, accept?, capture?}]``: one row of
+    choices that opens under the button; a candidate with an ``act`` runs it, one without runs the button's act with the candidate's
+    face, and one with ``accept`` (file types, as ``<input type="file" accept>``; ``capture``: "user" or "environment", a camera)
+    opens a file chooser instead and runs its act with the chosen File) and ``close`` (true: a pick hides the row again, as for
+    📥 📤). Returns ``[(group, [control with every key filled])]``; a ``ValueError`` names the first thing wrong."""
+    if not isinstance(groups, (list, tuple)) or not groups:
+        raise ValueError("a toolbar is a non-empty list of (group, controls)")
+    seen, out = set(), []
+    for entry in groups:
+        if not (isinstance(entry, (list, tuple)) and len(entry) == 2 and isinstance(entry[0], str) and _TOOL_ACT.fullmatch(entry[0])):
+            raise ValueError(f"a toolbar row is (group, controls) with a [a-z][a-z0-9-]* group: {entry!r}")
+        group, controls = entry
+        if not isinstance(controls, (list, tuple)) or not controls:
+            raise ValueError(f"row {group!r} has no controls")
+        row = []
+        for c in controls:
+            if not isinstance(c, dict) or set(c) - {"act", "face", "word", "words", "href", "candidates", "close"}:
+                raise ValueError(f"a control is a dict of act, face, word, words, href, candidates, close: {c!r}")
+            act = c.get("act")
+            if not isinstance(act, str) or not _TOOL_ACT.fullmatch(act) or act in seen:
+                raise ValueError(f"act must be [a-z][a-z0-9-]* and unique: {act!r}")
+            seen.add(act)
+            for key in ("face", "word", "words"):
+                if not isinstance(c.get(key), str) or not c[key].strip():
+                    raise ValueError(f"{act}: {key} must be a non-empty string")
+            cands = c.get("candidates") or []                # [] is none (what toolbar_validate itself returns), so a checked toolbar checks again
+            if not isinstance(cands, (list, tuple)):
+                raise ValueError(f"{act}: candidates is a list")
+            norm = []
+            for k in cands:
+                if not isinstance(k, dict) or set(k) - {"face", "act", "words", "accept", "capture"} or not isinstance(k.get("face"), str) or not k["face"]:
+                    raise ValueError(f"{act}: a candidate is {{face, act?, words?, accept?, capture?}}: {k!r}")
+                if any(ch.isspace() for ch in k["face"]):
+                    raise ValueError(f"{act}: a candidate's face has no spaces: {k['face']!r}")
+                if k.get("act") and not (isinstance(k["act"], str) and _TOOL_ACT.fullmatch(k["act"])):   # "" is none, as returned
+                    raise ValueError(f"{act}: a candidate's act must be [a-z][a-z0-9-]*: {k.get('act')!r}")
+                if "|" in k.get("words", ""):
+                    raise ValueError(f"{act}: a candidate's words have no '|'")
+                accept, capture = k.get("accept", ""), k.get("capture", "")
+                if accept and not (isinstance(accept, str) and k.get("act") and re.fullmatch(r"[\w.+/*-]+(,[\w.+/*-]+)*", accept)):
+                    raise ValueError(f"{act}: a file candidate has an act and accept is types joined by ',': {k!r}")
+                if capture not in ("", "user", "environment") or (capture and not accept):
+                    raise ValueError(f"{act}: capture is user or environment, on a file candidate: {k!r}")
+                norm.append({"face": k["face"], "act": k.get("act", ""), "words": k.get("words", ""), "accept": accept, "capture": capture})
+            if c.get("close") and not norm:
+                raise ValueError(f"{act}: close needs candidates")
+            if c.get("href") is not None and (norm or not isinstance(c["href"], str)):
+                raise ValueError(f"{act}: a link (href) has no candidates")
+            row.append({"act": act, "face": c["face"], "word": c["word"], "words": c["words"], "href": c.get("href"),
+                        "candidates": norm, "close": bool(c.get("close"))})
+        out.append((group, row))
+    return out
+
+
+def toolbar_html(groups: Any, *, label: str = "道具", id: str | None = None, candidates_id: str | None = None,
+                 inside: dict[str, str] | None = None, after: dict[str, str] | None = None, row_class: str = "") -> str:
+    """🧰 A studio toolbar: one row per group (``data-ui-group``, a light line between groups), emoji faces with their short words
+    (💻 To textual ⇄ 📱 To iconic, ``bindLabels``), and one hidden candidate row (``candidates_id``) that ``bindToolbar(root, run)``
+    opens under the row of the pressed button. A candidate with ``accept`` gets a hidden ``<input type="file" data-ui-file="act">``
+    at the end (📥: the page writes no chooser of its own). ``inside`` adds markup at the end of a group's row (a switch), ``after``
+    right after it (a list of the page's items). ``groups`` is checked by ``toolbar_validate``."""
+    rows_in = toolbar_validate(groups)
+    inside, after = inside or {}, after or {}
+    unknown = (set(inside) | set(after)) - {g for g, _ in rows_in}
+    if unknown:
+        raise ValueError(f"inside / after name no group: {sorted(unknown)}")
+
+    def control(c: dict[str, Any]) -> str:
+        attrs = (f'data-act="{c["act"]}" data-ui-word="{escape(c["word"], quote=True)}" '
+                 f'aria-label="{escape(c["words"], quote=True)}" title="{escape(c["words"], quote=True)}"')
+        if c["href"] is not None:
+            return f'<a class="ui-button" href="{escape(c["href"], quote=True)}" {attrs}>{escape(c["face"])}</a>'
+        if c["candidates"]:
+            faces = " ".join(k["face"] for k in c["candidates"])
+            attrs = f'data-candidates="{escape(faces, quote=True)}" ' + attrs
+            if any(k["act"] for k in c["candidates"]):
+                acts = " ".join(k["act"] for k in c["candidates"])
+                words = "|".join(k["words"] for k in c["candidates"])
+                attrs = f'data-acts="{acts}" data-words="{escape(words, quote=True)}" ' + attrs
+            if c["close"]:
+                attrs = "data-close " + attrs
+        return f'<button type="button" {attrs}>{escape(c["face"])}</button>'
+
+    klass = "ui-toolbar-row" + (f" {row_class}" if row_class else "")
+    cid = f' id="{escape(candidates_id, quote=True)}"' if candidates_id else ""
+    parts = []
+    for i, (group, row) in enumerate(rows_in):
+        parts.append(f'<div class="{klass}" data-ui-group="{group}">' + "".join(map(control, row)) + inside.get(group, "") + "</div>")
+        if i == 0:
+            parts.append(f'<div class="ui-toolbar-row" data-ui-candidates{cid} role="group" aria-label="候補" hidden></div>')
+        parts.append(after.get(group, ""))
+    choosers = {k["act"]: k for _g, row in rows_in for c in row for k in c["candidates"] if k["accept"]}   # 📥 one per act
+    parts += [f'<input type="file" hidden data-ui-file="{a}" accept="{escape(k["accept"], quote=True)}"'
+              + (f' capture="{k["capture"]}"' if k["capture"] else "") + f' aria-label="{escape(k["words"] or k["face"], quote=True)}" />'
+              for a, k in choosers.items()]
+    ident = f' id="{escape(id, quote=True)}"' if id else ""
+    return f'<div class="ui-toolbar"{ident} role="toolbar" aria-label="{escape(label, quote=True)}">' + "".join(parts) + "</div>"
+
+
+_CSS["toolbar.css"] = (
+    "@layer components{.ui-toolbar{display:flex;flex-direction:column;gap:8px}"
+    ".ui-toolbar-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.ui-toolbar-row[hidden]{display:none}"
+    ".ui-toolbar-row>button,.ui-toolbar-row>a{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;"
+    "min-width:48px;min-height:48px;padding:0 8px;font-size:24px;line-height:1;text-decoration:none;touch-action:manipulation}"
+    ".ui-toolbar-row>button:disabled{opacity:.32}}\n"
+)
 _CSS["current-item.css"] = (
     "@layer components{.ui-current-items > [aria-current=step]{"
     "font-weight:700;text-decoration:underline;text-decoration-color:var(--ui-accent);"
@@ -5872,6 +5988,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "seed-dial": {"html": "seed_dial_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
     "theme-switch": {"html": "theme_switch_html", "css": (), "js": ("theme.js",), "mount": "bindTheme();"},
     "labels-switch": {"html": "labels_switch_html", "css": (), "js": ("ui.js",), "mount": "bindLabels();"},
+    "toolbar": {"html": "toolbar_html", "css": ("toolbar.css",), "js": ("ui.js",), "spec": "toolbar_validate"},
     "coordinates": {"html": "coordinates_html", "css": ("coordinates.css",), "js": ("coordinates.js",)},
     "door": {"html": "door_html", "css": ("door.css",), "js": ("door.js",)},
     "tabs": {"html": "tabs_html", "css": ("tabs_css",), "js": ()},
@@ -7730,7 +7847,7 @@ def door_html(spec: Any, *, compact: bool = False, foot: bool = False, links: An
     data = escape(json.dumps({"pages": door["pages"], "k": door["k"], "seed": door["seed"], "current": door["current"]}, ensure_ascii=False, separators=(",", ":")), quote=True)
     if compact:
         return ('<div class="ui-door ui-door-compact" id="door" data-ui-door data-door-draws="0" data-door="' + data + '">'
-                '<label for="door-select" title="Door-to-Door" data-t="door"><span aria-hidden="true">🚪</span><span class="ui-door-name" data-tx="door">Door-to-Door</span></label>'
+                '<label for="door-select" title="Door-to-Door" data-t="door"><span aria-hidden="true">🚪</span><span class="ui-door-name">Door-to-Door</span></label>'
                 f'<select class="ui-input" id="door-select" data-door-select>{options}</select></div>')
     return ('<section class="ui-panel ui-door" id="door" data-ui-door data-door-draws="0" data-door="' + data + '"><h2>Door-to-Door</h2>'
             '<p class="ui-muted">Jump to another tool without going Home first. Some entries are drawn at random; the same seed draws the same ones in Python and here.</p>'
@@ -7779,17 +7896,12 @@ _CHROME_WORDS = {
     "about": ("{0}：このページの案内。", "{0}: a guide to this page.", "{0} : le guide de cette page.", "{0}: la guía de esta página.", "{0}: o guia desta página.", "{0}: دليل هذه الصفحة.", "{0}：本页指南。", "{0}: путеводитель по этой странице.", "{0}: panduan halaman ini.", "{0}: Wegweiser dieser Seite.", "{0}: mwongozo wa ukurasa huu."),
     "about2": ("🚪 でほかの場所へ、🏠 で戻れます。", "🚪 takes you elsewhere, 🏠 back home.", "🚪 mène ailleurs, 🏠 ramène à l'accueil.", "🚪 lleva a otro lugar, 🏠 vuelve al inicio.", "🚪 leva a outro lugar, 🏠 volta ao início.", "🚪 إلى مكان آخر، و🏠 للعودة.", "🚪 前往别处，🏠 返回首页。", "🚪 — в другое место, 🏠 — обратно.", "🚪 ke tempat lain, 🏠 kembali ke beranda.", "🚪 führt woandershin, 🏠 zurück.", "🚪 kwenda kwingine, 🏠 kurudi mwanzo."),
 }
-def _chrome_key(words: str) -> str | None:
-    """The catalogue key whose Japanese is ``words`` (a word of its own, not a format with {0}), else None."""
-    return next((key for key, row in _CHROME_WORDS.items() if row[0] == words and key not in ("current", "in", "about", "about2")), None)
-
-
-def chrome_words(words: str) -> dict[str, str] | None:
-    """🌐 The eleven languages of one catalogue word (``{"ja": …, "en": …, …}``) when ``words`` is the Japanese of one, else None.
-    A tool, a board item (``"🏠 ポートフォリオ"``) or a door page named by one follows 🌐 by itself: the way back's ポートフォリオ and
-    GitHub リポジトリ (``_back_links``) read in the visitor's language wherever they are shown."""
-    key = _chrome_key(words)
-    return dict(zip((code for code, _ in CHROME_LANGS), _CHROME_WORDS[key])) if key else None
+def chrome_word(key: str, lang: str = "ja", *args: Any) -> str:
+    """🌐 One catalogue word in a language, its {0} {1} filled in (a word missing there is the English one): Python's chromeWord, for
+    markup built with the catalogue's words (a world's header says ⭐ and ⚙️ in them, so 🌐 finds them)."""
+    row = {**_CHROME_WORDS, **_PAGE_WORDS}[key]
+    codes = [code for code, _ in CHROME_LANGS]
+    return (row[codes.index(lang)] if lang in codes else row[1]).format(*args)
 
 
 def _chrome_labels(value: Any, label: str, limit: int, codes: Sequence[str]) -> dict[str, str]:
@@ -7815,12 +7927,13 @@ def _chrome_href(value: Any) -> str:
 
 
 def _chrome_said(key: str, labels: dict[str, str] | None = None) -> str:
-    """aria-label and title of one word (ja, the page's own); ``data-t`` names the word 🌐 swaps in, or ``labels`` carries a tool's own words."""
-    if labels and labels == chrome_words(labels["ja"]):                    # a catalogue word: its key, not its eleven languages
-        key, labels = _chrome_key(labels["ja"]), None
+    """aria-label and title of one word (ja, the page's own); ``data-t`` names the word 🌐 swaps in, or ``labels`` carries a tool's own
+    words. A tool's label with no words of other languages is just said: 🌐 finds it by its words when it is a catalogue word."""
     ja = labels["ja"] if labels else _CHROME_WORDS[key][0]
-    swap = f'data-labels="{escape(json.dumps(labels, ensure_ascii=False, separators=(",", ":")), quote=True)}"' if labels else f'data-t="{key}"'
-    return f'aria-label="{escape(ja, quote=True)}" title="{escape(ja, quote=True)}" {swap}'
+    said = f'aria-label="{escape(ja, quote=True)}" title="{escape(ja, quote=True)}"'
+    if labels and set(labels.values()) == {ja}:
+        return said
+    return said + (f' data-labels="{escape(json.dumps(labels, ensure_ascii=False, separators=(",", ":")), quote=True)}"' if labels else f' data-t="{key}"')
 
 
 def _chrome_menu(kind: str, glyph: str, attrs: str, panel: str, hidden: bool = False) -> str:
@@ -7868,10 +7981,7 @@ def _chrome_tools(tools_in: Any) -> dict[str, dict[str, Any]]:
         if slot not in ("head", "side"):
             raise ValueError("slot is head or side")
         label = _chrome_text(tool.get("label", emoji), "label", 24)
-        known = chrome_words(label) if not {"label_en", "labels"} & set(tool) else None     # a catalogue word: all its languages
-        built = {"label": label, "label_en": _chrome_text(tool.get("label_en", known["en"] if known else label), "label_en", 24), "slot": slot}
-        if known:
-            tool = {**tool, "labels": {code: words for code, words in known.items() if code not in ("ja", "en")}}
+        built = {"label": label, "label_en": _chrome_text(tool.get("label_en", label), "label_en", 24), "slot": slot}
         more = _chrome_labels(tool.get("labels", {}), "labels", 24, [code for code, _ in CHROME_LANGS][2:])   # ja and en: label, label_en
         if more:
             built["labels"] = more
@@ -7964,7 +8074,7 @@ def chrome_html(spec: Any = None) -> str:
                 f'<label class="ui-world-lang">🌐 <select data-lang {_chrome_said("language")}>' +
                 "".join(f'<option value="{code}" lang="{code}"{" selected" if code == chrome["lang"] else ""}>{name}</option>' for code, name in CHROME_LANGS) +
                 f'</select></label><label class="ui-world-lang">🎨 <select data-ui-theme-switch {_chrome_said("theme")}>'
-                f'<option value="" data-tx="own">{_CHROME_WORDS["own"][0]}</option>' +
+                f'<option value="">{_CHROME_WORDS["own"][0]}</option>' +
                 "".join(f'<option value="{name}">{marks.get(name, "🎨")} {name}</option>' for name in (*THEMES, *CANDIDATE_THEMES)) +
                 '</select></label>' + _chrome_rows_html(chrome["settings"]))
     head = ((f'<a class="ui-world-home" href="{escape(chrome["home"], quote=True)}" {_chrome_said("home")}>🏠</a>' if chrome["home"] else "") +
@@ -7979,14 +8089,9 @@ def chrome_html(spec: Any = None) -> str:
         def item(e: dict[str, Any], hidden: bool) -> str:           # the line twice, the second copy hidden: the loop has no seam
             mark = ' aria-hidden="true"' if hidden else ""
             minutes = f' <span class="ui-board-min" data-at="{e["at"]}"></span>' if e["at"] else ""
-            first, _, rest = e["text"].partition(" ")
-            lead, word = ("", e["text"]) if _chrome_key(e["text"]) else (first + " ", rest) if rest and _chrome_key(rest) else ("", "")
+            text = escape(e["text"])                                    # a catalogue word in it ("🏠 ポートフォリオ"): 🌐 finds it
             if e.get("labels"):
-                text = f'<span data-texts="{escape(json.dumps({"ja": e["text"], **e["labels"]}, ensure_ascii=False, separators=(",", ":")), quote=True)}">{escape(e["text"])}</span>'
-            elif word:                                                    # "🏠 ポートフォリオ": the catalogue word by its key
-                text = f'{escape(lead)}<span data-tx="{_chrome_key(word)}">{escape(word)}</span>'
-            else:
-                text = escape(e["text"])
+                text = f'<span data-texts="{escape(json.dumps({"ja": e["text"], **e["labels"]}, ensure_ascii=False, separators=(",", ":")), quote=True)}">{text}</span>'
             return f'<span class="ui-board-item"{mark}>{text}{minutes}</span>'
         run = "".join(item(e, hidden) for hidden in (False, True) for e in board["items"])
         chars = sum(len(e["text"]) + (10 if e["at"] else 0) for e in board["items"])
@@ -16436,7 +16541,7 @@ body:where([data-page~="studio"]){font-size:13px;line-height:1.5;margin:0}
 :where([data-page~="studio"]) .top-actions{display:flex;flex-wrap:wrap;gap:7px}
 :where([data-page~="studio"]) .top-actions summary{cursor:pointer;padding:7px}
 :where([data-page~="studio"]) .top-actions details a{color:var(--ui-accent);align-self:center;padding:7px 3px;text-underline-offset:3px}
-:where([data-page~="studio"]) button,:where([data-page~="studio"]) .button{display:inline-flex;align-items:center;justify-content:center;gap:5px;text-decoration:none;min-height:38px;padding:10px 12px}
+:where([data-page~="studio"]) button:where(:not(.ui-toolbar-row>*)),:where([data-page~="studio"]) .button{display:inline-flex;align-items:center;justify-content:center;gap:5px;text-decoration:none;min-height:38px;padding:10px 12px}
 :where([data-page~="studio"]) .button{font:inherit;cursor:pointer;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);border-radius:var(--ui-radius)}
 :where([data-page~="studio"]) button:hover,:where([data-page~="studio"]) .button:hover{border-color:var(--ui-accent);background:color-mix(in srgb,var(--ui-accent) 12%,var(--ui-panel))}
 :where([data-page~="studio"]) .primary{background:var(--ui-accent);border-color:var(--ui-accent);color:var(--ui-bg);font-weight:700}
@@ -16452,8 +16557,8 @@ body:where([data-page~="studio"]){font-size:13px;line-height:1.5;margin:0}
 :where([data-page~="studio"]) .eyebrow{font-size:10px;letter-spacing:2px;font-weight:800;color:var(--ui-muted);margin:0 0 12px}
 :where([data-page~="studio"]) .hint,:where([data-page~="studio"]) .note{font-size:11px;color:var(--ui-muted);line-height:1.85}
 :where([data-page~="studio"]) .note{margin-top:18px}
-:where([data-page~="studio"]) .tool-grid,:where([data-page~="studio"]) .two{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-:where([data-page~="studio"]) .tool-grid{margin:24px 0 18px}
+:where([data-page~="studio"]) .two{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+:where([data-page~="studio"]) .tools>.ui-toolbar{margin:24px 0 16px}
 :where([data-page~="studio"]) .active{background:color-mix(in srgb,var(--ui-accent) 22%,var(--ui-panel))!important;border-color:var(--ui-accent)!important;color:var(--ui-fg)!important;font-weight:700}
 :where([data-page~="studio"]) label{display:block;font-size:11px;margin:12px 0 7px}
 :where([data-page~="studio"]) input,:where([data-page~="studio"]) textarea,:where([data-page~="studio"]) select{display:block;width:100%;font-size:13px;padding:9px;margin-top:5px}
@@ -16463,9 +16568,6 @@ body:where([data-page~="studio"]){font-size:13px;line-height:1.5;margin:0}
 :where([data-page~="studio"]) input[type=checkbox]{display:inline;width:auto;margin:0 7px 0 0}
 :where([data-page~="studio"]) .check{display:flex;align-items:center}
 :where([data-page~="studio"]) .wide{width:100%;margin:6px 0}
-:where([data-page~="studio"]) .emojis{display:flex;flex-wrap:wrap;gap:4px}
-:where([data-page~="studio"]) .emojis button{font-size:21px;padding:5px 7px;border:none;background:transparent}
-:where([data-page~="studio"]) .kaomojis button{font-size:13px;padding:7px 4px}
 :where([data-page~="studio"]) .section{border-top:1px solid var(--ui-border);padding-top:20px;margin-top:22px}
 :where([data-page~="studio"]) .workspace{padding:30px;min-width:0}
 :where([data-page~="studio"]) .canvas-heading{display:flex;justify-content:space-between;align-items:end;gap:12px;margin:5px 0 24px}
@@ -16506,7 +16608,7 @@ body:where([data-page~="studio"]){font-size:13px;line-height:1.5;margin:0}
 :where([data-page~="studio"]) #base64-dialog p{font-size:12px;line-height:1.8}
 @media(min-width:1600px){:where([data-page~="studio"]) .workspace{padding:44px}}
 @media(max-width:1150px){:where([data-page~="studio"]) main{grid-template-columns:210px minmax(0,1fr)}:where([data-page~="studio"]) .inspector{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}:where([data-page~="studio"]) .inspector>.eyebrow{display:none}:where([data-page~="studio"]) .inspector>.section{margin:0;border:0;padding:0}:where([data-page~="studio"]) .workspace{padding:22px}}
-@media(max-width:680px){:where([data-page~="studio"]) header{padding:14px;display:block}:where([data-page~="studio"]) .top-actions{margin-top:15px}:where([data-page~="studio"]) .top-actions button,:where([data-page~="studio"]) .top-actions .button{padding:7px;font-size:11px}:where([data-page~="studio"]) main{display:flex;flex-direction:column}:where([data-page~="studio"]) .workspace{order:-1;padding:18px}:where([data-page~="studio"]) .canvas-heading h2{font-size:17px}:where([data-page~="studio"]) .canvas-heading{margin-bottom:16px}:where([data-page~="studio"]) .canvas-footer{display:block}:where([data-page~="studio"]) .canvas-footer span{display:block;margin:5px 0}:where([data-page~="studio"]) .tools{display:block}:where([data-page~="studio"]) .tools h1,:where([data-page~="studio"]) .tools>.hint{display:none}:where([data-page~="studio"]) .tool-grid{margin:8px 0;grid-template-columns:repeat(3,1fr)}:where([data-page~="studio"]) .inspector{display:block}:where([data-page~="studio"]) .inspector>.section{margin-top:20px}:where([data-page~="studio"]) .canvas-settings{margin-top:20px;padding-top:15px}:where([data-page~="studio"]) .board{width:100%}:where([data-page~="studio"]) aside{padding:18px}:where([data-page~="studio"]) .tools>.section{margin-top:15px}}
+@media(max-width:680px){:where([data-page~="studio"]) header{padding:14px;display:block}:where([data-page~="studio"]) .top-actions{margin-top:15px}:where([data-page~="studio"]) .top-actions button,:where([data-page~="studio"]) .top-actions .button{padding:7px;font-size:11px}:where([data-page~="studio"]) main{display:flex;flex-direction:column}:where([data-page~="studio"]) .workspace{order:-1;padding:18px}:where([data-page~="studio"]) .canvas-heading h2{font-size:17px}:where([data-page~="studio"]) .canvas-heading{margin-bottom:16px}:where([data-page~="studio"]) .canvas-footer{display:block}:where([data-page~="studio"]) .canvas-footer span{display:block;margin:5px 0}:where([data-page~="studio"]) .tools{display:block}:where([data-page~="studio"]) .tools h1,:where([data-page~="studio"]) .tools>.hint{display:none}:where([data-page~="studio"]) .tools>.ui-toolbar{margin:8px 0}:where([data-page~="studio"]) .inspector{display:block}:where([data-page~="studio"]) .inspector>.section{margin-top:20px}:where([data-page~="studio"]) .canvas-settings{margin-top:20px;padding-top:15px}:where([data-page~="studio"]) .board{width:100%}:where([data-page~="studio"]) aside{padding:18px}:where([data-page~="studio"]) .tools>.section{margin-top:15px}}
 
 /* tools page layout */
 body:where([data-page~="tools"]){font-size:15px;line-height:1.65;margin:0}
@@ -16558,8 +16660,8 @@ body:where([data-page~="tools"]){font-size:15px;line-height:1.65;margin:0}
 :where([data-page~="tools"]) footer{padding:30px;text-align:center;color:var(--ui-muted);font-size:12px;border-top:1px solid var(--ui-border)}
 @media(max-width:760px){:where([data-page~="tools"]) main{padding:30px 16px}:where([data-page~="tools"]) .workspace{grid-template-columns:1fr}:where([data-page~="tools"]) .controls,:where([data-page~="tools"]) .preview{padding:18px}:where([data-page~="tools"]) header{padding:18px}:where([data-page~="tools"]) h2{font-size:25px}:where([data-page~="tools"]) .exports{gap:8px}}
 
-/* 💻 ⇄ 📱 an emoji face (a control with data-ui-word) is read at 20 px, not at the studio's small text size */
-:where([data-page~="studio"]) button[data-ui-word],:where([data-page~="studio"]) summary[data-ui-word],:where([data-page~="studio"]) label[data-ui-word]{font-size:20px;line-height:1}
+/* 💻 ⇄ 📱 an emoji face (a control with data-ui-word) is read at 20 px, not at the studio's small text size; a toolbar's are its own (toolbar.css) */
+:where([data-page~="studio"]) button[data-ui-word]:where(:not(.ui-toolbar-row>*)),:where([data-page~="studio"]) summary[data-ui-word],:where([data-page~="studio"]) label[data-ui-word]{font-size:20px;line-height:1}
 
 /* 📱 phone slides: the slide is pinned on top (PySaiyanWeBoo's .ui-stage) and the emoji controls scroll under it (landscape: beside it) */
 body:where([data-page~="phone"]){margin:0;background:var(--ui-bg)}
@@ -16573,11 +16675,7 @@ body:where([data-page~="phone"]){margin:0;background:var(--ui-bg)}
 :where([data-page~="phone"]) .phone-grip{position:absolute;right:-16px;bottom:-16px;width:32px;height:32px;display:grid;place-items:center;border-radius:50%;background:var(--ui-accent);color:var(--ui-bg);font-size:16px;pointer-events:auto;touch-action:none}
 :where([data-page~="phone"]) .phone-edit{flex:1 1 100%;box-sizing:border-box;margin:0;min-height:88px;padding:8px;font-size:16px;line-height:1.5;border:2px solid var(--ui-accent);resize:vertical}
 :where([data-page~="phone"]) .phone-deck{flex:1;min-height:0;overflow:auto;display:flex;flex-wrap:wrap;align-items:flex-start;align-content:flex-start;gap:16px;padding:16px}
-:where([data-page~="phone"]) .phone-tools{flex:1 1 328px;min-width:0;display:flex;flex-direction:column;gap:8px}
-:where([data-page~="phone"]) .phone-row{display:flex;flex-wrap:wrap;gap:8px}
-:where([data-page~="phone"]) .phone-tools button,:where([data-page~="phone"]) .phone-tools .button{min-width:48px;min-height:48px;padding:0 8px;font-size:24px;line-height:1;touch-action:manipulation}
-:where([data-page~="phone"]) .phone-tools select{min-height:48px;font-size:16px}
-:where([data-page~="phone"]) .phone-tools button:disabled{opacity:.32}
+:where([data-page~="phone"]) .phone-tools{flex:1 1 328px;min-width:0}
 :where([data-page~="phone"]) .phone-status{flex:1 1 128px;margin:0;align-self:center;min-height:24px;font-size:16px;overflow-wrap:anywhere}
 :where([data-page~="phone"]) .phone-status[data-error=true]{color:var(--ui-danger)}
 @media(orientation:landscape) and (max-height:560px),(min-width:960px){:where([data-page~="phone"]) .phone{flex-direction:row;max-width:none}:where([data-page~="phone"]) .ui-stage{max-width:72vw;--ui-stage-room:100dvh}:where([data-page~="phone"]) .phone-deck{flex-direction:column;flex-wrap:nowrap}:where([data-page~="phone"]) .phone-tools,:where([data-page~="phone"]) .phone-status{flex:none}}
@@ -17069,11 +17167,19 @@ def _chrome_catalogue(page: str | None = None) -> str:
     return json.dumps({k: list(v) for k, v in words.items()}, ensure_ascii=False, separators=(",", ":"))
 
 
-_JS["chrome.js"] = ("const CHROME_LANGS=" + json.dumps([code for code, _ in CHROME_LANGS], separators=(",", ":")) + ",CHROME_TEXT=" +
-                    _chrome_catalogue() + ";\n" +
-                    "// 🎨 ⚙️'s colors: ui.js's bindTheme, the same lines (one choice, web-ui-theme, for every page of this origin)\n" +
-                    re.search(r"^export function bindTheme\(.*$", _JS["ui.js"], re.M)[0] + "\n" + r"""
-// 🌐 One catalogue word in a language ({0} filled in; a word missing there is the English one).
+def shell_js(words: dict[str, Sequence[str]] | None = None, page: str | None = None) -> str:
+    """🧰🌍 The script a world's shell and the chrome of a tool page share: the catalogue (``CHROME_LANGS``, ``CHROME_TEXT``: the
+    chrome's words, the words this module writes into a body — given a ``page``, only those it holds — and ``words``, a world's own,
+    ``{key: eleven words}``), ``chromeWord``, 🌐 (``addWords``, ``sayIn``, ``sayAround``), the board (``bindBoard`` and its clocks),
+    the menus (``bindMenus``) and the one cache a shell keeps (``stored``). ``chrome.js`` is this, ⚙️'s 🎨 and ``bindChrome``; a
+    world's script starts with it, so 🌐 reads the same everywhere and a word is written once."""
+    for key, row in (words or {}).items():
+        if not isinstance(key, str) or len(row) != len(CHROME_LANGS) or not all(isinstance(w, str) and w.strip() for w in row):
+            raise ValueError(f"words maps a key to its {len(CHROME_LANGS)} words, in CHROME_LANGS order")
+    catalogue = _chrome_catalogue(page)
+    if words:
+        catalogue = json.dumps({**json.loads(catalogue), **{k: list(v) for k, v in words.items()}}, ensure_ascii=False, separators=(",", ":"))
+    return ("const CHROME_LANGS=" + json.dumps([code for code, _ in CHROME_LANGS], separators=(",", ":")) + ",CHROME_TEXT=" + catalogue + ";\n" + r"""// 🌐 One catalogue word in a language ({0} filled in; a word missing there is the English one).
 export const chromeWord=(lang,key,...a)=>{const row=CHROME_TEXT[key];return(row[CHROME_LANGS.indexOf(lang)]??row[1]).replace(/\{(\d)\}/g,(_,i)=>a[i])};
 // ── The shell: what a world's header and side share with 🧰 the chrome of a tool page (chrome_html) ──
 export function minutesUntil(now,at){return Math.ceil(((at-now)%1440+1440)%1440)}
@@ -17093,38 +17199,49 @@ function bindMenus(el){const menus=[...el.querySelectorAll('.ui-world-menu')];fo
 // A small cache in this browser, one key per world or chrome: [load, save(part)]. Nothing else is written.
 const stored=slot=>{const load=()=>{try{const v=JSON.parse(localStorage.getItem(slot));return v&&typeof v==='object'?v:{}}catch(e){return{}}};return[load,part=>{try{localStorage.setItem(slot,JSON.stringify({...load(),...part}))}catch(e){}}]};
 // 🌐 The words in one of eleven languages: aria-labels and tooltips (data-t names a catalogue word, data-labels carries a part's own
-// words) and text (data-tx, data-texts the same way; dir=auto, so Arabic reads right to left in its place). ``mine`` keeps a node of
-// another chrome or a world out. Then every other text and label that is a catalogue word in any language (a format by its shape,
-// its {0} {1} kept) turns into this language: the words this module wrote into the page's body (a runbook, 🧩 the full list, the
+// words) and a text in its own languages (data-texts; dir=auto, so Arabic reads right to left in its place). ``mine`` keeps a node of
+// another chrome or a world out. Then every other text and label (over several lines too) that is a catalogue word in any language,
+// alone or with an emoji or an arrow around it ("🏠 ポートフォリオ", "地図へ →"), or a format by its shape (its {0} {1} kept),
+// turns into this language: the words this module wrote into the page's body (a runbook, 🧩 the full list, the
 // tabs every guide shares), whenever they were written. Code, a form's typing and translate=no stay as they are.
 const WORD=new Map(),FORMS=[],SAID=['aria-label','title','placeholder','alt','data-ui-copied','data-ui-copy-failed','data-ui-msg-loaded','data-ui-msg-stale','data-ui-msg-bad'];
-for(const[key,row]of Object.entries(CHROME_TEXT))for(const w of row){const at=[...w.matchAll(/\{(\d)\}/g)].map(m=>+m[1]);
- if(at.length)FORMS.push([key,at,new RegExp('^'+w.replace(/[.*+?^$()|[\]\\]/g,'\\$&').replace(/\{\d\}/g,'(.+?)')+'$')]);else if(!WORD.has(w))WORD.set(w,key)}
+// More words join the catalogue: {key: [eleven words]}, or a site's names {ja: [the ten others]} (the chrome's data-words) under site:.
+export function addWords(rows,site=false){for(const[k,r]of Object.entries(rows||{})){const key=site?'site:'+k:k,row=site?[k,...r]:r;CHROME_TEXT[key]=row;
+ for(const w of row){const at=[...w.matchAll(/\{(\d)\}/g)].map(m=>+m[1]);if(at.length)FORMS.push([key,at,new RegExp('^'+w.replace(/[.*+?^$()|[\]\\]/g,'\\$&').replace(/\{\d\}/g,'(.+?)')+'$')]);else if(!WORD.has(w))WORD.set(w,key)}}}
+addWords({...CHROME_TEXT});
 const sayWord=(lang,text)=>{const t=text.trim();if(!t)return null;if(WORD.has(t))return text.replace(t,()=>chromeWord(lang,WORD.get(t)));
- const[,lead,core,trail]=t.match(/^([^\p{L}\p{N}]*)(.*?)([^\p{L}\p{N}]*)$/u);if(core!==t&&WORD.has(core))return text.replace(t,()=>lead+chromeWord(lang,WORD.get(core))+trail);   // "🎞 GIF工房", "地図へ →"
+ const[,lead,core,trail]=t.match(/^([^\p{L}\p{N}]*)(.*?)([^\p{L}\p{N}]*)$/su);if(core!==t&&WORD.has(core))return text.replace(t,()=>lead+chromeWord(lang,WORD.get(core))+trail);   // "🎞 GIF工房", "地図へ →"
  for(const[key,at,re]of FORMS){const m=t.match(re);if(m){const a=[];at.forEach((n,i)=>{a[n]=m[i+1]});return text.replace(t,()=>chromeWord(lang,key,...a))}}return null};
-const sayIn=(root,lang,mine=()=>true)=>{const pick=m=>m[lang]||m.en||m.ja;for(const n of root.querySelectorAll('[data-t],[data-labels],[data-tx],[data-texts]')){if(!mine(n))continue;
+export const sayIn=(root,lang,mine=()=>true)=>{const pick=m=>m[lang]||m.en||m.ja;for(const n of root.querySelectorAll('[data-t],[data-labels],[data-texts]')){if(!mine(n))continue;
  if(n.dataset.t||n.dataset.labels){const w=n.dataset.labels?pick(JSON.parse(n.dataset.labels)):chromeWord(lang,n.dataset.t);n.setAttribute('aria-label',w);if(n.hasAttribute('title')||n.matches('button'))n.setAttribute('title',w)}
- if(n.dataset.tx||n.dataset.texts){n.textContent=n.dataset.texts?pick(JSON.parse(n.dataset.texts)):chromeWord(lang,n.dataset.tx);n.dir='auto'}}
- const keep=n=>!mine(n)||n.closest('script,style,pre,code,textarea,[contenteditable],[translate=no],[data-tx],[data-texts]');
+ if(n.dataset.texts){n.textContent=pick(JSON.parse(n.dataset.texts));n.dir='auto'}}
+ const keep=n=>!mine(n)||n.closest('script,style,pre,code,textarea,[contenteditable],[translate=no],[data-texts]');
  if(root.createTreeWalker||root.ownerDocument?.createTreeWalker){const doc=root.createTreeWalker?root:root.ownerDocument,walk=doc.createTreeWalker(root.body??root,4);
   for(let t;(t=walk.nextNode());){const p=t.parentElement;if(!p||keep(p))continue;const w=sayWord(lang,t.nodeValue);if(w!==null&&w!==t.nodeValue)t.nodeValue=w}}
  for(const n of root.querySelectorAll(SAID.map(a=>'['+a+']').join(','))){if(keep(n)||n.dataset.t||n.dataset.labels)continue;for(const a of SAID){const v=n.getAttribute(a);if(v===null)continue;const w=sayWord(lang,v);if(w!==null&&w!==v)n.setAttribute(a,w)}}};
-// 🧰 The chrome of a tool page: the board, the menus and 🌐 of a world's shell, with no map.
+// 🌐 The site's parts around a chrome or a world follow a language: the door's foot says it, a door relabels its pull-down (its
+// catalogue words and "(current)" in the language), and a page of its own hears ``ui-lang`` on document ({lang, word(key, …)}).
+export function sayAround(lang,mine=()=>true){for(const f of document.querySelectorAll('.ui-door-foot'))if(mine(f))f.lang=lang;
+ const words=JSON.stringify(Object.fromEntries(Object.entries(CHROME_TEXT).map(([k,row])=>[row[0],chromeWord(lang,k)])));
+ for(const d of document.querySelectorAll('[data-ui-door]'))if(mine(d)){d.dataset.lang=lang;d.dataset.here=chromeWord(lang,'current');d.dataset.words=words;d.dispatchEvent(new CustomEvent('ui-lang'))}
+ document.dispatchEvent(new CustomEvent('ui-lang',{detail:{lang,word:(key,...a)=>chromeWord(lang,key,...a)}}))}
+""")
+
+
+_JS["chrome.js"] = (shell_js() +
+                    "// 🎨 ⚙️'s colors: ui.js's bindTheme, the same lines (one choice, web-ui-theme, for every page of this origin)\n" +
+                    re.search(r"^export function bindTheme\(.*$", _JS["ui.js"], re.M)[0] + "\n" + r"""// 🧰 The chrome of a tool page: the board, the menus and 🌐 of a world's shell, with no map.
 // ☰ is this page: itself (📍), its sections (the h2 of <main>) and the rows it gave, each with a ☆. ⭐ lists the starred places of
 // every page sharing the chrome's id (a place is its path and fragment on this site), so they follow you from tool to tool, as 🌐
 // does. ⏯️ stops the board; ⋯ moves this screen to its top or its end. Nothing else is kept, and this module asks the network for nothing.
 export function bindChrome(root=document){return[...root.querySelectorAll('[data-ui-chrome]')].map(el=>{if(el.hasAttribute('data-js'))return el;el.dataset.js='';
  const shut=bindMenus(el),[load,save]=stored('ui-chrome:'+el.id),kept=load(),sel=el.querySelector('[data-lang]'),page=p=>p.replace(/index\.html$/,'');let lang=el.lang;
- for(const[ja,row]of Object.entries(el.dataset.words?JSON.parse(el.dataset.words):{})){const key='site:'+ja;CHROME_TEXT[key]=[ja,...row];for(const w of CHROME_TEXT[key])if(!WORD.has(w))WORD.set(w,key)}   // 🌐 the site's own names
- // 🌐 reaches what this chrome brought along (the door's foot, 🫧, the way back) and tells the rest: a door relabels its pull-down,
- // and a page of its own hears ``ui-lang`` on document ({lang, word(key, …)}).
+ if(el.dataset.words)addWords(JSON.parse(el.dataset.words),true);   // 🌐 the site's own names
+ // 🌐 reaches what this chrome brought along (the door's foot, 🫧, the way back) and tells the rest (sayAround).
  const mine=n=>{const c=n.closest('[data-ui-chrome],[data-ui-world]');return!c||c===el},
   say=r=>sayIn(r,lang,mine),setLang=to=>{if(!CHROME_LANGS.includes(to))return;lang=to;el.lang=to;if(sel)sel.value=to;say(document);
    for(const a of el.querySelectorAll('[data-head]')){const h=document.getElementById(a.dataset.head);if(h)a.lastChild.textContent=h.textContent.trim().slice(0,40)}   // ☰ says the sections as they read now
-   for(const f of document.querySelectorAll('.ui-door-foot'))if(mine(f))f.lang=to;
-   for(const d of document.querySelectorAll('[data-ui-door]'))if(mine(d)){d.dataset.lang=to;d.dataset.here=chromeWord(to,'current');d.dataset.words=JSON.stringify(Object.fromEntries(Object.entries(CHROME_TEXT).map(([k,row])=>[row[0],chromeWord(to,k)])));d.dispatchEvent(new CustomEvent('ui-lang'))}
-   document.dispatchEvent(new CustomEvent('ui-lang',{detail:{lang:to,word:(key,...a)=>chromeWord(to,key,...a)}}))};
+   sayAround(to,mine)};
  bindTheme(el);   // 🎨 its controls are in ⚙️
  sel?.addEventListener('change',()=>{setLang(sel.value);save({lang})});
  const here=page(location.pathname),title=(document.title.trim()||here).slice(0,40),key=a=>a.origin===location.origin?page(a.pathname)+a.hash:a.href,
@@ -21201,7 +21318,7 @@ def example_pages() -> dict[str, str]:
         "examples/image-studio.html": imagestudio_document(),
         "examples/parts.html": parts_document(),
         "contract/v1/example.html": page(contract, "web-ui HTML contract v1 fixture"),
-        "index.html": _index_page(),
+        "ui.html": _index_page(),         # 🎛️ the front (Try it, the theme wall, rooms); the usage guide is index.html
     }
 
 
@@ -21618,7 +21735,7 @@ def _index_page() -> str:
         {"id": "guide", "emoji": "🧩", "title": "機能一覧", "text": "Every CLI option and public name, read from the code.",
          "link": "Open the guide", "html": '<section class="ui-panel" id="guide"><h2>🧩 機能一覧</h2><p class="ui-muted">The usage guide lists '
                                            'every option and every public name of pysaiyanweboo.py, read from the code at build time.</p>'
-                                           '<p class="ui-links"><a href="./guide/">🧩 機能一覧</a></p></section>'},
+                                           '<p class="ui-links"><a href="./">🧩 機能一覧</a></p></section>'},
     ]
     css = layout_presets.css(presets) + _WALL_CSS
     scripts = (module_script(EMBEDDED_UI_JS + "bindTheme();\n") + module_script(_JS["theme.js"] + "bindSeed();\n") + module_script(_JS["curl.js"]))

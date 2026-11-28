@@ -412,7 +412,7 @@ class CurlBrowserTests(unittest.TestCase):
         sys.path.insert(0, str(ROOT / 'tests'))
         from test_pages import CURL_CASES, curl_fuzz_inputs
         from pysaiyanweboo import mask_curl, parse_curl
-        server, origin = serve_pages({'index.html': (ROOT / 'index.html').read_text(encoding='utf-8')})
+        server, origin = serve_pages({'ui.html': (ROOT / 'ui.html').read_text(encoding='utf-8')})
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
@@ -421,7 +421,7 @@ class CurlBrowserTests(unittest.TestCase):
                     errors = []
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     requests = []
-                    page.goto(origin + '/index.html#curl')
+                    page.goto(origin + '/ui.html#curl')
                     page.on('request', lambda request: requests.append(request.url))
                     # The flutter editor's 47 golden cases, then 1500 seeded inputs (odd whitespace, bad escapes, shell characters ...):
                     # the page's answer equals Python's, errors included.
@@ -469,7 +469,7 @@ class FrontPageBrowserTests(unittest.TestCase):
     TOKENS = ('--ui-bg', '--ui-panel', '--ui-fg', '--ui-muted', '--ui-border', '--ui-accent', '--ui-danger', '--ui-radius')
 
     def setUp(self):
-        self.server, self.origin = serve_pages({'index.html': (ROOT / 'index.html').read_text(encoding='utf-8')})
+        self.server, self.origin = serve_pages({'ui.html': (ROOT / 'ui.html').read_text(encoding='utf-8')})
         self.playwright_manager = sync_playwright()
         self.playwright = self.playwright_manager.__enter__()
         self.browser = self.playwright.chromium.launch()
@@ -487,7 +487,7 @@ class FrontPageBrowserTests(unittest.TestCase):
         page = self.browser.new_page(viewport=viewport or {'width': 390, 'height': 844}, **options)
         page.on('pageerror', lambda error: self.errors.append(str(error)))
         page.on('request', lambda r: self.external.append(r.url) if not r.url.startswith(self.origin + '/') else None)
-        page.goto(f'{self.origin}/index.html{hash}')
+        page.goto(f'{self.origin}/ui.html{hash}')
         return page
 
     def tokens(self, page):
@@ -556,7 +556,7 @@ class FrontPageBrowserTests(unittest.TestCase):
             page.click('.ui-front-bar a[href="#rooms"]')                                                                    # 🚪
             expect(page.locator('#rooms')).to_be_visible()
             for room in self.ROOMS:
-                page.goto(f'{self.origin}/index.html#rooms')
+                page.goto(f'{self.origin}/ui.html#rooms')
                 page.click(f'#rooms a[href="#{room}"]')
                 expect(page.locator(f'#{room}')).to_be_visible()
                 expect(page.locator('#rooms')).to_be_hidden()
@@ -569,9 +569,9 @@ class FrontPageBrowserTests(unittest.TestCase):
     def test_every_room_opens_from_its_link_alone_and_without_script(self):
         page = self.open(hash='#demos', java_script_enabled=False)
         for room in self.ROOMS:
-            page.goto(f'{self.origin}/index.html#{room}')
+            page.goto(f'{self.origin}/ui.html#{room}')
             expect(page.locator(f'#{room}')).to_be_visible()
-        page.goto(f'{self.origin}/index.html')
+        page.goto(f'{self.origin}/ui.html')
         expect(page.locator('#try')).to_be_visible()
         expect(page.locator('#demos')).to_be_hidden()
         page.close()
@@ -611,7 +611,7 @@ class FrontPageBrowserTests(unittest.TestCase):
         bg = pysaiyanweboo.random_theme(50)['--ui-bg']
         self.assertEqual(page.evaluate('getComputedStyle(document.querySelector(".ui-front")).backgroundColor'),
                          'rgb(%d, %d, %d)' % tuple(int(bg[i:i + 2], 16) for i in (1, 3, 5)))
-        page.goto(f'{self.origin}/index.html#wall')
+        page.goto(f'{self.origin}/ui.html#wall')
         page.click('.ui-wall-cell[data-seed="5"] h3')
         self.assertEqual(self.tokens(page), pysaiyanweboo.random_theme(5))
         expect(page.locator('.ui-wall-cell[data-picked]')).to_have_count(1)
@@ -633,10 +633,10 @@ class GeneratedSiteBrowserTests(unittest.TestCase):
                     page = browser.new_page()
                     errors = []
                     page.on('pageerror', lambda error: errors.append(str(error)))
-                    page.goto((Path(directory) / 'index.html').as_uri() + '#try')
+                    page.goto((Path(directory) / 'ui.html').as_uri() + '#try')
                     page.check('input[name="ui-theme"][value="green"]')
                     expect(page.locator('body')).to_have_attribute('data-ui-theme', 'green')
-                    page.goto((Path(directory) / 'index.html').as_uri() + '#curl')
+                    page.goto((Path(directory) / 'ui.html').as_uri() + '#curl')
                     page.locator('[data-curl-input]').fill('curl http://local/offline')
                     expect(page.locator('[data-curl-output]')).to_contain_text('local/offline')
                     self.assertTrue(page.locator('img').first.evaluate('e => e.complete && e.naturalWidth > 0'))
@@ -1692,7 +1692,7 @@ class SiteChromeBrowserTests(unittest.TestCase):
                     cam = ui.GifCamera(page, frame_ms=160)                                       # the whole screen: ⚙️'s panel hangs below the chrome
                     self.assertEqual(page.evaluate('document.documentElement.lang'), 'ja')            # the page's own words are Japanese
                     first = page.evaluate(self.WORDS)
-                    self.assertTrue(any(w['s'] == 'ポートフォリオ' for w in first) and any(w['s'] == 'まばたき' for w in first), first)
+                    self.assertTrue(any(w['s'] == '🏠 ポートフォリオ' for w in first) and any(w['s'] == 'まばたき' for w in first), first)
                     page.click('.ui-chrome [data-menu="settings"] > summary')
                     left = {}
                     for code, _ in CHROME_LANGS[1:]:
@@ -1742,7 +1742,7 @@ class SiteChromeBrowserTests(unittest.TestCase):
                 "blocks": [{"type": "tabs", "id": "guide", "tabs": [
                     {"label": "🧩 機能一覧", "blocks": [{"type": "section", "title": "▶️ 実行", "blocks": [{"type": "output", "text": "python tiny.py"}]}]},
                     {"label": "🔬 検証ガイド", "blocks": [{"type": "runbook", "id": "verify", "books": [{"label": "🐍 python", "runbook": {"key": "tiny/python", "steps": [step]}}]}]},
-                    {"label": "🎞 GIF デモ", "blocks": [{"type": "text", "text": "まだありません。"}]}]},
+                    {"label": "🎞 GIF デモ", "blocks": [{"type": "text", "text": "まだありません。\n次の行も。"}]}]},   # a text over two lines
                     {"type": "section", "title": "🔗 リンク", "blocks": [{"type": "text", "text": "リポジトリへ。"}]}]}
         page = add_back_nav(page_document(add_features(spec, module)), "myon-bioinformatics/tiny", chrome=True)
         jp = re.compile(r'[぀-ヿ㐀-鿿]+')

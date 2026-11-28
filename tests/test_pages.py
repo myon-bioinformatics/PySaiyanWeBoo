@@ -290,7 +290,7 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
         self.assertIn('id="rooms"><nav class="ui-room-bar" aria-label="Rooms">', menu)
         self.assertLess(menu.index("data-ui-back"), menu.index('<header class="stub-header">'))
         self.assertNotIn("data-ui-back", pysaiyanweboo.front_html("<p>view</p>", ROOM, title="T"))
-        self.assertEqual(pysaiyanweboo.example_pages()["index.html"].count("data-ui-back"), 1)
+        self.assertEqual(pysaiyanweboo.example_pages()["ui.html"].count("data-ui-back"), 1)
 
     def test_site_chrome_gives_a_built_page_the_header_side_and_foot_once(self):
         """🧰 add_site_chrome (and add_back_nav(chrome=True), --page --repository): the board says what the page is and where the links
@@ -313,10 +313,9 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
         self.assertEqual([body.count(part) for part in ('<div class="ui-chrome ', '<button type="button" class="ui-gaze"', '<div class="ui-door-foot">', 'data-ui-back')], [1, 1, 1, 1])
         self.assertLess(body.index('<div class="ui-chrome '), body.index('<main class="ui-page">'))    # the header first, the foot last
         self.assertLess(body.index("</main>"), body.index('<div class="ui-door-foot">'))
-        items = [html.unescape(re.sub(r"<[^>]+>", "", t)) for t in re.findall(r'<span class="ui-board-item">((?:[^<]|<span data-tx="\w+">[^<]*</span>)*)</span>', body)]
-        self.assertEqual(items, ["単一ファイルのテスト支援。", "まずは 1 行で。", "🏠 ポートフォリオ", "🐙 GitHub リポジトリ"])
-        self.assertIn('<span class="ui-board-item">🏠 <span data-tx="portfolio">ポートフォリオ</span></span>', body)         # 🌐 the way back by its catalogue words
-        self.assertRegex(body, r'href="https://github.com/myon-bioinformatics/xprobe" aria-label="GitHub リポジトリ" title="GitHub リポジトリ" data-t="repository">🐙')
+        items = [html.unescape(t) for t in re.findall(r'<span class="ui-board-item">([^<]*)</span>', body)]
+        self.assertEqual(items, ["単一ファイルのテスト支援。", "まずは 1 行で。", "🏠 ポートフォリオ", "🐙 GitHub リポジトリ"])   # 🌐 finds the way back's catalogue words
+        self.assertRegex(body, r'href="https://github.com/myon-bioinformatics/xprobe" aria-label="GitHub リポジトリ" title="GitHub リポジトリ">🐙')   # just said: no words of its own
         self.assertIn('<html lang="ja">', page)                                                        # the page's own words are Japanese
         self.assertIn('data-t="blink" aria-label="まばたき"', body)
         self.assertIn('<strong>GUIDE</strong>', body)
@@ -464,20 +463,20 @@ class FrontPageTests(unittest.TestCase):
         self.assertEqual((done.returncode, done.stdout), (0, ui.component_document("gaze-avatar", label="まばたき")), done.stderr)
 
     def test_front_page_is_what_the_generator_writes(self):
-        page = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertEqual(page, pysaiyanweboo.example_pages()["index.html"])
+        page = (ROOT / "ui.html").read_text(encoding="utf-8")
+        self.assertEqual(page, pysaiyanweboo.example_pages()["ui.html"])
         for fragment in (pysaiyanweboo.theme_wall(range(12)), pysaiyanweboo.theme_switch_html(), pysaiyanweboo.front_css()):
             self.assertIn(fragment, page)
 
     def test_front_page_is_assembled_from_the_librarys_own_builders(self):
-        """Nothing in index.html is written for the page alone: every part is a public builder's output (or an EXAMPLES spec through one)."""
-        page = (ROOT / "index.html").read_text(encoding="utf-8")
+        """Nothing in ui.html is written for the page alone: every part is a public builder's output (or an EXAMPLES spec through one)."""
+        page = (ROOT / "ui.html").read_text(encoding="utf-8")
         for fragment in (pysaiyanweboo._example_cards("./examples/"), pysaiyanweboo.curl_panel_html(), pysaiyanweboo.theme_switch_html(), pysaiyanweboo.seed_dial_html(), pysaiyanweboo.seed_roll_html(), pysaiyanweboo.front_css(),
                          pysaiyanweboo.module_script(pysaiyanweboo.js_source("theme.js") + "bindSeed();\n"), pysaiyanweboo.module_script(pysaiyanweboo.js_source("curl.js"))):
             self.assertIn(fragment, page)
         self.assertEqual(page.count('class="ui-front"'), 1)
         self.assertEqual(page.count('class="ui-room"'), 5)                                                       # the menu and four rooms
-        self.assertIn('<a href="./guide/">🧩 機能一覧</a>', page)                                                     # 🧩 the usage guide under guide/
+        self.assertIn('<a href="./">🧩 機能一覧</a>', page)                                                           # 🧩 the usage guide is the Pages' index.html
         for gone in ('class="ui-world', 'class="stub-shell', "bindStub", "bindWorlds"):                         # 🌍🤖 moved to the portfolio
             self.assertNotIn(gone, page)
 
@@ -927,7 +926,7 @@ class DoorTests(unittest.TestCase):
         self.assertEqual(data.search(row)[1], data.search(panel)[1])
         self.assertEqual(options.search(row)[1], options.search(panel)[1])
         self.assertEqual(row.count("selected disabled"), 1)
-        self.assertIn('<label for="door-select" title="Door-to-Door" data-t="door"><span aria-hidden="true">🚪</span><span class="ui-door-name" data-tx="door">Door-to-Door</span></label>', row)
+        self.assertIn('<label for="door-select" title="Door-to-Door" data-t="door"><span aria-hidden="true">🚪</span><span class="ui-door-name">Door-to-Door</span></label>', row)
         for panel_only in ("<h2", "<h3", "<p", "data-door-draw>", "data-door-status", "data-door-notation", "data-door-path", "ui-panel"):
             self.assertIn(panel_only, panel)
             self.assertNotIn(panel_only, row)
@@ -6473,7 +6472,7 @@ class StaticContractTest(unittest.TestCase):
     def test_pages_entrypoints_resolve_the_repository_favicon(self):
         favicon = ROOT / "docs/brand/favicon.png"
         self.assertTrue(favicon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
-        for path in [ROOT / "index.html"]:
+        for path in [ROOT / "ui.html"]:
             with self.subTest(page=str(path.relative_to(ROOT))):
                 links = self.parsed(path).icon_links
                 self.assertEqual(len(links), 1)
@@ -6486,10 +6485,10 @@ class StaticContractTest(unittest.TestCase):
     def test_pages_visible_and_touch_icons_resolve_to_canonical_asset(self):
         icon = ROOT / "docs/brand/icon.png"
         self.assertTrue(icon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
-        for path in [ROOT / "index.html"]:
+        for path in [ROOT / "ui.html"]:
             text = path.read_text(encoding="utf-8")
             patterns = [r'<link rel="apple-touch-icon" href="([^"]+)">']
-            if path == ROOT / "index.html":
+            if path == ROOT / "ui.html":
                 patterns.append(r'<img[^>]+src="([^"]+)"')
             for pattern in patterns:
                 href = re.search(pattern, text).group(1)
@@ -6498,8 +6497,8 @@ class StaticContractTest(unittest.TestCase):
 
     def test_example_pages_are_single_files_carrying_the_whole_bundle(self):
         self.assertEqual(sorted(PAGES), ["contract/v1/example.html", "examples/clipboard-shelf.html", "examples/composition-studio.html", "examples/coordinates.html", "examples/current-item.html", "examples/door.html", "examples/github-like.html",
-                                         "examples/image-studio.html", "examples/index.html", "examples/mcp-lab.html", "examples/parts.html", "examples/patterns.html", "examples/photo-studio.html", "examples/play-studio.html", "examples/playground.html", "examples/screens.html", "examples/showcase.html", "examples/test-report.html", "examples/timeline.html", "index.html"])
-        self.assertEqual((ROOT / "index.html").read_text(encoding="utf-8"), PAGES["index.html"], "run: python -S pysaiyanweboo.py --site DIR; copy DIR/index.html")
+                                         "examples/image-studio.html", "examples/index.html", "examples/mcp-lab.html", "examples/parts.html", "examples/patterns.html", "examples/photo-studio.html", "examples/play-studio.html", "examples/playground.html", "examples/screens.html", "examples/showcase.html", "examples/test-report.html", "examples/timeline.html", "ui.html"])
+        self.assertEqual((ROOT / "ui.html").read_text(encoding="utf-8"), PAGES["ui.html"], "run: python -S pysaiyanweboo.py --site DIR; copy DIR/ui.html")
         for name, text in PAGES.items():
             self.assertNotIn('rel="stylesheet"', text, name)
             self.assertIn(pysaiyanweboo.bundled_css(), text, name)
@@ -6509,7 +6508,7 @@ class StaticContractTest(unittest.TestCase):
         path = "examples/composition-studio.html"
         self.assertEqual(PAGES[path], pysaiyanweboo.studio_document())
         self.assertIn("Metronome", PAGES[path])
-        for gallery in ("index.html", "examples/index.html"):
+        for gallery in ("ui.html", "examples/index.html"):
             self.assertNotIn("composition-studio.html", self.parsed_text(PAGES[gallery]).hrefs)
             self.assertNotIn("examples/composition-studio.html", self.parsed_text(PAGES[gallery]).hrefs)
 
@@ -6532,8 +6531,8 @@ class StaticContractTest(unittest.TestCase):
                 if parsed.scheme or parsed.netloc or href.startswith("#"):
                     continue
                 target = normpath(str(Path(name).parent / parsed.path).replace("\\", "/"))
-                if target == "guide":                       # 🧩 the usage guide: pages.yml builds it under guide/ (guide_dir)
-                    self.assertIn("guide_dir: guide", (ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8"))
+                if target == ".":                           # 🧩 the usage guide: pages.yml builds it as the Pages' index.html (no guide_dir)
+                    self.assertNotIn("guide_dir:", (ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8"))
                     continue
                 self.assertIn(target, PAGES, f"{name}: broken href {href}")
 
@@ -6561,7 +6560,7 @@ class StaticContractTest(unittest.TestCase):
 
 
 def test_pages_root_is_one_self_contained_page_with_the_examples_inside():
-    root = (ROOT / "index.html").read_text(encoding="utf-8")
+    root = (ROOT / "ui.html").read_text(encoding="utf-8")
     assert 'rel="stylesheet"' not in root and "<script src" not in root and 'src="./js/' not in root
     for anchor in ("#parts", "#curl", "#demos"):                                    # the rooms, linked from the 🚪 menu
         assert f'href="{anchor}"' in root and f'id="{anchor[1:]}"' in root, anchor
@@ -6669,7 +6668,7 @@ def test_generated_site_local_assets_and_links_exist(tmp_path):
             url = urlsplit(link)
             if url.scheme or url.netloc or not url.path:
                 continue
-            if name == 'index.html' and url.path == './guide/':    # 🧩 the usage guide: pages.yml builds it under guide/ (guide_dir)
+            if name == 'ui.html' and url.path == './':    # 🧩 the usage guide is the Pages' index.html (pages.yml builds it there)
                 continue
             assert (path.parent / url.path).is_file(), (name, link)
     for name in ('icon.png', 'favicon.png'):
@@ -6792,7 +6791,8 @@ def args_for(name):
             "stage": (('<svg viewBox="0 0 16 9"></svg>',), {"label": "Slide"}), "pager": ((5,), {"variant": "dpad"}),
             "table": (({"columns": ["page", "chromium"], "rows": [["index", {"text": "pass", "status": "pass"}]], "row_headers": True},), {}),
             "steps": (({"key": "demo/run", "steps": [{"id": "run", "title": "Run", "command": "python3 -S demo.py", "expect": "42"}]},), {}),
-            "tabs": (([("About", "<p>a</p>"), ("Skills", "<p>b</p>")],), {"id": "profile"})}.get(name, ((), {}))
+            "tabs": (([("About", "<p>a</p>"), ("Skills", "<p>b</p>")],), {"id": "profile"}),
+            "toolbar": ((_TOOLBAR,), {"candidates_id": "cands"})}.get(name, ((), {}))
 
 
 @pytest.mark.parametrize("name", sorted(ui.COMPONENTS))
@@ -6854,7 +6854,7 @@ def test_the_chrome_is_a_header_and_a_side_for_a_page_that_is_not_a_world():
     for waits in ('data-menu="favorites" hidden', 'data-menu="settings" hidden', 'data-menu="more" hidden'):
         assert waits in html
     assert 'data-pause="⏯️" data-resume="▶️"' in html and html.count('<option value="') - html.count("<option value=\"\"") == len(ui.CHROME_LANGS) + len(ui.THEMES) + len(ui.CANDIDATE_THEMES) == 18
-    assert '<select data-ui-theme-switch aria-label="配色" title="配色" data-t="theme"><option value="" data-tx="own">このページの色</option><option value="modern">⬛ modern</option>' in html
+    assert '<select data-ui-theme-switch aria-label="配色" title="配色" data-t="theme"><option value="">このページの色</option><option value="modern">⬛ modern</option>' in html
     assert side.count("data-scroll=") == 2 and 'data-labels="{&quot;ja&quot;:&quot;パラレル都市&quot;,&quot;en&quot;:&quot;Parallel cities&quot;}"' in head
     bare = ui.chrome_html()
     assert "ui-board" not in bare and "ui-world-home" not in bare and "⏯️" not in bare and 'data-menu="spots" hidden><summary' in bare
@@ -6909,8 +6909,8 @@ def test_every_word_the_chrome_brings_is_in_eleven_languages():
     spec = {"schema": "web-ui-page/1", "title": "ガイド", "description": "説明。", "blocks": [{"type": "heading", "text": "見出し"}]}
     page = ui.add_back_nav(ui.page_document(spec), "myon-bioinformatics/xprobe", chrome=True)
     stand_in = ui.add_site_chrome("<!doctype html><html><head><title>T</title></head><body><main></main></body></html>", [{"label": "🏠 ポートフォリオ", "href": "https://x.test/"}])
-    keys = set(re.findall(r'data-tx?="(\w+)"', page + stand_in))
-    assert keys >= {"home", "settings", "language", "theme", "own", "blink", "links", "portfolio", "repository", "door", "size"} and keys <= set(ui._CHROME_WORDS)
+    keys = set(re.findall(r'data-t="(\w+)"', page + stand_in))
+    assert keys >= {"home", "settings", "language", "theme", "blink", "links", "door", "size"} and keys <= set(ui._CHROME_WORDS) and "data-tx" not in page
     module = ui.js_source("chrome.js")
     catalogue = json.loads(re.search(r"CHROME_TEXT=(\{.*?\});", module)[1])
     assert not set(ui._CHROME_WORDS) & set(ui._PAGE_WORDS) and set(catalogue) == (set(ui._CHROME_WORDS) | set(ui._PAGE_WORDS)) - {"about", "about2"}
@@ -6923,8 +6923,14 @@ def test_every_word_the_chrome_brings_is_in_eleven_languages():
     steps = {"type": "runbook", "books": [{"label": "b", "runbook": {"key": "k/b", "steps": [{"id": "a", "title": "t", "command": "c", "run": True}]}}]}
     with_book = ui.add_back_nav(ui.page_document({**spec, "blocks": [steps]}), "myon-bioinformatics/xprobe", chrome=True)
     assert {"record", "state-todo", "copy", "loaded", "run"} <= carried(with_book) - set(ui._CHROME_WORDS) and "feat-name" not in carried(with_book)
-    assert ui.chrome_words("ポートフォリオ")["en"] == "Portfolio" and ui.chrome_words("GitHub リポジトリ")["zh"] == "GitHub 仓库"
-    assert ui.chrome_words("あと{0}分") is None and ui.chrome_words("xprobe") is None             # a format is not a label; a name is a name
+    # 🧰🌍 shell_js: the script a world and the chrome share; a world's words join the catalogue, a page given holds only its body words
+    shell = ui.shell_js({"pet": ["なでる"] + ["Pet"] * 10}, page="")
+    assert module.startswith(ui.shell_js()) and set(json.loads(re.search(r"CHROME_TEXT=(\{.*?\});", shell)[1])) == set(ui._CHROME_WORDS) - {"about", "about2"} | {"pet"}
+    assert all(f"export {kind} {name}" in shell for kind, name in (("function", "addWords"), ("const", "sayIn"), ("function", "sayAround"), ("function", "bindBoard")))
+    assert "bindChrome" not in shell and "bindTheme" not in shell
+    with pytest.raises(ValueError, match="words maps a key"):
+        ui.shell_js({"pet": ["なでる", "Pet"]})
+    assert (ui.chrome_word("home"), ui.chrome_word("home", "fr"), ui.chrome_word("in", "en", 5), ui.chrome_word("record", "de")) == ("ホーム", "Accueil", "in 5 min", "Ihr Protokoll")
     assert ui.page_language(page) == "ja" and ui.page_language("<html><body><main><p>Pick a template and send.</p><pre>日本語</pre></main></body></html>") == "en"
     assert ui.chrome_validate({"lang": "ar"})["lang"] == "ar" and '<option value="ar" lang="ar" selected>' in ui.chrome_html({"lang": "ar"})
     assert ui.chrome_validate({"board": {"items": [{"text": "🏠 家", "labels": {"en": "🏠 Home"}}]}})["board"]["items"][0]["labels"] == {"en": "🏠 Home"}
@@ -6957,7 +6963,7 @@ def test_the_chrome_sheet_is_plain_and_its_module_asks_the_network_for_nothing()
     for word in ("fetch(", "XMLHttpRequest", "sendBeacon", "WebSocket", "sessionStorage", "indexedDB", "cookie", "import("):
         assert word not in js, word
     assert sorted(set(re.findall(r"save\(\{(\w+)", js))) == ["fav", "lang"] and "'ui-chrome:'+el.id" in js      # ⭐ and 🌐,
-    assert re.findall(r"localStorage\.(?:set|remove)Item\((\w+)", js) == ["key", "key", "slot"] and 'key="web-ui-theme"' in js   # 🎨 bindTheme's, then that slot
+    assert re.findall(r"localStorage\.(?:set|remove)Item\((\w+)", js) == ["slot", "key", "key"] and 'key="web-ui-theme"' in js   # the shell's slot, then 🎨 bindTheme's
     assert js.startswith('const CHROME_LANGS=["ja","en",') and "export function bindChrome" in js
     page = ui.add_part(ui.render_document(trusted_html="<main><h1>t</h1></main>", title="t", css=ui.bundled_css()),
                        ui.component_parts("chrome", CHROME), at="top", scope=".ui-chrome")
@@ -7454,7 +7460,7 @@ def test_cli_css_and_html(capsys, tmp_path):
 
 
 def test_front_page_demo_matches_the_presets():
-    page = (ROOT / "index.html").read_text(encoding="utf-8")
+    page = (ROOT / "ui.html").read_text(encoding="utf-8")
     assert lp.css(SPEC) in page
     data = lp.validate(SPEC)
     assert re.findall(r'name="ui-layout" value="([a-z0-9-]+)"', page) == [p["id"] for p in data["presets"]]
@@ -8057,6 +8063,153 @@ def test_render_document_icons_are_optional_png_links_that_stay_local_or_https()
     for bad in ("javascript:alert(1)", "data:image/png;base64,AAAA", "//evil.example/x.png", "./i.png?x=1", "", "https://u:p@example.test/x.png"):
         with pytest.raises(ValueError):
             ui.render_document("x", favicon=bad)
+
+
+_TOOLBAR = [
+    ("create", [{"act": "text", "face": "🔤", "word": "文字", "words": "文字を追加"},
+                {"act": "shape", "face": "🔷", "word": "図形", "words": "図形を候補から",
+                 "candidates": [{"face": "▭", "act": "rect", "words": "四角"}, {"face": "◯", "act": "ellipse", "words": "丸"}]},
+                {"act": "emoji", "face": "😊", "word": "絵文字", "words": "絵文字を候補から", "candidates": [{"face": "🌱"}, {"face": "✨"}]}]),
+    ("file", [{"act": "export", "face": "📤", "word": "エクスポート", "words": "エクスポート（どの形式に？）", "close": True,
+               "candidates": [{"face": "PPTX", "act": "pptx", "words": "PPTX（全スライド）"}, {"face": "PNG", "act": "png", "words": "PNG（このページ）"}]},
+              {"act": "home", "face": "🏠", "word": "Image Studio", "words": "Image <Studio>", "href": "../?a=1&b=2"}]),
+]
+
+
+def test_a_toolbar_is_rows_of_groups_with_one_candidate_row_and_words_for_every_face():
+    """🧰 toolbar_html: one row per group (a light line between groups), every control an emoji face with its short word
+    (💻 To textual), candidates encoded on the button (faces, the actions they run, their words, data-close), one hidden
+    candidate row after the first row; ``inside`` / ``after`` put the page's own markup at a group. Bad data is refused by name."""
+    html = ui.toolbar_html(_TOOLBAR, id="tools", candidates_id="cands", inside={"file": "<input type=file hidden>"},
+                           after={"create": '<div id="layers"></div>'})
+    assert html.startswith('<div class="ui-toolbar" id="tools" role="toolbar" aria-label="道具">')
+    assert re.findall(r'data-ui-group="(\w+)"', html) == ["create", "file"]
+    assert html.index('id="cands"') < html.index('id="layers"') < html.index('data-ui-group="file"')
+    assert '<div class="ui-toolbar-row" data-ui-candidates id="cands" role="group" aria-label="候補" hidden></div>' in html
+    assert 'data-acts="rect ellipse" data-words="四角|丸" data-candidates="▭ ◯" data-act="shape" data-ui-word="図形"' in html
+    assert 'data-candidates="🌱 ✨" data-act="emoji"' in html and 'data-acts="" ' not in html      # stamps: no actions, no words
+    assert 'data-close data-acts="pptx png" data-words="PPTX（全スライド）|PNG（このページ）" data-candidates="PPTX PNG" data-act="export"' in html
+    assert '<a class="ui-button" href="../?a=1&amp;b=2" data-act="home" data-ui-word="Image Studio" aria-label="Image &lt;Studio&gt;"' in html
+    assert html.count("<input type=file hidden>") == 1 and html.index("<input type=file hidden>") > html.index('data-act="home"')
+    assert ui.COMPONENTS["toolbar"] == {"html": "toolbar_html", "css": ("toolbar.css",), "js": ("ui.js",), "spec": "toolbar_validate"}
+    # 📥 a candidate with accept gets the toolbar's own hidden chooser (one per act, at the end); its button runs nothing until a file
+    imports = [("file", [{"act": "import", "face": "📥", "word": "インポート", "words": "インポート", "close": True, "candidates": [
+        {"face": "画像", "act": "image", "words": "画像", "accept": "image/png,image/jpeg"},
+        {"face": "カメラ", "act": "camera", "words": "カメラ", "accept": "image/png", "capture": "environment"},
+        {"face": "JSON", "act": "open", "words": "JSON", "accept": ".json,application/json"}, {"face": "シェルフ", "act": "shelf"}]}])]
+    files = ui.toolbar_html(imports)
+    assert re.findall(r'<input type="file" hidden data-ui-file="([a-z]+)" accept="([^"]+)"( capture="environment")? aria-label="[^"]+" />', files) == [
+        ("image", "image/png,image/jpeg", ""), ("camera", "image/png", ' capture="environment"'), ("open", ".json,application/json", "")]
+    assert files.endswith(' />' + "</div>") and 'data-acts="image camera open shelf"' in files and ui.toolbar_validate(ui.toolbar_validate(imports))
+    css = ui.css_source("toolbar.css")
+    for rule in (".ui-toolbar-row{display:flex;flex-wrap:wrap", ".ui-toolbar-row[hidden]{display:none}", "min-width:48px;min-height:48px",
+                 ".ui-toolbar-row>button:disabled{opacity:.32}"):
+        assert rule in css, rule
+    bad = [
+        ([], "non-empty"), ([("Create", [{"act": "a", "face": "1", "word": "w", "words": "w"}])], "group"),
+        ([("g", [{"act": "a", "face": "1", "word": "w"}])], "words"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w"}, {"act": "a", "face": "2", "word": "w", "words": "w"}])], "unique"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "candidates": [{"face": "a b"}]}])], "spaces"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "close": True}])], "close needs"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "href": "x", "candidates": [{"face": "c"}]}])], "link"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "candidates": [{"face": "c", "words": "x|y"}]}])], "'|'"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "colour": "red"}])], "a control is"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "candidates": [{"face": "c", "accept": "image/png"}]}])], "has an act"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "candidates": [{"face": "c", "act": "b", "accept": 'x" onload="'}]}])], "accept is"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "candidates": [{"face": "c", "act": "b", "capture": "environment"}]}])], "capture"),
+    ]
+    for groups, said in bad:
+        with pytest.raises(ValueError, match=re.escape(said)):
+            ui.toolbar_validate(groups)
+    with pytest.raises(ValueError, match="name no group"):
+        ui.toolbar_html(_TOOLBAR, after={"nope": ""})
+
+
+@pytest.mark.skipif(not node26(), reason="Node 26+ not available")
+def test_node26_bind_toolbar_runs_acts_opens_candidates_under_their_row_and_closes_after_a_pick():
+    """🧰 bindToolbar on a stand-in DOM: every control runs its act; a button with candidates also opens them right under its own row
+    and a second press closes them; a candidate runs its own act, or the button's act with its face (stamps); data-close hides the
+    row after the pick; a candidate with a chooser ([data-ui-file]) opens it and the chosen File runs the act; a disabled control does
+    nothing; a press keeps the focus (pointerdown is prevented)."""
+    script = """
+import assert from "node:assert/strict";
+const key = (k) => k.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+class El {
+  constructor(tag, attrs = {}) { Object.assign(this, { tagName: tag.toUpperCase(), children: [], parent: null, dataset: {}, listeners: {},
+    hidden: false, disabled: false, textContent: "", title: "", className: "", aria: {} }); for (const [k, v] of Object.entries(attrs)) this.setAttribute(k, v); }
+  setAttribute(k, v) { if (k.startsWith("data-")) this.dataset[key(k.slice(5))] = String(v); else if (k === "class") this.className = v;
+    else if (k === "hidden") this.hidden = true; else this.aria[k] = String(v); }
+  getAttribute(k) { return this.aria[k] ?? null; }
+  append(...c) { for (const x of c) { x.parent = this; this.children.push(x); } }
+  after(x) { if (x.parent) x.parent.children.splice(x.parent.children.indexOf(x), 1); const p = this.parent; p.children.splice(p.children.indexOf(this) + 1, 0, x); x.parent = p; }
+  replaceChildren(...c) { for (const x of this.children) x.parent = null; this.children = []; this.append(...c); }
+  addEventListener(t, f) { (this.listeners[t] ||= []).push(f); }
+  matches(sel) { return sel.split(",").some((s) => { s = s.trim(); if (s.startsWith("[")) return key(s.slice(6, -1)) in this.dataset;
+    if (s.startsWith(".")) return this.className.split(" ").includes(s.slice(1)); return this.tagName === s.toUpperCase(); }); }
+  closest(sel) { for (let n = this; n; n = n.parent) if (n.matches(sel)) return n; return null; }
+  contains(x) { for (let n = x; n; n = n.parent) if (n === this) return true; return false; }
+  querySelector(sel) { for (const c of this.children) { if (c.matches(sel)) return c; const r = c.querySelector(sel); if (r) return r; } return null; }
+  querySelectorAll(sel) { return this.children.flatMap((c) => [...(c.matches(sel) ? [c] : []), ...c.querySelectorAll(sel)]); }
+  click() { this.clicks = (this.clicks || 0) + 1; }
+}
+const fire = (type, target) => { let prevented = false; const e = { type, target, preventDefault() { prevented = true; } };
+  for (let n = target; n; n = n.parent) for (const f of n.listeners[type] || []) f(e); return prevented; };
+globalThis.document = { createElement: (t) => new El(t) };
+const { bindToolbar } = await import("./js/ui.js");
+const root = new El("div", { class: "ui-toolbar" });
+const create = new El("div", { class: "ui-toolbar-row", "data-ui-group": "create" }),
+  cands = new El("div", { class: "ui-toolbar-row", "data-ui-candidates": "", hidden: "" }),
+  file = new El("div", { class: "ui-toolbar-row", "data-ui-group": "file" });
+const text = new El("button", { "data-act": "text" }),
+  shape = new El("button", { "data-act": "shape", "data-candidates": "▭ ◯", "data-acts": "rect ellipse", "data-words": "四角|丸（まる）" }),
+  emoji = new El("button", { "data-act": "emoji", "data-candidates": "🌱 ✨" }),
+  exp = new El("button", { "data-act": "export", "data-candidates": "PPTX PNG", "data-acts": "pptx png", "data-words": "PPTX|PNG", "data-close": "" }),
+  imp = new El("button", { "data-act": "import", "data-candidates": "画像 JSON", "data-acts": "image open", "data-words": "画像|JSON", "data-close": "" }),
+  off = new El("button", { "data-act": "off" }),
+  chooser = new El("input", { "data-ui-file": "image" });
+off.disabled = true;
+create.append(text, shape, emoji); file.append(exp, imp, off); root.append(create, cands, file, chooser);
+const ran = [];
+const bar = bindToolbar(root, (...a) => ran.push(a));
+assert.equal(fire("pointerdown", text), true);                                            // the focus stays where it was
+fire("click", text);
+fire("click", off);
+assert.deepEqual(ran, [["text"]]);
+fire("click", shape);
+assert.deepEqual(ran.at(-1), ["shape"]);                                                   // the press is the page's too (a mode)
+assert.equal(cands.hidden, false);
+assert.equal(root.children.indexOf(cands), root.children.indexOf(create) + 1);
+assert.deepEqual(cands.children.map((c) => [c.textContent, c.title, c.dataset.uiWord]), [["▭", "四角", "四角"], ["◯", "丸（まる）", "丸"]]);
+fire("click", cands.children[1]);
+assert.deepEqual(ran.at(-1), ["ellipse"]);
+assert.equal(cands.hidden, false);                                                         // a shape row stays for the next one
+fire("click", shape);
+assert.equal(cands.hidden, true);                                                          // pressed again: closed
+fire("click", emoji);
+fire("click", cands.children[0]);
+assert.deepEqual(ran.at(-1), ["emoji", "🌱"]);                                             // a stamp: the button's act with the face
+assert.equal(cands.children[0].dataset.uiWord, undefined);
+fire("click", exp);
+assert.equal(root.children.indexOf(cands), root.children.indexOf(file) + 1);              // under 📤's own row
+fire("click", cands.children[0]);
+assert.deepEqual(ran.at(-1), ["pptx"]);
+assert.equal(cands.hidden, true);                                                          // data-close: hidden after the pick
+assert.equal(cands.children.length, 0);
+bar.offer(shape); bar.close();
+assert.equal(cands.hidden, true);
+const before = ran.length;
+fire("click", imp); fire("click", cands.children[0]);                                     // 📥 画像: its chooser opens, nothing runs yet
+assert.deepEqual([chooser.clicks, ran.length, cands.hidden], [1, before + 1, true]);      // (+1: the press of 📥 itself)
+chooser.files = [{ name: "photo.png" }]; chooser.value = "C:/fakepath/photo.png";
+fire("change", chooser);
+assert.deepEqual(ran.at(-1), ["image", { name: "photo.png" }]);                          // the chosen File runs the act
+assert.equal(chooser.value, "");                                                         // the same file can be chosen again
+fire("click", imp); fire("click", cands.children[1]);
+assert.deepEqual(ran.at(-1), ["open"]);                                                   // no chooser for it: runs as before
+bar.choose("image");
+assert.equal(chooser.clicks, 2);                                                          // a host's key opens it from the page
+"""
+    node_js(script)
 
 
 def test_the_labels_switch_flips_emoji_faces_and_short_words_on_one_page():

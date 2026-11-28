@@ -3,10 +3,10 @@
 🌐 [GitHub Pages](https://myon-bioinformatics.github.io/PySaiyanWeBoo/) · 🏠 [Portfolio](https://myon-bioinformatics.github.io/)
 
 <p align="center">
-  <img src="https://myon-bioinformatics.github.io/PySaiyanWeBoo/guide/icon.png" alt="PySaiyanWeBoo icon" width="160" />
+  <img src="https://myon-bioinformatics.github.io/PySaiyanWeBoo/icon.png" alt="PySaiyanWeBoo icon" width="160" />
 </p>
 
-[Icon](https://myon-bioinformatics.github.io/PySaiyanWeBoo/guide/icon.png) · [Favicon](https://myon-bioinformatics.github.io/PySaiyanWeBoo/guide/favicon.png)
+[Icon](https://myon-bioinformatics.github.io/PySaiyanWeBoo/icon.png) · [Favicon](https://myon-bioinformatics.github.io/PySaiyanWeBoo/favicon.png)
 
 Shared CSS themes, semantic UI components, and small browser modules for static interfaces across myon-bioinformatics projects, all built by one standard-library Python module (`pysaiyanweboo.py`) that keeps them as Python data.
 
@@ -26,7 +26,7 @@ PySaiyanWeBoo combines Py (Python), Saiyan, Web, and Boo. Like Majin Buu in Drag
 
 ```text
 pysaiyanweboo.py the one Python module: CSS (in memory), pages, themes, and shared helpers beyond the web UI
-index.html       the front page: front_document() over the library's own builders, kept equal by a test (nothing is written for the page alone)
+ui.html          the front page: front_document() over the library's own builders, kept equal by a test (nothing is written for the page alone)
                  (example data is Python too: pysaiyanweboo.EXAMPLES, example_data(), --example NAME; no examples/ directory)
                  (the browser modules are Python data too: js_modules(), write_js(); there is no js/ directory)
 tests/
@@ -65,6 +65,13 @@ In the same way `bindLabels()` switches `data-ui-labels` between emoji faces (th
 control carries both (`data-ui-word="エクスポート"` beside its `📤`), the 💻 To textual ⇄ 📱 To iconic button is `labels_switch_html()` (or a header
 row with `key: "labels"`), and rows marked `data-ui-group` get a light dashed line between them, for groups such as create /
 update / delete. The choice is remembered in the browser.
+A studio's controls are `toolbar_html(groups)`: rows of groups (`[("create", [{act, face, word, words, candidates?, close?, href?}]), …]`,
+checked by `toolbar_validate`), each control an emoji face with its short word, and one candidate row that `bindToolbar(root, run)`
+(`ui.js`) opens under the pressed row: a candidate runs its own act (`▭` → `rect`), or the button's act with its face (a stamp:
+`run("emoji", "🌱")`), and `close` hides the row after the pick (📥 📤 and their formats). A candidate with `accept` (and
+`capture: "environment"` for a camera) gets the toolbar's own hidden file chooser: the pick opens it and the chosen File runs
+`run("image", file)`, so a page writes no `<input type="file">` of its own; `choose(act)` opens one from the page. Every press calls
+`run`; the page decides.
 From Node, run `node vendor/py_launch.cjs -- pysaiyanweboo.py --css-bundle`.
 
 🌍 The world (`web-ui-world/1`: [🌍 the travel world](https://myon-bioinformatics.github.io/tools/demos/world.html), 🏫 the school, 🗼 the parallel cities, 🎬 the camera page, the catalogue map) and 🤖🔁 the MCP / API stubs
@@ -78,7 +85,7 @@ The seed is remembered in this browser. Python stays the reference; the page nev
 
 Front page layout: `front_document(main, rooms, title=...)` is one view that fills the viewport under a 48px bar, and a 🚪 menu of rooms that open over it through `:target`
 (no script; ✖️ closes). A room is `{"id", "emoji", "title", "text", "html"}`: add one to put something on the page, improve a builder to improve the page.
-`index.html` is exactly that call over the library's builders (🎛️ `theme_switch_html`, `seed_dial_html` and 🎲 `theme_wall` as the main view; 🧩 the example cards, 📋 `curl_panel_html` and 🧭 the way to the portfolio's demos as rooms), and a test
+`ui.html` (the Pages' front, opened from the usage guide at the top) is exactly that call over the library's builders (🎛️ `theme_switch_html`, `seed_dial_html` and 🎲 `theme_wall` as the main view; 🧩 the example cards, 📋 `curl_panel_html` and 🧭 the way to the portfolio's demos as rooms), and a test
 requires every one of their outputs to be in it. `render_document` takes optional `favicon` / `touch_icon` PNG links for such pages.
 Generate a browser-only HTML import tool with `html_import_files()`. Write its returned path-to-bytes mapping under a static site directory.
 The tool accepts pasted HTML and UTF-8 files, extracts text, headings and links, and downloads JSON. To reuse an existing PSWB asset directory,
@@ -391,7 +398,7 @@ python -S pysaiyanweboo.py --site build/site
 python -m http.server 8000 --directory build/site
 ```
 
-Open `http://localhost:8000/index.html`, or `/examples/index.html` for the example list.
+Open `http://localhost:8000/ui.html`, or `/examples/index.html` for the example list.
 `--site` writes the HTML, generated browser modules, and the icon/favicon assets referenced by the front page.
 The generated front page embeds its modules and can also be opened with `file://`; separately linked modules require HTTP(S).
 Use `write_js(output_dir)` when only browser modules are needed; source checkout paths under `css/` and `js/` are no longer public asset URLs.
@@ -620,13 +627,15 @@ them to a page built some other way; a page that has them keeps them, and withou
 
 ⚙️ holds what every page shares: ⏯️ stop the board, 🌐 the language (11), 🎨 the colors (the page's own, or one of the themes for
 every page of the origin), then the rows a page adds (another layout, a mode). 🌐 changes every word these parts put on the page —
-the chrome's tooltips, the board's "in N min", 🫧, the foot's 🚪 and 📦, the way back's ポートフォリオ and GitHub リポジトリ (a catalogue
-word, `chrome_words`) and the stand-in line of a page that says nothing of itself — and every word this module writes into the page's
+the chrome's tooltips, the board's "in N min", 🫧, the foot's 🚪 and 📦, the way back's ポートフォリオ and GitHub リポジトリ (catalogue
+words, found by their words) and the stand-in line of a page that says nothing of itself — and every word this module writes into the page's
 own body, found by its words (a format such as `⌨️ x.py · 全 3 コマンド` by its shape): a runbook's labels, states, 🤖 and copy messages,
 🧩 the full list's titles and headers, and the tabs and headings every guide shares (🧩 機能一覧 🔬 検証ガイド 🎞 GIF デモ 🔗 リンク 📥 取得
 ▶️ 実行 🐍 Python から呼ぶ). A page carries only the words it holds (`add_part` keeps them, whoever adds the chrome). A site's own names
 join them through the chrome's `words` (`{"GIF工房": ["GIF studio", …]}`, the ten other languages in order): on the board, in ☰ and 🚪,
-on a card, alone or with an emoji or an arrow around them. The page's own words stay as written (the browser's own translate
+on a card, alone or with an emoji or an arrow around them.
+`shell_js(words, page)` is the script a world's shell and the chrome share (the catalogue, 🌐 `addWords` `sayIn` `sayAround`, the
+board, the menus, the cache): `chrome.js` builds on it, and a world's script starts with it, so a word is written once. The page's own words stay as written (the browser's own translate
 reads them) and `<html lang>` says their language (`page_language`). A door relabels its pull-down; a page of its own hears `ui-lang`
 on `document`. The browser tests switch all eleven languages and fail on any word of these parts left behind, on the chrome and on a
 guide with a runbook and the full list.
@@ -767,7 +776,7 @@ boundary](docs/python-controls.md).
 
 ### Components from Python, in this repository or another
 
-`COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `labels-switch`, `coordinates`,
+`COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `labels-switch`, `toolbar`, `coordinates`,
 `door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `chat`, `curl`, `showcase`,
 `front`, `repository-diagnostics`, `table`, `steps`, `scroll`, `stage`, `status`, `pager`, `chrome`, `tabs`; `components()` lists them as data), and two calls wrap them:
 
