@@ -1791,6 +1791,36 @@ class SiteChromeBrowserTests(unittest.TestCase):
             server.shutdown()
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_the_sites_own_names_follow_the_language(self):
+        """🌐 ``words``: the site's own names (a tool's) switch wherever they show — on the board with an emoji, on a card with an
+        arrow, in 🚪's pull-down — and come back in Japanese."""
+        from pysaiyanweboo import add_part, component_parts
+        gif = ['GIF studio', 'Atelier GIF', 'Taller GIF', 'Oficina GIF', 'استوديو GIF', 'GIF 工坊', 'Студия GIF', 'Studio GIF', 'GIF-Werkstatt', 'Studio ya GIF']
+        door = {'schema': ui.DOOR_SCHEMA, 'k': 0, 'pages': [{'emoji': '🏠', 'label': 'Tools', 'href': './'}, {'emoji': '🎞', 'label': 'GIF工房', 'href': './gif.html'}], 'current': './'}
+        built = render_document(trusted_html='<main><h1>t</h1><p><a href="./gif.html">GIF工房 →</a></p></main>', title='t', css=bundled_css())
+        built = add_part(built, component_parts('chrome', {'words': {'GIF工房': gif}, 'board': {'title': 'T', 'items': [{'text': '🎞 GIF工房'}]}}), at='top', scope='.ui-chrome')
+        built = add_part(built, component_parts('door', door, foot=True))
+        self.assertNotIn('"state-todo"', built)                                                   # no runbook here: none of its words
+        server, origin = serve_pages({'index.html': built})
+        said = "() => [document.querySelector('.ui-board-item').textContent, document.querySelector('main a').textContent, [...document.querySelectorAll('.ui-door-foot option')].map(o => o.textContent)[1]]"
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page()
+                    page.goto(origin + '/index.html')
+                    page.wait_for_selector('.ui-chrome[data-js]')
+                    self.assertEqual(page.evaluate(said), ['🎞 GIF工房', 'GIF工房 →', '🎞 GIF工房'])
+                    for code, word in (('en', gif[0]), ('ar', gif[4]), ('sw', gif[9])):
+                        page.evaluate("c => { const s = document.querySelector('.ui-chrome [data-lang]'); s.value = c; s.dispatchEvent(new Event('change')) }", code)
+                        self.assertEqual(page.evaluate(said), ['🎞 ' + word, word + ' →', '🎞 ' + word], code)
+                    page.evaluate("() => { const s = document.querySelector('.ui-chrome [data-lang]'); s.value = 'ja'; s.dispatchEvent(new Event('change')) }")
+                    self.assertEqual(page.evaluate(said), ['🎞 GIF工房', 'GIF工房 →', '🎞 GIF工房'])
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
     def test_settings_colors_follow_from_page_to_page(self):
         """🎨 ⚙️'s colors: a theme recolours the page (its tokens on <body>), the next page of the origin opens in it, and "this page's
         own" gives the page back its theme (a guide's is auto)."""
