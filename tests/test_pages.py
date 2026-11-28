@@ -8103,7 +8103,7 @@ def test_a_toolbar_is_rows_of_groups_with_one_candidate_row_and_words_for_every_
 
 @pytest.mark.skipif(not node26(), reason="Node 26+ not available")
 def test_node26_bind_toolbar_runs_acts_opens_candidates_under_their_row_and_closes_after_a_pick():
-    """🧰 bindToolbar on a stand-in DOM: a plain control runs its act; a button with candidates opens them right under its own row
+    """🧰 bindToolbar on a stand-in DOM: every control runs its act; a button with candidates also opens them right under its own row
     and a second press closes them; a candidate runs its own act, or the button's act with its face (stamps); data-close hides the
     row after the pick; a disabled control does nothing; a press keeps the focus (pointerdown is prevented)."""
     script = """
@@ -8147,6 +8147,7 @@ fire("click", text);
 fire("click", off);
 assert.deepEqual(ran, [["text"]]);
 fire("click", shape);
+assert.deepEqual(ran.at(-1), ["shape"]);                                                   // the press is the page's too (a mode)
 assert.equal(cands.hidden, false);
 assert.equal(root.children.indexOf(cands), root.children.indexOf(create) + 1);
 assert.deepEqual(cands.children.map((c) => [c.textContent, c.title, c.dataset.uiWord]), [["▭", "四角", "四角"], ["◯", "丸（まる）", "丸"]]);
