@@ -413,8 +413,7 @@ class BundledCssTests(unittest.TestCase):
         args = ["--css-bundle", "--theme", "green"]
         env = {**os.environ, "PYTHON": sys.executable}
         via_node = pysaiyanweboo.run_node(ROOT / "vendor/py_launch.cjs", "--", ROOT / "pysaiyanweboo.py", *args, env=env, input="hello\n", timeout=60)
-        via_python = subprocess.run([sys.executable, "-S", "pysaiyanweboo.py", *args], cwd=ROOT, env=env, input="hello\n", capture_output=True,
-                                    text=True, encoding="utf-8", timeout=60)
+        via_python = cli_args.run_cli("pysaiyanweboo.py", *args, python_options=("-S",), cwd=ROOT, env=env, stdin="hello\n", timeout=60)
         self.assertEqual(via_python.returncode, 0, via_python.stderr)
         self.assertEqual((via_node.returncode, via_node.stdout), (0, via_python.stdout))
         self.assertIn('body[data-ui-theme="green"]', via_node.stdout)
@@ -6683,7 +6682,7 @@ def test_minimal_node_adapter_preserves_cli_behavior(args, stdin):
     node = node26() or pytest.skip('Node 26+ required')
     root = Path(pysaiyanweboo.__file__).parent
     env = {**os.environ, 'PYTHON': sys.executable}
-    direct = subprocess.run([sys.executable, '-S', 'pysaiyanweboo.py', *args], cwd=root, env=env, input=stdin, capture_output=True, text=True, timeout=30)
+    direct = cli_args.run_cli('pysaiyanweboo.py', *args, python_options=('-S',), cwd=root, env=env, stdin=stdin, timeout=30)
     adapter = pysaiyanweboo.run_node(root / 'vendor/py_launch.cjs', '--', root / 'pysaiyanweboo.py', *args, node=node, env=env, input=stdin)
     assert (adapter.returncode, adapter.stdout, adapter.stderr) == (direct.returncode, direct.stdout, direct.stderr)
 
@@ -8640,8 +8639,8 @@ class RunbookBlockTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp, "guide.page.json")
             path.write_text(json.dumps(self.page()), encoding="utf-8")
-            done = subprocess.run([sys.executable, str(ROOT / "pysaiyanweboo.py"), "--page", str(path), "--run-steps"], cwd=tmp,
-                                  capture_output=True, text=True, encoding="utf-8", check=True)
+            done = cli_args.run_cli(ROOT / "pysaiyanweboo.py", "--page", str(path), "--run-steps", cwd=tmp)
+            self.assertEqual(done.returncode, 0, done.stderr)
             self.assertIn("✅ exit 0", done.stdout)
             self.assertIn("🤖 ✅ 🐍 python · ver · exit 0", done.stderr)                 # 📜 the CI log says it too
             self.assertIn("🤖 ❌ 🐍 python · bad · exit 3", done.stderr)
@@ -8819,11 +8818,11 @@ class FeatureListTests(unittest.TestCase):
         for folder, feature in (("first", "one_marker"), ("second", "two_marker")):
             (self.dir / folder).mkdir()
             self.module(f"def {feature}(): pass\n", f"{folder}/tool.py")
-        done = subprocess.run(
-            [sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--page", str(page),
-             "--features", "first/tool.py", "--features", "second/tool.py",
-             "--features", "./first/tool.py"],
-            cwd=self.dir, capture_output=True, text=True, encoding="utf-8", check=False,
+        done = cli_args.run_cli(
+            ROOT / "pysaiyanweboo.py", "--page", str(page),
+            "--features", "first/tool.py", "--features", "second/tool.py",
+            "--features", "./first/tool.py",
+            python_options=("-S",), cwd=self.dir,
         )
         self.assertEqual(done.returncode, 0, done.stderr)
         for value in ("first/tool.py", "second/tool.py", "one_marker()", "two_marker()"):
@@ -8832,8 +8831,8 @@ class FeatureListTests(unittest.TestCase):
     def test_cli_flag(self):
         page = self.dir / "guide.page.json"
         page.write_text(json.dumps(self.spec), encoding="utf-8")
-        done = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--page", str(page), "--features", str(self.module(self.MODULE))],
-                              capture_output=True, text=True, encoding="utf-8", check=False)
+        done = cli_args.run_cli(ROOT / "pysaiyanweboo.py", "--page", str(page), "--features", str(self.module(self.MODULE)),
+                                python_options=("-S",))
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("⌨️ demo.py · 全 2 コマンド", done.stdout)
         self.assertIn("🔧 shout()", done.stdout)
@@ -8890,10 +8889,10 @@ class FeatureListTests(unittest.TestCase):
                 module = self.module(text)
                 config = self.dir / "features.json"
                 config.write_text(json.dumps([{"source": module.name, "cli": [[]]}]), encoding="utf-8")
-                done = subprocess.run(
-                    [sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--page", str(page),
-                     "--features-config", str(config)],
-                    cwd=self.dir, capture_output=True, text=True, encoding="utf-8",
+                done = cli_args.run_cli(
+                    ROOT / "pysaiyanweboo.py", "--page", str(page),
+                    "--features-config", str(config),
+                    python_options=("-S",), cwd=self.dir,
                 )
                 self.assertNotEqual(done.returncode, 0)
                 self.assertIn(f"feature CLI extraction failed for {module.name}", done.stderr)
