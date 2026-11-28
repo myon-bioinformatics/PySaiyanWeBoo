@@ -16546,8 +16546,8 @@ body:where([data-page~="studio"]){font-size:13px;line-height:1.5;margin:0}
 :where([data-page~="studio"]) .eyebrow{font-size:10px;letter-spacing:2px;font-weight:800;color:var(--ui-muted);margin:0 0 12px}
 :where([data-page~="studio"]) .hint,:where([data-page~="studio"]) .note{font-size:11px;color:var(--ui-muted);line-height:1.85}
 :where([data-page~="studio"]) .note{margin-top:18px}
-:where([data-page~="studio"]) .tool-grid,:where([data-page~="studio"]) .two{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-:where([data-page~="studio"]) .tool-grid{margin:24px 0 18px}
+:where([data-page~="studio"]) .two{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+:where([data-page~="studio"]) .tools>.ui-toolbar{margin:24px 0 16px}
 :where([data-page~="studio"]) .active{background:color-mix(in srgb,var(--ui-accent) 22%,var(--ui-panel))!important;border-color:var(--ui-accent)!important;color:var(--ui-fg)!important;font-weight:700}
 :where([data-page~="studio"]) label{display:block;font-size:11px;margin:12px 0 7px}
 :where([data-page~="studio"]) input,:where([data-page~="studio"]) textarea,:where([data-page~="studio"]) select{display:block;width:100%;font-size:13px;padding:9px;margin-top:5px}
@@ -16557,9 +16557,6 @@ body:where([data-page~="studio"]){font-size:13px;line-height:1.5;margin:0}
 :where([data-page~="studio"]) input[type=checkbox]{display:inline;width:auto;margin:0 7px 0 0}
 :where([data-page~="studio"]) .check{display:flex;align-items:center}
 :where([data-page~="studio"]) .wide{width:100%;margin:6px 0}
-:where([data-page~="studio"]) .emojis{display:flex;flex-wrap:wrap;gap:4px}
-:where([data-page~="studio"]) .emojis button{font-size:21px;padding:5px 7px;border:none;background:transparent}
-:where([data-page~="studio"]) .kaomojis button{font-size:13px;padding:7px 4px}
 :where([data-page~="studio"]) .section{border-top:1px solid var(--ui-border);padding-top:20px;margin-top:22px}
 :where([data-page~="studio"]) .workspace{padding:30px;min-width:0}
 :where([data-page~="studio"]) .canvas-heading{display:flex;justify-content:space-between;align-items:end;gap:12px;margin:5px 0 24px}
@@ -16600,7 +16597,7 @@ body:where([data-page~="studio"]){font-size:13px;line-height:1.5;margin:0}
 :where([data-page~="studio"]) #base64-dialog p{font-size:12px;line-height:1.8}
 @media(min-width:1600px){:where([data-page~="studio"]) .workspace{padding:44px}}
 @media(max-width:1150px){:where([data-page~="studio"]) main{grid-template-columns:210px minmax(0,1fr)}:where([data-page~="studio"]) .inspector{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}:where([data-page~="studio"]) .inspector>.eyebrow{display:none}:where([data-page~="studio"]) .inspector>.section{margin:0;border:0;padding:0}:where([data-page~="studio"]) .workspace{padding:22px}}
-@media(max-width:680px){:where([data-page~="studio"]) header{padding:14px;display:block}:where([data-page~="studio"]) .top-actions{margin-top:15px}:where([data-page~="studio"]) .top-actions button,:where([data-page~="studio"]) .top-actions .button{padding:7px;font-size:11px}:where([data-page~="studio"]) main{display:flex;flex-direction:column}:where([data-page~="studio"]) .workspace{order:-1;padding:18px}:where([data-page~="studio"]) .canvas-heading h2{font-size:17px}:where([data-page~="studio"]) .canvas-heading{margin-bottom:16px}:where([data-page~="studio"]) .canvas-footer{display:block}:where([data-page~="studio"]) .canvas-footer span{display:block;margin:5px 0}:where([data-page~="studio"]) .tools{display:block}:where([data-page~="studio"]) .tools h1,:where([data-page~="studio"]) .tools>.hint{display:none}:where([data-page~="studio"]) .tool-grid{margin:8px 0;grid-template-columns:repeat(3,1fr)}:where([data-page~="studio"]) .inspector{display:block}:where([data-page~="studio"]) .inspector>.section{margin-top:20px}:where([data-page~="studio"]) .canvas-settings{margin-top:20px;padding-top:15px}:where([data-page~="studio"]) .board{width:100%}:where([data-page~="studio"]) aside{padding:18px}:where([data-page~="studio"]) .tools>.section{margin-top:15px}}
+@media(max-width:680px){:where([data-page~="studio"]) header{padding:14px;display:block}:where([data-page~="studio"]) .top-actions{margin-top:15px}:where([data-page~="studio"]) .top-actions button,:where([data-page~="studio"]) .top-actions .button{padding:7px;font-size:11px}:where([data-page~="studio"]) main{display:flex;flex-direction:column}:where([data-page~="studio"]) .workspace{order:-1;padding:18px}:where([data-page~="studio"]) .canvas-heading h2{font-size:17px}:where([data-page~="studio"]) .canvas-heading{margin-bottom:16px}:where([data-page~="studio"]) .canvas-footer{display:block}:where([data-page~="studio"]) .canvas-footer span{display:block;margin:5px 0}:where([data-page~="studio"]) .tools{display:block}:where([data-page~="studio"]) .tools h1,:where([data-page~="studio"]) .tools>.hint{display:none}:where([data-page~="studio"]) .tools>.ui-toolbar{margin:8px 0}:where([data-page~="studio"]) .inspector{display:block}:where([data-page~="studio"]) .inspector>.section{margin-top:20px}:where([data-page~="studio"]) .canvas-settings{margin-top:20px;padding-top:15px}:where([data-page~="studio"]) .board{width:100%}:where([data-page~="studio"]) aside{padding:18px}:where([data-page~="studio"]) .tools>.section{margin-top:15px}}
 
 /* tools page layout */
 body:where([data-page~="tools"]){font-size:15px;line-height:1.65;margin:0}
