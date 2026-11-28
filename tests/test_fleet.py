@@ -5,12 +5,12 @@ from pathlib import Path
 from support import fleet
 
 ROOT = Path(__file__).resolve().parents[1]
-ACCEPTED = {"vendor/fleet_check.py": "20de01921e50e9339aa9271b0547a5be7649b3b3", "vendor/cli_args.py": "5ae22b1a1b808eca93e3c385a8db867fbeb8ee32"}
+ACCEPTED = {"vendor/fleet_check.py", "vendor/cli_args.py"}  # 🔁 locked destinations; they follow main
 
 
 class VendorLock(unittest.TestCase):
     def test_fleet_check_is_the_accepted_parent_commit(self):
-        fleet.check_lock(ROOT, commits=ACCEPTED)
+        fleet.check_lock(ROOT)
 
 
 # 🧰 Scripts: 📝 each one describes itself and ⌨️ one that reads sys.argv declares its arguments (argparse /

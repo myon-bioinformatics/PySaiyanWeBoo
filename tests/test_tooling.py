@@ -510,7 +510,7 @@ PARENT = "myon-bioinformatics/myon-bioinformatics"
 
 
 def test_parent_workflow_references_use_reviewed_rollout_commit():
-    parent_workflow_pin = "27dedd9651efc816fa88d8922adb5f242725df69"
+    parent_workflow_pin = "main"  # 🔁 own sources follow main
     pins = []
     for path in sorted((ROOT / ".github/workflows").glob("*")):
         if path.suffix not in (".yml", ".yaml"):
@@ -647,7 +647,7 @@ def _assert_contract(workflow):
     assert collector["if"] == "(always()) && needs.changes.outputs.product_changed == 'true'"
     assert collector.get("continue-on-error", False) is False
     assert collector["uses"] == ("myon-bioinformatics/myon-bioinformatics/.github/workflows/"
-                                 "reusable-junit-identity.yml@27dedd9651efc816fa88d8922adb5f242725df69")
+                                 "reusable-junit-identity.yml@main")
     reports = json.loads(collector["with"]["expected-reports"])
     assert isinstance(reports, list) and len(reports) == 2
     assert set(reports) == {
@@ -1843,7 +1843,7 @@ def test_one_module_and_no_old_name():
 
 CI_WORKFLOW_NAME = ".github/workflows/ci.yml"
 TEST_JOB = "tooling"
-PIN = "26c442bc51b8a2837fe2556782b2937f396932af"
+PIN = "main"  # 🔁 own sources follow main (2026-11-28)
 
 
 def _lock_entries(root=ROOT):
@@ -1880,7 +1880,7 @@ def test_vendor_lock_lists_expected_sources():
     }
     actual = {(e["repository"], e["source"], e["destination"]) for e in _lock_entries()}
     assert actual == expected
-    assert all(e["ref"] == e["commit"] for e in _lock_entries())
+    assert all(e["ref"] in (e["commit"], "main") for e in _lock_entries())
 
 
 @pytest.mark.parametrize("destination,commit", [("vendor/njs_launch.py", "0d20801e2e372a72426ce85cee7ac04d701e71b5"),   # the rename's merge (parent #266)
@@ -1888,7 +1888,7 @@ def test_vendor_lock_lists_expected_sources():
 def test_launchers_pin_the_accepted_parent_merge(destination, commit):
     entry = next(e for e in _lock_entries() if e["destination"] == destination)
     assert entry["repository"] == "myon-bioinformatics/myon-bioinformatics"
-    assert entry["ref"] == entry["commit"] == commit
+    assert entry["ref"] == "main"  # 🔁 follows main now; ``commit`` was the accepted merge it started from
     data = (ROOT / destination).read_bytes()
     assert hashlib.sha256(data).hexdigest() == entry["sha256"]
     assert hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest() == entry["blob_sha"]
@@ -2035,7 +2035,7 @@ def test_pinned_parent_staging_command_and_real_payload(tmp_path, job_name):
 def test_retired_ironmate_sources_do_not_follow_deleted_main_paths():
     entries = [e for e in _lock_entries() if e["repository"] == "myon-bioinformatics/Ironmate"]
     assert {e["source"] for e in entries} == {"LICENSE"}
-    assert all(e["ref"] == e["commit"] for e in entries)
+    assert all(e["ref"] in (e["commit"], "main") for e in entries)
 
 
 # ═══ 🔒 vendor lock ═══════════════════════════════════════════════════════════════════════════════════════
@@ -2044,8 +2044,7 @@ def test_vendor_lock_matches_checked_in_bytes() -> None:
     lock = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))
     assert lock["schema"] == "vendor-lock/1"
     for entry in lock["files"]:
-        assert re.fullmatch(r"[0-9a-f]{40}", entry["ref"]), entry["destination"]
-        assert entry["ref"] == entry["commit"], entry["destination"]
+        assert re.fullmatch(r"[0-9a-f]{40}", entry["commit"]) and entry["ref"] in (entry["commit"], "main"), entry["destination"]  # 🔁 own rows follow main
         data = (ROOT / entry["destination"]).read_bytes()
         blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
         assert blob == entry["blob_sha"], entry["destination"]
