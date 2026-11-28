@@ -290,7 +290,7 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
         self.assertIn('id="rooms"><nav class="ui-room-bar" aria-label="Rooms">', menu)
         self.assertLess(menu.index("data-ui-back"), menu.index('<header class="stub-header">'))
         self.assertNotIn("data-ui-back", pysaiyanweboo.front_html("<p>view</p>", ROOM, title="T"))
-        self.assertEqual(pysaiyanweboo.example_pages()["index.html"].count("data-ui-back"), 1)
+        self.assertEqual(pysaiyanweboo.example_pages()["ui.html"].count("data-ui-back"), 1)
 
     def test_site_chrome_gives_a_built_page_the_header_side_and_foot_once(self):
         """🧰 add_site_chrome (and add_back_nav(chrome=True), --page --repository): the board says what the page is and where the links
@@ -464,20 +464,20 @@ class FrontPageTests(unittest.TestCase):
         self.assertEqual((done.returncode, done.stdout), (0, ui.component_document("gaze-avatar", label="まばたき")), done.stderr)
 
     def test_front_page_is_what_the_generator_writes(self):
-        page = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertEqual(page, pysaiyanweboo.example_pages()["index.html"])
+        page = (ROOT / "ui.html").read_text(encoding="utf-8")
+        self.assertEqual(page, pysaiyanweboo.example_pages()["ui.html"])
         for fragment in (pysaiyanweboo.theme_wall(range(12)), pysaiyanweboo.theme_switch_html(), pysaiyanweboo.front_css()):
             self.assertIn(fragment, page)
 
     def test_front_page_is_assembled_from_the_librarys_own_builders(self):
-        """Nothing in index.html is written for the page alone: every part is a public builder's output (or an EXAMPLES spec through one)."""
-        page = (ROOT / "index.html").read_text(encoding="utf-8")
+        """Nothing in ui.html is written for the page alone: every part is a public builder's output (or an EXAMPLES spec through one)."""
+        page = (ROOT / "ui.html").read_text(encoding="utf-8")
         for fragment in (pysaiyanweboo._example_cards("./examples/"), pysaiyanweboo.curl_panel_html(), pysaiyanweboo.theme_switch_html(), pysaiyanweboo.seed_dial_html(), pysaiyanweboo.seed_roll_html(), pysaiyanweboo.front_css(),
                          pysaiyanweboo.module_script(pysaiyanweboo.js_source("theme.js") + "bindSeed();\n"), pysaiyanweboo.module_script(pysaiyanweboo.js_source("curl.js"))):
             self.assertIn(fragment, page)
         self.assertEqual(page.count('class="ui-front"'), 1)
         self.assertEqual(page.count('class="ui-room"'), 5)                                                       # the menu and four rooms
-        self.assertIn('<a href="./guide/">🧩 機能一覧</a>', page)                                                     # 🧩 the usage guide under guide/
+        self.assertIn('<a href="./">🧩 機能一覧</a>', page)                                                           # 🧩 the usage guide is the Pages' index.html
         for gone in ('class="ui-world', 'class="stub-shell', "bindStub", "bindWorlds"):                         # 🌍🤖 moved to the portfolio
             self.assertNotIn(gone, page)
 
@@ -6473,7 +6473,7 @@ class StaticContractTest(unittest.TestCase):
     def test_pages_entrypoints_resolve_the_repository_favicon(self):
         favicon = ROOT / "docs/brand/favicon.png"
         self.assertTrue(favicon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
-        for path in [ROOT / "index.html"]:
+        for path in [ROOT / "ui.html"]:
             with self.subTest(page=str(path.relative_to(ROOT))):
                 links = self.parsed(path).icon_links
                 self.assertEqual(len(links), 1)
@@ -6486,10 +6486,10 @@ class StaticContractTest(unittest.TestCase):
     def test_pages_visible_and_touch_icons_resolve_to_canonical_asset(self):
         icon = ROOT / "docs/brand/icon.png"
         self.assertTrue(icon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
-        for path in [ROOT / "index.html"]:
+        for path in [ROOT / "ui.html"]:
             text = path.read_text(encoding="utf-8")
             patterns = [r'<link rel="apple-touch-icon" href="([^"]+)">']
-            if path == ROOT / "index.html":
+            if path == ROOT / "ui.html":
                 patterns.append(r'<img[^>]+src="([^"]+)"')
             for pattern in patterns:
                 href = re.search(pattern, text).group(1)
@@ -6498,8 +6498,8 @@ class StaticContractTest(unittest.TestCase):
 
     def test_example_pages_are_single_files_carrying_the_whole_bundle(self):
         self.assertEqual(sorted(PAGES), ["contract/v1/example.html", "examples/clipboard-shelf.html", "examples/composition-studio.html", "examples/coordinates.html", "examples/current-item.html", "examples/door.html", "examples/github-like.html",
-                                         "examples/image-studio.html", "examples/index.html", "examples/mcp-lab.html", "examples/parts.html", "examples/patterns.html", "examples/photo-studio.html", "examples/play-studio.html", "examples/playground.html", "examples/screens.html", "examples/showcase.html", "examples/test-report.html", "examples/timeline.html", "index.html"])
-        self.assertEqual((ROOT / "index.html").read_text(encoding="utf-8"), PAGES["index.html"], "run: python -S pysaiyanweboo.py --site DIR; copy DIR/index.html")
+                                         "examples/image-studio.html", "examples/index.html", "examples/mcp-lab.html", "examples/parts.html", "examples/patterns.html", "examples/photo-studio.html", "examples/play-studio.html", "examples/playground.html", "examples/screens.html", "examples/showcase.html", "examples/test-report.html", "examples/timeline.html", "ui.html"])
+        self.assertEqual((ROOT / "ui.html").read_text(encoding="utf-8"), PAGES["ui.html"], "run: python -S pysaiyanweboo.py --site DIR; copy DIR/ui.html")
         for name, text in PAGES.items():
             self.assertNotIn('rel="stylesheet"', text, name)
             self.assertIn(pysaiyanweboo.bundled_css(), text, name)
@@ -6509,7 +6509,7 @@ class StaticContractTest(unittest.TestCase):
         path = "examples/composition-studio.html"
         self.assertEqual(PAGES[path], pysaiyanweboo.studio_document())
         self.assertIn("Metronome", PAGES[path])
-        for gallery in ("index.html", "examples/index.html"):
+        for gallery in ("ui.html", "examples/index.html"):
             self.assertNotIn("composition-studio.html", self.parsed_text(PAGES[gallery]).hrefs)
             self.assertNotIn("examples/composition-studio.html", self.parsed_text(PAGES[gallery]).hrefs)
 
@@ -6532,8 +6532,8 @@ class StaticContractTest(unittest.TestCase):
                 if parsed.scheme or parsed.netloc or href.startswith("#"):
                     continue
                 target = normpath(str(Path(name).parent / parsed.path).replace("\\", "/"))
-                if target == "guide":                       # 🧩 the usage guide: pages.yml builds it under guide/ (guide_dir)
-                    self.assertIn("guide_dir: guide", (ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8"))
+                if target == ".":                           # 🧩 the usage guide: pages.yml builds it as the Pages' index.html (no guide_dir)
+                    self.assertNotIn("guide_dir:", (ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8"))
                     continue
                 self.assertIn(target, PAGES, f"{name}: broken href {href}")
 
@@ -6561,7 +6561,7 @@ class StaticContractTest(unittest.TestCase):
 
 
 def test_pages_root_is_one_self_contained_page_with_the_examples_inside():
-    root = (ROOT / "index.html").read_text(encoding="utf-8")
+    root = (ROOT / "ui.html").read_text(encoding="utf-8")
     assert 'rel="stylesheet"' not in root and "<script src" not in root and 'src="./js/' not in root
     for anchor in ("#parts", "#curl", "#demos"):                                    # the rooms, linked from the 🚪 menu
         assert f'href="{anchor}"' in root and f'id="{anchor[1:]}"' in root, anchor
@@ -6669,7 +6669,7 @@ def test_generated_site_local_assets_and_links_exist(tmp_path):
             url = urlsplit(link)
             if url.scheme or url.netloc or not url.path:
                 continue
-            if name == 'index.html' and url.path == './guide/':    # 🧩 the usage guide: pages.yml builds it under guide/ (guide_dir)
+            if name == 'ui.html' and url.path == './':    # 🧩 the usage guide is the Pages' index.html (pages.yml builds it there)
                 continue
             assert (path.parent / url.path).is_file(), (name, link)
     for name in ('icon.png', 'favicon.png'):
@@ -7454,7 +7454,7 @@ def test_cli_css_and_html(capsys, tmp_path):
 
 
 def test_front_page_demo_matches_the_presets():
-    page = (ROOT / "index.html").read_text(encoding="utf-8")
+    page = (ROOT / "ui.html").read_text(encoding="utf-8")
     assert lp.css(SPEC) in page
     data = lp.validate(SPEC)
     assert re.findall(r'name="ui-layout" value="([a-z0-9-]+)"', page) == [p["id"] for p in data["presets"]]

@@ -3,10 +3,10 @@
 🌐 [GitHub Pages](https://myon-bioinformatics.github.io/PySaiyanWeBoo/) · 🏠 [Portfolio](https://myon-bioinformatics.github.io/)
 
 <p align="center">
-  <img src="https://myon-bioinformatics.github.io/PySaiyanWeBoo/guide/icon.png" alt="PySaiyanWeBoo icon" width="160" />
+  <img src="https://myon-bioinformatics.github.io/PySaiyanWeBoo/icon.png" alt="PySaiyanWeBoo icon" width="160" />
 </p>
 
-[Icon](https://myon-bioinformatics.github.io/PySaiyanWeBoo/guide/icon.png) · [Favicon](https://myon-bioinformatics.github.io/PySaiyanWeBoo/guide/favicon.png)
+[Icon](https://myon-bioinformatics.github.io/PySaiyanWeBoo/icon.png) · [Favicon](https://myon-bioinformatics.github.io/PySaiyanWeBoo/favicon.png)
 
 Shared CSS themes, semantic UI components, and small browser modules for static interfaces across myon-bioinformatics projects, all built by one standard-library Python module (`pysaiyanweboo.py`) that keeps them as Python data.
 
@@ -26,7 +26,7 @@ PySaiyanWeBoo combines Py (Python), Saiyan, Web, and Boo. Like Majin Buu in Drag
 
 ```text
 pysaiyanweboo.py the one Python module: CSS (in memory), pages, themes, and shared helpers beyond the web UI
-index.html       the front page: front_document() over the library's own builders, kept equal by a test (nothing is written for the page alone)
+ui.html          the front page: front_document() over the library's own builders, kept equal by a test (nothing is written for the page alone)
                  (example data is Python too: pysaiyanweboo.EXAMPLES, example_data(), --example NAME; no examples/ directory)
                  (the browser modules are Python data too: js_modules(), write_js(); there is no js/ directory)
 tests/
@@ -78,7 +78,7 @@ The seed is remembered in this browser. Python stays the reference; the page nev
 
 Front page layout: `front_document(main, rooms, title=...)` is one view that fills the viewport under a 48px bar, and a 🚪 menu of rooms that open over it through `:target`
 (no script; ✖️ closes). A room is `{"id", "emoji", "title", "text", "html"}`: add one to put something on the page, improve a builder to improve the page.
-`index.html` is exactly that call over the library's builders (🎛️ `theme_switch_html`, `seed_dial_html` and 🎲 `theme_wall` as the main view; 🧩 the example cards, 📋 `curl_panel_html` and 🧭 the way to the portfolio's demos as rooms), and a test
+`ui.html` (the Pages' front, opened from the usage guide at the top) is exactly that call over the library's builders (🎛️ `theme_switch_html`, `seed_dial_html` and 🎲 `theme_wall` as the main view; 🧩 the example cards, 📋 `curl_panel_html` and 🧭 the way to the portfolio's demos as rooms), and a test
 requires every one of their outputs to be in it. `render_document` takes optional `favicon` / `touch_icon` PNG links for such pages.
 Generate a browser-only HTML import tool with `html_import_files()`. Write its returned path-to-bytes mapping under a static site directory.
 The tool accepts pasted HTML and UTF-8 files, extracts text, headings and links, and downloads JSON. To reuse an existing PSWB asset directory,
@@ -391,7 +391,7 @@ python -S pysaiyanweboo.py --site build/site
 python -m http.server 8000 --directory build/site
 ```
 
-Open `http://localhost:8000/index.html`, or `/examples/index.html` for the example list.
+Open `http://localhost:8000/ui.html`, or `/examples/index.html` for the example list.
 `--site` writes the HTML, generated browser modules, and the icon/favicon assets referenced by the front page.
 The generated front page embeds its modules and can also be opened with `file://`; separately linked modules require HTTP(S).
 Use `write_js(output_dir)` when only browser modules are needed; source checkout paths under `css/` and `js/` are no longer public asset URLs.
