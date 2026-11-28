@@ -202,23 +202,23 @@ body:where([data-page~="tools"]){font-size:15px;line-height:1.65;margin:0}
 /* 💻 ⇄ 📱 an emoji face (a control with data-ui-word) is read at 20 px, not at the studio's small text size; a toolbar's are its own (toolbar.css) */
 :where([data-page~="studio"]) button[data-ui-word]:where(:not(.ui-toolbar-row>*)),:where([data-page~="studio"]) summary[data-ui-word],:where([data-page~="studio"]) label[data-ui-word]{font-size:20px;line-height:1}
 
-/* 📱 phone slides: the slide is pinned on top (PySaiyanWeBoo's .ui-stage) and the emoji controls scroll under it (landscape: beside it) */
-body:where([data-page~="phone"]){margin:0;background:var(--ui-bg)}
-:where([data-page~="phone"]) input[type=file]{display:none}
-:where([data-page~="phone"]) .button{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;cursor:pointer;text-decoration:none;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);border-radius:var(--ui-radius)}
-:where([data-page~="phone"]) .phone{display:flex;flex-direction:column;height:100dvh;max-width:960px;margin:0 auto}
-:where([data-page~="phone"]) .ui-stage{background:#fff;border:0;box-shadow:0 8px 24px rgba(0,0,0,.16);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-:where([data-page~="phone"]) .phone-svg svg{position:absolute;inset:0;width:100%;height:100%;display:block}
-:where([data-page~="phone"]) .phone-pick{position:absolute;box-sizing:border-box;border:2px dashed var(--ui-accent);pointer-events:none}
-:where([data-page~="phone"]) .phone-pick[hidden],:where([data-page~="phone"]) .phone-edit[hidden]{display:none}
-:where([data-page~="phone"]) .phone-grip{position:absolute;right:-16px;bottom:-16px;width:32px;height:32px;display:grid;place-items:center;border-radius:50%;background:var(--ui-accent);color:var(--ui-bg);font-size:16px;pointer-events:auto;touch-action:none}
-:where([data-page~="phone"]) .phone-edit{flex:1 1 100%;box-sizing:border-box;margin:0;min-height:88px;padding:8px;font-size:16px;line-height:1.5;border:2px solid var(--ui-accent);resize:vertical}
-:where([data-page~="phone"]) .phone-deck{flex:1;min-height:0;overflow:auto;display:flex;flex-wrap:wrap;align-items:flex-start;align-content:flex-start;gap:16px;padding:16px}
-:where([data-page~="phone"]) .phone-tools{flex:1 1 328px;min-width:0}
-:where([data-page~="phone"]) .phone-status{flex:1 1 128px;margin:0;align-self:center;min-height:24px;font-size:16px;overflow-wrap:anywhere}
-:where([data-page~="phone"]) .phone-status[data-error=true]{color:var(--ui-danger)}
-@media(orientation:landscape) and (max-height:560px),(min-width:960px){:where([data-page~="phone"]) .phone{flex-direction:row;max-width:none}:where([data-page~="phone"]) .ui-stage{max-width:72vw;--ui-stage-room:100dvh}:where([data-page~="phone"]) .phone-deck{flex-direction:column;flex-wrap:nowrap}:where([data-page~="phone"]) .phone-tools,:where([data-page~="phone"]) .phone-status{flex:none}}
-@media(min-width:960px){:where([data-page~="phone"]) .ui-stage{max-width:calc(100vw - 376px)}}
+/* 📽️ the one slide editor (phone-first, the same page on a PC): the slide is pinned on top (PySaiyanWeBoo's .ui-stage) and the emoji controls scroll under it (landscape: beside it) */
+body:where([data-page~="slides"]){margin:0;background:var(--ui-bg)}
+:where([data-page~="slides"]) input[type=file]{display:none}
+:where([data-page~="slides"]) .button{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;cursor:pointer;text-decoration:none;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);border-radius:var(--ui-radius)}
+:where([data-page~="slides"]) .slides{display:flex;flex-direction:column;height:100dvh;max-width:960px;margin:0 auto}
+:where([data-page~="slides"]) .ui-stage{background:#fff;border:0;box-shadow:0 8px 24px rgba(0,0,0,.16);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+:where([data-page~="slides"]) .slides-svg svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+:where([data-page~="slides"]) .slides-pick{position:absolute;box-sizing:border-box;border:2px dashed var(--ui-accent);pointer-events:none}
+:where([data-page~="slides"]) .slides-pick[hidden],:where([data-page~="slides"]) .slides-edit[hidden]{display:none}
+:where([data-page~="slides"]) .slides-grip{position:absolute;right:-16px;bottom:-16px;width:32px;height:32px;display:grid;place-items:center;border-radius:50%;background:var(--ui-accent);color:var(--ui-bg);font-size:16px;pointer-events:auto;touch-action:none}
+:where([data-page~="slides"]) .slides-edit{flex:1 1 100%;box-sizing:border-box;margin:0;min-height:88px;padding:8px;font-size:16px;line-height:1.5;border:2px solid var(--ui-accent);resize:vertical}
+:where([data-page~="slides"]) .slides-deck{flex:1;min-height:0;overflow:auto;display:flex;flex-wrap:wrap;align-items:flex-start;align-content:flex-start;gap:16px;padding:16px}
+:where([data-page~="slides"]) .slides-tools{flex:1 1 328px;min-width:0}
+:where([data-page~="slides"]) .slides-status{flex:1 1 128px;margin:0;align-self:center;min-height:24px;font-size:16px;overflow-wrap:anywhere}
+:where([data-page~="slides"]) .slides-status[data-error=true]{color:var(--ui-danger)}
+@media(orientation:landscape) and (max-height:560px),(min-width:960px){:where([data-page~="slides"]) .slides{flex-direction:row;max-width:none}:where([data-page~="slides"]) .ui-stage{max-width:72vw;--ui-stage-room:100dvh}:where([data-page~="slides"]) .slides-deck{flex-direction:column;flex-wrap:nowrap}:where([data-page~="slides"]) .slides-tools,:where([data-page~="slides"]) .slides-status{flex:none}}
+@media(min-width:960px){:where([data-page~="slides"]) .ui-stage{max-width:calc(100vw - 376px)}}
 /* css/studio.css */
 @layer components{.ui-studio h3{margin:24px 0 8px}.ui-studio label{display:inline-block;margin:8px 8px 4px 0}.ui-studio-bar{display:flex;flex-wrap:wrap;gap:8px 16px;margin:8px 0;padding:0;border:0}.ui-studio-bar legend{padding:0 0 4px}.ui-studio-bar label{margin:0}.ui-studio-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0}.ui-studio-row .ui-input{flex:1 1 192px;min-width:0}.ui-studio textarea.ui-input{width:100%;box-sizing:border-box}.ui-beats{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.ui-beat{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border:1px solid var(--ui-border);border-radius:50%}.ui-beat[data-on]{background:var(--ui-accent);color:var(--ui-bg)}.ui-studio-bars{margin:8px 0;padding-left:24px}.ui-studio-bars li[data-error]{color:var(--ui-danger)}.ui-studio-chords{margin:8px 0;overflow-wrap:anywhere}.ui-studio-degrees{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}}
 /* css/toolbar.css */

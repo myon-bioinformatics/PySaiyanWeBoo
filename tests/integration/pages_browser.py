@@ -2102,11 +2102,12 @@ class ChromeBrowserTests(unittest.TestCase):
         the shown one's in ⚙️ and ⋯ (chrome_hosting), sends its keys to that view (the frame's document for the app), and hides what
         they stand in for there; the page's own declaration holds throughout."""
         studio = ("<!doctype html><html><head><meta http-equiv='Content-Security-Policy' content=\"style-src 'self'\"></head><body>"   # 🛡️ a studio's CSP: no inline style
-                  "<header id='studio-head'>🏭 own bar</header><main>studio</main>"
+                  "<header id='studio-head'>🏭 own bar</header><main>studio <button id='own-labels' data-ui-labels-switch>💻</button></main>"
                   + ui.chrome_rows_script({'screen': [{'label': '📋 シェルフ', 'key': 'shelf'}], 'replaces': '#studio-head'})
-                  + "<script>document.addEventListener('ui-chrome-action',e=>{document.body.dataset.heard=e.detail.key})</script></body></html>")
-        notes = ('<button id="own-layout">🔀</button>'
-                 + ui.chrome_rows_script({'settings': [{'label': '🔀 Layout', 'key': 'layout', 'options': [{'label': 'Grid', 'value': 'grid'}, {'label': 'List', 'value': 'list'}]}], 'replaces': '#own-layout'}))
+                  + "<script>document.body.dataset.uiTheme='green';document.addEventListener('ui-chrome-action',e=>{document.body.dataset.heard=e.detail.key})</script></body></html>")
+        notes = ('<button id="own-layout">🔀</button><button data-ui-labels-switch>💻</button>'                # its own 💻 row, declared: one row, not two
+                 + ui.chrome_rows_script({'settings': [{'label': '🔀 Layout', 'key': 'layout', 'options': [{'label': 'Grid', 'value': 'grid'}, {'label': 'List', 'value': 'list'}]}],
+                                          'screen': [{'label': '💻 ⇄ 📱 notes', 'key': 'labels'}], 'replaces': '#own-layout'}))
         screen = ("<script>const show=n=>{for(const s of document.querySelectorAll('main > section'))s.hidden=s.id!==n;const p=document.getElementById(n),t=p.querySelector(':scope>template');"
                   "if(t)p.replaceChildren(t.content.cloneNode(true));const f=p.querySelector('iframe'),"
                   "tell=()=>document.dispatchEvent(new CustomEvent('ui-chrome-view',{detail:{name:n,root:f?f.contentDocument:p}}));if(f&&!f.dataset.ready)f.addEventListener('load',()=>{f.dataset.ready=1;tell()},{once:true});else tell()};"
@@ -2134,8 +2135,20 @@ class ChromeBrowserTests(unittest.TestCase):
                     page.click('.ui-chrome [data-chrome-action="shelf"]')
                     self.assertEqual(frame.locator('body').get_attribute('data-heard'), 'shelf')       # the key went into the frame
                     self.assertIsNone(page.get_attribute('body', 'data-heard'))
+                    page.click('.ui-chrome [data-menu="more"] > summary')
+                    self.assertEqual(page.locator('.ui-chrome [data-chrome-action="labels"]').count(), 1)
+                    page.click('.ui-chrome [data-chrome-action="labels"]')                              # 💻 ⇄ 📱: no declaration, the switch is there
+                    self.assertEqual(frame.locator('body').get_attribute('data-heard'), 'labels')
+                    self.assertTrue(frame.locator('#own-labels').is_visible())                         # ⋯ says it too; the studio keeps its own
+                    page.click('.ui-chrome [data-menu="settings"] > summary')
+                    page.select_option('.ui-chrome [data-ui-theme-switch]', 'red')                    # 🎨 reaches the frame
+                    self.assertEqual(frame.locator('body').get_attribute('data-ui-theme'), 'red')
+                    page.select_option('.ui-chrome [data-ui-theme-switch]', '')                       # and "its own" is the studio's again
+                    self.assertEqual(frame.locator('body').get_attribute('data-ui-theme'), 'green')
+                    page.click('.ui-chrome [data-menu="settings"] > summary')
                     page.evaluate("show('notes')")
                     self.assertEqual(page.locator('.ui-chrome [data-chrome-action="shelf"]').count(), 0)  # the studio's rows left with it
+                    self.assertEqual(page.locator('.ui-chrome [data-chrome-action="labels"]').all_text_contents(), ['💻 ⇄ 📱 notes'])
                     self.assertFalse(page.is_visible('#own-layout'))
                     page.click('.ui-chrome [data-menu="settings"] > summary')
                     page.select_option('.ui-chrome [data-chrome-choice="layout"]', 'list')

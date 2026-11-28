@@ -5,7 +5,7 @@ from pathlib import Path
 from support import fleet
 
 ROOT = Path(__file__).resolve().parents[1]
-ACCEPTED = {"vendor/fleet_check.py": "20de01921e50e9339aa9271b0547a5be7649b3b3", "vendor/cli_args.py": "5ae22b1a1b808eca93e3c385a8db867fbeb8ee32"}
+ACCEPTED = {"vendor/fleet_check.py": "eee8c096fc753465a5d5a26264e64c12e555638f", "vendor/cli_args.py": "5ae22b1a1b808eca93e3c385a8db867fbeb8ee32"}
 
 
 class VendorLock(unittest.TestCase):
@@ -19,6 +19,10 @@ class VendorLock(unittest.TestCase):
 class ScriptsDescribeThemselves(unittest.TestCase):
     def test_every_script_has_a_description_and_declared_arguments(self):
         fleet.check_scripts(ROOT)
+
+    def test_no_top_level_vendor_package_imports(self):
+        # 📦 vendored modules load by path under a repo-unique name (cli_args README: Loading a vendored copy)
+        self.assertEqual(fleet.check_no_vendor_package_imports(ROOT), [])
 
     def test_pull_request_ci_stays_quick(self):
         # ⏱ push limited to branches, superseded PR runs cancelled, every job timed (fleet_check.check_ci)
