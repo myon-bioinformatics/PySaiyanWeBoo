@@ -65,6 +65,10 @@ In the same way `bindLabels()` switches `data-ui-labels` between emoji faces (th
 control carries both (`data-ui-word="エクスポート"` beside its `📤`), the 💻 To textual ⇄ 📱 To iconic button is `labels_switch_html()` (or a header
 row with `key: "labels"`), and rows marked `data-ui-group` get a light dashed line between them, for groups such as create /
 update / delete. The choice is remembered in the browser.
+A studio's controls are `toolbar_html(groups)`: rows of groups (`[("create", [{act, face, word, words, candidates?, close?, href?}]), …]`,
+checked by `toolbar_validate`), each control an emoji face with its short word, and one candidate row that `bindToolbar(root, run)`
+(`ui.js`) opens under the pressed row: a candidate runs its own act (`▭` → `rect`), or the button's act with its face (a stamp:
+`run("emoji", "🌱")`), and `close` hides the row after the pick (📥 📤 and their formats). Every press calls `run`; the page decides.
 From Node, run `node vendor/py_launch.cjs -- pysaiyanweboo.py --css-bundle`.
 
 🌍 The world (`web-ui-world/1`: [🌍 the travel world](https://myon-bioinformatics.github.io/tools/demos/world.html), 🏫 the school, 🗼 the parallel cities, 🎬 the camera page, the catalogue map) and 🤖🔁 the MCP / API stubs
@@ -765,7 +769,7 @@ boundary](docs/python-controls.md).
 
 ### Components from Python, in this repository or another
 
-`COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `labels-switch`, `coordinates`,
+`COMPONENTS` names every component that has an HTML builder, a stylesheet and a module (`dial`, `seed-dial`, `seed-roll`, `theme-switch`, `labels-switch`, `toolbar`, `coordinates`,
 `door`, `playground`, `report`, `mcp`, `screens`, `patterns`, `imagestudio`, `shelf`, `tempclip`, `photo`, `studio`, `source`, `chat`, `curl`, `showcase`,
 `front`, `repository-diagnostics`, `table`, `steps`, `scroll`, `stage`, `status`, `pager`, `chrome`, `tabs`; `components()` lists them as data), and two calls wrap them:
 

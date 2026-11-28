@@ -6792,7 +6792,8 @@ def args_for(name):
             "stage": (('<svg viewBox="0 0 16 9"></svg>',), {"label": "Slide"}), "pager": ((5,), {"variant": "dpad"}),
             "table": (({"columns": ["page", "chromium"], "rows": [["index", {"text": "pass", "status": "pass"}]], "row_headers": True},), {}),
             "steps": (({"key": "demo/run", "steps": [{"id": "run", "title": "Run", "command": "python3 -S demo.py", "expect": "42"}]},), {}),
-            "tabs": (([("About", "<p>a</p>"), ("Skills", "<p>b</p>")],), {"id": "profile"})}.get(name, ((), {}))
+            "tabs": (([("About", "<p>a</p>"), ("Skills", "<p>b</p>")],), {"id": "profile"}),
+            "toolbar": ((_TOOLBAR,), {"candidates_id": "cands"})}.get(name, ((), {}))
 
 
 @pytest.mark.parametrize("name", sorted(ui.COMPONENTS))
@@ -8050,6 +8051,124 @@ def test_render_document_icons_are_optional_png_links_that_stay_local_or_https()
     for bad in ("javascript:alert(1)", "data:image/png;base64,AAAA", "//evil.example/x.png", "./i.png?x=1", "", "https://u:p@example.test/x.png"):
         with pytest.raises(ValueError):
             ui.render_document("x", favicon=bad)
+
+
+_TOOLBAR = [
+    ("create", [{"act": "text", "face": "🔤", "word": "文字", "words": "文字を追加"},
+                {"act": "shape", "face": "🔷", "word": "図形", "words": "図形を候補から",
+                 "candidates": [{"face": "▭", "act": "rect", "words": "四角"}, {"face": "◯", "act": "ellipse", "words": "丸"}]},
+                {"act": "emoji", "face": "😊", "word": "絵文字", "words": "絵文字を候補から", "candidates": [{"face": "🌱"}, {"face": "✨"}]}]),
+    ("file", [{"act": "export", "face": "📤", "word": "エクスポート", "words": "エクスポート（どの形式に？）", "close": True,
+               "candidates": [{"face": "PPTX", "act": "pptx", "words": "PPTX（全スライド）"}, {"face": "PNG", "act": "png", "words": "PNG（このページ）"}]},
+              {"act": "home", "face": "🏠", "word": "Image Studio", "words": "Image <Studio>", "href": "../?a=1&b=2"}]),
+]
+
+
+def test_a_toolbar_is_rows_of_groups_with_one_candidate_row_and_words_for_every_face():
+    """🧰 toolbar_html: one row per group (a light line between groups), every control an emoji face with its short word
+    (💻 To textual), candidates encoded on the button (faces, the actions they run, their words, data-close), one hidden
+    candidate row after the first row; ``inside`` / ``after`` put the page's own markup at a group. Bad data is refused by name."""
+    html = ui.toolbar_html(_TOOLBAR, id="tools", candidates_id="cands", inside={"file": "<input type=file hidden>"},
+                           after={"create": '<div id="layers"></div>'})
+    assert html.startswith('<div class="ui-toolbar" id="tools" role="toolbar" aria-label="道具">')
+    assert re.findall(r'data-ui-group="(\w+)"', html) == ["create", "file"]
+    assert html.index('id="cands"') < html.index('id="layers"') < html.index('data-ui-group="file"')
+    assert '<div class="ui-toolbar-row" data-ui-candidates id="cands" role="group" aria-label="候補" hidden></div>' in html
+    assert 'data-acts="rect ellipse" data-words="四角|丸" data-candidates="▭ ◯" data-act="shape" data-ui-word="図形"' in html
+    assert 'data-candidates="🌱 ✨" data-act="emoji"' in html and 'data-acts="" ' not in html      # stamps: no actions, no words
+    assert 'data-close data-acts="pptx png" data-words="PPTX（全スライド）|PNG（このページ）" data-candidates="PPTX PNG" data-act="export"' in html
+    assert '<a class="ui-button" href="../?a=1&amp;b=2" data-act="home" data-ui-word="Image Studio" aria-label="Image &lt;Studio&gt;"' in html
+    assert html.count("<input type=file hidden>") == 1 and html.index("<input type=file hidden>") > html.index('data-act="home"')
+    assert ui.COMPONENTS["toolbar"] == {"html": "toolbar_html", "css": ("toolbar.css",), "js": ("ui.js",), "spec": "toolbar_validate"}
+    css = ui.css_source("toolbar.css")
+    for rule in (".ui-toolbar-row{display:flex;flex-wrap:wrap", ".ui-toolbar-row[hidden]{display:none}", "min-width:48px;min-height:48px",
+                 ".ui-toolbar-row>button:disabled{opacity:.32}"):
+        assert rule in css, rule
+    bad = [
+        ([], "non-empty"), ([("Create", [{"act": "a", "face": "1", "word": "w", "words": "w"}])], "group"),
+        ([("g", [{"act": "a", "face": "1", "word": "w"}])], "words"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w"}, {"act": "a", "face": "2", "word": "w", "words": "w"}])], "unique"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "candidates": [{"face": "a b"}]}])], "spaces"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "close": True}])], "close needs"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "href": "x", "candidates": [{"face": "c"}]}])], "link"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "candidates": [{"face": "c", "words": "x|y"}]}])], "'|'"),
+        ([("g", [{"act": "a", "face": "1", "word": "w", "words": "w", "colour": "red"}])], "a control is"),
+    ]
+    for groups, said in bad:
+        with pytest.raises(ValueError, match=re.escape(said)):
+            ui.toolbar_validate(groups)
+    with pytest.raises(ValueError, match="name no group"):
+        ui.toolbar_html(_TOOLBAR, after={"nope": ""})
+
+
+@pytest.mark.skipif(not node26(), reason="Node 26+ not available")
+def test_node26_bind_toolbar_runs_acts_opens_candidates_under_their_row_and_closes_after_a_pick():
+    """🧰 bindToolbar on a stand-in DOM: a plain control runs its act; a button with candidates opens them right under its own row
+    and a second press closes them; a candidate runs its own act, or the button's act with its face (stamps); data-close hides the
+    row after the pick; a disabled control does nothing; a press keeps the focus (pointerdown is prevented)."""
+    script = """
+import assert from "node:assert/strict";
+const key = (k) => k.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+class El {
+  constructor(tag, attrs = {}) { Object.assign(this, { tagName: tag.toUpperCase(), children: [], parent: null, dataset: {}, listeners: {},
+    hidden: false, disabled: false, textContent: "", title: "", className: "", aria: {} }); for (const [k, v] of Object.entries(attrs)) this.setAttribute(k, v); }
+  setAttribute(k, v) { if (k.startsWith("data-")) this.dataset[key(k.slice(5))] = String(v); else if (k === "class") this.className = v;
+    else if (k === "hidden") this.hidden = true; else this.aria[k] = String(v); }
+  getAttribute(k) { return this.aria[k] ?? null; }
+  append(...c) { for (const x of c) { x.parent = this; this.children.push(x); } }
+  after(x) { if (x.parent) x.parent.children.splice(x.parent.children.indexOf(x), 1); const p = this.parent; p.children.splice(p.children.indexOf(this) + 1, 0, x); x.parent = p; }
+  replaceChildren(...c) { for (const x of this.children) x.parent = null; this.children = []; this.append(...c); }
+  addEventListener(t, f) { (this.listeners[t] ||= []).push(f); }
+  matches(sel) { return sel.split(",").some((s) => { s = s.trim(); if (s.startsWith("[")) return key(s.slice(6, -1)) in this.dataset;
+    if (s.startsWith(".")) return this.className.split(" ").includes(s.slice(1)); return this.tagName === s.toUpperCase(); }); }
+  closest(sel) { for (let n = this; n; n = n.parent) if (n.matches(sel)) return n; return null; }
+  contains(x) { for (let n = x; n; n = n.parent) if (n === this) return true; return false; }
+  querySelector(sel) { for (const c of this.children) { if (c.matches(sel)) return c; const r = c.querySelector(sel); if (r) return r; } return null; }
+}
+const fire = (type, target) => { let prevented = false; const e = { type, target, preventDefault() { prevented = true; } };
+  for (let n = target; n; n = n.parent) for (const f of n.listeners[type] || []) f(e); return prevented; };
+globalThis.document = { createElement: (t) => new El(t) };
+const { bindToolbar } = await import("./js/ui.js");
+const root = new El("div", { class: "ui-toolbar" });
+const create = new El("div", { class: "ui-toolbar-row", "data-ui-group": "create" }),
+  cands = new El("div", { class: "ui-toolbar-row", "data-ui-candidates": "", hidden: "" }),
+  file = new El("div", { class: "ui-toolbar-row", "data-ui-group": "file" });
+const text = new El("button", { "data-act": "text" }),
+  shape = new El("button", { "data-act": "shape", "data-candidates": "▭ ◯", "data-acts": "rect ellipse", "data-words": "四角|丸（まる）" }),
+  emoji = new El("button", { "data-act": "emoji", "data-candidates": "🌱 ✨" }),
+  exp = new El("button", { "data-act": "export", "data-candidates": "PPTX PNG", "data-acts": "pptx png", "data-words": "PPTX|PNG", "data-close": "" }),
+  off = new El("button", { "data-act": "off" });
+off.disabled = true;
+create.append(text, shape, emoji); file.append(exp, off); root.append(create, cands, file);
+const ran = [];
+const bar = bindToolbar(root, (...a) => ran.push(a));
+assert.equal(fire("pointerdown", text), true);                                            // the focus stays where it was
+fire("click", text);
+fire("click", off);
+assert.deepEqual(ran, [["text"]]);
+fire("click", shape);
+assert.equal(cands.hidden, false);
+assert.equal(root.children.indexOf(cands), root.children.indexOf(create) + 1);
+assert.deepEqual(cands.children.map((c) => [c.textContent, c.title, c.dataset.uiWord]), [["▭", "四角", "四角"], ["◯", "丸（まる）", "丸"]]);
+fire("click", cands.children[1]);
+assert.deepEqual(ran.at(-1), ["ellipse"]);
+assert.equal(cands.hidden, false);                                                         // a shape row stays for the next one
+fire("click", shape);
+assert.equal(cands.hidden, true);                                                          // pressed again: closed
+fire("click", emoji);
+fire("click", cands.children[0]);
+assert.deepEqual(ran.at(-1), ["emoji", "🌱"]);                                             // a stamp: the button's act with the face
+assert.equal(cands.children[0].dataset.uiWord, undefined);
+fire("click", exp);
+assert.equal(root.children.indexOf(cands), root.children.indexOf(file) + 1);              // under 📤's own row
+fire("click", cands.children[0]);
+assert.deepEqual(ran.at(-1), ["pptx"]);
+assert.equal(cands.hidden, true);                                                          // data-close: hidden after the pick
+assert.equal(cands.children.length, 0);
+bar.offer(shape); bar.close();
+assert.equal(cands.hidden, true);
+"""
+    node_js(script)
 
 
 def test_the_labels_switch_flips_emoji_faces_and_short_words_on_one_page():
