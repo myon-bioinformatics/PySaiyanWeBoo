@@ -52,12 +52,13 @@ def test_canonical_repository_metadata_and_separate_tooling(tmp_path, monkeypatc
     env = {**os.environ, "GITHUB_SHA": "f" * 40, "GITHUB_HEAD_REF": "topic/canonical",
            "GITHUB_REF_NAME": "123/merge"}
     output = tmp_path / "metadata"
-    subprocess.run(
-        [sys.executable, "-S", str(ROOT / "tools/repository_metadata.py"), "repo-metadata",
-         "--format", "v1", "--repository", "myon-bioinformatics/PySaiyanWeBoo", "--root", str(checkout),
-         "--output-dir", str(output)],
-        check=True, env=env, capture_output=True, text=True,
+    metadata = cli_args.run_cli(
+        ROOT / "tools/repository_metadata.py", "repo-metadata",
+        "--format", "v1", "--repository", "myon-bioinformatics/PySaiyanWeBoo", "--root", str(checkout),
+        "--output-dir", str(output),
+        python_options=("-S",), env=env,
     )
+    assert metadata.returncode == 0, metadata.stderr
     record_path = output / "repository-metadata.json"
     record = json.loads(record_path.read_text())
     assert record == json.loads((output / "repository-metadata.jsonl").read_text())
@@ -485,14 +486,11 @@ def test_main_with_output_dir(tmp_path):
 def test_module_main_entrypoint(tmp_path):
     checkout = tmp_path / "checkout"
     _init_checkout(checkout)
-    result = subprocess.run(
-        [sys.executable, "-m", "tools.repository_metadata", "repo-metadata",
+    result = cli_args.run_command(
+        cli_args.Command([sys.executable, "-m", "tools.repository_metadata", "repo-metadata",
          "--repository", "myon-bioinformatics/PySaiyanWeBoo",
-         "--root", str(checkout)],
+         "--root", str(checkout)]),
         cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        check=False,
     )
     # -m tools.repository_metadata may fail if tools is not a package; allow script path
     if result.returncode != 0:
@@ -1707,8 +1705,10 @@ def test_home_screen_icons_manifest_and_base64_cache(tmp_path):
     with pytest.raises(ValueError):
         pysaiyanweboo.page_document({**cached, "home": {"short_name": "x", "icons": {}}})
     (tmp_path / "page.json").write_text(json.dumps(spec), encoding="utf-8")
-    out = subprocess.run([sys.executable, "-S", str(ROOT / "pysaiyanweboo.py"), "--page", str(tmp_path / "page.json"),
-                          "--home-screen", str(tmp_path)], capture_output=True, text=True, check=True).stdout
+    page_result = cli_args.run_cli(ROOT / "pysaiyanweboo.py", "--page", str(tmp_path / "page.json"),
+                                   "--home-screen", str(tmp_path), python_options=("-S",))
+    assert page_result.returncode == 0, page_result.stderr
+    out = page_result.stdout
     assert 'rel="manifest"' in out and (tmp_path / "icon-512.png").is_file()
     assert json.loads((tmp_path / "page.json").read_text(encoding="utf-8"))["home"] == cached["home"]
 
