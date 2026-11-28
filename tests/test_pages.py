@@ -313,10 +313,9 @@ class PageHeadingCompatibilityTests(unittest.TestCase):
         self.assertEqual([body.count(part) for part in ('<div class="ui-chrome ', '<button type="button" class="ui-gaze"', '<div class="ui-door-foot">', 'data-ui-back')], [1, 1, 1, 1])
         self.assertLess(body.index('<div class="ui-chrome '), body.index('<main class="ui-page">'))    # the header first, the foot last
         self.assertLess(body.index("</main>"), body.index('<div class="ui-door-foot">'))
-        items = [html.unescape(re.sub(r"<[^>]+>", "", t)) for t in re.findall(r'<span class="ui-board-item">((?:[^<]|<span data-tx="\w+">[^<]*</span>)*)</span>', body)]
-        self.assertEqual(items, ["単一ファイルのテスト支援。", "まずは 1 行で。", "🏠 ポートフォリオ", "🐙 GitHub リポジトリ"])
-        self.assertIn('<span class="ui-board-item">🏠 <span data-tx="portfolio">ポートフォリオ</span></span>', body)         # 🌐 the way back by its catalogue words
-        self.assertRegex(body, r'href="https://github.com/myon-bioinformatics/xprobe" aria-label="GitHub リポジトリ" title="GitHub リポジトリ" data-t="repository">🐙')
+        items = [html.unescape(t) for t in re.findall(r'<span class="ui-board-item">([^<]*)</span>', body)]
+        self.assertEqual(items, ["単一ファイルのテスト支援。", "まずは 1 行で。", "🏠 ポートフォリオ", "🐙 GitHub リポジトリ"])   # 🌐 finds the way back's catalogue words
+        self.assertRegex(body, r'href="https://github.com/myon-bioinformatics/xprobe" aria-label="GitHub リポジトリ" title="GitHub リポジトリ">🐙')   # just said: no words of its own
         self.assertIn('<html lang="ja">', page)                                                        # the page's own words are Japanese
         self.assertIn('data-t="blink" aria-label="まばたき"', body)
         self.assertIn('<strong>GUIDE</strong>', body)
@@ -927,7 +926,7 @@ class DoorTests(unittest.TestCase):
         self.assertEqual(data.search(row)[1], data.search(panel)[1])
         self.assertEqual(options.search(row)[1], options.search(panel)[1])
         self.assertEqual(row.count("selected disabled"), 1)
-        self.assertIn('<label for="door-select" title="Door-to-Door" data-t="door"><span aria-hidden="true">🚪</span><span class="ui-door-name" data-tx="door">Door-to-Door</span></label>', row)
+        self.assertIn('<label for="door-select" title="Door-to-Door" data-t="door"><span aria-hidden="true">🚪</span><span class="ui-door-name">Door-to-Door</span></label>', row)
         for panel_only in ("<h2", "<h3", "<p", "data-door-draw>", "data-door-status", "data-door-notation", "data-door-path", "ui-panel"):
             self.assertIn(panel_only, panel)
             self.assertNotIn(panel_only, row)
@@ -6855,7 +6854,7 @@ def test_the_chrome_is_a_header_and_a_side_for_a_page_that_is_not_a_world():
     for waits in ('data-menu="favorites" hidden', 'data-menu="settings" hidden', 'data-menu="more" hidden'):
         assert waits in html
     assert 'data-pause="⏯️" data-resume="▶️"' in html and html.count('<option value="') - html.count("<option value=\"\"") == len(ui.CHROME_LANGS) + len(ui.THEMES) + len(ui.CANDIDATE_THEMES) == 18
-    assert '<select data-ui-theme-switch aria-label="配色" title="配色" data-t="theme"><option value="" data-tx="own">このページの色</option><option value="modern">⬛ modern</option>' in html
+    assert '<select data-ui-theme-switch aria-label="配色" title="配色" data-t="theme"><option value="">このページの色</option><option value="modern">⬛ modern</option>' in html
     assert side.count("data-scroll=") == 2 and 'data-labels="{&quot;ja&quot;:&quot;パラレル都市&quot;,&quot;en&quot;:&quot;Parallel cities&quot;}"' in head
     bare = ui.chrome_html()
     assert "ui-board" not in bare and "ui-world-home" not in bare and "⏯️" not in bare and 'data-menu="spots" hidden><summary' in bare
@@ -6910,8 +6909,8 @@ def test_every_word_the_chrome_brings_is_in_eleven_languages():
     spec = {"schema": "web-ui-page/1", "title": "ガイド", "description": "説明。", "blocks": [{"type": "heading", "text": "見出し"}]}
     page = ui.add_back_nav(ui.page_document(spec), "myon-bioinformatics/xprobe", chrome=True)
     stand_in = ui.add_site_chrome("<!doctype html><html><head><title>T</title></head><body><main></main></body></html>", [{"label": "🏠 ポートフォリオ", "href": "https://x.test/"}])
-    keys = set(re.findall(r'data-tx?="(\w+)"', page + stand_in))
-    assert keys >= {"home", "settings", "language", "theme", "own", "blink", "links", "portfolio", "repository", "door", "size"} and keys <= set(ui._CHROME_WORDS)
+    keys = set(re.findall(r'data-t="(\w+)"', page + stand_in))
+    assert keys >= {"home", "settings", "language", "theme", "blink", "links", "door", "size"} and keys <= set(ui._CHROME_WORDS) and "data-tx" not in page
     module = ui.js_source("chrome.js")
     catalogue = json.loads(re.search(r"CHROME_TEXT=(\{.*?\});", module)[1])
     assert not set(ui._CHROME_WORDS) & set(ui._PAGE_WORDS) and set(catalogue) == (set(ui._CHROME_WORDS) | set(ui._PAGE_WORDS)) - {"about", "about2"}
@@ -6924,8 +6923,13 @@ def test_every_word_the_chrome_brings_is_in_eleven_languages():
     steps = {"type": "runbook", "books": [{"label": "b", "runbook": {"key": "k/b", "steps": [{"id": "a", "title": "t", "command": "c", "run": True}]}}]}
     with_book = ui.add_back_nav(ui.page_document({**spec, "blocks": [steps]}), "myon-bioinformatics/xprobe", chrome=True)
     assert {"record", "state-todo", "copy", "loaded", "run"} <= carried(with_book) - set(ui._CHROME_WORDS) and "feat-name" not in carried(with_book)
-    assert ui.chrome_words("ポートフォリオ")["en"] == "Portfolio" and ui.chrome_words("GitHub リポジトリ")["zh"] == "GitHub 仓库"
-    assert ui.chrome_words("あと{0}分") is None and ui.chrome_words("xprobe") is None             # a format is not a label; a name is a name
+    # 🧰🌍 shell_js: the script a world and the chrome share; a world's words join the catalogue, a page given holds only its body words
+    shell = ui.shell_js({"pet": ["なでる"] + ["Pet"] * 10}, page="")
+    assert module.startswith(ui.shell_js()) and set(json.loads(re.search(r"CHROME_TEXT=(\{.*?\});", shell)[1])) == set(ui._CHROME_WORDS) - {"about", "about2"} | {"pet"}
+    assert all(f"export {kind} {name}" in shell for kind, name in (("function", "addWords"), ("const", "sayIn"), ("function", "sayAround"), ("function", "bindBoard")))
+    assert "bindChrome" not in shell and "bindTheme" not in shell
+    with pytest.raises(ValueError, match="words maps a key"):
+        ui.shell_js({"pet": ["なでる", "Pet"]})
     assert ui.page_language(page) == "ja" and ui.page_language("<html><body><main><p>Pick a template and send.</p><pre>日本語</pre></main></body></html>") == "en"
     assert ui.chrome_validate({"lang": "ar"})["lang"] == "ar" and '<option value="ar" lang="ar" selected>' in ui.chrome_html({"lang": "ar"})
     assert ui.chrome_validate({"board": {"items": [{"text": "🏠 家", "labels": {"en": "🏠 Home"}}]}})["board"]["items"][0]["labels"] == {"en": "🏠 Home"}
@@ -6958,7 +6962,7 @@ def test_the_chrome_sheet_is_plain_and_its_module_asks_the_network_for_nothing()
     for word in ("fetch(", "XMLHttpRequest", "sendBeacon", "WebSocket", "sessionStorage", "indexedDB", "cookie", "import("):
         assert word not in js, word
     assert sorted(set(re.findall(r"save\(\{(\w+)", js))) == ["fav", "lang"] and "'ui-chrome:'+el.id" in js      # ⭐ and 🌐,
-    assert re.findall(r"localStorage\.(?:set|remove)Item\((\w+)", js) == ["key", "key", "slot"] and 'key="web-ui-theme"' in js   # 🎨 bindTheme's, then that slot
+    assert re.findall(r"localStorage\.(?:set|remove)Item\((\w+)", js) == ["slot", "key", "key"] and 'key="web-ui-theme"' in js   # the shell's slot, then 🎨 bindTheme's
     assert js.startswith('const CHROME_LANGS=["ja","en",') and "export function bindChrome" in js
     page = ui.add_part(ui.render_document(trusted_html="<main><h1>t</h1></main>", title="t", css=ui.bundled_css()),
                        ui.component_parts("chrome", CHROME), at="top", scope=".ui-chrome")

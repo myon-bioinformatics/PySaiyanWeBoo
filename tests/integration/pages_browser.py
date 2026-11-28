@@ -1692,7 +1692,7 @@ class SiteChromeBrowserTests(unittest.TestCase):
                     cam = ui.GifCamera(page, frame_ms=160)                                       # the whole screen: ⚙️'s panel hangs below the chrome
                     self.assertEqual(page.evaluate('document.documentElement.lang'), 'ja')            # the page's own words are Japanese
                     first = page.evaluate(self.WORDS)
-                    self.assertTrue(any(w['s'] == 'ポートフォリオ' for w in first) and any(w['s'] == 'まばたき' for w in first), first)
+                    self.assertTrue(any(w['s'] == '🏠 ポートフォリオ' for w in first) and any(w['s'] == 'まばたき' for w in first), first)
                     page.click('.ui-chrome [data-menu="settings"] > summary')
                     left = {}
                     for code, _ in CHROME_LANGS[1:]:
@@ -1742,7 +1742,7 @@ class SiteChromeBrowserTests(unittest.TestCase):
                 "blocks": [{"type": "tabs", "id": "guide", "tabs": [
                     {"label": "🧩 機能一覧", "blocks": [{"type": "section", "title": "▶️ 実行", "blocks": [{"type": "output", "text": "python tiny.py"}]}]},
                     {"label": "🔬 検証ガイド", "blocks": [{"type": "runbook", "id": "verify", "books": [{"label": "🐍 python", "runbook": {"key": "tiny/python", "steps": [step]}}]}]},
-                    {"label": "🎞 GIF デモ", "blocks": [{"type": "text", "text": "まだありません。"}]}]},
+                    {"label": "🎞 GIF デモ", "blocks": [{"type": "text", "text": "まだありません。\n次の行も。"}]}]},   # a text over two lines
                     {"type": "section", "title": "🔗 リンク", "blocks": [{"type": "text", "text": "リポジトリへ。"}]}]}
         page = add_back_nav(page_document(add_features(spec, module)), "myon-bioinformatics/tiny", chrome=True)
         jp = re.compile(r'[぀-ヿ㐀-鿿]+')

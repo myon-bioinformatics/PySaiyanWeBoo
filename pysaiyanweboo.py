@@ -2328,7 +2328,7 @@ def add_site_chrome(page: str, links: Any, *, title: str = "GUIDE", _back_nav: b
     CSP lists its scripts or styles gets the parts' hashes listed (``add_part``).
 
     🌐 Every word these parts put on the page follows ⚙️'s language: the chrome's own, 🫧's, the foot's, a link named by a catalogue
-    word (``chrome_words``: the way back's ポートフォリオ and GitHub リポジトリ) and the stand-in line of a page that says nothing of
+    word (the way back's ポートフォリオ and GitHub リポジトリ, found by its words) and the stand-in line of a page that says nothing of
     itself; the page's own words stay as they are. The page's ``<html lang>`` says the language of its own words (``page_language``),
     and the chrome starts in it. Colors a page does not carry yet (the token-only themes, github-like) come with the chrome."""
     if '<div class="ui-door-foot">' in page:
@@ -7836,7 +7836,7 @@ def door_html(spec: Any, *, compact: bool = False, foot: bool = False, links: An
     data = escape(json.dumps({"pages": door["pages"], "k": door["k"], "seed": door["seed"], "current": door["current"]}, ensure_ascii=False, separators=(",", ":")), quote=True)
     if compact:
         return ('<div class="ui-door ui-door-compact" id="door" data-ui-door data-door-draws="0" data-door="' + data + '">'
-                '<label for="door-select" title="Door-to-Door" data-t="door"><span aria-hidden="true">🚪</span><span class="ui-door-name" data-tx="door">Door-to-Door</span></label>'
+                '<label for="door-select" title="Door-to-Door" data-t="door"><span aria-hidden="true">🚪</span><span class="ui-door-name">Door-to-Door</span></label>'
                 f'<select class="ui-input" id="door-select" data-door-select>{options}</select></div>')
     return ('<section class="ui-panel ui-door" id="door" data-ui-door data-door-draws="0" data-door="' + data + '"><h2>Door-to-Door</h2>'
             '<p class="ui-muted">Jump to another tool without going Home first. Some entries are drawn at random; the same seed draws the same ones in Python and here.</p>'
@@ -7885,19 +7885,6 @@ _CHROME_WORDS = {
     "about": ("{0}：このページの案内。", "{0}: a guide to this page.", "{0} : le guide de cette page.", "{0}: la guía de esta página.", "{0}: o guia desta página.", "{0}: دليل هذه الصفحة.", "{0}：本页指南。", "{0}: путеводитель по этой странице.", "{0}: panduan halaman ini.", "{0}: Wegweiser dieser Seite.", "{0}: mwongozo wa ukurasa huu."),
     "about2": ("🚪 でほかの場所へ、🏠 で戻れます。", "🚪 takes you elsewhere, 🏠 back home.", "🚪 mène ailleurs, 🏠 ramène à l'accueil.", "🚪 lleva a otro lugar, 🏠 vuelve al inicio.", "🚪 leva a outro lugar, 🏠 volta ao início.", "🚪 إلى مكان آخر، و🏠 للعودة.", "🚪 前往别处，🏠 返回首页。", "🚪 — в другое место, 🏠 — обратно.", "🚪 ke tempat lain, 🏠 kembali ke beranda.", "🚪 führt woandershin, 🏠 zurück.", "🚪 kwenda kwingine, 🏠 kurudi mwanzo."),
 }
-def _chrome_key(words: str) -> str | None:
-    """The catalogue key whose Japanese is ``words`` (a word of its own, not a format with {0}), else None."""
-    return next((key for key, row in _CHROME_WORDS.items() if row[0] == words and key not in ("current", "in", "about", "about2")), None)
-
-
-def chrome_words(words: str) -> dict[str, str] | None:
-    """🌐 The eleven languages of one catalogue word (``{"ja": …, "en": …, …}``) when ``words`` is the Japanese of one, else None.
-    A tool, a board item (``"🏠 ポートフォリオ"``) or a door page named by one follows 🌐 by itself: the way back's ポートフォリオ and
-    GitHub リポジトリ (``_back_links``) read in the visitor's language wherever they are shown."""
-    key = _chrome_key(words)
-    return dict(zip((code for code, _ in CHROME_LANGS), _CHROME_WORDS[key])) if key else None
-
-
 def _chrome_labels(value: Any, label: str, limit: int, codes: Sequence[str]) -> dict[str, str]:
     """A ``labels`` block: language code → words, for the codes allowed (the others come from ``label``/``text``)."""
     if not isinstance(value, dict) or set(value) - set(codes):
@@ -7921,12 +7908,13 @@ def _chrome_href(value: Any) -> str:
 
 
 def _chrome_said(key: str, labels: dict[str, str] | None = None) -> str:
-    """aria-label and title of one word (ja, the page's own); ``data-t`` names the word 🌐 swaps in, or ``labels`` carries a tool's own words."""
-    if labels and labels == chrome_words(labels["ja"]):                    # a catalogue word: its key, not its eleven languages
-        key, labels = _chrome_key(labels["ja"]), None
+    """aria-label and title of one word (ja, the page's own); ``data-t`` names the word 🌐 swaps in, or ``labels`` carries a tool's own
+    words. A tool's label with no words of other languages is just said: 🌐 finds it by its words when it is a catalogue word."""
     ja = labels["ja"] if labels else _CHROME_WORDS[key][0]
-    swap = f'data-labels="{escape(json.dumps(labels, ensure_ascii=False, separators=(",", ":")), quote=True)}"' if labels else f'data-t="{key}"'
-    return f'aria-label="{escape(ja, quote=True)}" title="{escape(ja, quote=True)}" {swap}'
+    said = f'aria-label="{escape(ja, quote=True)}" title="{escape(ja, quote=True)}"'
+    if labels and set(labels.values()) == {ja}:
+        return said
+    return said + (f' data-labels="{escape(json.dumps(labels, ensure_ascii=False, separators=(",", ":")), quote=True)}"' if labels else f' data-t="{key}"')
 
 
 def _chrome_menu(kind: str, glyph: str, attrs: str, panel: str, hidden: bool = False) -> str:
@@ -7974,10 +7962,7 @@ def _chrome_tools(tools_in: Any) -> dict[str, dict[str, Any]]:
         if slot not in ("head", "side"):
             raise ValueError("slot is head or side")
         label = _chrome_text(tool.get("label", emoji), "label", 24)
-        known = chrome_words(label) if not {"label_en", "labels"} & set(tool) else None     # a catalogue word: all its languages
-        built = {"label": label, "label_en": _chrome_text(tool.get("label_en", known["en"] if known else label), "label_en", 24), "slot": slot}
-        if known:
-            tool = {**tool, "labels": {code: words for code, words in known.items() if code not in ("ja", "en")}}
+        built = {"label": label, "label_en": _chrome_text(tool.get("label_en", label), "label_en", 24), "slot": slot}
         more = _chrome_labels(tool.get("labels", {}), "labels", 24, [code for code, _ in CHROME_LANGS][2:])   # ja and en: label, label_en
         if more:
             built["labels"] = more
@@ -8070,7 +8055,7 @@ def chrome_html(spec: Any = None) -> str:
                 f'<label class="ui-world-lang">🌐 <select data-lang {_chrome_said("language")}>' +
                 "".join(f'<option value="{code}" lang="{code}"{" selected" if code == chrome["lang"] else ""}>{name}</option>' for code, name in CHROME_LANGS) +
                 f'</select></label><label class="ui-world-lang">🎨 <select data-ui-theme-switch {_chrome_said("theme")}>'
-                f'<option value="" data-tx="own">{_CHROME_WORDS["own"][0]}</option>' +
+                f'<option value="">{_CHROME_WORDS["own"][0]}</option>' +
                 "".join(f'<option value="{name}">{marks.get(name, "🎨")} {name}</option>' for name in (*THEMES, *CANDIDATE_THEMES)) +
                 '</select></label>' + _chrome_rows_html(chrome["settings"]))
     head = ((f'<a class="ui-world-home" href="{escape(chrome["home"], quote=True)}" {_chrome_said("home")}>🏠</a>' if chrome["home"] else "") +
@@ -8085,14 +8070,9 @@ def chrome_html(spec: Any = None) -> str:
         def item(e: dict[str, Any], hidden: bool) -> str:           # the line twice, the second copy hidden: the loop has no seam
             mark = ' aria-hidden="true"' if hidden else ""
             minutes = f' <span class="ui-board-min" data-at="{e["at"]}"></span>' if e["at"] else ""
-            first, _, rest = e["text"].partition(" ")
-            lead, word = ("", e["text"]) if _chrome_key(e["text"]) else (first + " ", rest) if rest and _chrome_key(rest) else ("", "")
+            text = escape(e["text"])                                    # a catalogue word in it ("🏠 ポートフォリオ"): 🌐 finds it
             if e.get("labels"):
-                text = f'<span data-texts="{escape(json.dumps({"ja": e["text"], **e["labels"]}, ensure_ascii=False, separators=(",", ":")), quote=True)}">{escape(e["text"])}</span>'
-            elif word:                                                    # "🏠 ポートフォリオ": the catalogue word by its key
-                text = f'{escape(lead)}<span data-tx="{_chrome_key(word)}">{escape(word)}</span>'
-            else:
-                text = escape(e["text"])
+                text = f'<span data-texts="{escape(json.dumps({"ja": e["text"], **e["labels"]}, ensure_ascii=False, separators=(",", ":")), quote=True)}">{text}</span>'
             return f'<span class="ui-board-item"{mark}>{text}{minutes}</span>'
         run = "".join(item(e, hidden) for hidden in (False, True) for e in board["items"])
         chars = sum(len(e["text"]) + (10 if e["at"] else 0) for e in board["items"])
@@ -17168,11 +17148,19 @@ def _chrome_catalogue(page: str | None = None) -> str:
     return json.dumps({k: list(v) for k, v in words.items()}, ensure_ascii=False, separators=(",", ":"))
 
 
-_JS["chrome.js"] = ("const CHROME_LANGS=" + json.dumps([code for code, _ in CHROME_LANGS], separators=(",", ":")) + ",CHROME_TEXT=" +
-                    _chrome_catalogue() + ";\n" +
-                    "// 🎨 ⚙️'s colors: ui.js's bindTheme, the same lines (one choice, web-ui-theme, for every page of this origin)\n" +
-                    re.search(r"^export function bindTheme\(.*$", _JS["ui.js"], re.M)[0] + "\n" + r"""
-// 🌐 One catalogue word in a language ({0} filled in; a word missing there is the English one).
+def shell_js(words: dict[str, Sequence[str]] | None = None, page: str | None = None) -> str:
+    """🧰🌍 The script a world's shell and the chrome of a tool page share: the catalogue (``CHROME_LANGS``, ``CHROME_TEXT``: the
+    chrome's words, the words this module writes into a body — given a ``page``, only those it holds — and ``words``, a world's own,
+    ``{key: eleven words}``), ``chromeWord``, 🌐 (``addWords``, ``sayIn``, ``sayAround``), the board (``bindBoard`` and its clocks),
+    the menus (``bindMenus``) and the one cache a shell keeps (``stored``). ``chrome.js`` is this, ⚙️'s 🎨 and ``bindChrome``; a
+    world's script starts with it, so 🌐 reads the same everywhere and a word is written once."""
+    for key, row in (words or {}).items():
+        if not isinstance(key, str) or len(row) != len(CHROME_LANGS) or not all(isinstance(w, str) and w.strip() for w in row):
+            raise ValueError(f"words maps a key to its {len(CHROME_LANGS)} words, in CHROME_LANGS order")
+    catalogue = _chrome_catalogue(page)
+    if words:
+        catalogue = json.dumps({**json.loads(catalogue), **{k: list(v) for k, v in words.items()}}, ensure_ascii=False, separators=(",", ":"))
+    return ("const CHROME_LANGS=" + json.dumps([code for code, _ in CHROME_LANGS], separators=(",", ":")) + ",CHROME_TEXT=" + catalogue + ";\n" + r"""// 🌐 One catalogue word in a language ({0} filled in; a word missing there is the English one).
 export const chromeWord=(lang,key,...a)=>{const row=CHROME_TEXT[key];return(row[CHROME_LANGS.indexOf(lang)]??row[1]).replace(/\{(\d)\}/g,(_,i)=>a[i])};
 // ── The shell: what a world's header and side share with 🧰 the chrome of a tool page (chrome_html) ──
 export function minutesUntil(now,at){return Math.ceil(((at-now)%1440+1440)%1440)}
@@ -17192,38 +17180,49 @@ function bindMenus(el){const menus=[...el.querySelectorAll('.ui-world-menu')];fo
 // A small cache in this browser, one key per world or chrome: [load, save(part)]. Nothing else is written.
 const stored=slot=>{const load=()=>{try{const v=JSON.parse(localStorage.getItem(slot));return v&&typeof v==='object'?v:{}}catch(e){return{}}};return[load,part=>{try{localStorage.setItem(slot,JSON.stringify({...load(),...part}))}catch(e){}}]};
 // 🌐 The words in one of eleven languages: aria-labels and tooltips (data-t names a catalogue word, data-labels carries a part's own
-// words) and text (data-tx, data-texts the same way; dir=auto, so Arabic reads right to left in its place). ``mine`` keeps a node of
-// another chrome or a world out. Then every other text and label that is a catalogue word in any language (a format by its shape,
-// its {0} {1} kept) turns into this language: the words this module wrote into the page's body (a runbook, 🧩 the full list, the
+// words) and a text in its own languages (data-texts; dir=auto, so Arabic reads right to left in its place). ``mine`` keeps a node of
+// another chrome or a world out. Then every other text and label (over several lines too) that is a catalogue word in any language,
+// alone or with an emoji or an arrow around it ("🏠 ポートフォリオ", "地図へ →"), or a format by its shape (its {0} {1} kept),
+// turns into this language: the words this module wrote into the page's body (a runbook, 🧩 the full list, the
 // tabs every guide shares), whenever they were written. Code, a form's typing and translate=no stay as they are.
 const WORD=new Map(),FORMS=[],SAID=['aria-label','title','placeholder','alt','data-ui-copied','data-ui-copy-failed','data-ui-msg-loaded','data-ui-msg-stale','data-ui-msg-bad'];
-for(const[key,row]of Object.entries(CHROME_TEXT))for(const w of row){const at=[...w.matchAll(/\{(\d)\}/g)].map(m=>+m[1]);
- if(at.length)FORMS.push([key,at,new RegExp('^'+w.replace(/[.*+?^$()|[\]\\]/g,'\\$&').replace(/\{\d\}/g,'(.+?)')+'$')]);else if(!WORD.has(w))WORD.set(w,key)}
+// More words join the catalogue: {key: [eleven words]}, or a site's names {ja: [the ten others]} (the chrome's data-words) under site:.
+export function addWords(rows,site=false){for(const[k,r]of Object.entries(rows||{})){const key=site?'site:'+k:k,row=site?[k,...r]:r;CHROME_TEXT[key]=row;
+ for(const w of row){const at=[...w.matchAll(/\{(\d)\}/g)].map(m=>+m[1]);if(at.length)FORMS.push([key,at,new RegExp('^'+w.replace(/[.*+?^$()|[\]\\]/g,'\\$&').replace(/\{\d\}/g,'(.+?)')+'$')]);else if(!WORD.has(w))WORD.set(w,key)}}}
+addWords({...CHROME_TEXT});
 const sayWord=(lang,text)=>{const t=text.trim();if(!t)return null;if(WORD.has(t))return text.replace(t,()=>chromeWord(lang,WORD.get(t)));
- const[,lead,core,trail]=t.match(/^([^\p{L}\p{N}]*)(.*?)([^\p{L}\p{N}]*)$/u);if(core!==t&&WORD.has(core))return text.replace(t,()=>lead+chromeWord(lang,WORD.get(core))+trail);   // "🎞 GIF工房", "地図へ →"
+ const[,lead,core,trail]=t.match(/^([^\p{L}\p{N}]*)(.*?)([^\p{L}\p{N}]*)$/su);if(core!==t&&WORD.has(core))return text.replace(t,()=>lead+chromeWord(lang,WORD.get(core))+trail);   // "🎞 GIF工房", "地図へ →"
  for(const[key,at,re]of FORMS){const m=t.match(re);if(m){const a=[];at.forEach((n,i)=>{a[n]=m[i+1]});return text.replace(t,()=>chromeWord(lang,key,...a))}}return null};
-const sayIn=(root,lang,mine=()=>true)=>{const pick=m=>m[lang]||m.en||m.ja;for(const n of root.querySelectorAll('[data-t],[data-labels],[data-tx],[data-texts]')){if(!mine(n))continue;
+export const sayIn=(root,lang,mine=()=>true)=>{const pick=m=>m[lang]||m.en||m.ja;for(const n of root.querySelectorAll('[data-t],[data-labels],[data-texts]')){if(!mine(n))continue;
  if(n.dataset.t||n.dataset.labels){const w=n.dataset.labels?pick(JSON.parse(n.dataset.labels)):chromeWord(lang,n.dataset.t);n.setAttribute('aria-label',w);if(n.hasAttribute('title')||n.matches('button'))n.setAttribute('title',w)}
- if(n.dataset.tx||n.dataset.texts){n.textContent=n.dataset.texts?pick(JSON.parse(n.dataset.texts)):chromeWord(lang,n.dataset.tx);n.dir='auto'}}
- const keep=n=>!mine(n)||n.closest('script,style,pre,code,textarea,[contenteditable],[translate=no],[data-tx],[data-texts]');
+ if(n.dataset.texts){n.textContent=pick(JSON.parse(n.dataset.texts));n.dir='auto'}}
+ const keep=n=>!mine(n)||n.closest('script,style,pre,code,textarea,[contenteditable],[translate=no],[data-texts]');
  if(root.createTreeWalker||root.ownerDocument?.createTreeWalker){const doc=root.createTreeWalker?root:root.ownerDocument,walk=doc.createTreeWalker(root.body??root,4);
   for(let t;(t=walk.nextNode());){const p=t.parentElement;if(!p||keep(p))continue;const w=sayWord(lang,t.nodeValue);if(w!==null&&w!==t.nodeValue)t.nodeValue=w}}
  for(const n of root.querySelectorAll(SAID.map(a=>'['+a+']').join(','))){if(keep(n)||n.dataset.t||n.dataset.labels)continue;for(const a of SAID){const v=n.getAttribute(a);if(v===null)continue;const w=sayWord(lang,v);if(w!==null&&w!==v)n.setAttribute(a,w)}}};
-// 🧰 The chrome of a tool page: the board, the menus and 🌐 of a world's shell, with no map.
+// 🌐 The site's parts around a chrome or a world follow a language: the door's foot says it, a door relabels its pull-down (its
+// catalogue words and "(current)" in the language), and a page of its own hears ``ui-lang`` on document ({lang, word(key, …)}).
+export function sayAround(lang,mine=()=>true){for(const f of document.querySelectorAll('.ui-door-foot'))if(mine(f))f.lang=lang;
+ const words=JSON.stringify(Object.fromEntries(Object.entries(CHROME_TEXT).map(([k,row])=>[row[0],chromeWord(lang,k)])));
+ for(const d of document.querySelectorAll('[data-ui-door]'))if(mine(d)){d.dataset.lang=lang;d.dataset.here=chromeWord(lang,'current');d.dataset.words=words;d.dispatchEvent(new CustomEvent('ui-lang'))}
+ document.dispatchEvent(new CustomEvent('ui-lang',{detail:{lang,word:(key,...a)=>chromeWord(lang,key,...a)}}))}
+""")
+
+
+_JS["chrome.js"] = (shell_js() +
+                    "// 🎨 ⚙️'s colors: ui.js's bindTheme, the same lines (one choice, web-ui-theme, for every page of this origin)\n" +
+                    re.search(r"^export function bindTheme\(.*$", _JS["ui.js"], re.M)[0] + "\n" + r"""// 🧰 The chrome of a tool page: the board, the menus and 🌐 of a world's shell, with no map.
 // ☰ is this page: itself (📍), its sections (the h2 of <main>) and the rows it gave, each with a ☆. ⭐ lists the starred places of
 // every page sharing the chrome's id (a place is its path and fragment on this site), so they follow you from tool to tool, as 🌐
 // does. ⏯️ stops the board; ⋯ moves this screen to its top or its end. Nothing else is kept, and this module asks the network for nothing.
 export function bindChrome(root=document){return[...root.querySelectorAll('[data-ui-chrome]')].map(el=>{if(el.hasAttribute('data-js'))return el;el.dataset.js='';
  const shut=bindMenus(el),[load,save]=stored('ui-chrome:'+el.id),kept=load(),sel=el.querySelector('[data-lang]'),page=p=>p.replace(/index\.html$/,'');let lang=el.lang;
- for(const[ja,row]of Object.entries(el.dataset.words?JSON.parse(el.dataset.words):{})){const key='site:'+ja;CHROME_TEXT[key]=[ja,...row];for(const w of CHROME_TEXT[key])if(!WORD.has(w))WORD.set(w,key)}   // 🌐 the site's own names
- // 🌐 reaches what this chrome brought along (the door's foot, 🫧, the way back) and tells the rest: a door relabels its pull-down,
- // and a page of its own hears ``ui-lang`` on document ({lang, word(key, …)}).
+ if(el.dataset.words)addWords(JSON.parse(el.dataset.words),true);   // 🌐 the site's own names
+ // 🌐 reaches what this chrome brought along (the door's foot, 🫧, the way back) and tells the rest (sayAround).
  const mine=n=>{const c=n.closest('[data-ui-chrome],[data-ui-world]');return!c||c===el},
   say=r=>sayIn(r,lang,mine),setLang=to=>{if(!CHROME_LANGS.includes(to))return;lang=to;el.lang=to;if(sel)sel.value=to;say(document);
    for(const a of el.querySelectorAll('[data-head]')){const h=document.getElementById(a.dataset.head);if(h)a.lastChild.textContent=h.textContent.trim().slice(0,40)}   // ☰ says the sections as they read now
-   for(const f of document.querySelectorAll('.ui-door-foot'))if(mine(f))f.lang=to;
-   for(const d of document.querySelectorAll('[data-ui-door]'))if(mine(d)){d.dataset.lang=to;d.dataset.here=chromeWord(to,'current');d.dataset.words=JSON.stringify(Object.fromEntries(Object.entries(CHROME_TEXT).map(([k,row])=>[row[0],chromeWord(to,k)])));d.dispatchEvent(new CustomEvent('ui-lang'))}
-   document.dispatchEvent(new CustomEvent('ui-lang',{detail:{lang:to,word:(key,...a)=>chromeWord(to,key,...a)}}))};
+   sayAround(to,mine)};
  bindTheme(el);   // 🎨 its controls are in ⚙️
  sel?.addEventListener('change',()=>{setLang(sel.value);save({lang})});
  const here=page(location.pathname),title=(document.title.trim()||here).slice(0,40),key=a=>a.origin===location.origin?page(a.pathname)+a.hash:a.href,
