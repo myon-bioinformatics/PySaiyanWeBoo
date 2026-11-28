@@ -111,6 +111,24 @@ radius, date-line and pole cases), `zoom_for_radius`, `xyz_tile`, `maps_urls` an
 flutter_navigation_basic's coordinate tool. Its Dart tests and shared golden vectors (`tests/fixtures/coordinate_area_cases.json`) are the oracle; `coordinates.js` equals
 Python on 500+ random areas (every copyable text byte for byte), zooms, tiles and 800 Maps-URL variants. Short-link expansion needs a network and stays out.
 
+📍 `coordinates_html(spec)` makes the same tool a site's own map tool, each part only when asked for (`coordinates_validate`; `None` is the plain tool, byte for byte):
+
+```python
+spec = {"id": "map", "point": {"lat": 35.68134, "lon": 139.7665, "label": "東京駅"}, "radius": 100,
+        "places": [{"id": "tokyo-station", "label": "東京駅", "lat": 35.68134, "lon": 139.7665, "href": "#cities-spot-station"}],   # a list to pick from, and the places inside the radius
+        "pins": "site-map-pins/1",      # 📌 up to 100 points with their names and radii, kept in this browser under this key
+        "share": True,                  # open / copy the Maps addresses, the link to this point (?lat=&lon=&name=&radius_m=, read on load), a text to share
+        "words": {"title": "📍 地図URL・座標ピン留め", "pin": "📌 ピン留め", "radius": "半径: {n} m"}}   # any word of the markup or of coordinates.js; the rest stays English
+page = pysaiyanweboo.coordinates_document(spec)          # or component_parts("coordinates", spec) with add_part
+```
+
+A place's `href` that is a `#fragment` of this page keeps the point in its address, so the page it opens can read it back. `coordinates.js` also exports
+`distanceMeters`, `checkedPin` and `pointLink`.
+
+![📍 coordinates with a spec: a place fills the point, 📌 pins it, the pin is listed with its radius, another place follows](docs/evidence/component-coordinates.gif)
+
+🗓️ 2026-11-28 · `PSWB_GIFS=docs/evidence uv run --locked --group world-test python tests/integration/pages_browser.py CoordinatesBrowserTests` writes `component-coordinates.gif`.
+
 Photo studio (`examples/photo-studio.html`): frames and stamps on a photo, all in the page and in memory. Python is the reference: `photo_sniff` (PNG, JPEG, WebP, GIF, AVIF, HEIC
 from the magic bytes; JPEG progressive and EXIF Orientation 1-8 with the marker scan that skips an XMP block and fill bytes), `photo_header_size` (the width and height a PNG, GIF,
 JPEG or WebP header declares, read without decoding, so the 40-megapixel budget is checked before any engine decode), `photo_decide` (Flutter's order: a declared type that is not

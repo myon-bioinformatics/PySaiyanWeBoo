@@ -6305,30 +6305,117 @@ def area_texts(area: dict[str, Any]) -> dict[str, str]:
 
 _CSS["coordinates.css"] = ("@layer components{.ui-coord label{display:block;margin:8px 0 4px}.ui-coord .ui-input{width:100%;box-sizing:border-box}"
                            ".ui-coord-bar{display:flex;flex-wrap:wrap;gap:8px 16px;margin:8px 0;padding:0;border:0}.ui-coord-bar label{display:inline-block;margin:0}"
-                           ".ui-coord dt{margin:16px 0 4px}.ui-coord dd{margin:0}.ui-coord dd pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}}")
+                           ".ui-coord dt{margin:16px 0 4px}.ui-coord dd{margin:0}.ui-coord dd pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}"
+                           ".ui-coord-bar .ui-button{display:inline-flex;align-items:center;min-height:48px;box-sizing:border-box;max-width:100%}.ui-coord textarea{overflow-wrap:anywhere}"
+                           ".ui-coord-pins{padding:0;list-style:none}.ui-coord-pins li{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:8px 0}"
+                           ".ui-coord [hidden]{display:none}.ui-coord details{margin-top:16px}}")
 
 
-def coordinates_html() -> str:
-    """The coordinate tool as semantic HTML: a point (typed or read from a Maps URL), a tolerance radius, a tile zoom, and the results the page fills in."""
-    presets = ((25, "Exact / GPS"), (100, "Building / facility"), (350, "Station / campus"), (1000, "Park / large facility"), (3000, "District / loose area"), ("custom", "Custom"))
-    radios = "".join(f'<label><input type="radio" name="coord-preset" value="{v}"{" checked" if v == 100 else ""}> {label}{"" if v == "custom" else f" ({v} m)"}</label>' for v, label in presets)
-    return ('<section class="ui-panel ui-coord" id="coord" data-ui-coord><h2>Coordinates</h2>'
-            '<p class="ui-muted">Check a point, read it from a Google or Apple Maps URL, and frame a tolerance area around it. Everything is computed in this page; '
-            'short links (maps.app.goo.gl) are not expanded: paste the full address.</p>'
-            '<label for="coord-lat">Latitude</label><input class="ui-input" id="coord-lat" data-lat value="35.681236" inputmode="decimal" autocomplete="off">'
-            '<label for="coord-lon">Longitude</label><input class="ui-input" id="coord-lon" data-lon value="139.767125" inputmode="decimal" autocomplete="off">'
-            '<label for="coord-url">Or paste a Maps URL</label><input class="ui-input" id="coord-url" data-url autocomplete="off">'
-            '<p><button class="ui-button" type="button" data-use-url>Use this URL</button></p>'
+def coordinates_validate(spec: Any = None) -> dict[str, Any]:
+    """``{"id", "words", "point", "radius", "places", "pins", "share"}``, all optional; ``None`` is the plain tool.
+
+    ``id``      prefixes the fields' ids (default ``coord``)
+    ``words``   says the tool in another language: any of the keys ``coordinates_html`` and ``coordinates.js`` use, up to 120 characters each
+    ``point``   ``{"lat", "lon", "label"?}``: where the tool starts
+    ``radius``  the tolerance it starts with: 0 (the point only), 25, 100, 350, 1000 or 3000 metres
+    ``places``  1..200 named points ``{"id", "label", "lat", "lon", "href"?}``: a list to pick from, and the places inside the radius.
+                ``href`` (a path of this site, an https address, or a ``#fragment`` of this page that keeps the point in its address) opens the place
+    ``pins``    a key (``site-map-pins/1``): 📌 keeps up to 100 points with their names and radii in this browser under it
+    ``share``   ``True``: open and copy the Maps addresses, a link back to this point (``?lat=&lon=&name=&radius_m=``, read on load), a text to share
+    """
+    spec = {} if spec is None else spec
+    if not isinstance(spec, dict) or set(spec) - {"id", "words", "point", "radius", "places", "pins", "share"}:
+        raise ValueError("coordinates: id, words, point, radius, places, pins, share")
+
+    def point(value: Any, what: str) -> tuple[float, float]:
+        if not isinstance(value, dict) or any(isinstance(value.get(k), bool) or not isinstance(value.get(k), (int, float)) for k in ("lat", "lon")):
+            raise ValueError(f"{what} needs lat and lon as numbers")
+        return parse_coordinate(repr(float(value["lat"])), repr(float(value["lon"])))
+
+    out: dict[str, Any] = {"id": spec.get("id", "coord"), "words": spec.get("words", {}), "radius": spec.get("radius", 100), "share": spec.get("share", False), "places": []}
+    if not isinstance(out["id"], str) or not _CHROME_TOKEN.fullmatch(out["id"]):
+        raise ValueError("coordinates id is a short lower-case token")
+    if not isinstance(out["words"], dict) or len(out["words"]) > 80 or any(not isinstance(k, str) or not isinstance(v, str) or not 1 <= len(v) <= 120 for k, v in out["words"].items()):
+        raise ValueError("coordinates words are up to 80 texts of 1..120 characters")
+    if isinstance(out["radius"], bool) or out["radius"] not in (0, 25, 100, 350, 1000, 3000):
+        raise ValueError("coordinates radius is 0, 25, 100, 350, 1000 or 3000")
+    if not isinstance(out["share"], bool):
+        raise ValueError("coordinates share is true or false")
+    start = spec.get("point", {"lat": 35.681236, "lon": 139.767125})
+    out["point"] = {**dict(zip(("lat", "lon"), point(start, "coordinates point"))), "label": _chrome_text(start["label"], "the point's label", 80) if "label" in start else ""}
+    if set(start) - {"lat", "lon", "label"}:
+        raise ValueError("coordinates point: lat, lon, label")
+    places = spec.get("places", [])
+    if not isinstance(places, list) or len(places) > 200:
+        raise ValueError("coordinates places are up to 200")
+    for place in places:
+        if not isinstance(place, dict) or set(place) - {"id", "label", "lat", "lon", "href"} or not isinstance(place.get("id"), str) or not _CHROME_TOKEN.fullmatch(place["id"]):
+            raise ValueError("a place: id (a short lower-case token), label, lat, lon, href")
+        lat, lon = point(place, "a place")
+        out["places"].append({"id": place["id"], "label": _chrome_text(place.get("label"), "a place's label", 80), "lat": lat, "lon": lon,
+                              **({"href": _chrome_href(place["href"])} if "href" in place else {})})
+    if len({place["id"] for place in out["places"]}) != len(out["places"]):
+        raise ValueError("coordinates places need distinct ids")
+    if "pins" in spec:
+        if not isinstance(spec["pins"], str) or not re.fullmatch(r"[a-z0-9][a-z0-9./_-]{0,63}", spec["pins"]):
+            raise ValueError("coordinates pins is the key they are kept under: lower-case letters, digits, . / _ -")
+        out["pins"] = spec["pins"]
+    return out
+
+
+def coordinates_html(spec: Any = None) -> str:
+    """The coordinate tool as semantic HTML: a point (typed or read from a Maps URL), a tolerance radius, a tile zoom, and the results the page fills in.
+
+    With a spec (``coordinates_validate``) it also offers named places, 📌 pins kept in this browser, and open / copy / share; ``words`` says it all in
+    another language. ``bindCoordinates()`` binds whichever of these the markup holds."""
+    plain = spec is None
+    spec = coordinates_validate(spec)
+    say = {"title": "Coordinates", "lead": "Check a point, read it from a Google or Apple Maps URL, and frame a tolerance area around it. Everything is computed in this page; "
+                                           "short links (maps.app.goo.gl) are not expanded: paste the full address.",
+           "lat": "Latitude", "lon": "Longitude", "url": "Or paste a Maps URL", "use": "Use this URL", "tolerance": "Tolerance", "custom_radius": "Custom radius (metres)",
+           "zoom": "Tile zoom (0 to 22)", "r0": "Point only", "r25": "Exact / GPS", "r100": "Building / facility", "r350": "Station / campus", "r1000": "Park / large facility",
+           "r3000": "District / loose area", "custom": "Custom", "place": "Place", "free": "Free input", "name": "Name (optional)", "open_google": "Open Google Maps",
+           "open_apple": "Open Apple Maps", "open_place": "Open this place", "pin": "📌 Pin", "copy_google": "Copy the Google address", "copy_apple": "Copy the Apple address",
+           "copy_link": "Copy the link to this point", "share": "Share", "share_text": "Text to share", "nearby": "Places inside the radius", "pins": "Pinned points",
+           "pin_note": "Kept in this browser. Hand someone the link to this point and they open the same coordinates.", "details": "All formats", **spec["words"]}
+    w, key, at = (lambda name: escape(say[name])), escape(spec["id"], quote=True), spec["point"]
+    presets = (*((0,) if not plain else ()), 25, 100, 350, 1000, 3000, "custom")
+    radios = "".join(f'<label><input type="radio" name="{key}-preset" value="{v}"{" checked" if v == spec["radius"] else ""}> '
+                     f'{w("custom") if v == "custom" else w(f"r{v}")}{"" if v in (0, "custom") else f" ({v} m)"}</label>' for v in presets)
+    extras = spec["share"] or "pins" in spec
+    data = (f" data-words='{escape(json.dumps(spec['words'], ensure_ascii=False, separators=(',', ':')), quote=True)}'" if spec["words"] else "") + \
+           (f" data-places='{escape(json.dumps(spec['places'], ensure_ascii=False, separators=(',', ':')), quote=True)}'" if spec["places"] else "") + \
+           (f' data-pins="{escape(spec["pins"], quote=True)}"' if "pins" in spec else "") + (" data-link" if extras else "")
+    place = (f'<label for="{key}-place">{w("place")}</label><select class="ui-input" id="{key}-place" data-place><option value="">{w("free")}</option>'
+             + "".join(f'<option value="{escape(p["id"], quote=True)}">{escape(p["label"])}</option>' for p in spec["places"]) + "</select>") if spec["places"] else ""
+    name = (f'<label for="{key}-name">{w("name")}</label><input class="ui-input" id="{key}-name" data-name maxlength="80" autocomplete="off" '
+            f'value="{escape(at["label"], quote=True)}">') if extras else ""
+    link = lambda kind, hidden="": f'<a class="ui-button" data-open="{kind}" target="_blank" rel="noopener noreferrer"{hidden}>{w("open_" + kind)}</a>'
+    opens = f'<p class="ui-coord-bar">{link("google")}{link("apple")}{link("place", " hidden") if spec["places"] else ""}</p>' if spec["share"] else ""
+    button = lambda attr, word: f'<button class="ui-button" type="button" {attr}>{w(word)}</button>'
+    acts = (f'<p class="ui-coord-bar">{button("data-pin", "pin") if "pins" in spec else ""}'
+            + (button('data-copy="google"', "copy_google") + button('data-copy="apple"', "copy_apple") + button('data-copy="link"', "copy_link") + button("data-share", "share")
+               if spec["share"] else "") + "</p>") if extras else ""
+    text = (f'<label for="{key}-share">{w("share_text")}</label><textarea class="ui-input" id="{key}-share" data-share-text rows="6" readonly></textarea>') if spec["share"] else ""
+    note = '<p class="ui-muted" role="status" aria-live="polite" data-note></p>' if extras else ""
+    near = f'<div data-nearby hidden><h3>{w("nearby")}</h3><p class="ui-muted" data-nearby-count></p><ul data-nearby-list></ul></div>' if spec["places"] else ""
+    pins = f'<h3>{w("pins")}</h3><p class="ui-muted" data-pin-storage>{w("pin_note")}</p><ul class="ui-coord-pins" data-pins-list></ul>' if "pins" in spec else ""
+    out = "<dl data-out></dl>" if plain else f'<details><summary>{w("details")}</summary><dl data-out></dl></details>'
+    return (f'<section class="ui-panel ui-coord" id="{key}" data-ui-coord{data}><h2>{w("title")}</h2><p class="ui-muted">{w("lead")}</p>{place}'
+            f'<label for="{key}-lat">{w("lat")}</label><input class="ui-input" id="{key}-lat" data-lat value="{fixed(at["lat"], 6)}" inputmode="decimal" autocomplete="off">'
+            f'<label for="{key}-lon">{w("lon")}</label><input class="ui-input" id="{key}-lon" data-lon value="{fixed(at["lon"], 6)}" inputmode="decimal" autocomplete="off">{name}'
+            f'<label for="{key}-url">{w("url")}</label><input class="ui-input" id="{key}-url" data-url autocomplete="off">'
+            f'<p><button class="ui-button" type="button" data-use-url>{w("use")}</button></p>'
             '<p class="ui-muted" role="status" aria-live="polite" data-status></p>'
-            f'<fieldset class="ui-coord-bar"><legend>Tolerance</legend>{radios}</fieldset>'
-            '<label for="coord-radius">Custom radius (metres)</label><input class="ui-input" id="coord-radius" data-radius type="number" min="1" step="any" value="500">'
-            '<label for="coord-zoom">Tile zoom (0 to 22)</label><input class="ui-input" id="coord-zoom" data-zoom type="number" min="0" max="22" step="1" value="16">'
-            '<dl data-out></dl></section>')
+            f'<fieldset class="ui-coord-bar"><legend>{w("tolerance")}</legend>{radios}</fieldset>'
+            f'<label for="{key}-radius">{w("custom_radius")}</label><input class="ui-input" id="{key}-radius" data-radius type="number" min="1" step="any" value="500">'
+            f'<label for="{key}-zoom">{w("zoom")}</label><input class="ui-input" id="{key}-zoom" data-zoom type="number" min="0" max="22" step="1" value="16">'
+            f'{opens}{acts}{text}{note}{near}{pins}{out}</section>')
 
 
-def coordinates_document(*, theme: str = "modern") -> str:
-    """A single-file page for the coordinate tool."""
-    return render_document(trusted_html='<main class="ui-page">' + coordinates_html() + "</main>" + module_script(_JS["coordinates.js"]), title="Coordinates",
+def coordinates_document(spec: Any = None, *, theme: str = "modern") -> str:
+    """A single-file page for the coordinate tool (``spec``: ``coordinates_validate``)."""
+    return render_document(trusted_html='<main class="ui-page">' + coordinates_html(spec) + "</main>" + module_script(_JS["coordinates.js"]), title="Coordinates",
                            theme=theme, css=bundled_css())
 
 
@@ -17585,21 +17672,69 @@ export function areaTexts(a){const f=v=>fixed(v,6),lat=a.lat,lon=a.lon,radius=ra
   google_rectangle:"new google.maps.Rectangle({\n  bounds: {\n    south: "+f(a.south)+",\n    west: "+f(a.west)+",\n    north: "+f(a.north)+",\n    east: "+f(a.east)+"\n  }\n});",
   mapkit_region:"MKCoordinateRegion(\n  center: CLLocationCoordinate2D(\n    latitude: "+f(lat)+",\n    longitude: "+f(lon)+"\n  ),\n  span: MKCoordinateSpan(\n    latitudeDelta: "+f(a.lat_span)+",\n    longitudeDelta: "+f(a.lon_span)+"\n  )\n)",
   google_area_url:"https://www.google.com/maps/@"+f(lat)+","+f(lon)+","+zoom+"z",apple_area_url:"https://maps.apple.com/?"+query(apple)}}
+// The words the page itself says (data-words on the panel says them in another language; {n} is the number).
+const WORDS={valid:"Valid.",bad_url:"Could not find latitude/longitude in that Maps URL.",deg:"Decimal degrees",dms:"Degrees, minutes, seconds",google:"Google Maps",apple:"Apple Maps",osm:"OpenStreetMap static preview",
+ center:"Tolerance: centre and radius",bounds:"Tolerance: bounds",bbox:"Tolerance: bbox [west, south, east, north]",json:"Tolerance: JSON",g_circle:"Google Maps circle",m_circle:"MapKit circle",g_rect:"Google Maps rectangle",m_region:"MapKit region",
+ g_area:"Google Maps area link",a_area:"Apple Maps area link",tolerance:"Tolerance",tile:"XYZ tile",pin:"📌 Pin",repin:"📌 Update the pin",unpin:"Remove",no_pins:"No pins yet.",saved:"Saved in this browser.",
+ unsaved:"This browser cannot save: the pins last until the page closes.",unreadable:"The saved pins could not be read.",full:"100 pins at most: remove one first.",pinned:"Pinned.",copied:"Copied.",
+ uncopied:"Could not copy: select the text and copy it.",shared:"Shared.",point_only:"point only",radius:"Radius: {n} m",link:"Link to this point",within:"{n} inside the radius (straight line from the centre)",meters:"{n} m"};
+export const distanceMeters=(a,b)=>{const rad=v=>v*Math.PI/180,dy=rad(b.lat-a.lat),dx=rad(b.lon-a.lon),h=Math.sin(dy/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dx/2)**2;
+ return 2*6371008.8*Math.asin(Math.sqrt(Math.min(1,Math.max(0,h))))};
+// One pin as kept in the browser: a valid point, a name of up to 80 characters, a radius of 0 (the point only) or more. Anything else throws.
+export function checkedPin(p){if(!p||typeof p!=="object"||typeof p.label!=="string"||typeof p.radius_m!=="number"||!Number.isFinite(p.radius_m)||p.radius_m<0)throw new Error("not a pin");
+ const[lat,lon]=parseCoordinate(String(p.lat),String(p.lon));return{lat,lon,label:p.label.slice(0,80),radius_m:p.radius_m}}
+// The link to a point: this address with ?lat=&lon=&name=&radius_m= (and another #fragment when given).
+export function pointLink(p,here,hash){const u=new URL(here);u.search=new URLSearchParams({lat:fixed(p.lat,6),lon:fixed(p.lon,6),name:p.label,radius_m:String(p.radius_m)});if(hash!==undefined)u.hash=hash;return u.href}
 export function bindCoordinates(root=document){return[...root.querySelectorAll("[data-ui-coord]")].map(box=>{
- const $=s=>box.querySelector(s),lat=$("[data-lat]"),lon=$("[data-lon]"),url=$("[data-url]"),status=$("[data-status]"),out=$("[data-out]"),radius=$("[data-radius]"),zoom=$("[data-zoom]"),preset=()=>box.querySelector('input[name="coord-preset"]:checked').value;
+ const $=s=>box.querySelector(s),lat=$("[data-lat]"),lon=$("[data-lon]"),url=$("[data-url]"),status=$("[data-status]"),out=$("[data-out]"),radius=$("[data-radius]"),zoom=$("[data-zoom]");
+ const radios=[...box.querySelectorAll('fieldset input[type="radio"]')],preset=()=>radios.find(r=>r.checked).value;
+ const said=JSON.parse(box.dataset.words||"{}"),w=(k,n)=>String(said[k]??WORDS[k]).replace("{n}",n);
+ const places=JSON.parse(box.dataset.places||"[]"),key=box.dataset.pins,name=$("[data-name]"),place=$("[data-place]"),note=$("[data-note]"),shareText=$("[data-share-text]"),store=$("[data-pin-storage]"),list=$("[data-pins-list]"),near=$("[data-nearby]");
+ const same=(a,b)=>fixed(a.lat,6)===fixed(b.lat,6)&&fixed(a.lon,6)===fixed(b.lon,6),label=p=>p.label||coordinateText(p.lat,p.lon);
+ const placeLink=(p,spot)=>!spot.href?null:spot.href.startsWith("#")?pointLink(p,location.href,spot.href.slice(1)):spot.href;
+ let current=null,pins=[];
  const add=(label,text)=>{const dt=document.createElement("dt"),dd=document.createElement("dd"),pre=document.createElement("pre");dt.textContent=label;pre.textContent=text;dd.append(pre);out.append(dt,dd)};
- const show=()=>{out.replaceChildren();try{const[la,lo]=parseCoordinate(lat.value,lon.value);status.textContent="Valid.";
-   add("Decimal degrees",coordinateText(la,lo));add("Degrees, minutes, seconds",dmsText(la,lo));const u=mapsUrls(la,lo);add("Google Maps",u.google);add("Apple Maps",u.apple);add("OpenStreetMap static preview",u.osm_preview);
-   const r=preset()==="custom"?Number(radius.value):Number(preset());try{const area=toleranceArea(la,lo,r),t=areaTexts(area);
-    add("Tolerance: centre and radius",t.center_radius);add("Tolerance: bounds",t.bounds);add("Tolerance: bbox [west, south, east, north]",t.bbox);add("Tolerance: JSON",t.json);
-    add("Google Maps circle",t.google_circle);add("MapKit circle",t.mapkit_circle);add("Google Maps rectangle",t.google_rectangle);add("MapKit region",t.mapkit_region);add("Google Maps area link",t.google_area_url);add("Apple Maps area link",t.apple_area_url)}
-   catch(e){add("Tolerance",e.message)}
-   try{const tile=xyzTile(la,lo,Number(zoom.value));add("XYZ tile",tile.path)}catch(e){add("XYZ tile",e.message)}
-  }catch(e){status.textContent=e.message}};
- for(const el of[lat,lon,radius,zoom])el.addEventListener("input",show);for(const r of box.querySelectorAll('input[name="coord-preset"]'))r.addEventListener("change",show);
- $("[data-use-url]").addEventListener("click",()=>{const p=tryParseMapsUrl(url.value);if(!p){status.textContent="Could not find latitude/longitude in that Maps URL.";return}lat.value=String(p[0]);lon.value=String(p[1]);show()});
- show();return box})}
-globalThis.webUiCoordinates={fixed,parseCoordinate,tryParseMapsUrl,toDms,coordinateText,dmsText,toleranceArea,zoomForRadius,xyzTile,mapsUrls,areaTexts,bindCoordinates};
+ const text=p=>{const u=mapsUrls(p.lat,p.lon),t=[label(p),"Google Maps: "+u.google,"Apple Maps: "+u.apple];
+  if(p.radius_m>0){const a=areaTexts(toleranceArea(p.lat,p.lon,p.radius_m));t.push(w("radius",p.radius_m),w("g_area")+": "+a.google_area_url,w("a_area")+": "+a.apple_area_url)}
+  t.push(w("link")+": "+pointLink(p,location.href));return t.join("\n")};
+ const extras=()=>{for(const a of box.querySelectorAll("[data-open]")){a.removeAttribute("href");if(a.dataset.open==="place")a.hidden=true}
+  if(near){near.hidden=true;$("[data-nearby-list]").replaceChildren()}if(shareText)shareText.value="";
+  for(const b of box.querySelectorAll("[data-pin],[data-copy],[data-share]"))b.disabled=!current;
+  if(!current){if(place)place.value="";return}
+  const u=mapsUrls(current.lat,current.lon),spot=places.find(p=>same(p,current)),open=(k,href)=>{const a=$('[data-open="'+k+'"]');if(a&&href){a.href=href;a.hidden=false}};
+  if(place)place.value=spot?spot.id:"";open("google",u.google);open("apple",u.apple);if(spot)open("place",placeLink(current,spot));
+  if(near&&current.radius_m>0){const hits=places.map(p=>({p,m:distanceMeters(current,p)})).filter(x=>x.m<=current.radius_m).sort((a,b)=>a.m-b.m);near.hidden=false;$("[data-nearby-count]").textContent=w("within",hits.length);
+   for(const{p,m}of hits){const li=document.createElement("li"),href=placeLink(current,p),el=document.createElement(href?"a":"span");if(href)el.href=href;el.textContent=p.label+" ("+w("meters",Math.round(m))+")";li.append(el);$("[data-nearby-list]").append(li)}}
+  if(shareText)shareText.value=text(current);const pin=$("[data-pin]");if(pin)pin.textContent=pins.some(p=>same(p,current))?w("repin"):w("pin")};
+ const show=()=>{out.replaceChildren();current=null;if(note)note.textContent="";try{const[la,lo]=parseCoordinate(lat.value,lon.value);status.textContent=w("valid");
+   add(w("deg"),coordinateText(la,lo));add(w("dms"),dmsText(la,lo));const u=mapsUrls(la,lo);add(w("google"),u.google);add(w("apple"),u.apple);add(w("osm"),u.osm_preview);
+   const r=preset()==="custom"?Number(radius.value):Number(preset());if(Number.isFinite(r)&&r>=0)current={lat:la,lon:lo,label:name?name.value.trim().slice(0,80):"",radius_m:r};
+   if(preset()!=="0")try{const area=toleranceArea(la,lo,r),t=areaTexts(area);
+    add(w("center"),t.center_radius);add(w("bounds"),t.bounds);add(w("bbox"),t.bbox);add(w("json"),t.json);
+    add(w("g_circle"),t.google_circle);add(w("m_circle"),t.mapkit_circle);add(w("g_rect"),t.google_rectangle);add(w("m_region"),t.mapkit_region);add(w("g_area"),t.google_area_url);add(w("a_area"),t.apple_area_url)}
+   catch(e){add(w("tolerance"),e.message);current=null}
+   try{const tile=xyzTile(la,lo,Number(zoom.value));add(w("tile"),tile.path)}catch(e){add(w("tile"),e.message)}
+  }catch(e){status.textContent=said.bad_point??e.message}extras()};
+ const setRadius=r=>{const hit=radios.find(x=>x.value===String(r));(hit||radios.find(x=>x.value==="custom")).checked=true;if(!hit)radius.value=String(r)};
+ const setPoint=p=>{lat.value=fixed(p.lat,6);lon.value=fixed(p.lon,6);if(name)name.value=p.label||"";if(p.radius_m!==undefined)setRadius(p.radius_m);show()};
+ const save=()=>{try{localStorage.setItem(key,JSON.stringify(pins));store.textContent=w("saved")}catch{store.textContent=w("unsaved")}};
+ const drawPins=()=>{list.replaceChildren();if(!pins.length){const li=document.createElement("li");li.textContent=w("no_pins");list.append(li)}
+  for(const p of pins){const li=document.createElement("li"),open=document.createElement("button"),range=document.createElement("span"),remove=document.createElement("button");open.type=remove.type="button";open.className=remove.className="ui-button";
+   open.textContent=label(p);open.addEventListener("click",()=>setPoint(p));range.textContent=p.radius_m>0?w("radius",p.radius_m):w("point_only");remove.textContent=w("unpin");remove.setAttribute("aria-label",w("unpin")+": "+label(p));
+   remove.addEventListener("click",()=>{pins=pins.filter(v=>!same(v,p));save();drawPins();show()});li.append(open,range,remove);list.append(li)}};
+ const copy=async t=>{try{await navigator.clipboard.writeText(t);note.textContent=w("copied")}catch{if(shareText){shareText.value=t;shareText.focus();shareText.select()}note.textContent=w("uncopied")}};
+ for(const el of[lat,lon,radius,zoom,...(name?[name]:[])])el.addEventListener("input",show);for(const r of radios)r.addEventListener("change",show);
+ $("[data-use-url]").addEventListener("click",()=>{const p=tryParseMapsUrl(url.value);if(!p){status.textContent=w("bad_url");return}setPoint({lat:p[0],lon:p[1],label:""})});
+ if(place)place.addEventListener("change",()=>{const p=places.find(p=>p.id===place.value);if(p)setPoint({lat:p.lat,lon:p.lon,label:p.label})});
+ if(key&&list){try{const saved=JSON.parse(localStorage.getItem(key)||"[]");if(!Array.isArray(saved))throw new Error("pins");for(const item of saved.slice(0,100)){try{const p=checkedPin(item);if(!pins.some(v=>same(v,p)))pins.push(p)}catch{}}}catch{store.textContent=w("unreadable")}
+  $("[data-pin]").addEventListener("click",()=>{if(!current)return;const i=pins.findIndex(p=>same(p,current));if(i<0){if(pins.length>=100){note.textContent=w("full");return}pins.push({...current})}else pins[i]={...current};save();drawPins();show();note.textContent=w("pinned")})}
+ for(const b of box.querySelectorAll("[data-copy]"))b.addEventListener("click",()=>{if(current)copy(b.dataset.copy==="link"?pointLink(current,location.href):mapsUrls(current.lat,current.lon)[b.dataset.copy])});
+ const share=$("[data-share]");if(share)share.addEventListener("click",async()=>{if(!current)return;const t=text(current);if(!navigator.share)return copy(t);
+  try{await navigator.share({title:label(current),text:t,url:pointLink(current,location.href)});note.textContent=w("shared")}catch(e){if(e.name!=="AbortError")await copy(t)}});
+ if(box.hasAttribute("data-link")){const q=new URLSearchParams(location.search);if(q.has("lat")||q.has("lon")){lat.value=q.get("lat")||"";lon.value=q.get("lon")||"";if(name)name.value=(q.get("name")||"").slice(0,80);
+  const r=Number(q.get("radius_m"));if(q.has("radius_m")&&q.get("radius_m").trim()!==""&&Number.isFinite(r)&&r>=0)setRadius(r)}}
+ if(list)drawPins();show();return box})}
+globalThis.webUiCoordinates={fixed,parseCoordinate,tryParseMapsUrl,toDms,coordinateText,dmsText,toleranceArea,zoomForRadius,xyzTile,mapsUrls,areaTexts,distanceMeters,checkedPin,pointLink,bindCoordinates};
 if(typeof document!=="undefined")bindCoordinates();
 """
 

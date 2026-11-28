@@ -2384,6 +2384,100 @@ class CoordinatesBrowserTests(unittest.TestCase):
         from pysaiyanweboo import coordinates_document
         return serve_pages({'coord.html': coordinates_document()})
 
+    def test_places_pins_and_share_from_a_spec_in_another_language(self):
+        """📍 coordinates_html(spec): a place picked from the list fills the point, 📌 pins stay in this browser (and come back after a reload),
+        the link to a point opens it with its name and radius, the places inside the radius are listed, and the words are the spec's own.
+        ``PSWB_GIFS`` keeps component-coordinates.gif (pysaiyanweboo.gif_targets_from)."""
+        spec = {'id': 'map', 'point': {'lat': 35.68134, 'lon': 139.7665, 'label': '東京駅'}, 'pins': 'pswb-test-pins/1', 'share': True,
+                'places': [{'id': 'tokyo-station', 'label': '東京駅', 'lat': 35.68134, 'lon': 139.7665, 'href': '#cities-spot-station'},
+                           {'id': 'tokyo-tower', 'label': '東京タワー', 'lat': 35.658581, 'lon': 139.745433}],
+                'words': {'title': '📍 地図URL・座標ピン留め', 'lead': '緯度・経度から Apple Maps と Google Maps の URL を作成。', 'place': '地点をえらぶ', 'free': '自由入力',
+                          'name': '地点名（任意）', 'pin': '📌 ピン留め', 'repin': '📌 ピンを更新', 'unpin': '解除', 'pinned': 'ピン留めしました。', 'no_pins': 'ピンはまだありません。',
+                          'saved': 'このブラウザに保存しました。', 'r0': '地点のみ', 'point_only': '地点のみ', 'radius': '半径: {n} m', 'within': '{n}件（中心からの直線距離）',
+                          'copied': 'コピーしました。', 'valid': '有効です。', 'bad_point': '緯度は−90〜90、経度は−180〜180の数値を入力してください。', 'link': '地点リンク'}}
+        server, origin = serve_pages({'map.html': ui.coordinates_document(spec)})
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    context = browser.new_context(viewport={'width': 560, 'height': 480}, permissions=['clipboard-read', 'clipboard-write'])
+                    page = context.new_page()
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.goto(origin + '/map.html')
+                    box = page.locator('#map[data-ui-coord]')
+                    cam = ui.GifCamera(page)
+                    self.assertEqual(box.locator('h2').inner_text(), '📍 地図URL・座標ピン留め')
+                    self.assertEqual(box.locator('[data-status]').inner_text(), '有効です。')
+                    self.assertEqual(box.locator('[data-place]').input_value(), 'tokyo-station')                 # the starting point is a place of the list
+                    self.assertIn('35.681340', box.locator('[data-open="google"]').get_attribute('href'))
+                    link = origin + '/map.html?lat=35.681340&lon=139.766500&name=%E6%9D%B1%E4%BA%AC%E9%A7%85&radius_m=100'
+                    self.assertEqual(box.locator('[data-open="place"]').get_attribute('href'), link + '#cities-spot-station')   # a place of this page keeps the point
+                    self.assertEqual(box.locator('[data-nearby-count]').inner_text(), '1件（中心からの直線距離）')
+                    self.assertIn('地点リンク: ' + link, box.locator('[data-share-text]').input_value())
+                    self.assertEqual(box.locator('[data-pins-list] li').all_inner_texts(), ['ピンはまだありません。'])
+                    cam.hold(900)
+                    box.locator('[data-pin]').click()                                                            # 📌 kept, with its name and radius
+                    self.assertEqual(box.locator('[data-note]').inner_text(), 'ピン留めしました。')
+                    self.assertEqual(box.locator('[data-pin]').inner_text(), '📌 ピンを更新')
+                    self.assertEqual(box.locator('[data-pin-storage]').inner_text(), 'このブラウザに保存しました。')
+                    box.locator('[data-pins-list]').scroll_into_view_if_needed()
+                    cam.hold(900)
+                    box.locator('[data-place]').select_option('tokyo-tower')                                     # another place: the fields follow
+                    self.assertEqual([box.locator(f'[data-{k}]').input_value() for k in ('lat', 'lon', 'name')], ['35.658581', '139.745433', '東京タワー'])
+                    self.assertTrue(box.locator('[data-open="place"]').is_hidden())                              # this one has no page of its own
+                    box.locator('input[type="radio"][value="0"]').check()                                        # the point only: no area, no list
+                    self.assertTrue(box.locator('[data-nearby]').is_hidden())
+                    self.assertNotIn('半径', box.locator('[data-share-text]').input_value())
+                    box.locator('[data-pin]').click()
+                    self.assertEqual([text.split('\n')[0] for text in box.locator('[data-pins-list] li').all_inner_texts()], ['東京駅', '東京タワー'])
+                    self.assertEqual(box.locator('[data-pins-list] li span').all_inner_texts(), ['半径: 100 m', '地点のみ'])
+                    box.locator('input[type="radio"][value="custom"]').check()
+                    box.locator('[data-radius]').fill('3500')                                                    # both places are inside 3.5 km of the tower
+                    self.assertEqual(box.locator('[data-nearby-count]').inner_text(), '2件（中心からの直線距離）')
+                    near = box.locator('[data-nearby-list] li')
+                    self.assertEqual(near.nth(0).inner_text(), '東京タワー (0 m)')
+                    self.assertRegex(near.nth(1).inner_text(), r'^東京駅 \(3[01]\d\d m\)$')
+                    self.assertEqual(near.nth(1).locator('a').count(), 1)
+                    self.assertEqual(near.nth(0).locator('a').count(), 0)
+                    box.locator('[data-copy="link"]').click()
+                    box.locator('[data-note]', has_text='コピーしました。').wait_for()                            # the clipboard answers a moment later
+                    copied = page.evaluate('navigator.clipboard.readText()')
+                    self.assertEqual(copied, origin + '/map.html?lat=35.658581&lon=139.745433&name=%E6%9D%B1%E4%BA%AC%E3%82%BF%E3%83%AF%E3%83%BC&radius_m=3500')
+                    page.reload()                                                                                # the pins are this browser's
+                    self.assertEqual(box.locator('[data-pins-list] li').count(), 2)
+                    box.locator('[data-pins-list] li button').nth(2).click()                                     # open the tower's pin: point only
+                    self.assertEqual(box.locator('[data-lat]').input_value(), '35.658581')
+                    self.assertTrue(box.locator('input[type="radio"][value="0"]').is_checked())
+                    box.locator('[data-pins-list] li').nth(1).get_by_role('button', name='解除: 東京タワー').click()
+                    self.assertEqual(box.locator('[data-pins-list] li').count(), 1)
+                    self.assertEqual(len(page.evaluate("JSON.parse(localStorage.getItem('pswb-test-pins/1'))")), 1)
+                    box.locator('[data-pins-list]').scroll_into_view_if_needed()
+                    cam.hold(900)
+                    page.goto(copied)                                                                            # the copied link opens the same point
+                    self.assertEqual([box.locator(f'[data-{k}]').input_value() for k in ('lat', 'lon', 'name', 'radius')], ['35.658581', '139.745433', '東京タワー', '3500'])
+                    self.assertTrue(box.locator('input[type="radio"][value="custom"]').is_checked())
+                    cam.hold(900)
+                    box.locator('[data-lat]').fill('91')
+                    self.assertEqual(box.locator('[data-status]').inner_text(), '緯度は−90〜90、経度は−180〜180の数値を入力してください。')
+                    for name in ('pin', 'share'):
+                        self.assertTrue(box.locator(f'[data-{name}]').is_disabled())
+                    page.evaluate("localStorage.setItem('pswb-test-pins/1', '{not json')")
+                    page.goto(origin + '/map.html')
+                    self.assertEqual(box.locator('[data-pin-storage]').inner_text(), 'The saved pins could not be read.')   # a word the spec did not give: English
+                    for width in (320, 390, 1280):
+                        page.set_viewport_size({'width': width, 'height': 640})
+                        self.assertEqual(page.evaluate('document.documentElement.scrollWidth - document.documentElement.clientWidth'), 0, width)
+                    self.assertEqual(errors, [])
+                    gif = ui.encode_gif(cam.shots)
+                    self.assertEqual(gif[:6], b'GIF89a')
+                    if os.environ.get('PSWB_GIFS'):
+                        ui.gif_targets_from(os.environ['PSWB_GIFS'], ['component-coordinates'])['component-coordinates'].write_bytes(gif)
+                finally:
+                    browser.close()
+        finally:
+            server.shutdown()
+
     def test_every_rule_in_the_page_equals_pythons(self):
         import random
         import pysaiyanweboo as w
